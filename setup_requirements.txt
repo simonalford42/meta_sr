@@ -1,0 +1,32 @@
+# Requirements for Meta-SR reproduction and SRBench evaluation
+
+# Core dependencies
+numpy>=1.20.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+scipy>=1.7.0
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# Symbolic Regression
+pysr>=0.18.0
+sympy>=1.9
+
+# Dataset access
+pmlb>=1.0.0
+
+# LLM interaction (for reproducing the paper)
+openai>=1.0.0
+anthropic>=0.3.0
+
+# Evolution and optimization
+deap>=1.3.0
+
+# Utilities
+pyyaml>=5.4.0
+tqdm>=4.62.0
+joblib>=1.1.0
+
+# For notebook/analysis work
+jupyter>=1.0.0
+ipython>=7.0.0

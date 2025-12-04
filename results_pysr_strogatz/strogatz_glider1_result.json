@@ -1,0 +1,46 @@
+{
+  "dataset_name": "strogatz_glider1",
+  "success": true,
+  "ground_truth": "x' = -0.05 * x**2 - sin(y)",
+  "best_equation": "((x * x) * -0.05) - sin(y)",
+  "best_complexity": 8,
+  "best_loss": 7.009445e-14,
+  "mse": 2.6792176810355356e-28,
+  "mae": 1.1109671125761334e-14,
+  "r2": 1.0,
+  "fit_time": 14.065935850143433,
+  "n_samples": 1000,
+  "n_features": 2,
+  "top_equations": [
+    {
+      "complexity": 1,
+      "loss": 0.6246674,
+      "equation": "-0.313354",
+      "score": 0.0
+    },
+    {
+      "complexity": 3,
+      "loss": 0.55225444,
+      "equation": "x * -0.16776374",
+      "score": 0.061605232992038066
+    },
+    {
+      "complexity": 4,
+      "loss": 0.087442674,
+      "equation": "-0.30296835 - sin(y)",
+      "score": 1.843025457734435
+    },
+    {
+      "complexity": 5,
+      "loss": 0.08073673,
+      "equation": "-0.29315045 - sin(abs(y))",
+      "score": 0.07978981013743308
+    },
+    {
+      "complexity": 6,
+      "loss": 0.021067167,
+      "equation": "(x * -0.16156346) - sin(y)",
+      "score": 1.3434778520303943
+    }
+  ]
+}

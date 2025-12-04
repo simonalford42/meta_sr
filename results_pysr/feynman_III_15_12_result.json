@@ -1,0 +1,46 @@
+{
+  "dataset_name": "feynman_III_15_12",
+  "success": true,
+  "ground_truth": "E_n = 2*U*(1-cos(k*d))",
+  "best_equation": "(U - (cos(k * d) * U)) * 2.0",
+  "best_complexity": 10,
+  "best_loss": 4.094779e-12,
+  "mse": 5.739186757247577e-29,
+  "mae": 4.0073495141037815e-15,
+  "r2": 1.0,
+  "fit_time": 34.43976807594299,
+  "n_samples": 1000,
+  "n_features": 3,
+  "top_equations": [
+    {
+      "complexity": 1,
+      "loss": 24.991306,
+      "equation": "6.026613",
+      "score": 0.0
+    },
+    {
+      "complexity": 3,
+      "loss": 20.357998,
+      "equation": "U * 2.0271287",
+      "score": 0.10252707379850183
+    },
+    {
+      "complexity": 5,
+      "loss": 20.327143,
+      "equation": "(U * 1.8843122) - -0.48365858",
+      "score": 0.0007583851292390928
+    },
+    {
+      "complexity": 6,
+      "loss": 19.93765,
+      "equation": "(U + U) + sin(k)",
+      "score": 0.0193471825024537
+    },
+    {
+      "complexity": 7,
+      "loss": 19.911434,
+      "equation": "(U + U) + sin(sin(k))",
+      "score": 0.0013157644367522297
+    }
+  ]
+}

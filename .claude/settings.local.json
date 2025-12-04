@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(conda create:*)",
+      "Bash(source:*)",
+      "Bash(source ~/.bashrc)",
+      "Bash(conda:*)",
+      "Bash(python3:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

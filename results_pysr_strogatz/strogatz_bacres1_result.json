@@ -1,0 +1,46 @@
+{
+  "dataset_name": "strogatz_bacres1",
+  "success": true,
+  "ground_truth": "x' = 20 - x - (x * y)/(1+0.5 * x**2)",
+  "best_equation": "square(9.203408 - sqrt((y + x) + 17.718359)) + (x * (x * -0.00481698))",
+  "best_complexity": 15,
+  "best_loss": 0.034223825,
+  "mse": 0.03422384052717069,
+  "mae": 0.12271354954769563,
+  "r2": 0.9947173458836889,
+  "fit_time": 37.701452016830444,
+  "n_samples": 1000,
+  "n_features": 2,
+  "top_equations": [
+    {
+      "complexity": 1,
+      "loss": 6.4785295,
+      "equation": "0.5148104",
+      "score": 0.0
+    },
+    {
+      "complexity": 3,
+      "loss": 4.123218,
+      "equation": "46.292015 / y",
+      "score": 0.2259298145758958
+    },
+    {
+      "complexity": 4,
+      "loss": 2.7075973,
+      "equation": "6.6419697 - sqrt(y)",
+      "score": 0.4205722899890294
+    },
+    {
+      "complexity": 5,
+      "loss": 0.39851907,
+      "equation": "(149.24379 / y) + -4.084759",
+      "score": 1.9160615639013843
+    },
+    {
+      "complexity": 6,
+      "loss": 0.398519,
+      "equation": "(149.2438 / abs(y)) + -4.0847597",
+      "score": 1.756503298311034e-07
+    }
+  ]
+}

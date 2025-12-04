@@ -1,0 +1,232 @@
+[
+  {
+    "dataset_name": "strogatz_bacres1",
+    "success": true,
+    "ground_truth": "x' = 20 - x - (x * y)/(1+0.5 * x**2)",
+    "best_equation": "square(9.203408 - sqrt((y + x) + 17.718359)) + (x * (x * -0.00481698))",
+    "best_complexity": 15,
+    "best_loss": 0.034223825,
+    "mse": 0.03422384052717069,
+    "mae": 0.12271354954769563,
+    "r2": 0.9947173458836889,
+    "fit_time": 37.701452016830444,
+    "n_samples": 1000,
+    "n_features": 2,
+    "top_equations": [
+      {
+        "complexity": 1,
+        "loss": 6.4785295,
+        "equation": "0.5148104",
+        "score": 0.0
+      },
+      {
+        "complexity": 3,
+        "loss": 4.123218,
+        "equation": "46.292015 / y",
+        "score": 0.2259298145758958
+      },
+      {
+        "complexity": 4,
+        "loss": 2.7075973,
+        "equation": "6.6419697 - sqrt(y)",
+        "score": 0.4205722899890294
+      },
+      {
+        "complexity": 5,
+        "loss": 0.39851907,
+        "equation": "(149.24379 / y) + -4.084759",
+        "score": 1.9160615639013843
+      },
+      {
+        "complexity": 6,
+        "loss": 0.398519,
+        "equation": "(149.2438 / abs(y)) + -4.0847597",
+        "score": 1.756503298311034e-07
+      }
+    ]
+  },
+  {
+    "dataset_name": "strogatz_bacres2",
+    "success": true,
+    "ground_truth": "y' = 10 - (x * y)/(1+0.5 * x**2)",
+    "best_equation": "(((y * -1.9999999) / ((0.97762084 / (x * 0.48881054)) + x)) - 0.002523291) + 10.002522",
+    "best_complexity": 15,
+    "best_loss": 3.1900483e-13,
+    "mse": 1.0591619522450506e-12,
+    "mae": 1.024082667389764e-06,
+    "r2": 0.9999999999997765,
+    "fit_time": 14.27152419090271,
+    "n_samples": 1000,
+    "n_features": 2,
+    "top_equations": [
+      {
+        "complexity": 1,
+        "loss": 4.7388105,
+        "equation": "4.325633",
+        "score": 0.0
+      },
+      {
+        "complexity": 3,
+        "loss": 2.5443752,
+        "equation": "130.75287 / y",
+        "score": 0.3109505179834833
+      },
+      {
+        "complexity": 5,
+        "loss": 0.54984206,
+        "equation": "x * (10.70842 / y)",
+        "score": 0.7660046622556124
+      },
+      {
+        "complexity": 7,
+        "loss": 0.0035279826,
+        "equation": "((y * -1.9700569) / x) + 9.983842",
+        "score": 2.524452433595594
+      },
+      {
+        "complexity": 9,
+        "loss": 0.00023667114,
+        "equation": "((y / (x + 0.5774079)) * -2.06976) + 10.019827",
+        "score": 1.350904951272329
+      }
+    ]
+  },
+  {
+    "dataset_name": "strogatz_barmag1",
+    "success": true,
+    "ground_truth": "x' = 0.5 * sin(x - y) - sin(x)",
+    "best_equation": "(0.4680434 - sin(sin(x + sin(sqrt(square(cos(y * -0.6410299)) * (x * 0.83299154)))))) * cos(cos(y * -0.6240453))",
+    "best_complexity": 23,
+    "best_loss": 0.00051202514,
+    "mse": 0.0005120250933336036,
+    "mae": 0.015563610957756295,
+    "r2": 0.9898774338145397,
+    "fit_time": 18.881736040115356,
+    "n_samples": 1000,
+    "n_features": 2,
+    "top_equations": [
+      {
+        "complexity": 1,
+        "loss": 0.050582528,
+        "equation": "0.15906148",
+        "score": 0.0
+      },
+      {
+        "complexity": 3,
+        "loss": 0.043218046,
+        "equation": "square(sin(x))",
+        "score": 0.07867404035807375
+      },
+      {
+        "complexity": 4,
+        "loss": 0.008003521,
+        "equation": "sin(x / 1.897693)",
+        "score": 1.6863765696528037
+      },
+      {
+        "complexity": 6,
+        "loss": 0.007075934,
+        "equation": "square(sin(sin(x + 0.23337314)))",
+        "score": 0.06159106045137984
+      },
+      {
+        "complexity": 8,
+        "loss": 0.007018866,
+        "equation": "sin(sin(sin(square(sin(x + 0.24391103)))))",
+        "score": 0.00404889121151959
+      }
+    ]
+  },
+  {
+    "dataset_name": "strogatz_barmag2",
+    "success": true,
+    "ground_truth": "y' = 0.5 * sin(y - x) - sin(y)",
+    "best_equation": "((x + x) * (((x * 0.13213784) + -0.8373412) * (sin(y + -0.5323268) * 0.5890058))) - abs((x * 0.1340599) + -0.7044854)",
+    "best_complexity": 23,
+    "best_loss": 0.0004408736,
+    "mse": 0.0004408733822738253,
+    "mae": 0.010315647719488896,
+    "r2": 0.9944839927560413,
+    "fit_time": 14.577064990997314,
+    "n_samples": 1000,
+    "n_features": 2,
+    "top_equations": [
+      {
+        "complexity": 1,
+        "loss": 0.07992616,
+        "equation": "-0.023932489",
+        "score": 0.0
+      },
+      {
+        "complexity": 3,
+        "loss": 0.07767521,
+        "equation": "y * 0.016246531",
+        "score": 0.01428352479952767
+      },
+      {
+        "complexity": 4,
+        "loss": 0.00969136,
+        "equation": "cos(y + 1.163967)",
+        "score": 2.0813013919164294
+      },
+      {
+        "complexity": 6,
+        "loss": 0.008855655,
+        "equation": "sin(y + -0.40467232) * -0.9022807",
+        "score": 0.04508926446183254
+      },
+      {
+        "complexity": 7,
+        "loss": 0.004423427,
+        "equation": "sin(y - 0.41873816) * sin(x)",
+        "score": 0.6941415029721089
+      }
+    ]
+  },
+  {
+    "dataset_name": "strogatz_glider1",
+    "success": true,
+    "ground_truth": "x' = -0.05 * x**2 - sin(y)",
+    "best_equation": "((x * x) * -0.05) - sin(y)",
+    "best_complexity": 8,
+    "best_loss": 7.009445e-14,
+    "mse": 2.6792176810355356e-28,
+    "mae": 1.1109671125761334e-14,
+    "r2": 1.0,
+    "fit_time": 14.065935850143433,
+    "n_samples": 1000,
+    "n_features": 2,
+    "top_equations": [
+      {
+        "complexity": 1,
+        "loss": 0.6246674,
+        "equation": "-0.313354",
+        "score": 0.0
+      },
+      {
+        "complexity": 3,
+        "loss": 0.55225444,
+        "equation": "x * -0.16776374",
+        "score": 0.061605232992038066
+      },
+      {
+        "complexity": 4,
+        "loss": 0.087442674,
+        "equation": "-0.30296835 - sin(y)",
+        "score": 1.843025457734435
+      },
+      {
+        "complexity": 5,
+        "loss": 0.08073673,
+        "equation": "-0.29315045 - sin(abs(y))",
+        "score": 0.07978981013743308
+      },
+      {
+        "complexity": 6,
+        "loss": 0.021067167,
+        "equation": "(x * -0.16156346) - sin(y)",
+        "score": 1.3434778520303943
+      }
+    ]
+  }
+]

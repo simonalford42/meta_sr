@@ -1,0 +1,46 @@
+{
+  "dataset_name": "strogatz_barmag1",
+  "success": true,
+  "ground_truth": "x' = 0.5 * sin(x - y) - sin(x)",
+  "best_equation": "(0.4680434 - sin(sin(x + sin(sqrt(square(cos(y * -0.6410299)) * (x * 0.83299154)))))) * cos(cos(y * -0.6240453))",
+  "best_complexity": 23,
+  "best_loss": 0.00051202514,
+  "mse": 0.0005120250933336036,
+  "mae": 0.015563610957756295,
+  "r2": 0.9898774338145397,
+  "fit_time": 18.881736040115356,
+  "n_samples": 1000,
+  "n_features": 2,
+  "top_equations": [
+    {
+      "complexity": 1,
+      "loss": 0.050582528,
+      "equation": "0.15906148",
+      "score": 0.0
+    },
+    {
+      "complexity": 3,
+      "loss": 0.043218046,
+      "equation": "square(sin(x))",
+      "score": 0.07867404035807375
+    },
+    {
+      "complexity": 4,
+      "loss": 0.008003521,
+      "equation": "sin(x / 1.897693)",
+      "score": 1.6863765696528037
+    },
+    {
+      "complexity": 6,
+      "loss": 0.007075934,
+      "equation": "square(sin(sin(x + 0.23337314)))",
+      "score": 0.06159106045137984
+    },
+    {
+      "complexity": 8,
+      "loss": 0.007018866,
+      "equation": "sin(sin(sin(square(sin(x + 0.24391103)))))",
+      "score": 0.00404889121151959
+    }
+  ]
+}

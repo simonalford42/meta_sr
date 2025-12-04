@@ -1,0 +1,46 @@
+{
+  "dataset_name": "feynman_III_12_43",
+  "success": true,
+  "ground_truth": "L = n*(h/(2*pi))",
+  "best_equation": "(n * h) * 0.15915494",
+  "best_complexity": 5,
+  "best_loss": 8.698375e-15,
+  "mse": 1.01746203045561e-15,
+  "mae": 2.776897548411178e-08,
+  "r2": 0.9999999999999984,
+  "fit_time": 20.611005306243896,
+  "n_samples": 1000,
+  "n_features": 2,
+  "top_equations": [
+    {
+      "complexity": 1,
+      "loss": 0.6688878,
+      "equation": "1.4380171",
+      "score": 0.0
+    },
+    {
+      "complexity": 2,
+      "loss": 0.44779658,
+      "equation": "sqrt(n)",
+      "score": 0.40127726626095317
+    },
+    {
+      "complexity": 3,
+      "loss": 0.3283587,
+      "equation": "n * 0.48571357",
+      "score": 0.3102324583944784
+    },
+    {
+      "complexity": 5,
+      "loss": 8.698375e-15,
+      "equation": "(n * h) * 0.15915494",
+      "score": 15.630995748862988
+    },
+    {
+      "complexity": 7,
+      "loss": 8.0813135e-15,
+      "equation": "(0.406068 * h) * (0.3919416 * n)",
+      "score": 0.036790902701521966
+    }
+  ]
+}

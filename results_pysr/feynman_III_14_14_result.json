@@ -1,0 +1,46 @@
+{
+  "dataset_name": "feynman_III_14_14",
+  "success": true,
+  "ground_truth": "I = I_0*(exp(q*Volt/(kb*T))-1)",
+  "best_equation": "((square(((q / kb) * Volt) / T) + 0.088024855) * I_0) * (4.45238 / (sin(((q / kb) * Volt) / T) + 1.9577861))",
+  "best_complexity": 25,
+  "best_loss": 0.013843421,
+  "mse": 0.020199443612290632,
+  "mae": 0.08096541127305354,
+  "r2": 0.9995749005321536,
+  "fit_time": 24.36574077606201,
+  "n_samples": 1000,
+  "n_features": 5,
+  "top_equations": [
+    {
+      "complexity": 1,
+      "loss": 54.561207,
+      "equation": "7.094573",
+      "score": 0.0
+    },
+    {
+      "complexity": 3,
+      "loss": 46.977924,
+      "equation": "I_0 * 2.3464136",
+      "score": 0.07482267324336314
+    },
+    {
+      "complexity": 4,
+      "loss": 39.40008,
+      "equation": "square(Volt) * I_0",
+      "score": 0.175909942479121
+    },
+    {
+      "complexity": 5,
+      "loss": 35.511436,
+      "equation": "Volt * (I_0 * q)",
+      "score": 0.1039130613084603
+    },
+    {
+      "complexity": 7,
+      "loss": 29.34863,
+      "equation": "square(Volt + cos(T)) * I_0",
+      "score": 0.09530445914470839
+    }
+  ]
+}
