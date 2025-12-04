@@ -1,0 +1,232 @@
+[
+  {
+    "dataset_name": "feynman_III_10_19",
+    "success": true,
+    "ground_truth": "E_n = mom*sqrt(Bx**2+By**2+Bz**2)",
+    "best_equation": "((Bx + (((Bx * ((By * Bz) * -0.016017191)) + Bz) + By)) * 0.6373295) * mom",
+    "best_complexity": 17,
+    "best_loss": 0.2589437,
+    "mse": 0.25342815886780096,
+    "mae": 0.3772233738036141,
+    "r2": 0.9951996732159646,
+    "fit_time": 26.63303804397583,
+    "n_samples": 1000,
+    "n_features": 4,
+    "top_equations": [
+      {
+        "complexity": 1,
+        "loss": 54.692814,
+        "equation": "16.091103",
+        "score": 0.0
+      },
+      {
+        "complexity": 2,
+        "loss": 52.118317,
+        "equation": "square(mom)",
+        "score": 0.04821586881476741
+      },
+      {
+        "complexity": 3,
+        "loss": 13.805242,
+        "equation": "mom / 0.1826582",
+        "score": 1.3284680857591042
+      },
+      {
+        "complexity": 5,
+        "loss": 11.190814,
+        "equation": "(Bz + 2.4455597) * mom",
+        "score": 0.10497755595489809
+      },
+      {
+        "complexity": 6,
+        "loss": 8.490472,
+        "equation": "square(mom) + (Bx + By)",
+        "score": 0.27614866960379947
+      }
+    ]
+  },
+  {
+    "dataset_name": "feynman_III_12_43",
+    "success": true,
+    "ground_truth": "L = n*(h/(2*pi))",
+    "best_equation": "(n * h) * 0.15915494",
+    "best_complexity": 5,
+    "best_loss": 8.698375e-15,
+    "mse": 1.01746203045561e-15,
+    "mae": 2.776897548411178e-08,
+    "r2": 0.9999999999999984,
+    "fit_time": 20.611005306243896,
+    "n_samples": 1000,
+    "n_features": 2,
+    "top_equations": [
+      {
+        "complexity": 1,
+        "loss": 0.6688878,
+        "equation": "1.4380171",
+        "score": 0.0
+      },
+      {
+        "complexity": 2,
+        "loss": 0.44779658,
+        "equation": "sqrt(n)",
+        "score": 0.40127726626095317
+      },
+      {
+        "complexity": 3,
+        "loss": 0.3283587,
+        "equation": "n * 0.48571357",
+        "score": 0.3102324583944784
+      },
+      {
+        "complexity": 5,
+        "loss": 8.698375e-15,
+        "equation": "(n * h) * 0.15915494",
+        "score": 15.630995748862988
+      },
+      {
+        "complexity": 7,
+        "loss": 8.0813135e-15,
+        "equation": "(0.406068 * h) * (0.3919416 * n)",
+        "score": 0.036790902701521966
+      }
+    ]
+  },
+  {
+    "dataset_name": "feynman_III_13_18",
+    "success": true,
+    "ground_truth": "v = 2*E_n*d**2*k/(h/(2*pi))",
+    "best_equation": "(E_n * ((k * d) * 12.566371)) * (d / h)",
+    "best_complexity": 11,
+    "best_loss": 3.8108556e-09,
+    "mse": 4.982840684532386e-10,
+    "mae": 1.4425914489075874e-05,
+    "r2": 0.9999999999999983,
+    "fit_time": 23.027825832366943,
+    "n_samples": 1000,
+    "n_features": 4,
+    "top_equations": [
+      {
+        "complexity": 1,
+        "loss": 360693.84,
+        "equation": "489.17014",
+        "score": 0.0
+      },
+      {
+        "complexity": 3,
+        "loss": 266099.66,
+        "equation": "d * 178.59665",
+        "score": 0.1520793047959532
+      },
+      {
+        "complexity": 4,
+        "loss": 242029.89,
+        "equation": "square(d * -6.872826)",
+        "score": 0.09480966934132977
+      },
+      {
+        "complexity": 5,
+        "loss": 165124.66,
+        "equation": "(d / h) * 443.73914",
+        "score": 0.38236052713216023
+      },
+      {
+        "complexity": 6,
+        "loss": 145177.23,
+        "equation": "square(d * (k + E_n))",
+        "score": 0.1287454318825715
+      }
+    ]
+  },
+  {
+    "dataset_name": "feynman_III_14_14",
+    "success": true,
+    "ground_truth": "I = I_0*(exp(q*Volt/(kb*T))-1)",
+    "best_equation": "((square(((q / kb) * Volt) / T) + 0.088024855) * I_0) * (4.45238 / (sin(((q / kb) * Volt) / T) + 1.9577861))",
+    "best_complexity": 25,
+    "best_loss": 0.013843421,
+    "mse": 0.020199443612290632,
+    "mae": 0.08096541127305354,
+    "r2": 0.9995749005321536,
+    "fit_time": 24.36574077606201,
+    "n_samples": 1000,
+    "n_features": 5,
+    "top_equations": [
+      {
+        "complexity": 1,
+        "loss": 54.561207,
+        "equation": "7.094573",
+        "score": 0.0
+      },
+      {
+        "complexity": 3,
+        "loss": 46.977924,
+        "equation": "I_0 * 2.3464136",
+        "score": 0.07482267324336314
+      },
+      {
+        "complexity": 4,
+        "loss": 39.40008,
+        "equation": "square(Volt) * I_0",
+        "score": 0.175909942479121
+      },
+      {
+        "complexity": 5,
+        "loss": 35.511436,
+        "equation": "Volt * (I_0 * q)",
+        "score": 0.1039130613084603
+      },
+      {
+        "complexity": 7,
+        "loss": 29.34863,
+        "equation": "square(Volt + cos(T)) * I_0",
+        "score": 0.09530445914470839
+      }
+    ]
+  },
+  {
+    "dataset_name": "feynman_III_15_12",
+    "success": true,
+    "ground_truth": "E_n = 2*U*(1-cos(k*d))",
+    "best_equation": "(U - (cos(k * d) * U)) * 2.0",
+    "best_complexity": 10,
+    "best_loss": 4.094779e-12,
+    "mse": 5.739186757247577e-29,
+    "mae": 4.0073495141037815e-15,
+    "r2": 1.0,
+    "fit_time": 34.43976807594299,
+    "n_samples": 1000,
+    "n_features": 3,
+    "top_equations": [
+      {
+        "complexity": 1,
+        "loss": 24.991306,
+        "equation": "6.026613",
+        "score": 0.0
+      },
+      {
+        "complexity": 3,
+        "loss": 20.357998,
+        "equation": "U * 2.0271287",
+        "score": 0.10252707379850183
+      },
+      {
+        "complexity": 5,
+        "loss": 20.327143,
+        "equation": "(U * 1.8843122) - -0.48365858",
+        "score": 0.0007583851292390928
+      },
+      {
+        "complexity": 6,
+        "loss": 19.93765,
+        "equation": "(U + U) + sin(k)",
+        "score": 0.0193471825024537
+      },
+      {
+        "complexity": 7,
+        "loss": 19.911434,
+        "equation": "(U + U) + sin(sin(k))",
+        "score": 0.0013157644367522297
+      }
+    ]
+  }
+]
