@@ -15,19 +15,8 @@ import traceback
 from dataclasses import dataclass
 import hashlib
 
-# LLM imports (you'll need to set API keys)
-try:
-    from anthropic import Anthropic
-    HAS_ANTHROPIC = True
-except ImportError:
-    HAS_ANTHROPIC = False
-
-try:
-    import openai
-    HAS_OPENAI = True
-except ImportError:
-    HAS_OPENAI = False
-
+import openai
+HAS_OPENAI = True
 
 @dataclass
 class SelectionOperator:
@@ -77,25 +66,6 @@ class LLMMetaSR:
         self.use_domain_knowledge = use_domain_knowledge
         self.use_bloat_control = use_bloat_control
         self.use_semantic_selection = use_semantic_selection
-
-        # Initialize LLM client
-        if llm_provider == 'anthropic':
-            if not HAS_ANTHROPIC:
-                raise ValueError("Anthropic package not installed")
-            api_key = os.getenv('ANTHROPIC_API_KEY')
-            if not api_key:
-                raise ValueError("ANTHROPIC_API_KEY not set")
-            self.client = Anthropic(api_key=api_key)
-        elif llm_provider == 'openai':
-            if not HAS_OPENAI:
-                raise ValueError("OpenAI package not installed")
-            api_key = os.getenv('OPENAI_API_KEY')
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY not set")
-            openai.api_key = api_key
-            self.client = None  # Use openai module directly
-        else:
-            raise ValueError(f"Unknown LLM provider: {llm_provider}")
 
     def call_llm(self, prompt: str, temperature: float = 0.7) -> str:
         """Call LLM API"""
@@ -460,7 +430,7 @@ if __name__ == "__main__":
     # Example usage
     meta_sr = LLMMetaSR(
         llm_provider='openai',
-        model='gpt-4',
+        model='gpt-5.1-mini',
         population_size=5,  # Small for testing
         n_generations=3,
         results_dir='results_meta_sr_test'

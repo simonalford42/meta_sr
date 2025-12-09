@@ -1,0 +1,1 @@
+/home/sca63/.conda/envs/meta_sr/etc/conda/activate.d/startup.sh

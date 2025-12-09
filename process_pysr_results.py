@@ -32,7 +32,7 @@ def collate_results(results_dir, output_name=None):
     excluded_cols = ['params']
     fails = []
 
-    json_files = glob(f'{results_dir}/*/*.json')
+    json_files = glob(f'{results_dir}/*.json')
     print(f"Found {len(json_files)} JSON files")
 
     for f in tqdm(json_files):
