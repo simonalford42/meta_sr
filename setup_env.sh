@@ -1,20 +1,20 @@
 #!/bin/bash
-# Setup script for meta-SR conda environment
+# Setup script for meta-SR mamba environment
 
-echo "Creating conda environment 'meta-sr'..."
-conda create -n meta-sr python=3.10 -y
+echo "Creating mamba environment 'meta-sr'..."
+mamba create -n meta_sr python=3.10 -y
 
 echo "Activating environment..."
-source activate meta-sr
+source activate meta_sr
 
 echo "Installing dependencies..."
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 
 echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "To use the environment:"
-echo "  conda activate meta-sr"
+echo "  mamba activate meta-sr"
 echo ""
 echo "Don't forget to set your API key:"
 echo "  export ANTHROPIC_API_KEY='your-key-here'"
