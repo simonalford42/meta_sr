@@ -331,4 +331,4 @@ def symbolic_regression(X, y, selection_operator, pop_size=100, n_generations=30
         offspring.append(best_individual)
         population = offspring[:pop_size]
 
-    return best_individual, best_fitness_history
+    return best_individual

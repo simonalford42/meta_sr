@@ -3,6 +3,18 @@ import random
 import time
 from problems import ULTRA_SIMPLE_PROBLEMS, SIMPLE_PROBLEMS, HARDER_PROBLEMS
 from scipy.optimize import minimize
+from operators import FUNCTION_SET, BINARY_OPERATORS, UNARY_OPERATORS
+from typing import List, Tuple
+
+
+
+def symbolic_regression(X, y, **sr_kwargs):
+    sr = BasicSR(
+        **sr_kwargs,
+    )
+    sr.fit(X, y)
+    return sr.best_model_
+
 
 class Node:
     def __init__(self, value=None, left=None, right=None):
@@ -24,66 +36,32 @@ class Node:
         return Node(self.value, left, right)
 
     def evaluate(self, X):
-        """Evaluate the expression on input data X"""
+        """Evaluate the expression on input data X using FUNCTION_SET"""
         # Silence floating warnings (overflow, invalid, divide-by-zero) and
         # rely on downstream fitness masking to handle non-finite values.
         try:
             with np.errstate(over='ignore', invalid='ignore', divide='ignore'):
+                # Terminal: numeric constant
                 if isinstance(self.value, (int, float)):
                     return np.full(X.shape[0], self.value)
-                elif isinstance(self.value, str) and self.value.startswith('x'):
+
+                # Terminal: variable (e.g., 'x0', 'x1', ...)
+                if isinstance(self.value, str) and self.value.startswith('x'):
                     var_idx = int(self.value[1:])
                     if var_idx >= X.shape[1]:
                         return np.full(X.shape[0], np.nan)  # Invalid variable
                     return X[:, var_idx]
-                elif self.value == '+':
-                    return self.left.evaluate(X) + self.right.evaluate(X)
-                elif self.value == '-':
-                    return self.left.evaluate(X) - self.right.evaluate(X)
-                elif self.value == '*':
-                    return self.left.evaluate(X) * self.right.evaluate(X)
-                elif self.value == '/':
-                    denominator = self.right.evaluate(X)
-                    # Simple division by zero protection
-                    denominator = np.where(np.abs(denominator) < 1e-10, 1e-10, denominator)
-                    return self.left.evaluate(X) / denominator
-                # unary operators
-                elif self.value == 'abs':
-                    return np.abs(self.left.evaluate(X))
-                elif self.value == 'exp':
-                        # Clamp input to avoid overflow (exp(±14) ~ 1.2e6)
-                        z = self.left.evaluate(X)
-                        z = np.clip(z, -14.0, 14.0)
-                        return np.exp(z)
-                elif self.value == 'log':
-                    z = self.left.evaluate(X)
-                    return np.log(np.clip(np.abs(z), 1e-12, None))
-                elif self.value == 'sqrt':
-                    z = self.left.evaluate(X)
-                    return np.sqrt(np.abs(z))
-                elif self.value == 'sin':
-                    return np.sin(self.left.evaluate(X))
-                elif self.value == 'cos':
-                    return np.cos(self.left.evaluate(X))
-                elif self.value == 'tan':
-                        # Fold input into (-pi/2, pi/2) and clip output
-                        z = self.left.evaluate(X)
-                        z = ((z + np.pi/2) % np.pi) - np.pi/2
-                        out = np.tan(z)
-                        return np.clip(out, -1e6, 1e6)
-                elif self.value == 'inv':
-                        z = self.left.evaluate(X)
-                        eps = 1e-6
-                        z = np.where(np.abs(z) < eps, np.sign(z) * eps + (z == 0) * eps, z)
-                        return 1.0 / z
-                elif self.value == 'pow2':
-                    z = self.left.evaluate(X)
-                    return z * z
-                elif self.value == 'pow3':
-                    z = self.left.evaluate(X)
-                    return z * z * z
-                else:
-                    return np.full(X.shape[0], np.nan)
+
+                # Operator: look up in FUNCTION_SET
+                if self.value in FUNCTION_SET:
+                    func, arity = FUNCTION_SET[self.value]
+                    if arity == 1:
+                        return func(self.left.evaluate(X))
+                    elif arity == 2:
+                        return func(self.left.evaluate(X), self.right.evaluate(X))
+
+                # Unknown operator
+                return np.full(X.shape[0], np.nan)
         except:
             return np.full(X.shape[0], np.nan)
 
@@ -95,117 +73,127 @@ class Node:
             return 1 + self.left.size()
         return 1 + self.left.size() + self.right.size()
 
+    def height(self):
+        """Calculate height of the tree"""
+        if self.left is None and self.right is None:
+            return 1
+        left_height = self.left.height() if self.left is not None else 0
+        right_height = self.right.height() if self.right is not None else 0
+        return 1 + max(left_height, right_height)
+
+
+def default_selection_operator(population: List[Node], fitnesses: np.ndarray[float], n_crossover: int, n_mutation: int) -> Tuple[List[Tuple[Node, Node]], List[Node]]:
+    """Select individuals via tournament selection"""
+    def select_individual():
+        tournament_size = 3
+        tournament_indices = random.sample(range(len(population)), tournament_size)
+        best_idx = max(tournament_indices, key=lambda i: fitnesses[i])
+        return best_idx
+
+    crossover_pairs = [(population[select_individual()], population[select_individual()]) for _ in range(n_crossover)]
+    mutants = [population[select_individual()] for _ in range(n_mutation)]
+    return crossover_pairs, mutants
+
 
 class BasicSR:
     def __init__(self,
                  population_size=100,
-                 num_generations=50,
-                 max_depth=4,
-                 max_size=15,
-                 tournament_size=3,
+                 n_generations=50,
+                 max_depth=10,
+                 max_size=40,
+                 selection_operator=default_selection_operator,
                  collect_trajectory=False,
-                 time_limit=None,
-                 early_stop=True,
-                 early_stop_threshold=3e-16,
-                 early_stop_extra_generations=500,
-                 binary_operators=['+', '-', '*', '/'],
-                 unary_operators=['abs', 'exp', 'sqrt', 'sin', 'cos', 'tan', 'inv'],
-                 constants=[1.0],
+                 time_limit_seconds=1e10,
+                 binary_operators=None,
+                 unary_operators=None,
+                 constants=None,
                  record_heritage=False,
                  constant_optimization=False,
-                 optimize_probability=0.14):
+                 optimize_probability=0.14,
+                 crossover_prob=0.9,
+                 verbose=False,
+    ):
         self.population_size = population_size
-        self.num_generations = num_generations
+        self.n_generations = n_generations
         self.max_depth = max_depth
         self.max_size = max_size
-        self.tournament_size = tournament_size
         self.collect_trajectory = collect_trajectory
-        self.time_limit = time_limit
-        # Supported operators
-        self.binary_operators = binary_operators
-        self.unary_operators = unary_operators
+        self.time_limit_seconds = time_limit_seconds
+        self.crossover_prob = crossover_prob
+        self.verbose = verbose
+
+        self.selection_operator = selection_operator
+
+        # Supported operators - default to all operators from FUNCTION_SET
+        self.binary_operators = binary_operators if binary_operators is not None else BINARY_OPERATORS.copy()
+        self.unary_operators = unary_operators if unary_operators is not None else UNARY_OPERATORS.copy()
         self.operators = list(self.binary_operators)
-        self.constants = constants
+        self.constants = constants if constants is not None else [1.0]
         self.best_model_ = None
         self.trajectory = []
         self.best_progression = []  # Track (generation, expression, mse) when best improves
-        self.early_stop = early_stop
-        self.early_stop_threshold = early_stop_threshold
-        # After hitting early-stop MSE, continue this many extra generations
-        # to seek simpler or slightly better solutions. Each time a new best (simpler
-        # or lower MSE) is found during the extra phase, extend by the same amount.
-        self.early_stop_extra_generations = early_stop_extra_generations
         self.record_heritage = record_heritage
         if self.record_heritage:
             self.collect_trajectory = True
 
         self.constant_optimization = constant_optimization
+        if self.constant_optimization:
+            self.constants = []
         self.optimize_probability = optimize_probability
 
 
-    def create_terminal(self, num_vars):
+    def create_terminal(self, n_vars):
         """Create a terminal node (variable or constant)"""
-        # do random choice between variables, constants, and Constant if applicable
-        terminals = [f"x{i}" for i in range(num_vars)]
-        if self.constant_optimization:
+        if self.constant_optimization and (random.random() < 0.05):
             max = 10
-            terminals.append(max * 2 * (random.random() - 0.5))
+            val = max * 2 * (random.random() - 0.5)
+            return Node(val)
         else:
-            terminals += self.constants
-        return Node(random.choice(terminals))
+            terminals = [f"x{i}" for i in range(n_vars)] + self.constants
+            return Node(random.choice(terminals))
 
-    def create_random_tree(self, max_depth, num_vars, depth=0):
+
+    def create_tree(self, max_depth, n_vars, depth=0, full=True):
         """Create a random expression tree"""
         # Force terminal at max depth or with some probability
-        if depth >= max_depth or (depth > 0 and random.random() < 0.3):
-            return self.create_terminal(num_vars)
+        if depth >= max_depth or (not full and depth > 0 and random.random() < 0.3):
+            return self.create_terminal(n_vars)
 
         # Randomly choose unary vs binary (favor binary a bit)
-        if random.random() < 0.35 and len(self.unary_operators) > 0:
+        if (random.random() < 0.35) and (len(self.unary_operators) > 0):
             op = random.choice(self.unary_operators)
-            child = self.create_random_tree(max_depth, num_vars, depth + 1)
+            child = self.create_tree(max_depth, n_vars, depth + 1, full=full)
             return Node(op, child, None)
         else:
             op = random.choice(self.binary_operators)
-            left = self.create_random_tree(max_depth, num_vars, depth + 1)
-            right = self.create_random_tree(max_depth, num_vars, depth + 1)
+            left = self.create_tree(max_depth, n_vars, depth + 1, full=full)
+            right = self.create_tree(max_depth, n_vars, depth + 1, full=full)
             return Node(op, left, right)
 
-    def create_initial_population(self, num_vars):
-        """Create initial population with diverse simple expressions"""
+    def create_initial_population(self, n_vars):
         population = []
-
-        # Add very simple expressions first
-        for i in range(num_vars):
-            population.append(Node(f"x{i}"))  # Just x0, x1, etc.
-
-        for const in self.constants:
-            population.append(Node(const))  # Just constants
-
-        # Add simple combinations
-        for i in range(num_vars):
-            for const in self.constants:
-                population.append(Node('+', Node(f"x{i}"), Node(const)))  # x + c
-                population.append(Node('*', Node(f"x{i}"), Node(const)))  # x * c
-
-        # Add x^2 approximations (x * x)
-        for i in range(num_vars):
-            population.append(Node('*', Node(f"x{i}"), Node(f"x{i}")))
-
-        # Add unary seeds for diversity
-        for i in range(num_vars):
-            for u in self.unary_operators:
-                population.append(Node(u, Node(f"x{i}"), None))
-
-        # Fill rest with random trees
-        while len(population) < self.population_size:
-            tree = self.create_random_tree(self.max_depth, num_vars)
-            if tree.size() <= self.max_size:
-                population.append(tree)
+        max_depth = 6
+        for i in range(self.population_size//2):
+            depth = i % max_depth + 1
+            population.append(self.create_tree(depth, n_vars, full=True))
+            population.append(self.create_tree(depth, n_vars, full=False))
 
         return population[:self.population_size]
 
     def fitness(self, individual, X, y):
+        """Calculate fitness as negative MSE"""
+        mse = self.mse(individual, X, y)
+        # return -mse
+
+        if not np.isfinite(mse):
+            return -1e10
+
+        # Simple complexity penalty
+        complexity_penalty = 0.01 * individual.size()
+
+        return -mse - complexity_penalty
+
+    def mse(self, individual, X, y):
         """Calculate fitness as negative MSE"""
         with np.errstate(over='ignore', invalid='ignore', divide='ignore'):
             y_pred = individual.evaluate(X)
@@ -222,26 +210,15 @@ class BasicSR:
         # Require a minimum fraction of valid predictions
         MIN_VALID_FRAC = 0.5
         if n_valid < max(3, int(MIN_VALID_FRAC * n_total)):
-            return -1e10
+            return 1e10
 
         # Calculate MSE on valid region only
         mse = np.mean((y[valid_mask] - y_pred[valid_mask]) ** 2)
+        return mse
 
-        if not np.isfinite(mse):
-            return -1e10
 
-        # Simple complexity penalty
-        complexity_penalty = 0.01 * individual.size()
 
-        return -mse - complexity_penalty
-
-    def tournament_selection(self, population, fitnesses):
-        """Select individual via tournament selection"""
-        tournament_indices = random.sample(range(len(population)), self.tournament_size)
-        best_idx = max(tournament_indices, key=lambda i: fitnesses[i])
-        return best_idx
-
-    def mutate(self, individual, num_vars):
+    def mutate(self, individual, n_vars):
         """Simple mutation: replace a random node"""
         new_individual = individual.copy()
 
@@ -262,13 +239,13 @@ class BasicSR:
         # Replace with terminal or simple operation
         if random.random() < 0.5:
             # Replace with terminal
-            replacement = self.create_terminal(num_vars)
+            replacement = self.create_terminal(n_vars)
             target_node.value = replacement.value
             target_node.left = None
             target_node.right = None
         else:
             # Replace with small subtree
-            replacement = self.create_random_tree(2, num_vars)  # Small subtree
+            replacement = self.create_tree(2, n_vars, full=False)  # Small subtree
             target_node.value = replacement.value
             target_node.left = replacement.left
             target_node.right = replacement.right
@@ -314,20 +291,7 @@ class BasicSR:
 
         return child
 
-    def generate_child_via_evolution(self, population, fitnesses, num_vars, crossover_prob=0.7, verbose=False):
-        """Generate a single child using basic evolution operators (crossover or mutation)"""
-        if np.random.random() < crossover_prob:  # Crossover
-            parent1_ix = self.tournament_selection(population, fitnesses)
-            parent2_ix = self.tournament_selection(population, fitnesses)
-            child = self.crossover(population[parent1_ix], population[parent2_ix])
-            parent_ixs = [parent1_ix, parent2_ix]
-        else:  # Mutation
-            parent_ix = self.tournament_selection(population, fitnesses)
-            child = self.mutate(population[parent_ix], num_vars)
-            parent_ixs = [parent_ix]
-        return child, parent_ixs
-
-    def generate_new_population(self, population, fitnesses, best_individual, X, y, num_vars, generation=0, verbose=False):
+    def generate_new_population(self, population, fitnesses, best_individual, X, y, n_vars, generation=0):
         """Generate new population using BasicSR evolution operators"""
         new_population = []
 
@@ -345,10 +309,20 @@ class BasicSR:
         heritages = [[best_individual_ix]]
 
         # Generate rest through evolution
-        while len(new_population) < self.population_size:
-            child, parent_ixs = self.generate_child_via_evolution(population, fitnesses, num_vars, verbose=verbose)
+        n_crossover = np.random.binomial(len(population) - 1, self.crossover_prob)
+        n_mutation = (len(population) - 1) - n_crossover
+        crossover_pairs, to_mutate = self.selection_operator(population, fitnesses, n_crossover=n_crossover, n_mutation=n_mutation)
+        for parent1, parent2 in crossover_pairs[:n_crossover]:
+            child = self.crossover(parent1, parent2)
             new_population.append(child)
-            heritages.append(parent_ixs)
+            parent1_ix = population.index(parent1)
+            parent2_ix = population.index(parent2)
+            heritages.append([parent1_ix, parent2_ix])
+        for parent in to_mutate:
+            child = self.mutate(parent, n_vars)
+            new_population.append(child)
+            parent_ix = population.index(parent)
+            heritages.append([parent_ix])
 
         return new_population, heritages
 
@@ -372,41 +346,27 @@ class BasicSR:
 
         self.trajectory.append(state)
 
-    def fit(self, X, y, verbose=False):
-        """Evolve expressions to fit the data"""
-        num_vars = X.shape[1]
-        population = self.create_initial_population(num_vars)
 
-        # initially, each individual has no parents
-        heritages = [[] for _ in range(len(population))]
+    def fit(self, X, y):
+        """Evolve expressions to fit the data"""
+        n_vars = X.shape[1]
+        population = self.create_initial_population(n_vars)
+        heritages = [[] for _ in population]
+        self.trajectory = []
+        self.best_progression = []
+
+        start_time = time.time()
 
         best_fitness = -float('inf')
         best_individual = None
-        start_time = time.time()
-
-        # Reset trajectory and progression for new run
-        if self.collect_trajectory:
-            self.trajectory = []
-
-        self.best_progression = []  # Always reset progression tracking
 
         generation = 0
-        gen_limit = self.num_generations
-        best_mse = float('inf')
-        best_size = float('inf')
-        while generation < gen_limit:
-            # Check time limit
-            if self.time_limit is not None:
-                elapsed_time = time.time() - start_time
-                if elapsed_time >= self.time_limit:
-                    print(f"Time limit reached ({self.time_limit}s). Stopping evolution.")
-                    break
-
+        while ((generation < self.n_generations)
+               and (time.time() - start_time < self.time_limit_seconds)):
             # Evaluate fitness
-            fitnesses = [self.fitness(ind, X, y) for ind in population]
-            fitnesses = np.array(fitnesses)
+            fitnesses = np.array([self.fitness(ind, X, y) for ind in population])
 
-            # Record current state (if trajectory collection is enabled)
+            # Record current state
             self.record_population_state(population, fitnesses, generation, heritages)
 
             # Track best
@@ -415,31 +375,10 @@ class BasicSR:
 
             if current_best_fitness > best_fitness:
                 best_fitness = current_best_fitness
-                candidate = population[current_best_idx].copy()
+                best_individual = population[current_best_idx].copy()
 
-                # Calculate actual MSE for reporting
-                with np.errstate(over='ignore', invalid='ignore', divide='ignore'):
-                    y_pred = candidate.evaluate(X)
-                # Use same masking logic as in fitness to avoid inf/NaN spam
-                finite_mask = np.isfinite(y_pred)
-                MAX_ABS = 1e6
-                mag_mask = np.abs(y_pred) < MAX_ABS
-                valid_mask = finite_mask & mag_mask
-                if int(np.sum(valid_mask)) >= max(3, int(0.5 * y.shape[0])):
-                    mse = float(np.mean((y[valid_mask] - y_pred[valid_mask]) ** 2))
-                else:
-                    mse = float('inf')
-                size = candidate.size()
-
-                # Determine if this is an improvement in MSE or simplicity
-                prev_best_mse = best_mse
-                prev_best_size = best_size
-                improved_simple_or_mse = (mse < prev_best_mse) or (size < prev_best_size)
-
-                # Update best
-                best_individual = candidate
-                best_mse = mse
-                best_size = size
+                mse = self.mse(best_individual, X, y)
+                size = best_individual.size()
 
                 # Track progression of best solutions
                 self.best_progression.append({
@@ -450,17 +389,11 @@ class BasicSR:
                     'size': size
                 })
 
-                if verbose:
-                    print(f"Gen {generation}: MSE={mse:.6f}, Size={size}, Expr={best_individual}")
-
-                # Early-stop triggering: switch to extra phase instead of stopping
-                if self.early_stop and mse <= self.early_stop_threshold:
-                    gen_limit = min(self.num_generations, generation + self.early_stop_extra_generations)
-                    if verbose:
-                        print(f"MSE near-zero ({mse:.2e}). Continuing to try simplifying.")
+                if self.verbose:
+                    print(f"Gen {generation}: MSE={mse:.4e}, Size={size}, Expr={best_individual}")
 
             # Create new population
-            population, heritages = self.generate_new_population(population, fitnesses, best_individual, X, y, num_vars, generation, verbose=verbose)
+            population, heritages = self.generate_new_population(population, fitnesses, best_individual, X, y, n_vars, generation)
             generation += 1
 
         self.best_model_ = best_individual
@@ -473,23 +406,6 @@ class BasicSR:
         if self.best_model_ is None:
             raise ValueError("Model not fitted yet")
         return self.best_model_.evaluate(X)
-
-    def get_iterations_to_convergence(self, mse_threshold=1e-6):
-        """Get the generation number when MSE first dropped below threshold"""
-        for entry in self.best_progression:
-            if entry['mse'] < mse_threshold:
-                return entry['generation']
-        return None  # Never converged
-
-    def get_final_mse(self):
-        """Get the final best MSE achieved"""
-        if not self.best_progression:
-            return float('inf')
-        return self.best_progression[-1]['mse']
-
-    def get_progression_data(self):
-        """Get the full progression data"""
-        return self.best_progression.copy()
 
     @staticmethod
     def _add_ancestry_info_to_trajectory(trajectory):
@@ -576,7 +492,7 @@ class BasicSR:
         self.heritage_info = result
         return result
 
-    def optimize_constants(self, node, X, y, num_iters=8, optimizer_f_calls_limit=10000, optimizer_n_restarts=2):
+    def optimize_constants(self, node, X, y, optimizer_n_iters=8, optimizer_f_calls_limit=10000, optimizer_n_restarts=2):
         """
         Optimize constants in an expression tree using BFGS.
 
@@ -587,7 +503,7 @@ class BasicSR:
             node: Root node of the expression tree
             X: Input data (n_samples, n_features)
             y: Target values (n_samples,)
-            num_iters: Max iterations per BFGS run (not used, kept for API compat)
+            n_iters: Max iterations per BFGS run (not used, kept for API compat)
             optimizer_f_calls_limit: Max function evaluations per BFGS run
             optimizer_n_restarts: Number of random restarts for optimization
 
@@ -628,7 +544,7 @@ class BasicSR:
         def loss_function(values):
             """Compute MSE loss for given constant values"""
             set_constants(values)
-            return -1 * self.fitness(node, X, y)
+            return -1 * self.mse(node, X, y)
 
         best_loss = initial_loss
         best_values = init_values.copy()
@@ -652,7 +568,7 @@ class BasicSR:
                 method='L-BFGS-B',
                 options={
                     'maxfun': optimizer_f_calls_limit,
-                    'maxiter': optimizer_f_calls_limit,
+                    'maxiter': optimizer_n_iters,
                     'ftol': 1e-12,
                     'gtol': 1e-8
                 }
@@ -682,23 +598,22 @@ def test_on_problems(problem_set, title):
 
         # Fit model
         model = BasicSR(
-            population_size=50,
-            num_generations=1000,
-            max_depth=15,
+            population_size=100,
+            n_generations=10000,
+            max_depth=10,
             max_size=40,
-            early_stop=True,
-            unary_operators=[],
+            # unary_operators=[],
             constant_optimization=True,
             optimize_probability=0.01,
         )
 
-        model.fit(X, y, verbose=True)
+        model.fit(X, y)
 
         # Evaluate
         y_pred = model.predict(X)
         mse = np.mean((y - y_pred)**2)
 
-        print(f"Final result: MSE={mse:.6f}, Expression={model.best_model_}")
+        print(f"Final result: MSE={mse:.4e}, Expression={model.best_model_}")
         print("-" * 50)
 
         results.append({
@@ -722,4 +637,4 @@ def test_on_simple():
 if __name__ == "__main__":
     # test_on_ultra_simple()
     # test_on_simple()
-    test_on_problems(HARDER_PROBLEMS[-1:], "Testing on Harder Problems")
+    test_on_problems(HARDER_PROBLEMS, "Testing on Harder Problems")

@@ -10,7 +10,8 @@
       "Bash(conda:*)",
       "Bash(python3:*)",
       "Bash(git lfs pull:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "WebFetch(domain:openrouter.ai)"
     ],
     "deny": [],
     "ask": []
