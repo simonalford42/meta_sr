@@ -18,6 +18,7 @@ FUNCTION_SET = {
     'sin': (np.sin, 1),
     'cos': (np.cos, 1),
 }
+MAX_DEPTH = 17
 
 class Individual:
     """Represents a symbolic expression tree"""
@@ -67,7 +68,7 @@ class Individual:
             self.predicted_values = np.clip(self.predicted_values, -1e10, 1e10)
             self.case_values = (y - self.predicted_values) ** 2
             self.fitness_value = np.mean(self.case_values)
-        except:
+        except Exception:
             self.fitness_value = 1e10
             self.case_values = np.full(len(y), 1e10)
             self.predicted_values = np.zeros(len(y))
@@ -126,21 +127,117 @@ def generate_random_tree(n_features, max_depth=5, method='grow'):
             return (func_name, left, right)
 
 
+def _get_all_positions(tree, current_pos=()):
+    """
+    Get all node positions in the tree.
+    Position is a tuple of indices representing the path from root.
+    E.g., () is root, (1,) is first child, (1, 2) is second child of first child.
+    """
+    positions = [current_pos]
+    if isinstance(tree, tuple):
+        func_name = tree[0]
+        if func_name in FUNCTION_SET:
+            _, arity = FUNCTION_SET[func_name]
+            if arity == 1:
+                positions.extend(_get_all_positions(tree[1], current_pos + (1,)))
+            elif arity == 2:
+                positions.extend(_get_all_positions(tree[1], current_pos + (1,)))
+                positions.extend(_get_all_positions(tree[2], current_pos + (2,)))
+    return positions
+
+
+def _get_subtree(tree, pos):
+    """Get the subtree at the given position."""
+    if not pos:
+        return tree
+    if isinstance(tree, tuple):
+        idx = pos[0]
+        return _get_subtree(tree[idx], pos[1:])
+    return tree
+
+
+def _replace_subtree(tree, pos, new_subtree):
+    """Replace the subtree at the given position with new_subtree."""
+    if not pos:
+        return new_subtree
+    if isinstance(tree, tuple):
+        idx = pos[0]
+        func_name = tree[0]
+        if func_name in FUNCTION_SET:
+            _, arity = FUNCTION_SET[func_name]
+            if arity == 1:
+                new_child = _replace_subtree(tree[1], pos[1:], new_subtree)
+                return (func_name, new_child)
+            elif arity == 2:
+                if idx == 1:
+                    new_left = _replace_subtree(tree[1], pos[1:], new_subtree)
+                    return (func_name, new_left, tree[2])
+                else:
+                    new_right = _replace_subtree(tree[2], pos[1:], new_subtree)
+                    return (func_name, tree[1], new_right)
+    return tree
+
+
+
+
+def _tree_depth(tree):
+    """Compute depth of a tree."""
+    if isinstance(tree, tuple):
+        func_name = tree[0]
+        if func_name in FUNCTION_SET:
+            _, arity = FUNCTION_SET[func_name]
+            if arity == 1:
+                return 1 + _tree_depth(tree[1])
+            elif arity == 2:
+                return 1 + max(_tree_depth(tree[1]), _tree_depth(tree[2]))
+    return 0
+
+
 def subtree_crossover(parent1: Individual, parent2: Individual) -> Tuple[Individual, Individual]:
-    """Perform subtree crossover between two individuals"""
-    # For simplicity, return copies with potentially swapped subtrees
-    # This is a simplified version
-    offspring1 = Individual(tree=parent1.tree)
-    offspring2 = Individual(tree=parent2.tree)
+    """Perform subtree crossover between two individuals."""
+    tree1 = parent1.tree
+    tree2 = parent2.tree
+
+    # Get all positions in both trees
+    positions1 = _get_all_positions(tree1)
+    positions2 = _get_all_positions(tree2)
+
+    # Select random crossover points
+    pos1 = random.choice(positions1)
+    pos2 = random.choice(positions2)
+
+    # Get subtrees at crossover points
+    subtree1 = _get_subtree(tree1, pos1)
+    subtree2 = _get_subtree(tree2, pos2)
+
+    # Swap subtrees
+    new_tree1 = _replace_subtree(tree1, pos1, subtree2)
+    new_tree2 = _replace_subtree(tree2, pos2, subtree1)
+
+    # Enforce max depth - if offspring too deep, return copies of parents
+    if _tree_depth(new_tree1) > MAX_DEPTH:
+        new_tree1 = tree1
+    if _tree_depth(new_tree2) > MAX_DEPTH:
+        new_tree2 = tree2
+
+    offspring1 = Individual(tree=new_tree1)
+    offspring2 = Individual(tree=new_tree2)
     offspring1.update_metrics()
     offspring2.update_metrics()
     return offspring1, offspring2
 
 
 def subtree_mutation(individual: Individual, n_features: int) -> Individual:
-    """Perform subtree mutation"""
-    # Generate a new random subtree and replace a random node
-    new_tree = generate_random_tree(n_features, max_depth=3)
+    """Perform subtree mutation by replacing a random subtree with a new random one."""
+    positions = _get_all_positions(individual.tree)
+    pos = random.choice(positions)
+    new_subtree = generate_random_tree(n_features, max_depth=3)
+    new_tree = _replace_subtree(individual.tree, pos, new_subtree)
+
+    # Enforce max depth - if offspring too deep, return copy of parent
+    if _tree_depth(new_tree) > MAX_DEPTH:
+        new_tree = individual.tree
+
     offspring = Individual(tree=new_tree)
     offspring.update_metrics()
     return offspring
