@@ -2,7 +2,7 @@
 Meta-Evolution using LLMs to evolve selection operators
 """
 import numpy as np
-import anthropic
+from openai import OpenAI
 import os
 import re
 from typing import List, Dict, Tuple
@@ -210,14 +210,16 @@ You do not need to provide a usage example.
 
 Embrace creativity, novelty, and bold experimentation to push the boundaries of the state of the art in selection operators for genetic programming."""
 
-    message = client.messages.create(
-        model="claude-sonnet-4-5-20250929",
-        max_tokens=2000,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}]
+    response = client.chat.completions.create(
+        model="gpt-5-mini",
+        max_completion_tokens=2000,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
     )
 
-    code = extract_code_from_response(message.content[0].text)
+    code = extract_code_from_response(response.choices[0].message.content)
     return code
 
 
@@ -242,14 +244,16 @@ You do not need to provide a usage example.
 
 Embrace creativity, novelty, and bold experimentation to push the boundaries of the state of the art in selection operators for genetic programming."""
 
-    message = client.messages.create(
-        model="claude-sonnet-4-5-20250929",
-        max_tokens=2000,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}]
+    response = client.chat.completions.create(
+        model="gpt-5-mini",
+        max_completion_tokens=2000,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
     )
 
-    code = extract_code_from_response(message.content[0].text)
+    code = extract_code_from_response(response.choices[0].message.content)
     return code
 
 
@@ -277,12 +281,14 @@ Ensure that your newly designed function adheres to the following signature:
 
 You do not need to provide a usage example."""
 
-    message = client.messages.create(
-        model="claude-sonnet-4-5-20250929",
-        max_tokens=2000,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}]
+    response = client.chat.completions.create(
+        model="gpt-5-mini",
+        max_completion_tokens=2000,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
     )
 
-    code = extract_code_from_response(message.content[0].text)
+    code = extract_code_from_response(response.choices[0].message.content)
     return code
