@@ -132,7 +132,7 @@ def main():
         print("  python main.py")
         print()
         print("Or run a quick test with fewer generations/population:")
-        print("  python main.py")
+        print("  python main.py"
 
     except Exception as e:
         print(f"\n❌ TEST FAILED: {e}")
