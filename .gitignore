@@ -1,2 +1,4 @@
-keys.sh
 logs
+startup.sh
+out
+results_pysr

@@ -11,7 +11,11 @@
       "Bash(python3:*)",
       "Bash(git lfs pull:*)",
       "Bash(python:*)",
-      "WebFetch(domain:openrouter.ai)"
+      "WebFetch(domain:openrouter.ai)",
+      "Bash(for d in feynman_test_10 feynman_I_26_2 feynman_I_30_5)",
+      "Bash(do echo \"=== $d ===\" if [ -f \"pmlb/datasets/$d/$d.tsv.gz\" ])",
+      "Bash(then echo \"File exists\" zcat \"pmlb/datasets/$d/$d.tsv.gz\")",
+      "Bash(zcat:*)"
     ],
     "deny": [],
     "ask": []

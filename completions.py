@@ -6,7 +6,7 @@ Usage:
 
     # Make API calls
     response = chat_completion(
-        model="openai/gpt-4o-mini",
+        model="openai/gpt-5-mini",
         messages=[{"role": "user", "content": "Hello"}],
         max_tokens=100
     )

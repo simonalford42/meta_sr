@@ -3,96 +3,20 @@ import random
 import time
 from problems import ULTRA_SIMPLE_PROBLEMS, SIMPLE_PROBLEMS, HARDER_PROBLEMS
 from scipy.optimize import minimize
-from operators import FUNCTION_SET, BINARY_OPERATORS, UNARY_OPERATORS
+from operators import FUNCTION_SET, BINARY_OPERATORS, UNARY_OPERATORS, Node
+from sr_operators import default_selection_operator, default_mutation_operator, default_crossover_operator, default_fitness_function, mse
 from typing import List, Tuple
 
 
 
 def symbolic_regression(X, y, **sr_kwargs):
     sr = BasicSR(
+        save_trace=True,
         **sr_kwargs,
     )
     sr.fit(X, y)
-    return sr.best_model_
+    return sr.best_model_, sr.trace
 
-
-class Node:
-    def __init__(self, value=None, left=None, right=None):
-        self.value = value
-        self.left = left
-        self.right = right
-
-    def __str__(self):
-        if self.left is None and self.right is None:
-            return str(self.value)
-        # unary pretty print if only left child
-        if self.right is None and self.left is not None:
-            return f"{self.value}({self.left})"
-        return f"({self.left} {self.value} {self.right})"
-
-    def copy(self):
-        left = self.left.copy() if self.left is not None else None
-        right = self.right.copy() if self.right is not None else None
-        return Node(self.value, left, right)
-
-    def evaluate(self, X):
-        """Evaluate the expression on input data X using FUNCTION_SET"""
-        # Silence floating warnings (overflow, invalid, divide-by-zero) and
-        # rely on downstream fitness masking to handle non-finite values.
-        try:
-            with np.errstate(over='ignore', invalid='ignore', divide='ignore'):
-                # Terminal: numeric constant
-                if isinstance(self.value, (int, float)):
-                    return np.full(X.shape[0], self.value)
-
-                # Terminal: variable (e.g., 'x0', 'x1', ...)
-                if isinstance(self.value, str) and self.value.startswith('x'):
-                    var_idx = int(self.value[1:])
-                    if var_idx >= X.shape[1]:
-                        return np.full(X.shape[0], np.nan)  # Invalid variable
-                    return X[:, var_idx]
-
-                # Operator: look up in FUNCTION_SET
-                if self.value in FUNCTION_SET:
-                    func, arity = FUNCTION_SET[self.value]
-                    if arity == 1:
-                        return func(self.left.evaluate(X))
-                    elif arity == 2:
-                        return func(self.left.evaluate(X), self.right.evaluate(X))
-
-                # Unknown operator
-                return np.full(X.shape[0], np.nan)
-        except:
-            return np.full(X.shape[0], np.nan)
-
-    def size(self):
-        """Count total nodes in the tree"""
-        if self.left is None and self.right is None:
-            return 1
-        if self.right is None and self.left is not None:
-            return 1 + self.left.size()
-        return 1 + self.left.size() + self.right.size()
-
-    def height(self):
-        """Calculate height of the tree"""
-        if self.left is None and self.right is None:
-            return 1
-        left_height = self.left.height() if self.left is not None else 0
-        right_height = self.right.height() if self.right is not None else 0
-        return 1 + max(left_height, right_height)
-
-
-def default_selection_operator(population: List[Node], fitnesses: np.ndarray[float], n_crossover: int, n_mutation: int) -> Tuple[List[Tuple[Node, Node]], List[Node]]:
-    """Select individuals via tournament selection"""
-    def select_individual():
-        tournament_size = 3
-        tournament_indices = random.sample(range(len(population)), tournament_size)
-        best_idx = max(tournament_indices, key=lambda i: fitnesses[i])
-        return best_idx
-
-    crossover_pairs = [(population[select_individual()], population[select_individual()]) for _ in range(n_crossover)]
-    mutants = [population[select_individual()] for _ in range(n_mutation)]
-    return crossover_pairs, mutants
 
 
 class BasicSR:
@@ -102,6 +26,10 @@ class BasicSR:
                  max_depth=10,
                  max_size=40,
                  selection_operator=default_selection_operator,
+                 mutation_operator=default_mutation_operator,
+                 crossover_operator=default_crossover_operator,
+                 fitness_operator=default_fitness_function,
+                 loss_function=mse,
                  collect_trajectory=False,
                  time_limit_seconds=1e10,
                  binary_operators=None,
@@ -112,6 +40,7 @@ class BasicSR:
                  optimize_probability=0.14,
                  crossover_prob=0.9,
                  verbose=False,
+                 save_trace=False,
     ):
         self.population_size = population_size
         self.n_generations = n_generations
@@ -121,8 +50,14 @@ class BasicSR:
         self.time_limit_seconds = time_limit_seconds
         self.crossover_prob = crossover_prob
         self.verbose = verbose
+        self.save_trace = save_trace
+        self.trace = []
 
         self.selection_operator = selection_operator
+        self.mutation_operator = mutation_operator
+        self.crossover_operator = crossover_operator
+        self.fitness_operator = fitness_operator
+        self.loss_function = loss_function
 
         # Supported operators - default to all operators from FUNCTION_SET
         self.binary_operators = binary_operators if binary_operators is not None else BINARY_OPERATORS.copy()
@@ -153,8 +88,23 @@ class BasicSR:
             return Node(random.choice(terminals))
 
 
-    def create_tree(self, max_depth, n_vars, depth=0, full=True):
-        """Create a random expression tree"""
+    def create_random_tree(self, max_depth, n_vars, depth=0, full=True):
+        """
+        Create a random expression tree.
+
+        This method recursively generates a random expression tree for symbolic regression or genetic programming.
+        It builds the tree by choosing between unary and binary operators or terminals, based on the current depth,
+        maximum depth, and a probability for growth. If 'full' is True, it attempts to create a full tree up to max_depth.
+
+        Parameters:
+        - max_depth (int): The maximum allowed depth of the tree.
+        - n_vars (int): The number of input variables available for terminals.
+        - depth (int, optional): The current depth in the recursion. Defaults to 0.
+        - full (bool, optional): If True, enforces a full tree; if False, allows probabilistic termination. Defaults to True.
+
+        Returns:
+            Node: The root node of the randomly generated expression tree.
+        """
         # Force terminal at max depth or with some probability
         if depth >= max_depth or (not full and depth > 0 and random.random() < 0.3):
             return self.create_terminal(n_vars)
@@ -162,12 +112,12 @@ class BasicSR:
         # Randomly choose unary vs binary (favor binary a bit)
         if (random.random() < 0.35) and (len(self.unary_operators) > 0):
             op = random.choice(self.unary_operators)
-            child = self.create_tree(max_depth, n_vars, depth + 1, full=full)
+            child = self.create_random_tree(max_depth, n_vars, depth + 1, full=full)
             return Node(op, child, None)
         else:
             op = random.choice(self.binary_operators)
-            left = self.create_tree(max_depth, n_vars, depth + 1, full=full)
-            right = self.create_tree(max_depth, n_vars, depth + 1, full=full)
+            left = self.create_random_tree(max_depth, n_vars, depth + 1, full=full)
+            right = self.create_random_tree(max_depth, n_vars, depth + 1, full=full)
             return Node(op, left, right)
 
     def create_initial_population(self, n_vars):
@@ -175,121 +125,11 @@ class BasicSR:
         max_depth = 6
         for i in range(self.population_size//2):
             depth = i % max_depth + 1
-            population.append(self.create_tree(depth, n_vars, full=True))
-            population.append(self.create_tree(depth, n_vars, full=False))
+            population.append(self.create_random_tree(depth, n_vars, full=True))
+            population.append(self.create_random_tree(depth, n_vars, full=False))
 
         return population[:self.population_size]
 
-    def fitness(self, individual, X, y):
-        """Calculate fitness as negative MSE"""
-        mse = self.mse(individual, X, y)
-        # return -mse
-
-        if not np.isfinite(mse):
-            return -1e10
-
-        # Simple complexity penalty
-        complexity_penalty = 0.01 * individual.size()
-
-        return -mse - complexity_penalty
-
-    def mse(self, individual, X, y):
-        """Calculate fitness as negative MSE"""
-        with np.errstate(over='ignore', invalid='ignore', divide='ignore'):
-            y_pred = individual.evaluate(X)
-
-        # Mask out non-finite and extreme predictions to fail gracefully
-        finite_mask = np.isfinite(y_pred)
-        # Treat absurd magnitudes as invalid to avoid dominating MSE
-        MAX_ABS = 1e6
-        mag_mask = np.abs(y_pred) < MAX_ABS
-        valid_mask = finite_mask & mag_mask
-
-        n_total = y.shape[0]
-        n_valid = int(np.sum(valid_mask))
-        # Require a minimum fraction of valid predictions
-        MIN_VALID_FRAC = 0.5
-        if n_valid < max(3, int(MIN_VALID_FRAC * n_total)):
-            return 1e10
-
-        # Calculate MSE on valid region only
-        mse = np.mean((y[valid_mask] - y_pred[valid_mask]) ** 2)
-        return mse
-
-
-
-    def mutate(self, individual, n_vars):
-        """Simple mutation: replace a random node"""
-        new_individual = individual.copy()
-
-        # Find all nodes
-        def get_all_nodes(node):
-            if node is None:
-                return []
-            if node.left is None and node.right is None:
-                return [node]
-            nodes = [node]
-            nodes.extend(get_all_nodes(node.left))
-            nodes.extend(get_all_nodes(node.right))
-            return nodes
-
-        nodes = get_all_nodes(new_individual)
-        target_node = random.choice(nodes)
-
-        # Replace with terminal or simple operation
-        if random.random() < 0.5:
-            # Replace with terminal
-            replacement = self.create_terminal(n_vars)
-            target_node.value = replacement.value
-            target_node.left = None
-            target_node.right = None
-        else:
-            # Replace with small subtree
-            replacement = self.create_tree(2, n_vars, full=False)  # Small subtree
-            target_node.value = replacement.value
-            target_node.left = replacement.left
-            target_node.right = replacement.right
-
-        # Check size constraint
-        if new_individual.size() > self.max_size:
-            return individual
-
-        return new_individual
-
-    def crossover(self, parent1, parent2):
-        """Simple crossover: swap random subtrees"""
-        def get_all_nodes(node):
-            if node is None:
-                return []
-            if node.left is None and node.right is None:
-                return [node]
-            nodes = [node]
-            nodes.extend(get_all_nodes(node.left))
-            nodes.extend(get_all_nodes(node.right))
-            return nodes
-
-        child = parent1.copy()
-
-        # Get crossover points
-        child_nodes = get_all_nodes(child)
-        parent2_nodes = get_all_nodes(parent2)
-
-        if len(child_nodes) == 0 or len(parent2_nodes) == 0:
-            return child
-
-        target_node = random.choice(child_nodes)
-        source_node = random.choice(parent2_nodes)
-
-        # Perform crossover
-        target_node.value = source_node.value
-        target_node.left = source_node.left.copy() if source_node.left else None
-        target_node.right = source_node.right.copy() if source_node.right else None
-
-        # Check size constraint
-        if child.size() > self.max_size:
-            return parent1
-
-        return child
 
     def generate_new_population(self, population, fitnesses, best_individual, X, y, n_vars, generation=0):
         """Generate new population using BasicSR evolution operators"""
@@ -297,9 +137,9 @@ class BasicSR:
 
         r = random.random()
         if self.constant_optimization and r < self.optimize_probability:
-            print(f'Constant optimization step')
+            # print(f'Constant optimization step')
             population = [self.optimize_constants(e, X, y) for e in population]
-            print('Constant optimization done')
+            # print('Constant optimization done')
             heritages = [[i] for i in range(len(population))]
             return population, heritages
 
@@ -313,13 +153,13 @@ class BasicSR:
         n_mutation = (len(population) - 1) - n_crossover
         crossover_pairs, to_mutate = self.selection_operator(population, fitnesses, n_crossover=n_crossover, n_mutation=n_mutation)
         for parent1, parent2 in crossover_pairs[:n_crossover]:
-            child = self.crossover(parent1, parent2)
+            child = self.crossover_operator(self, parent1, parent2)
             new_population.append(child)
             parent1_ix = population.index(parent1)
             parent2_ix = population.index(parent2)
             heritages.append([parent1_ix, parent2_ix])
-        for parent in to_mutate:
-            child = self.mutate(parent, n_vars)
+        for parent in to_mutate[:n_mutation]:
+            child = self.mutation_operator(self, parent, n_vars)
             new_population.append(child)
             parent_ix = population.index(parent)
             heritages.append([parent_ix])
@@ -354,6 +194,7 @@ class BasicSR:
         heritages = [[] for _ in population]
         self.trajectory = []
         self.best_progression = []
+        self.trace = []
 
         start_time = time.time()
 
@@ -364,7 +205,7 @@ class BasicSR:
         while ((generation < self.n_generations)
                and (time.time() - start_time < self.time_limit_seconds)):
             # Evaluate fitness
-            fitnesses = np.array([self.fitness(ind, X, y) for ind in population])
+            fitnesses = np.array([self.fitness_operator(self.loss_function, ind, X, y) for ind in population])
 
             # Record current state
             self.record_population_state(population, fitnesses, generation, heritages)
@@ -377,20 +218,23 @@ class BasicSR:
                 best_fitness = current_best_fitness
                 best_individual = population[current_best_idx].copy()
 
-                mse = self.mse(best_individual, X, y)
+                loss = self.loss_function(best_individual, X, y)
                 size = best_individual.size()
 
                 # Track progression of best solutions
                 self.best_progression.append({
                     'generation': generation,
                     'expression': str(best_individual),
-                    'mse': float(mse),
+                    'loss': float(loss),
                     'fitness': float(best_fitness),
                     'size': size
                 })
 
+                trace_msg = f"Gen {generation}: Loss={loss:.4e}, Size={size}, Expr={best_individual}"
                 if self.verbose:
-                    print(f"Gen {generation}: MSE={mse:.4e}, Size={size}, Expr={best_individual}")
+                    print(trace_msg)
+                if self.save_trace:
+                    self.trace.append(trace_msg)
 
             # Create new population
             population, heritages = self.generate_new_population(population, fitnesses, best_individual, X, y, n_vars, generation)
@@ -530,23 +374,22 @@ class BasicSR:
         if len(constant_nodes) == 0:
             return node
 
-        n_constants = len(constant_nodes)
-        init_values = np.array([c_node.value for c_node in constant_nodes], dtype=float)
 
-        # Compute initial fitness before optimization
-        initial_loss = -1 * self.fitness(node, X, y)
+
+        def loss_function(values):
+            """Compute MSE loss for given constant values"""
+            set_constants(values)
+            return self.loss_function(node, X, y)
 
         def set_constants(values):
             """Set constant values into the tree nodes"""
             for i, c_node in enumerate(constant_nodes):
                 c_node.value = float(values[i])
 
-        def loss_function(values):
-            """Compute MSE loss for given constant values"""
-            set_constants(values)
-            return -1 * self.mse(node, X, y)
-
-        best_loss = initial_loss
+        # Compute initial fitness before optimization
+        n_constants = len(constant_nodes)
+        init_values = np.array([c_node.value for c_node in constant_nodes], dtype=float)
+        best_loss = loss_function(init_values)
         best_values = init_values.copy()
 
         # Try multiple random restarts
@@ -599,12 +442,12 @@ def test_on_problems(problem_set, title):
         # Fit model
         model = BasicSR(
             population_size=100,
-            n_generations=10000,
+            n_generations=500,
             max_depth=10,
             max_size=40,
-            # unary_operators=[],
             constant_optimization=True,
             optimize_probability=0.01,
+            verbose=True
         )
 
         model.fit(X, y)
@@ -634,7 +477,295 @@ def test_on_simple():
     """Test on regular simple problems"""
     return test_on_problems(SIMPLE_PROBLEMS, "Testing on Regular Simple Problems")
 
+
+def run_sr_on_dataset(X: np.ndarray, y: np.ndarray,
+                      n_generations: int = 500,
+                      population_size: int = 100,
+                      max_depth: int = 10,
+                      max_size: int = 40,
+                      constant_optimization: bool = True,
+                      optimize_probability: float = 0.01,
+                      test_split: float = 0.2,
+                      verbose: bool = True,
+                      seed: int = None) -> dict:
+    """
+    Run SR on a single dataset with train/test split.
+
+    Args:
+        X: Feature matrix (n_samples, n_features)
+        y: Target vector (n_samples,)
+        n_generations: Number of generations for evolution
+        population_size: Population size
+        max_depth: Maximum tree depth
+        max_size: Maximum tree size
+        constant_optimization: Whether to optimize constants
+        optimize_probability: Probability of constant optimization step
+        test_split: Fraction of data to use for testing (0 to disable split)
+        verbose: Whether to print progress
+        seed: Random seed for reproducibility
+
+    Returns:
+        Dictionary with results including mse, r2, expression, etc.
+    """
+    if seed is not None:
+        np.random.seed(seed)
+        random.seed(seed)
+
+    # Train/test split
+    if test_split > 0:
+        n_samples = len(y)
+        n_train = int((1 - test_split) * n_samples)
+        indices = np.random.permutation(n_samples)
+        train_idx = indices[:n_train]
+        test_idx = indices[n_train:]
+
+        X_train, y_train = X[train_idx], y[train_idx]
+        X_test, y_test = X[test_idx], y[test_idx]
+    else:
+        X_train, y_train = X, y
+        X_test, y_test = X, y
+
+    # Fit model
+    model = BasicSR(
+        population_size=population_size,
+        n_generations=n_generations,
+        max_depth=max_depth,
+        max_size=max_size,
+        constant_optimization=constant_optimization,
+        optimize_probability=optimize_probability,
+        verbose=verbose,
+        save_trace=True,
+    )
+
+    start_time = time.time()
+    model.fit(X_train, y_train)
+    fit_time = time.time() - start_time
+
+    # Evaluate on test set
+    y_pred_test = model.predict(X_test)
+    y_pred_test = np.clip(y_pred_test, -1e10, 1e10)
+
+    # Compute metrics
+    mse_test = np.mean((y_test - y_pred_test)**2)
+    ss_res = np.sum((y_test - y_pred_test)**2)
+    ss_tot = np.sum((y_test - np.mean(y_test))**2)
+    r2_test = 1 - (ss_res / (ss_tot + 1e-10))
+
+    return {
+        'mse': float(mse_test),
+        'r2': float(r2_test),
+        'time': float(fit_time),
+        'expression': str(model.best_model_),
+        'size': model.best_model_.size(),
+        'model': model,
+        'trace': model.trace,
+    }
+
+
+def run_sr_on_datasets(datasets: dict,
+                       n_generations: int = 500,
+                       population_size: int = 100,
+                       n_runs: int = 1,
+                       verbose: bool = True,
+                       **sr_kwargs) -> List[dict]:
+    """
+    Run SR on multiple datasets.
+
+    Args:
+        datasets: Dictionary mapping dataset names to (X, y, formula) tuples
+        n_generations: Number of generations
+        population_size: Population size
+        n_runs: Number of runs per dataset
+        verbose: Whether to print progress
+        **sr_kwargs: Additional kwargs passed to run_sr_on_dataset
+
+    Returns:
+        List of result dictionaries
+    """
+    print(f"=" * 60)
+    print(f"Running SR on {len(datasets)} datasets")
+    print(f"Settings: generations={n_generations}, pop_size={population_size}, runs={n_runs}")
+    print(f"=" * 60)
+
+    all_results = []
+
+    for dataset_name, (X, y, formula) in datasets.items():
+        print(f"\n{'='*50}")
+        print(f"Problem: {dataset_name}")
+        print(f"{'='*50}")
+
+        if formula:
+            print(f"  Ground truth: {formula}")
+        print(f"  Data shape: X={X.shape}, y range=[{y.min():.3e}, {y.max():.3e}]")
+
+        run_results = []
+        for run in range(n_runs):
+            if n_runs > 1:
+                print(f"\n  Run {run+1}/{n_runs}:")
+
+            result = run_sr_on_dataset(
+                X, y,
+                n_generations=n_generations,
+                population_size=population_size,
+                verbose=verbose,
+                **sr_kwargs
+            )
+
+            print(f"    MSE={result['mse']:.4e}, R²={result['r2']:.4f}, Time={result['time']:.1f}s")
+            print(f"    Expression: {result['expression']}")
+            print(f"    Size: {result['size']}")
+
+            run_results.append(result)
+
+        # Aggregate results for this problem
+        avg_mse = np.mean([r['mse'] for r in run_results])
+        avg_r2 = np.mean([r['r2'] for r in run_results])
+        avg_time = np.mean([r['time'] for r in run_results])
+
+        result = {
+            'dataset': dataset_name,
+            'ground_truth': formula,
+            'n_features': X.shape[1],
+            'n_samples': len(y),
+            'avg_mse': avg_mse,
+            'avg_r2': avg_r2,
+            'avg_time': avg_time,
+            'runs': run_results
+        }
+        all_results.append(result)
+
+        if n_runs > 1:
+            print(f"\n  Summary for {dataset_name}:")
+            print(f"    Avg MSE: {avg_mse:.4e}")
+            print(f"    Avg R²: {avg_r2:.4f}")
+            print(f"    Avg Time: {avg_time:.1f}s")
+
+    # Print overall summary
+    print(f"\n{'='*60}")
+    print("OVERALL SUMMARY")
+    print(f"{'='*60}")
+
+    if all_results:
+        overall_r2 = np.mean([r['avg_r2'] for r in all_results])
+        overall_mse = np.mean([r['avg_mse'] for r in all_results])
+
+        print(f"Problems tested: {len(all_results)}")
+        print(f"Average R² across all problems: {overall_r2:.4f}")
+        print(f"Average MSE across all problems: {overall_mse:.4e}")
+
+        print(f"\nPer-problem results:")
+        for r in all_results:
+            print(f"  {r['dataset']}: R²={r['avg_r2']:.4f}, MSE={r['avg_mse']:.4e}")
+            if r.get('ground_truth'):
+                print(f"    Ground truth: {r['ground_truth']}")
+            if r['runs']:
+                print(f"    Best found:   {r['runs'][0]['expression']}")
+
+    return all_results
+
+
+def main():
+    """Main entry point with CLI argument parsing."""
+    import argparse
+    from utils import load_srbench_dataset, load_datasets_from_split, load_datasets_from_list
+
+    parser = argparse.ArgumentParser(
+        description='Run symbolic regression on SRBench datasets',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run on a single dataset
+  python sr.py -d feynman_I_29_16
+
+  # Run on datasets from a split file
+  python sr.py -s split_train_small.txt
+
+  # Run on multiple specific datasets
+  python sr.py --datasets feynman_I_29_16,feynman_I_30_3
+
+  # Run with custom settings
+  python sr.py -d feynman_I_29_16 -g 1000 -p 200 -r 5
+
+  # Quick test with fewer samples
+  python sr.py -d feynman_I_29_16 -m 500 -g 100
+        """
+    )
+
+    # Dataset selection (mutually exclusive)
+    data_group = parser.add_mutually_exclusive_group(required=True)
+    data_group.add_argument('-d', '--dataset', type=str,
+                           help='Single dataset name (e.g., feynman_I_29_16)')
+    data_group.add_argument('-s', '--split', type=str,
+                           help='Path to split file with dataset names')
+    data_group.add_argument('--datasets', type=str,
+                           help='Comma-separated list of dataset names')
+
+    # SR parameters
+    parser.add_argument('-g', '--generations', type=int, default=500,
+                       help='Number of generations (default: 500)')
+    parser.add_argument('-p', '--population', type=int, default=100,
+                       help='Population size (default: 100)')
+    parser.add_argument('-r', '--runs', type=int, default=1,
+                       help='Number of runs per dataset (default: 1)')
+    parser.add_argument('-m', '--max-samples', type=int, default=10000,
+                       help='Max samples per dataset (default: 10000)')
+
+    # Model parameters
+    parser.add_argument('--max-depth', type=int, default=20,
+                       help='Maximum tree depth (default: 10)')
+    parser.add_argument('--max-size', type=int, default=40,
+                       help='Maximum tree size (default: 40)')
+    parser.add_argument('--no-const-opt', action='store_true',
+                       help='Disable constant optimization')
+    parser.add_argument('--opt-prob', type=float, default=0.01,
+                       help='Constant optimization probability (default: 0.01)')
+
+    # Output control
+    parser.add_argument('-v', '--verbose', action='store_true',
+                       help='Print verbose progress during evolution')
+    parser.add_argument('-q', '--quiet', action='store_true',
+                       help='Minimal output')
+    parser.add_argument('--seed', type=int, default=None,
+                       help='Random seed for reproducibility')
+
+    args = parser.parse_args()
+
+    # Set random seed if provided
+    if args.seed is not None:
+        np.random.seed(args.seed)
+        random.seed(args.seed)
+
+    # Load datasets
+    print("Loading datasets...")
+    if args.dataset:
+        X, y, formula = load_srbench_dataset(args.dataset, max_samples=args.max_samples)
+        datasets = {args.dataset: (X, y, formula)}
+        print(f"  Loaded {args.dataset}: {X.shape[0]} samples, {X.shape[1]} features")
+    elif args.split:
+        datasets = load_datasets_from_split(args.split, max_samples=args.max_samples)
+    else:  # args.datasets
+        dataset_names = [name.strip() for name in args.datasets.split(',')]
+        datasets = load_datasets_from_list(dataset_names, max_samples=args.max_samples)
+
+    if not datasets:
+        print("Error: No datasets loaded!")
+        return 1
+
+    # Run SR
+    results = run_sr_on_datasets(
+        datasets,
+        n_generations=args.generations,
+        population_size=args.population,
+        n_runs=args.runs,
+        max_depth=args.max_depth,
+        max_size=args.max_size,
+        constant_optimization=not args.no_const_opt,
+        optimize_probability=args.opt_prob,
+        verbose=args.verbose and not args.quiet,
+    )
+
+    return 0
+
+
 if __name__ == "__main__":
-    # test_on_ultra_simple()
-    # test_on_simple()
-    test_on_problems(HARDER_PROBLEMS, "Testing on Harder Problems")
+    exit(main())
