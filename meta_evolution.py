@@ -5,6 +5,8 @@ import numpy as np
 import re
 from typing import List, Tuple
 from dataclasses import dataclass, field
+import inspect
+import textwrap
 
 from operators import Node
 from completions import chat_completion, get_content
@@ -52,8 +54,6 @@ class Operator:
             lines_of_code: Optional line count (computed automatically if not provided)
             trace_feedback: Optional list of trace feedback from SR runs
         """
-        import inspect
-        import textwrap
 
         if operator_type not in OPERATOR_TYPES:
             raise ValueError(f"Invalid operator_type: {operator_type}. Must be one of {OPERATOR_TYPES}")
@@ -250,11 +250,36 @@ def _get_test_cases(operator_type: str):
         raise ValueError(f"Unknown operator type: {operator_type}")
 
 
-def create_operator(code: str, operator_type: str) -> Tuple[Operator, bool, str]:
+def create_operator(code: str, operator_type: str) -> Operator:
     """
-    Factory function to create an Operator from a code string.
+    Create an Operator from code without running tests.
 
-    Compiles the code, runs tests, and returns the operator with status.
+    Use this when the operator has already been validated (e.g., in parallel workers).
+    Raises an exception if compilation fails.
+    """
+    import random as random_module
+
+    expected_func_name = FUNCTION_NAMES[operator_type]
+
+    namespace = {
+        'np': np,
+        'numpy': np,
+        'random': random_module,
+        'List': List,
+        'Tuple': Tuple,
+        'Node': Node,
+    }
+    exec(code, namespace)
+    func = namespace.get(expected_func_name)
+    if func is None:
+        raise ValueError(f"No '{expected_func_name}' function found in code")
+
+    return Operator(func, operator_type, code=code)
+
+
+def create_and_test_operator(code: str, operator_type: str) -> Tuple[Operator, bool, str]:
+    """
+    Create an Operator from code and run validation tests.
 
     Args:
         code: Python code string defining the operator function
@@ -266,30 +291,12 @@ def create_operator(code: str, operator_type: str) -> Tuple[Operator, bool, str]
         - passed: True if compilation and tests passed
         - error_message: None if passed, otherwise description of failure
     """
-    import random as random_module
-
-    expected_func_name = FUNCTION_NAMES[operator_type]
-
-    # Compile the code
+    # Create the operator
     try:
-        namespace = {
-            'np': np,
-            'numpy': np,
-            'random': random_module,
-            'List': List,
-            'Tuple': Tuple,
-            'Node': Node,
-        }
-        exec(code, namespace)
-        func = namespace.get(expected_func_name)
-        if func is None:
-            return None, False, f"No '{expected_func_name}' function found in code"
+        op = create_operator(code, operator_type)
     except Exception as e:
         print(f"Compilation failed: {e}")
         return None, False, f"Compilation failed: {e}"
-
-    # Create the operator
-    op = Operator(func, operator_type, code=code)
 
     # Run tests
     test_cases = _get_test_cases(operator_type)
@@ -408,7 +415,12 @@ def extract_code_from_response(response_text: str, operator_type: str) -> str:
     return response_text
 
 
-def generate_initial_operator(operator_type: str, model: str = "openai/gpt-5-mini") -> str:
+def generate_initial_operator(
+    operator_type: str,
+    model: str = "openai/gpt-5-mini",
+    llm_temperature: float = 0.7,
+    llm_seed: int = None,
+) -> str:
     """Generate an initial operator using LLM"""
 
     template = TEMPLATES[operator_type]
@@ -425,12 +437,16 @@ You do not need to provide a usage example.
 
 Embrace creativity, novelty, and bold experimentation to push the boundaries of the state of the art in {operator_type} operators for genetic programming."""
 
+    kwargs = {"temperature": llm_temperature}
+    if llm_seed is not None:
+        kwargs["seed"] = llm_seed
     response = chat_completion(
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
         ],
+        **kwargs,
     )
 
     code = extract_code_from_response(get_content(response), operator_type)
@@ -495,6 +511,8 @@ def mutate_operator(
     operator_type: str,
     model: str = "openai/gpt-5-mini",
     use_trace_feedback: bool = False,
+    llm_temperature: float = 0.7,
+    llm_seed: int = None,
 ) -> str:
     """Mutate an operator using LLM"""
 
@@ -524,12 +542,16 @@ You do not need to provide a usage example.
 
 Embrace creativity, novelty, and bold experimentation to push the boundaries of the state of the art in {operator_type} operators for genetic programming."""
 
+    kwargs = {"temperature": llm_temperature}
+    if llm_seed is not None:
+        kwargs["seed"] = llm_seed
     response = chat_completion(
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
         ],
+        **kwargs,
     )
 
     code = extract_code_from_response(get_content(response), operator_type)
@@ -542,6 +564,8 @@ def crossover_operators(
     operator_type: str,
     model: str = "openai/gpt-5-mini",
     use_trace_feedback: bool = False,
+    llm_temperature: float = 0.7,
+    llm_seed: int = None,
 ) -> str:
     """Crossover two operators using LLM"""
 
@@ -583,12 +607,16 @@ Ensure that your newly designed function adheres to the following signature:
 
 You do not need to provide a usage example."""
 
+    kwargs = {"temperature": llm_temperature}
+    if llm_seed is not None:
+        kwargs["seed"] = llm_seed
     response = chat_completion(
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
         ],
+        **kwargs,
     )
 
     code = extract_code_from_response(get_content(response), operator_type)

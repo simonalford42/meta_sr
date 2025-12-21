@@ -78,7 +78,7 @@ def chat_completion(
     Make a chat completion request to OpenRouter with cost tracking.
 
     Args:
-        model: Model identifier (e.g., "openai/gpt-4o-mini", "anthropic/claude-3-haiku")
+        model: Model identifier
         messages: List of message dicts with "role" and "content" keys
         max_tokens: Maximum tokens to generate
         temperature: Sampling temperature

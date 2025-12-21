@@ -1,4 +1,0 @@
-feynman_I_29_16
-feynman_I_15_10
-feynman_test_11
-feynman_I_14_4
