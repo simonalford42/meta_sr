@@ -195,6 +195,34 @@ def run_pysr_on_dataset(
         ncycles_per_iteration=1000,
         random_state=seed,
         output_directory=results_dir,
+        constraints={
+            **dict(
+                sin=9,
+                exp=9,
+                log=9,
+                sqrt=9,
+            ),
+            **{"/": (-1, 9)}
+        },
+        nested_constraints=dict(
+            sin=dict(
+                sin=0,
+                exp=1,
+                log=1,
+                sqrt=1,
+            ),
+            exp=dict(
+                exp=0,
+                log=0,
+            ),
+            log=dict(
+                exp=0,
+                log=0,
+            ),
+            sqrt=dict(
+                sqrt=0,
+            )
+        ),
     )
 
     if verbose:

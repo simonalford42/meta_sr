@@ -10,7 +10,7 @@ from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 
 from sr import BasicSR
-from meta_evolution import Operator, OperatorBundle, create_operator
+from meta_evolution import Operator, OperatorBundle, create_and_test_operator
 from sr_operators import (
     default_selection_operator,
     default_mutation_operator,
@@ -30,7 +30,7 @@ def load_evolved_operators(results_path: str = "meta_evolution_results.json") ->
     operators = {}
     for op_type in ["fitness", "selection", "mutation", "crossover"]:
         code = results[op_type]["code"]
-        op, passed, error = create_operator(code, op_type)
+        op, passed, error = create_and_test_operator(code, op_type)
         if not passed:
             raise ValueError(f"Failed to load {op_type} operator: {error}")
         op.score = results[op_type]["score"]

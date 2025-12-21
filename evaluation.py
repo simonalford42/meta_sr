@@ -132,41 +132,37 @@ def check_symbolic_match(predicted_expr, ground_truth_expr, n_vars=None):
         'symbolic_error': None,
     }
 
-    try:
-        # Round floats in both expressions
-        predicted_clean = round_floats(predicted_expr)
-        ground_truth_clean = round_floats(ground_truth_expr)
+    # Round floats in both expressions
+    predicted_clean = round_floats(predicted_expr)
+    ground_truth_clean = round_floats(ground_truth_expr)
 
-        # Simplify predicted expression
-        predicted_simplified = simplify(predicted_clean, ratio=1)
-        result['simplified_predicted'] = str(predicted_simplified)
+    # Simplify predicted expression
+    predicted_simplified = simplify(predicted_clean, ratio=1)
+    result['simplified_predicted'] = str(predicted_simplified)
 
-        # Calculate symbolic difference
-        sym_diff = round_floats(ground_truth_clean - predicted_simplified)
+    # Calculate symbolic difference
+    sym_diff = round_floats(ground_truth_clean - predicted_simplified)
 
-        # Calculate symbolic fraction
-        sym_frac = round_floats(predicted_simplified / ground_truth_clean)
+    # Calculate symbolic fraction
+    sym_frac = round_floats(predicted_simplified / ground_truth_clean)
 
-        # Check if we can skip full simplification
-        if not sym_diff.is_constant() or sym_frac.is_constant():
-            sym_diff = round_floats(simplify(sym_diff, ratio=1))
+    # Check if we can skip full simplification
+    if not sym_diff.is_constant() or sym_frac.is_constant():
+        sym_diff = round_floats(simplify(sym_diff, ratio=1))
 
-        result['symbolic_error'] = str(sym_diff)
+    result['symbolic_error'] = str(sym_diff)
 
-        # Check match conditions
-        result['error_is_zero'] = str(sym_diff) == '0'
-        result['error_is_constant'] = bool(sym_diff.is_constant())
-        result['fraction_is_constant'] = bool(sym_frac.is_constant()) if sym_frac.is_constant() is not None else False
+    # Check match conditions
+    result['error_is_zero'] = str(sym_diff) == '0'
+    result['error_is_constant'] = bool(sym_diff.is_constant())
+    result['fraction_is_constant'] = bool(sym_frac.is_constant()) if sym_frac.is_constant() is not None else False
 
-        # A match is any of the three conditions
-        result['match'] = (
-            result['error_is_zero'] or
-            result['error_is_constant'] or
-            result['fraction_is_constant']
-        )
-
-    except Exception as e:
-        result['error'] = str(e)
+    # A match is any of the three conditions
+    result['match'] = (
+        result['error_is_zero'] or
+        result['error_is_constant'] or
+        result['fraction_is_constant']
+    )
 
     return result
 
@@ -456,13 +452,6 @@ def check_pysr_symbolic_match(expr_str, ground_truth_str, var_names=None, timeou
             'simplified_predicted': expr_str,
             'symbolic_error': None,
         }
-    except Exception as e:
-        return {
-            'match': False,
-            'error': str(e),
-            'predicted_parsed': None,
-            'ground_truth_parsed': None,
-        }
 
 
 def evaluate_pysr_results(results_path, dataset_name=None, ground_truth_str=None, verbose=True):
@@ -657,6 +646,61 @@ Examples:
     print(f"Any expression matches ground truth:  {result['any_match']}")
 
     return 0 if result['any_match'] else 1
+
+
+def check_12_20_match():
+    """
+    Check all results in results_pysr/12_20/ and count symbolic matches.
+    """
+    import json
+    from pathlib import Path
+    from utils import load_srbench_dataset
+
+    results_dir = Path(__file__).parent / 'results_pysr' / '12_20'
+    json_files = list(results_dir.glob('*_results.json'))
+
+    matches = 0
+    total = 0
+    results = []
+
+    for json_file in sorted(json_files):
+        with open(json_file) as f:
+            data = json.load(f)
+
+        dataset = data['dataset']
+        best_eq = data['best_equation']
+
+        # Get ground truth and variable names
+        try:
+            _, _, ground_truth = load_srbench_dataset(dataset, max_samples=10)
+            var_names = get_dataset_var_names(dataset)
+        except Exception as e:
+            print(f"Error loading {dataset}: {e}")
+            continue
+
+        # Check symbolic match
+        match_result = check_pysr_symbolic_match(best_eq, ground_truth, var_names)
+        is_match = match_result.get('match', False)
+
+        if is_match:
+            matches += 1
+        total += 1
+
+        results.append({
+            'dataset': dataset,
+            'best_equation': best_eq,
+            'ground_truth': ground_truth,
+            'match': is_match,
+        })
+
+        status = '✓' if is_match else '✗'
+        print(f"{status} {dataset}: {best_eq}")
+
+    print(f"\n{'='*60}")
+    print(f"Symbolic matches: {matches}/{total} ({100*matches/total:.1f}%)")
+    print(f"{'='*60}")
+
+    return results
 
 
 if __name__ == "__main__":

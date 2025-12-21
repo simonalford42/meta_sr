@@ -1,22 +1,17 @@
-"""
-Main script for running LLM-Meta-SR on toy problems and SRBench datasets
-"""
 import numpy as np
+import random
+import hashlib
 from typing import List, Dict, Tuple, Optional
 import json
-import os
 import sys
-import logging
 from datetime import datetime
 from pathlib import Path
-import pandas as pd
-from toy_datasets import get_all_toy_datasets
 from sr import symbolic_regression
 from meta_evolution import (
     Operator,
     OperatorBundle,
     OperatorException,
-    create_operator,
+    create_and_test_operator,
     get_default_operator,
     semantics_aware_selection,
     generate_initial_operator,
@@ -26,6 +21,7 @@ from meta_evolution import (
 from operator_templates import OPERATOR_TYPES
 from completions import print_usage
 from utils import load_datasets_from_split, load_srbench_dataset, load_datasets_from_list
+from parallel_eval import SlurmEvaluator
 
 
 class TeeLogger:
@@ -54,7 +50,7 @@ class RunLogger:
     def __init__(self, output_dir: str = None):
         if output_dir is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_dir = f"run_{timestamp}"
+            output_dir = f"results/run_{timestamp}"
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -114,7 +110,9 @@ class RunLogger:
         stage_data["best_score_history"].append(best_operator.score)
 
         # Save intermediate generation data
-        gen_file = self.output_dir / f"{operator_type}_gen_{generation:03d}.json"
+        stages_dir = self.output_dir / "stages" / operator_type
+        stages_dir.mkdir(parents=True, exist_ok=True)
+        gen_file = stages_dir / f"gen_{generation:03d}.json"
         with open(gen_file, "w") as f:
             json.dump(gen_data, f, indent=2)
 
@@ -129,11 +127,13 @@ class RunLogger:
         }
 
         # Save best operator code
-        with open(self.output_dir / f"best_{operator_type}_operator.py", "w") as f:
+        stages_dir = self.output_dir / "stages" / operator_type
+        stages_dir.mkdir(parents=True, exist_ok=True)
+        with open(stages_dir / "best_operator.py", "w") as f:
             f.write(best_operator.code)
 
         # Save stage summary
-        stage_file = self.output_dir / f"{operator_type}_summary.json"
+        stage_file = stages_dir / "summary.json"
         with open(stage_file, "w") as f:
             json.dump(stage_data, f, indent=2)
 
@@ -148,10 +148,6 @@ class RunLogger:
 
         # Also save in the standard format for compatibility
         with open(self.output_dir / "meta_evolution_results.json", "w") as f:
-            json.dump(results, f, indent=2)
-
-        # Copy to root for convenience
-        with open("meta_evolution_results.json", "w") as f:
             json.dump(results, f, indent=2)
 
     def close(self):
@@ -233,7 +229,8 @@ def evaluate_operator_on_all_datasets(
     frozen_bundle: OperatorBundle,
     operator_type: str,
     datasets: Dict,
-    sr_kwargs: Dict
+    sr_kwargs: Dict,
+    seed: Optional[int] = None,
 ) -> Tuple[float, List[float], List[Dict]]:
     """
     Evaluate operator on all datasets
@@ -247,6 +244,10 @@ def evaluate_operator_on_all_datasets(
     trace_feedback = []
 
     for dataset_name, (X, y, formula) in datasets.items():
+        if seed is not None:
+            # Deterministic per-dataset seed
+            np.random.seed(seed)
+            random.seed(seed)
         print(f"  Evaluating on {dataset_name}...")
         try:
             score, traces = evaluate_operator_on_dataset(
@@ -277,6 +278,84 @@ def evaluate_operator_on_all_datasets(
     return average_score, scores, trace_feedback
 
 
+def evaluate_population(
+    population: List[Operator],
+    label: str,
+    operator_type: str,
+    frozen_bundle: OperatorBundle,
+    datasets: Dict,
+    sr_kwargs: Dict,
+    seed: Optional[int] = None,
+    slurm_evaluator: Optional[SlurmEvaluator] = None,
+) -> None:
+    """
+    Evaluate a population of operators using the configured method.
+
+    Mutates operators in-place, setting their score, score_vector, and trace_feedback.
+
+    Args:
+        population: List of operators to evaluate
+        label: Label for logging (e.g., "Initial Population")
+        operator_type: Which operator type is being evaluated
+        frozen_bundle: Bundle with frozen operators for other types
+        datasets: Dictionary of datasets to evaluate on
+        sr_kwargs: Arguments for symbolic regression algorithm
+        seed: Base random seed for reproducibility
+        slurm_evaluator: Optional SlurmEvaluator for multi-node parallelization
+    """
+    print(f"\n=== Evaluating {label} ({len(population)} operators) ===")
+
+    if not population:
+        return
+
+    if slurm_evaluator:
+        # SLURM job array evaluation using full bundle codes
+        dataset_names = list(datasets.keys())
+        # Build bundle codes per candidate
+        bundles = []
+        for i, op in enumerate(population):
+            codes = {
+                'selection': frozen_bundle.selection.code,
+                'mutation': frozen_bundle.mutation.code,
+                'crossover': frozen_bundle.crossover.code,
+                'fitness': frozen_bundle.fitness.code,
+            }
+            codes[operator_type] = op.code
+            bundles.append((i, codes))
+        results = slurm_evaluator.evaluate_bundles(
+            bundles=bundles,
+            dataset_names=dataset_names,
+            sr_kwargs=sr_kwargs,
+            seed=seed if seed is not None else 42,
+        )
+        for i, op in enumerate(population):
+            avg_score, score_vector, trace_feedback = results[i]
+            op.score = avg_score
+            op.score_vector = score_vector
+            op.trace_feedback = trace_feedback
+            print(f"Operator {i+1}:")
+            for tf in trace_feedback:
+                dataset = tf["dataset"]
+                score = tf["final_score"]
+                error = tf.get("error")
+                if error:
+                    print(f"    {dataset}: Score={score:.4f} (Error: {error})")
+                else:
+                    print(f"    {dataset}: Score={score:.4f}")
+            print(f"  Avg Score = {avg_score:.4f}, LOC = {op.lines_of_code}")
+    else:
+        # Sequential evaluation (original behavior)
+        for i, operator in enumerate(population):
+            print(f"Evaluating operator {i+1}...")
+            avg_score, score_vector, trace_feedback = evaluate_operator_on_all_datasets(
+                operator, frozen_bundle, operator_type, datasets, sr_kwargs, seed=seed
+            )
+            operator.score = avg_score
+            operator.score_vector = score_vector
+            operator.trace_feedback = trace_feedback
+            print(f"Operator {i+1}: Avg Score = {avg_score:.4f}, LOC = {operator.lines_of_code}")
+
+
 def run_meta_evolution_stage(
     operator_type: str,
     frozen_bundle: OperatorBundle,
@@ -289,6 +368,10 @@ def run_meta_evolution_stage(
     datasets: Dict,
     logger: Optional[RunLogger] = None,
     use_trace_feedback: bool = False,
+    slurm_evaluator: Optional[SlurmEvaluator] = None,
+    seed: Optional[int] = None,
+    llm_temperature: float = 0.7,
+    llm_seed: Optional[int] = None,
 ) -> Operator:
     """
     Run meta-evolution for a single operator type.
@@ -309,6 +392,7 @@ def run_meta_evolution_stage(
         datasets: Dictionary of datasets to evaluate on
         logger: Optional RunLogger for saving results
         use_trace_feedback: Whether to include SR traces in mutation/crossover prompts
+        slurm_evaluator: Optional SlurmEvaluator for multi-node parallelization
 
     Returns:
         best_operator: The best operator found for this type
@@ -317,6 +401,9 @@ def run_meta_evolution_stage(
     print(f"STAGE: Evolving {operator_type.upper()} operator")
     print(f"{'='*60}")
 
+    eval_mode = "SLURM" if slurm_evaluator else "sequential"
+    print(f"Evaluation mode: {eval_mode}")
+
     if logger:
         logger.start_stage(operator_type)
 
@@ -324,6 +411,7 @@ def run_meta_evolution_stage(
     print(f"\n=== Initializing {operator_type} Population ===")
     population = []
 
+    # Step 1: Generate all operators (LLM calls are sequential)
     for i in range(population_size):
         if i == 0:
             # Include default operator
@@ -332,8 +420,13 @@ def run_meta_evolution_stage(
         else:
             print(f"Generating initial {operator_type} operator {i+1}/{population_size}...")
             for j in range(10):
-                code = generate_initial_operator(operator_type=operator_type, model=model)
-                operator, passed, error = create_operator(code, operator_type)
+                code = generate_initial_operator(
+                    operator_type=operator_type,
+                    model=model,
+                    llm_temperature=llm_temperature,
+                    llm_seed=llm_seed,
+                )
+                operator, passed, error = create_and_test_operator(code, operator_type)
                 if passed:
                     break
                 else:
@@ -344,23 +437,23 @@ def run_meta_evolution_stage(
         print("*" * 10 + f" Generated {operator_type} operator " + "*" * 10)
         print(operator.code)
         print("*" * 40)
-
-        # Evaluate on datasets
-        print(f"Evaluating operator {i+1}...")
-        avg_score, score_vector, trace_feedback = evaluate_operator_on_all_datasets(
-            operator, frozen_bundle, operator_type, datasets, sr_kwargs
-        )
-
-        operator.score = avg_score
-        operator.score_vector = score_vector
-        operator.trace_feedback = trace_feedback
-
         population.append(operator)
-        print(f"Operator {i+1}: Avg Score = {avg_score:.4f}, LOC = {operator.lines_of_code}")
 
     if len(population) == 0:
         print("Failed to generate initial population!")
         return frozen_bundle.get_operator(operator_type)
+
+    # Step 2: Evaluate initial population
+    evaluate_population(
+        population=population,
+        label="Initial Population",
+        operator_type=operator_type,
+        frozen_bundle=frozen_bundle,
+        datasets=datasets,
+        sr_kwargs=sr_kwargs,
+        seed=seed,
+        slurm_evaluator=slurm_evaluator,
+    )
 
     # Meta-evolution loop
     best_operator = max(population, key=lambda op: op.score)
@@ -377,7 +470,7 @@ def run_meta_evolution_stage(
         elite = max(population, key=lambda op: op.score)
         print(f"Elite (kept): score={elite.score:.4f}, LOC={elite.lines_of_code}")
 
-        # Generate offspring to fill the rest of the population
+        # Step 1: Generate all offspring (LLM calls are sequential)
         offspring = []
 
         # Crossover
@@ -385,16 +478,18 @@ def run_meta_evolution_stage(
         for i in range(n_crossover):
             for j in range(10):
                 parent_a, parent_b = semantics_aware_selection(population)
-                print(f"  Crossover {j+1}: Parent A score={parent_a.score:.4f}, Parent B score={parent_b.score:.4f}")
 
                 code = crossover_operators(
                     parent_a, parent_b,
                     operator_type=operator_type,
                     model=model,
                     use_trace_feedback=use_trace_feedback,
+                    llm_temperature=llm_temperature,
+                    llm_seed=llm_seed,
                 )
-                operator, passed, error = create_operator(code, operator_type)
+                operator, passed, error = create_and_test_operator(code, operator_type)
                 if passed:
+                    print(f"  Crossover {i+1}: Parent A score={parent_a.score:.4f}, Parent B score={parent_b.score:.4f}")
                     break
             else:
                 raise ValueError(f"Failed to generate a valid {operator_type} offspring via crossover after 10 attempts")
@@ -402,21 +497,10 @@ def run_meta_evolution_stage(
             print("*" * 10 + f" Generated {operator_type} operator " + "*" * 10)
             print(operator.code)
             print("*" * 40)
-
-            # Evaluate
-            avg_score, score_vector, trace_feedback = evaluate_operator_on_all_datasets(
-                operator, frozen_bundle, operator_type, datasets, sr_kwargs
-            )
-            operator.score = avg_score
-            operator.score_vector = score_vector
-            operator.trace_feedback = trace_feedback
-
             offspring.append(operator)
-            print(f"  Offspring {i+1}: Score = {avg_score:.4f}, LOC = {operator.lines_of_code}")
 
         # Mutation
         print(f"Generating {n_mutation} offspring via mutation...")
-
         for i in range(n_mutation):
             for j in range(10):
                 code = mutate_operator(
@@ -424,8 +508,10 @@ def run_meta_evolution_stage(
                     operator_type=operator_type,
                     model=model,
                     use_trace_feedback=use_trace_feedback,
+                    llm_temperature=llm_temperature,
+                    llm_seed=llm_seed,
                 )
-                operator, passed, error = create_operator(code, operator_type)
+                operator, passed, error = create_and_test_operator(code, operator_type)
                 if passed:
                     break
             else:
@@ -434,19 +520,20 @@ def run_meta_evolution_stage(
             print("*" * 10 + f" Generated {operator_type} operator " + "*" * 10)
             print(operator.code)
             print("*" * 40)
-
-            # Evaluate
-            avg_score, score_vector, trace_feedback = evaluate_operator_on_all_datasets(
-                operator, frozen_bundle, operator_type, datasets, sr_kwargs
-            )
-            operator.score = avg_score
-            operator.score_vector = score_vector
-            operator.trace_feedback = trace_feedback
-
             offspring.append(operator)
-            print(f"  Mutant {i+1}: Score = {avg_score:.4f}, LOC = {operator.lines_of_code}")
 
-        # New population = elite + offspring
+        # Step 2: Evaluate all offspring
+        evaluate_population(
+            population=offspring,
+            label=f"{len(offspring)} offspring",
+            operator_type=operator_type,
+            frozen_bundle=frozen_bundle,
+            datasets=datasets,
+            sr_kwargs=sr_kwargs,
+            seed=seed,
+            slurm_evaluator=slurm_evaluator,
+        )
+
         population = [elite] + offspring
 
         # Track best
@@ -482,7 +569,7 @@ def run_meta_evolution_stage(
     return best_operator
 
 
-def run_full_meta_evolution(
+def run_meta_evolution(
     generations_per_stage: int,
     population_size: int,
     n_crossover: int,
@@ -493,6 +580,10 @@ def run_full_meta_evolution(
     stage_order: List[str] = None,
     output_dir: Optional[str] = None,
     use_trace_feedback: bool = False,
+    slurm_config: Optional[Dict] = None,
+    seed: Optional[int] = None,
+    llm_temperature: float = 0.7,
+    llm_seed: Optional[int] = None,
 ) -> OperatorBundle:
     """
     Run full meta-evolution across all operator types in sequence.
@@ -511,6 +602,10 @@ def run_full_meta_evolution(
         use_trace_feedback: Whether to include SR evolution traces in mutation/crossover prompts.
                            When enabled, the LLM sees how expressions evolved and can learn
                            which operations helped reach the ground truth.
+        slurm_config: Optional SLURM configuration for multi-node evaluation. Keys:
+                     - partition: SLURM partition name
+                     - time_limit: Time limit per task (HH:MM:SS)
+                     - mem_per_cpu: Memory per CPU
 
     Returns:
         final_bundle: OperatorBundle with best operators for all types
@@ -520,6 +615,18 @@ def run_full_meta_evolution(
 
     # Create run logger for comprehensive logging
     logger = RunLogger(output_dir)
+
+    # Create SLURM evaluator if configured
+    slurm_evaluator = None
+    if slurm_config:
+        slurm_evaluator = SlurmEvaluator(
+            results_dir=str(logger.output_dir),
+            partition=slurm_config.get('partition', 'default_partition'),
+            time_limit=slurm_config.get('time_limit', '01:00:00'),
+            mem_per_cpu=slurm_config.get('mem_per_cpu', '4G'),
+            dataset_max_samples=slurm_config.get('dataset_max_samples', None),
+            data_seed=slurm_config.get('data_seed', 42),
+        )
 
     # Save configuration
     config = {
@@ -531,12 +638,17 @@ def run_full_meta_evolution(
         "model": model,
         "stage_order": stage_order,
         "use_trace_feedback": use_trace_feedback,
+        "slurm_config": slurm_config,
     }
     logger.set_config(config)
 
-    # Load datasets if not provided
+    if slurm_evaluator:
+        print(f"SLURM mode enabled")
+
+    # Load datasets if not provided (fallback to default split)
     if datasets is None:
-        datasets = get_all_toy_datasets()
+        print("No datasets provided; loading default split 'splits/split_train_small.txt'.")
+        datasets = load_datasets_from_split('splits/split_train_small.txt', max_samples=1000)
     print(f"Datasets: {list(datasets.keys())}")
 
     # Start with default bundle
@@ -561,6 +673,10 @@ def run_full_meta_evolution(
                 datasets=datasets,
                 logger=logger,
                 use_trace_feedback=use_trace_feedback,
+                slurm_evaluator=slurm_evaluator,
+                seed=seed,
+                llm_temperature=llm_temperature,
+                llm_seed=llm_seed,
             )
 
             # Freeze this operator and update bundle
@@ -583,7 +699,6 @@ def run_full_meta_evolution(
             print(f"  LOC: {results[operator_type]['loc']}")
 
         logger.save_final_results(results)
-        print(f"\nResults saved to {logger.output_dir}/")
 
     finally:
         # Always close the logger to restore stdout and save state
@@ -592,79 +707,110 @@ def run_full_meta_evolution(
     return current_bundle
 
 
-# Backwards compatibility: single-stage evolution for selection only
-def run_meta_evolution(
-    n_generations,
-    population_size,
-    n_crossover,
-    n_mutation,
-    sr_kwargs,
-    model,
-    datasets: Optional[Dict] = None,
-):
-    """
-    Run meta-evolution for selection operator only (backwards compatible).
+if __name__ == "__main__":
+    import argparse
 
-    Args:
-        datasets: Dictionary of datasets to evaluate on. If None, uses toy datasets.
-                  Format: {name: (X, y, formula)}
-    """
-    if datasets is None:
-        datasets = get_all_toy_datasets()
-    frozen_bundle = OperatorBundle.create_default()
+    parser = argparse.ArgumentParser(
+        description='Run LLM-Meta-SR: Meta-evolution of SR operators using LLMs',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run with default settings (sequential)
+  python main.py
 
-    best_operator = run_meta_evolution_stage(
-        operator_type="selection",
-        frozen_bundle=frozen_bundle,
-        n_generations=n_generations,
-        population_size=population_size,
-        n_crossover=n_crossover,
-        n_mutation=n_mutation,
-        sr_kwargs=sr_kwargs,
-        model=model,
-        datasets=datasets,
+  # Run with SLURM job arrays
+  python main.py --slurm --partition gpu --time-limit 00:30:00
+
+  # Custom output directory
+  python main.py --output-dir results/my_experiment
+        """
     )
 
-    # Save results (backwards compatible)
-    with open("best_operator.py", "w") as f:
-        f.write(best_operator.code)
+    # SLURM mode
+    parser.add_argument('--slurm', action='store_true',
+                       help='Use SLURM job arrays for multi-node parallelization')
+    parser.add_argument('--partition', type=str, default='default_partition',
+                       help='SLURM partition (default: default_partition)')
+    parser.add_argument('--time-limit', type=str, default='01:00:00',
+                       help='SLURM time limit per task (default: 01:00:00)')
+    parser.add_argument('--mem-per-cpu', type=str, default='4G',
+                       help='SLURM memory per CPU (default: 4G)')
 
-    with open("best_history.json", "w") as f:
-        json.dump({
-            "final_score": best_operator.score,
-            "final_score_vector": best_operator.score_vector,
-            "final_loc": best_operator.lines_of_code
-        }, f, indent=2)
+    # Meta-evolution parameters
+    parser.add_argument('--generations', type=int, default=5, help='Number of generations per stage (default: 5)')
+    parser.add_argument('--population', type=int, default=2, help='Population size (default: 2)')
+    parser.add_argument('--n-crossover', type=int, default=1, help='Number of crossover offspring per generation (default: 1)')
+    parser.add_argument('--n-mutation', type=int, default=0, help='Number of mutation offspring per generation (default: 0)')
 
-    return best_operator, [best_operator.score]
+    # SR parameters
+    parser.add_argument('--sr-population', type=int, default=100, help='SR population size (default: 100)')
+    parser.add_argument('--sr-generations', type=int, default=500, help='SR generations (default: 500)')
 
+    # Dataset
+    parser.add_argument('--split', type=str, default='splits/split_train_small.txt',
+                       help='Path to split file with dataset names (default: splits/train_small.txt)')
+    parser.add_argument('--max-samples', type=int, default=1000, help='Max samples per dataset (default: 1000)')
 
-if __name__ == "__main__":
-    # Load the 4-problem small train split with 1000 samples each
-    print("\n" + "=" * 60)
-    print("Loading datasets...")
-    print("=" * 60)
-    datasets = load_datasets_from_split('split_train_small.txt', max_samples=1000)
-    print(f"\nLoaded {len(datasets)} datasets: {list(datasets.keys())}")
+    # Model
+    parser.add_argument('--model', type=str, default='openai/gpt-5-mini',
+                       help='LLM model to use (default: openai/gpt-5-mini)')
+    parser.add_argument('--temperature', type=float, default=0.7, help='LLM sampling temperature (0 for deterministic if supported)')
+
+    # Stage order
+    parser.add_argument('--stages', type=str, default='fitness,selection,mutation,crossover')
+
+    # Other options
+    parser.add_argument('--no-trace-feedback', action='store_true', help='Disable trace feedback to LLM')
+    parser.add_argument('--output-dir', type=str, default=None, help='Output directory (default: results/run_TIMESTAMP)')
+
+    parser.add_argument('--seed', type=int, default=0, help='Base random seed for reproducibility')
+
+    args = parser.parse_args()
+    assert args.n_crossover + args.n_mutation == args.population - 1, "n_crossover + n_mutation must equal population_size - 1"
+    # Global seeding for reproducibility
+    np.random.seed(args.seed)
+    random.seed(args.seed)
+
+    # LLM settings
+    llm_temperature = args.temperature
+    llm_seed = args.seed if (args.temperature == 0) else None
+
+    # Parse stage order
+    stage_order = [s.strip() for s in args.stages.split(',')]
+
+    # Build SLURM config if enabled
+    slurm_config = None
+    if args.slurm:
+        slurm_config = {
+            'partition': args.partition,
+            'time_limit': args.time_limit,
+            'mem_per_cpu': args.mem_per_cpu,
+            'dataset_max_samples': args.max_samples,
+            'data_seed': args.seed,
+        }
+
+    datasets = load_datasets_from_split(args.split, max_samples=args.max_samples, data_seed=args.seed)
 
     try:
-        final_bundle = run_full_meta_evolution(
-            generations_per_stage=5,
-            population_size=2,
-            n_crossover=1,
-            n_mutation=0,
+        final_bundle = run_meta_evolution(
+            generations_per_stage=args.generations,
+            population_size=args.population,
+            n_crossover=args.n_crossover,
+            n_mutation=args.n_mutation,
             sr_kwargs={
-                'population_size': 100,
-                'n_generations': 10,
+                'population_size': args.sr_population,
+                'n_generations': args.sr_generations,
                 'verbose': False,
             },
-            model="openai/gpt-5-mini",
+            model=args.model,
             datasets=datasets,
-            # stage_order=["fitness", "selection", "mutation", "crossover"],
-            stage_order=["mutation", "crossover"],
-            # Enable trace feedback to show the LLM how SR evolved expressions
-            # toward ground truth, so it can design better operators
-            use_trace_feedback=True,
+            stage_order=stage_order,
+            use_trace_feedback=not args.no_trace_feedback,
+            output_dir=args.output_dir,
+            slurm_config=slurm_config,
+            seed=args.seed,
+            llm_temperature=llm_temperature,
+            llm_seed=llm_seed,
         )
     except KeyboardInterrupt:
         print("\n\nRun interrupted by user. Partial results have been saved.")

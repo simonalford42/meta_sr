@@ -103,13 +103,15 @@ def load_srbench_dataset(dataset_name: str, max_samples: Optional[int] = None) -
     return X, y, formula
 
 
-def load_datasets_from_split(split_file: str, max_samples: Optional[int] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, str]]:
+def load_datasets_from_split(split_file: str, max_samples: Optional[int] = None, data_seed: Optional[int] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, str]]:
     """
     Load all datasets listed in a split file.
 
     Args:
         split_file: Path to split file (one dataset name per line)
         max_samples: Maximum samples per dataset (subsampling). If None, loads all.
+        data_seed: Seed for RNG before each dataset load (for reproducible subsampling).
+                   If None, uses current RNG state.
 
     Returns:
         Dictionary mapping dataset names to (X, y, formula) tuples
@@ -121,9 +123,11 @@ def load_datasets_from_split(split_file: str, max_samples: Optional[int] = None)
 
     for name in dataset_names:
         try:
+            if data_seed is not None:
+                np.random.seed(data_seed)
             X, y, formula = load_srbench_dataset(name, max_samples=max_samples)
             datasets[name] = (X, y, formula)
-            print(f"  Loaded {name}: {X.shape[0]} samples, {X.shape[1]} features")
+            # print(f"  Loaded {name}: {X.shape[0]} samples, {X.shape[1]} features")
         except Exception as e:
             print(f"  Warning: Could not load {name}: {e}")
 

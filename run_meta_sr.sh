@@ -1,24 +1,19 @@
-#!/bin/bash
-#SBATCH --job-name=meta-sr
-#SBATCH --output=meta_sr_%j.out
-#SBATCH --error=meta_sr_%j.err
-#SBATCH --time=04:00:00
-#SBATCH --mem=16G
-#SBATCH --cpus-per-task=4
+#!/usr/bin/env bash
 
-# Activate conda environment
-source ~/miniconda3/etc/profile.d/conda.sh  # Adjust path if needed
-conda activate meta-sr
+ # job name
+#SBATCH -J run
+#SBATCH -o out/%A.out
+ # total nodes
+#SBATCH -N 1
+ # total cores
+#SBATCH -n 32
+#SBATCH --requeue
+ # total limit (hh:mm:ss)
+#SBATCH -t 09:00:00
+#SBATCH --mem=100G
+#SBATCH --partition=default_partition
 
-# Set API key (DO NOT COMMIT THIS - use environment variable instead)
-export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}"
+source /home/sca63/mambaforge/etc/profile.d/conda.sh
+conda activate meta_sr
 
-# Navigate to project directory
-cd ~/code/meta-sr
-
-# Run the meta-evolution
-echo "Starting meta-evolution at $(date)"
-python main.py
-
-echo "Finished at $(date)"
-echo "Results saved to best_operator.py and best_history.json"
+python -u main.py --slurm --stages fitness --population 1 --n-crossover 0 --n-mutation 0 --generations 2 --no-trace-feedback

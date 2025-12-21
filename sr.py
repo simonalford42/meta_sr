@@ -5,13 +5,24 @@ from problems import ULTRA_SIMPLE_PROBLEMS, SIMPLE_PROBLEMS, HARDER_PROBLEMS
 from scipy.optimize import minimize
 from operators import FUNCTION_SET, BINARY_OPERATORS, UNARY_OPERATORS, Node
 from sr_operators import default_selection_operator, default_mutation_operator, default_crossover_operator, default_fitness_function, mse
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 
 
 
-def symbolic_regression(X, y, **sr_kwargs):
+def symbolic_regression(
+    X, y,
+    selection_operator: Callable,
+    mutation_operator: Callable,
+    crossover_operator: Callable,
+    fitness_operator: Callable,
+    **sr_kwargs,
+) -> Tuple[Node, List[str]]:
     sr = BasicSR(
         save_trace=True,
+        selection_operator=selection_operator,
+        mutation_operator=mutation_operator,
+        crossover_operator=crossover_operator,
+        fitness_operator=fitness_operator,
         **sr_kwargs,
     )
     sr.fit(X, y)
