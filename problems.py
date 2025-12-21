@@ -1,5 +1,36 @@
 import numpy as np
 
+# Ground truth expressions for each problem (sympy-parseable strings)
+# Variable naming: x0, x1, x2, etc. for multi-variate; x0 for univariate
+GROUND_TRUTH = {
+    # Ultra-simple problems
+    'single_variable': 'x0',
+    'single_constant': '2',
+    'variable_plus_constant': 'x0 + 1',
+    'variable_times_constant': '2*x0',
+    'simple_square': 'x0**2',
+
+    # Simple problems
+    'quadratic': 'x0**2 + x0 + 1',
+    'cubic': 'x0**3 - 2*x0**2 + x0',
+    'simple_rational': '1 / (1 + x0**2)',
+    'bivariate_product': 'x0 * x1**2',
+    'rational_division': 'x0 / (x0 + 1)',
+    'quartic': 'x0**4 - x0**3 + x0**2',
+    'bivariate_sum': 'x0**2 + x1**2',
+    'trivariate_product': 'x0 * x1 * x2',
+    'mixed_polynomial': 'x0**2 - x0*x1 + x1**2',
+    'complex_rational': '(x0 + x1) / (x0 - x1 + 1)',
+
+    # Harder problems
+    'pythagorean_3d': 'x0**2 + x1**2 + x2**2',
+    'quadratic_formula_discriminant': 'x1**2 - 4*x0*x2',
+    'compound_fraction': '(x0 + x1) / (x0*x1 + 1)',
+    'polynomial_product': '(x0 + 1) * (x1 + 2)',
+    'surface_area_sphere_approx': '8*x0**2',
+}
+
+
 def quadratic(seed):
     """Simple quadratic function: y = x^2 + x + 1"""
     rstate = np.random.RandomState(seed)
@@ -203,3 +234,8 @@ HARDER_PROBLEMS = [
 # Combined list for comprehensive testing
 ALL_SIMPLE_PROBLEMS = ULTRA_SIMPLE_PROBLEMS + SIMPLE_PROBLEMS
 ALL_PROBLEMS = ULTRA_SIMPLE_PROBLEMS + SIMPLE_PROBLEMS + HARDER_PROBLEMS
+
+
+def get_ground_truth(problem_func):
+    """Get the ground truth expression string for a problem function."""
+    return GROUND_TRUTH.get(problem_func.__name__, None)
