@@ -7,6 +7,7 @@ Provides functions for:
 - Calculating R², symbolic match (0/1), and complexity
 """
 
+import os
 import numpy as np
 import sympy
 from sympy import Symbol, simplify, Float, Integer, preorder_traversal
@@ -598,54 +599,84 @@ def evaluate_pysr_results(results_path, dataset_name=None, ground_truth_str=None
 
 
 def main():
-    """CLI for evaluating PySR results."""
+    """CLI for evaluating SR/PySR results."""
     import argparse
+    import sys
 
     parser = argparse.ArgumentParser(
-        description='Evaluate PySR results against ground truth',
+        description='Evaluate symbolic regression results against ground truth',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Evaluate from checkpoint (preferred)
-  python evaluation.py results_pysr/20251220_210555_bodZT6/checkpoint.pkl feynman_III_15_27
+  # Check SR (BasicSR) results directory for symbolic matches
+  python evaluation.py --sr results_sr/
 
-  # Evaluate from results directory (auto-finds checkpoint.pkl)
-  python evaluation.py results_pysr/20251220_210555_bodZT6 feynman_III_15_27
+  # Compare baseline vs evolved operators
+  python evaluation.py --compare results_sr/ results_sr_run_20241220/
 
-  # Evaluate from CSV (legacy)
-  python evaluation.py results_pysr/20251220_210555_bodZT6/hall_of_fame.csv feynman_III_15_27
+  # Evaluate PySR results (legacy mode)
+  python evaluation.py results_pysr/checkpoint.pkl feynman_III_15_27
 
-  # With explicit ground truth
-  python evaluation.py checkpoint.pkl feynman_I_29_16 --ground-truth "sqrt(x0**2 + x1**2)"
+  # Check PySR 12_20 results
+  python evaluation.py --pysr-12-20
         """
     )
 
-    parser.add_argument('results_path', type=str,
-                       help='Path to checkpoint.pkl, hall_of_fame.csv, or results directory')
-    parser.add_argument('dataset', type=str,
-                       help='Dataset name (e.g., feynman_III_15_27)')
+    # Mode selection
+    parser.add_argument('--sr', type=str, metavar='DIR',
+                       help='Check SR results directory for symbolic matches')
+    parser.add_argument('--compare', nargs=2, metavar=('BASELINE', 'EVOLVED'),
+                       help='Compare baseline vs evolved SR results')
+    parser.add_argument('--pysr-12-20', action='store_true',
+                       help='Check PySR 12_20 results (legacy)')
+
+    # PySR evaluation (legacy positional args)
+    parser.add_argument('results_path', type=str, nargs='?',
+                       help='Path to PySR checkpoint.pkl or results directory')
+    parser.add_argument('dataset', type=str, nargs='?',
+                       help='Dataset name for PySR evaluation')
     parser.add_argument('--ground-truth', type=str, default=None,
-                       help='Ground truth formula (optional, loaded from metadata if not provided)')
+                       help='Ground truth formula (optional)')
     parser.add_argument('-q', '--quiet', action='store_true',
                        help='Minimal output')
 
     args = parser.parse_args()
 
-    result = evaluate_pysr_results(
-        args.results_path,
-        args.dataset,
-        ground_truth_str=args.ground_truth,
-        verbose=not args.quiet,
-    )
+    # SR results checking mode
+    if args.sr:
+        result = check_sr_results(args.sr, verbose=not args.quiet)
+        return 0 if result['matches'] > 0 else 1
 
-    # Print summary
-    print(f"\n{'='*60}")
-    print("SUMMARY")
-    print(f"{'='*60}")
-    print(f"Best expression matches ground truth: {result['best_match']}")
-    print(f"Any expression matches ground truth:  {result['any_match']}")
+    # Compare mode
+    if args.compare:
+        compare_sr_results(args.compare[0], args.compare[1], verbose=not args.quiet)
+        return 0
 
-    return 0 if result['any_match'] else 1
+    # PySR 12_20 mode
+    if args.pysr_12_20:
+        check_12_20_match()
+        return 0
+
+    # Legacy PySR evaluation mode
+    if args.results_path and args.dataset:
+        result = evaluate_pysr_results(
+            args.results_path,
+            args.dataset,
+            ground_truth_str=args.ground_truth,
+            verbose=not args.quiet,
+        )
+
+        print(f"\n{'='*60}")
+        print("SUMMARY")
+        print(f"{'='*60}")
+        print(f"Best expression matches ground truth: {result['best_match']}")
+        print(f"Any expression matches ground truth:  {result['any_match']}")
+
+        return 0 if result['any_match'] else 1
+
+    # No valid mode selected
+    parser.print_help()
+    return 1
 
 
 def check_12_20_match():
@@ -656,7 +687,7 @@ def check_12_20_match():
     from pathlib import Path
     from utils import load_srbench_dataset
 
-    results_dir = Path(__file__).parent / 'results_pysr' / '12_20'
+    results_dir = Path(__file__).parent / 'results_pysr'
     json_files = list(results_dir.glob('*_results.json'))
 
     matches = 0
@@ -703,5 +734,1060 @@ def check_12_20_match():
     return results
 
 
+# ============================================================================
+# SR (BasicSR) Results Evaluation
+# ============================================================================
+
+def parse_sr_expression(expr_str, n_vars=10):
+    """
+    Parse a BasicSR Node expression string to sympy.
+
+    Handles expressions like:
+    - "(x0 + x1)"
+    - "sin((x0 * x1))"
+    - "((x0 + 1.5) * cos(x1))"
+
+    Args:
+        expr_str: Expression string from BasicSR Node.__str__()
+        n_vars: Maximum number of variables
+
+    Returns:
+        sympy expression
+    """
+    # Create local dict with variable symbols
+    local_dict = {f'x{i}': Symbol(f'x{i}') for i in range(n_vars)}
+
+    # Add common functions
+    local_dict['sin'] = sympy.sin
+    local_dict['cos'] = sympy.cos
+    local_dict['tan'] = sympy.tan
+    local_dict['exp'] = sympy.exp
+    local_dict['log'] = sympy.log
+    local_dict['sqrt'] = sympy.sqrt
+    local_dict['abs'] = sympy.Abs
+    local_dict['square'] = lambda x: x**2
+    local_dict['inv'] = lambda x: 1/x
+    local_dict['pow2'] = lambda x: x**2
+    local_dict['pow3'] = lambda x: x**3
+    local_dict['pi'] = sympy.pi
+    local_dict['e'] = sympy.E
+
+    # Replace ^ with ** for exponentiation
+    expr_str = expr_str.replace('^', '**')
+
+    return parse_expr(expr_str, local_dict=local_dict)
+
+
+def check_sr_symbolic_match(expr_str, ground_truth_str, n_vars=10, var_names=None, timeout_seconds=5):
+    """
+    Check if a BasicSR expression symbolically matches ground truth.
+
+    Args:
+        expr_str: BasicSR expression string
+        ground_truth_str: Ground truth formula string
+        n_vars: Number of variables
+        var_names: List of variable names in order (e.g., ['n', 'h'] -> x0=n, x1=h).
+                   If provided, substitutes ground truth variable names with x0, x1, etc.
+        timeout_seconds: Timeout for symbolic simplification
+
+    Returns:
+        dict with match results (see check_symbolic_match)
+    """
+    import signal
+
+    def timeout_handler(signum, frame):
+        raise TimeoutError("Symbolic match timed out")
+
+    try:
+        predicted = parse_sr_expression(expr_str, n_vars)
+        ground_truth = parse_ground_truth_formula(ground_truth_str, var_names)
+
+        # If var_names provided, substitute original variable names with x0, x1, etc.
+        if var_names:
+            subs_dict = {Symbol(name): Symbol(f'x{i}') for i, name in enumerate(var_names)}
+            ground_truth = ground_truth.subs(subs_dict)
+
+        # Set timeout for complex expressions
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout_seconds)
+
+        try:
+            result = check_symbolic_match(predicted, ground_truth)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+
+        return result
+
+    except TimeoutError:
+        return {
+            'match': False,
+            'error': 'timeout',
+            'simplified_predicted': expr_str,
+            'symbolic_error': None,
+        }
+    except Exception as e:
+        return {
+            'match': False,
+            'error': str(e),
+            'simplified_predicted': expr_str,
+            'symbolic_error': None,
+        }
+
+
+def check_sr_results(results_dir, verbose=True):
+    """
+    Check all results in an SR results directory and count symbolic matches.
+
+    Similar to check_12_20_match() but for BasicSR results.
+
+    Args:
+        results_dir: Path to directory containing *_results.json files
+        verbose: Print per-dataset results
+
+    Returns:
+        dict with:
+            - matches: number of symbolic matches
+            - total: total number of datasets evaluated
+            - match_rate: percentage of matches
+            - results: list of per-dataset results
+    """
+    import json
+    from pathlib import Path
+    from utils import load_srbench_dataset
+
+    results_dir = Path(results_dir)
+    json_files = list(results_dir.glob('*_results.json'))
+
+    if not json_files:
+        print(f"No result files found in {results_dir}")
+        return {'matches': 0, 'total': 0, 'match_rate': 0.0, 'results': []}
+
+    matches = 0
+    total = 0
+    results = []
+
+    for json_file in sorted(json_files):
+        with open(json_file) as f:
+            data = json.load(f)
+
+        dataset = data['dataset']
+        best_eq = data['best_equation']
+
+        # Get ground truth
+        ground_truth = data.get('ground_truth', '')
+        if not ground_truth:
+            try:
+                _, _, ground_truth = load_srbench_dataset(dataset, max_samples=10)
+            except Exception as e:
+                if verbose:
+                    print(f"Error loading {dataset}: {e}")
+                continue
+
+        if not ground_truth:
+            if verbose:
+                print(f"? {dataset}: No ground truth available")
+            continue
+
+        # Get number of features and variable names
+        n_vars = data.get('n_features', 10)
+
+        # Get actual variable names from dataset to map x0, x1, ... correctly
+        try:
+            var_names = get_dataset_var_names(dataset)
+        except Exception:
+            var_names = None
+
+        # Check symbolic match
+        match_result = check_sr_symbolic_match(best_eq, ground_truth, n_vars, var_names=var_names)
+        is_match = match_result.get('match', False)
+
+        if is_match:
+            matches += 1
+        total += 1
+
+        results.append({
+            'dataset': dataset,
+            'best_equation': best_eq,
+            'ground_truth': ground_truth,
+            'match': is_match,
+            'test_r2': data.get('test_r2'),
+            'test_mse': data.get('test_mse'),
+        })
+
+        if verbose:
+            status = 'Y' if is_match else 'X'
+            r2 = data.get('test_r2', 0)
+            print(f"{status} {dataset}: R2={r2:.4f} | {best_eq}")
+
+    match_rate = 100 * matches / total if total > 0 else 0.0
+
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Symbolic matches: {matches}/{total} ({match_rate:.1f}%)")
+        print(f"{'='*60}")
+
+    return {
+        'matches': matches,
+        'total': total,
+        'match_rate': match_rate,
+        'results': results
+    }
+
+
+def compare_sr_results(baseline_dir, evolved_dir, verbose=True):
+    """
+    Compare SR results between baseline and evolved operators.
+
+    Args:
+        baseline_dir: Path to baseline results (default operators)
+        evolved_dir: Path to evolved results (meta-evolution operators)
+        verbose: Print detailed comparison
+
+    Returns:
+        dict with comparison statistics
+    """
+    baseline = check_sr_results(baseline_dir, verbose=False)
+    evolved = check_sr_results(evolved_dir, verbose=False)
+
+    # Create lookup by dataset
+    baseline_by_dataset = {r['dataset']: r for r in baseline['results']}
+    evolved_by_dataset = {r['dataset']: r for r in evolved['results']}
+
+    # Find common datasets
+    common = set(baseline_by_dataset.keys()) & set(evolved_by_dataset.keys())
+
+    if verbose:
+        print(f"{'='*80}")
+        print(f"Comparison: Baseline vs Evolved Operators")
+        print(f"{'='*80}")
+        print(f"Baseline results: {baseline_dir}")
+        print(f"Evolved results:  {evolved_dir}")
+        print(f"Common datasets:  {len(common)}")
+        print()
+
+        # Per-dataset comparison
+        improved = 0
+        degraded = 0
+        unchanged = 0
+
+        print(f"{'Dataset':<30} {'Baseline':<12} {'Evolved':<12} {'Change':<10}")
+        print(f"{'-'*30} {'-'*12} {'-'*12} {'-'*10}")
+
+        for dataset in sorted(common):
+            b = baseline_by_dataset[dataset]
+            e = evolved_by_dataset[dataset]
+
+            b_match = 'Y' if b['match'] else 'X'
+            e_match = 'Y' if e['match'] else 'X'
+
+            b_r2 = b.get('test_r2', 0)
+            e_r2 = e.get('test_r2', 0)
+
+            if e['match'] and not b['match']:
+                change = "+MATCH"
+                improved += 1
+            elif b['match'] and not e['match']:
+                change = "-MATCH"
+                degraded += 1
+            elif e_r2 > b_r2 + 0.01:
+                change = f"+{e_r2 - b_r2:.3f}"
+                improved += 1
+            elif b_r2 > e_r2 + 0.01:
+                change = f"{e_r2 - b_r2:.3f}"
+                degraded += 1
+            else:
+                change = "~"
+                unchanged += 1
+
+            print(f"{dataset:<30} {b_match} R2={b_r2:.4f}  {e_match} R2={e_r2:.4f}  {change}")
+
+        print()
+        print(f"{'='*80}")
+        print(f"Summary:")
+        print(f"  Baseline: {baseline['matches']}/{baseline['total']} matches ({baseline['match_rate']:.1f}%)")
+        print(f"  Evolved:  {evolved['matches']}/{evolved['total']} matches ({evolved['match_rate']:.1f}%)")
+        print(f"  Improved: {improved}, Degraded: {degraded}, Unchanged: {unchanged}")
+        print(f"{'='*80}")
+
+    return {
+        'baseline': baseline,
+        'evolved': evolved,
+        'common_datasets': len(common),
+    }
+
+
+def compare_seeds(dir1, dir2, r2_threshold=0.999, use_symbolic=True, verbose=True):
+    """
+    Compare SR results between two different seed runs.
+
+    Analyzes:
+    1. R² score variance between runs
+    2. Solve rate (both R² threshold and symbolic matching)
+    3. Which tasks are solved by both, one, or neither
+
+    Args:
+        dir1: Path to first results directory
+        dir2: Path to second results directory
+        r2_threshold: R² threshold for considering a task "solved" (default 0.999)
+        use_symbolic: Also check symbolic matches (default True)
+        verbose: Print detailed results
+
+    Returns:
+        dict with:
+            - r2_stats: dict with mean/median/std/max/min of |Δ R²|
+            - solve_rate: dict with solve counts for each directory and overlaps
+            - per_task: list of per-task comparison results
+    """
+    import json
+    from pathlib import Path
+
+    dir1 = Path(dir1)
+    dir2 = Path(dir2)
+
+    def load_results(dir_path):
+        results = {}
+        for f in dir_path.glob('*_results.json'):
+            with open(f) as fp:
+                data = json.load(fp)
+                task = data['dataset']
+                results[task] = data
+        return results
+
+    results1 = load_results(dir1)
+    results2 = load_results(dir2)
+
+    # Find common tasks
+    common_tasks = set(results1.keys()) & set(results2.keys())
+
+    if verbose:
+        print(f"{'='*70}")
+        print(f"Seed Comparison: {dir1.name} vs {dir2.name}")
+        print(f"{'='*70}")
+        print(f"Tasks in {dir1.name}: {len(results1)}")
+        print(f"Tasks in {dir2.name}: {len(results2)}")
+        print(f"Common tasks: {len(common_tasks)}")
+
+    # Collect R² differences and per-task results
+    r2_diffs = []
+    per_task = []
+
+    for task in sorted(common_tasks):
+        r2_1 = results1[task]['test_r2']
+        r2_2 = results2[task]['test_r2']
+
+        # Skip extreme outliers (bad fits with huge negative R²)
+        if r2_1 < -10 or r2_2 < -10:
+            if verbose:
+                print(f"  Skipping outlier {task}: {dir1.name}={r2_1:.2f}, {dir2.name}={r2_2:.2f}")
+            continue
+
+        diff = abs(r2_1 - r2_2)
+        r2_diffs.append(diff)
+
+        per_task.append({
+            'task': task,
+            'r2_1': r2_1,
+            'r2_2': r2_2,
+            'r2_diff': diff,
+            'eq_1': results1[task].get('best_equation', ''),
+            'eq_2': results2[task].get('best_equation', ''),
+            'ground_truth': results1[task].get('ground_truth', ''),
+        })
+
+    r2_diffs = np.array(r2_diffs)
+
+    # R² variance statistics
+    r2_stats = {
+        'mean': float(np.mean(r2_diffs)),
+        'median': float(np.median(r2_diffs)),
+        'std': float(np.std(r2_diffs)),
+        'max': float(np.max(r2_diffs)),
+        'min': float(np.min(r2_diffs)),
+        'pct_lt_001': float(100 * np.sum(r2_diffs < 0.01) / len(r2_diffs)),
+        'pct_lt_005': float(100 * np.sum(r2_diffs < 0.05) / len(r2_diffs)),
+        'pct_lt_010': float(100 * np.sum(r2_diffs < 0.10) / len(r2_diffs)),
+        'pct_gte_010': float(100 * np.sum(r2_diffs >= 0.10) / len(r2_diffs)),
+    }
+
+    if verbose:
+        print(f"\n{'='*70}")
+        print(f"R² Score Difference Statistics (n={len(r2_diffs)} tasks)")
+        print(f"{'='*70}")
+        print(f"  Mean |Δ R²|:    {r2_stats['mean']:.4f}")
+        print(f"  Median |Δ R²|:  {r2_stats['median']:.4f}")
+        print(f"  Std of |Δ R²|:  {r2_stats['std']:.4f}")
+        print(f"  Max |Δ R²|:     {r2_stats['max']:.4f}")
+        print(f"  Min |Δ R²|:     {r2_stats['min']:.6f}")
+        print(f"\n  Distribution of |Δ R²|:")
+        print(f"    < 0.01:  {r2_stats['pct_lt_001']:.1f}% (stable)")
+        print(f"    < 0.05:  {r2_stats['pct_lt_005']:.1f}%")
+        print(f"    < 0.10:  {r2_stats['pct_lt_010']:.1f}%")
+        print(f"    >= 0.10: {r2_stats['pct_gte_010']:.1f}% (high variance)")
+
+    # Solve rate analysis
+    # By R² threshold
+    solved_r2_1 = {t['task'] for t in per_task if t['r2_1'] >= r2_threshold}
+    solved_r2_2 = {t['task'] for t in per_task if t['r2_2'] >= r2_threshold}
+
+    # By symbolic match (if requested)
+    solved_sym_1 = set()
+    solved_sym_2 = set()
+
+    if use_symbolic:
+        for t in per_task:
+            task = t['task']
+            ground_truth = t['ground_truth']
+            if not ground_truth:
+                continue
+
+            # Get variable names
+            try:
+                var_names = get_dataset_var_names(task)
+            except Exception:
+                var_names = None
+
+            n_vars = results1[task].get('n_features', 10)
+
+            # Check dir1
+            match1 = check_sr_symbolic_match(t['eq_1'], ground_truth, n_vars, var_names)
+            if match1.get('match', False):
+                solved_sym_1.add(task)
+                t['symbolic_match_1'] = True
+            else:
+                t['symbolic_match_1'] = False
+
+            # Check dir2
+            match2 = check_sr_symbolic_match(t['eq_2'], ground_truth, n_vars, var_names)
+            if match2.get('match', False):
+                solved_sym_2.add(task)
+                t['symbolic_match_2'] = True
+            else:
+                t['symbolic_match_2'] = False
+
+    # Compute overlaps
+    n_tasks = len(per_task)
+    solve_rate = {
+        'r2_threshold': r2_threshold,
+        # R² threshold based
+        'r2_solved_1': len(solved_r2_1),
+        'r2_solved_2': len(solved_r2_2),
+        'r2_both': len(solved_r2_1 & solved_r2_2),
+        'r2_only_1': len(solved_r2_1 - solved_r2_2),
+        'r2_only_2': len(solved_r2_2 - solved_r2_1),
+        'r2_neither': n_tasks - len(solved_r2_1 | solved_r2_2),
+        'r2_union': len(solved_r2_1 | solved_r2_2),
+    }
+
+    if use_symbolic:
+        solve_rate.update({
+            # Symbolic match based
+            'sym_solved_1': len(solved_sym_1),
+            'sym_solved_2': len(solved_sym_2),
+            'sym_both': len(solved_sym_1 & solved_sym_2),
+            'sym_only_1': len(solved_sym_1 - solved_sym_2),
+            'sym_only_2': len(solved_sym_2 - solved_sym_1),
+            'sym_neither': n_tasks - len(solved_sym_1 | solved_sym_2),
+            'sym_union': len(solved_sym_1 | solved_sym_2),
+        })
+
+    if verbose:
+        print(f"\n{'='*70}")
+        print(f"Solve Rate Analysis")
+        print(f"{'='*70}")
+
+        print(f"\n  By R² >= {r2_threshold}:")
+        print(f"    {dir1.name}: {solve_rate['r2_solved_1']}/{n_tasks} ({100*solve_rate['r2_solved_1']/n_tasks:.1f}%)")
+        print(f"    {dir2.name}: {solve_rate['r2_solved_2']}/{n_tasks} ({100*solve_rate['r2_solved_2']/n_tasks:.1f}%)")
+        print(f"    ─────────────────────────────")
+        print(f"    Both:       {solve_rate['r2_both']}")
+        print(f"    Only {dir1.name}: {solve_rate['r2_only_1']}")
+        print(f"    Only {dir2.name}: {solve_rate['r2_only_2']}")
+        print(f"    Neither:    {solve_rate['r2_neither']}")
+        print(f"    Union:      {solve_rate['r2_union']} ({100*solve_rate['r2_union']/n_tasks:.1f}%)")
+
+        if use_symbolic:
+            print(f"\n  By Symbolic Match:")
+            print(f"    {dir1.name}: {solve_rate['sym_solved_1']}/{n_tasks} ({100*solve_rate['sym_solved_1']/n_tasks:.1f}%)")
+            print(f"    {dir2.name}: {solve_rate['sym_solved_2']}/{n_tasks} ({100*solve_rate['sym_solved_2']/n_tasks:.1f}%)")
+            print(f"    ─────────────────────────────")
+            print(f"    Both:       {solve_rate['sym_both']}")
+            print(f"    Only {dir1.name}: {solve_rate['sym_only_1']}")
+            print(f"    Only {dir2.name}: {solve_rate['sym_only_2']}")
+            print(f"    Neither:    {solve_rate['sym_neither']}")
+            print(f"    Union:      {solve_rate['sym_union']} ({100*solve_rate['sym_union']/n_tasks:.1f}%)")
+
+        # Show tasks with high variance
+        high_var = [t for t in per_task if t['r2_diff'] >= 0.10]
+        if high_var:
+            print(f"\n{'='*70}")
+            print(f"Tasks with High Variance (|Δ R²| >= 0.10): {len(high_var)}")
+            print(f"{'='*70}")
+            print(f"{'Task':<30} {dir1.name:<12} {dir2.name:<12} {'|Δ R²|':<10}")
+            print(f"{'-'*30} {'-'*12} {'-'*12} {'-'*10}")
+            for t in sorted(high_var, key=lambda x: -x['r2_diff'])[:20]:
+                print(f"{t['task']:<30} {t['r2_1']:<12.4f} {t['r2_2']:<12.4f} {t['r2_diff']:<10.4f}")
+
+        # Show tasks solved by only one seed
+        if use_symbolic:
+            only_1 = solved_sym_1 - solved_sym_2
+            only_2 = solved_sym_2 - solved_sym_1
+            if only_1 or only_2:
+                print(f"\n{'='*70}")
+                print(f"Tasks Solved by Only One Seed (Symbolic)")
+                print(f"{'='*70}")
+                if only_1:
+                    print(f"\n  Only {dir1.name}:")
+                    for task in sorted(only_1):
+                        t = next(x for x in per_task if x['task'] == task)
+                        print(f"    {task}: R²={t['r2_1']:.4f} vs {t['r2_2']:.4f}")
+                if only_2:
+                    print(f"\n  Only {dir2.name}:")
+                    for task in sorted(only_2):
+                        t = next(x for x in per_task if x['task'] == task)
+                        print(f"    {task}: R²={t['r2_1']:.4f} vs {t['r2_2']:.4f}")
+
+    return {
+        'dir1': str(dir1),
+        'dir2': str(dir2),
+        'n_tasks': n_tasks,
+        'r2_stats': r2_stats,
+        'solve_rate': solve_rate,
+        'per_task': per_task,
+    }
+
+
+def analyze_r2_across_runs(base_dir: str = "."):
+    """
+    Analyze R² scores across multiple results_sr{i} directories.
+
+    Calculates mean and sample variance (unbiased, using n-1 denominator)
+    for each problem across all available runs, then prints results sorted
+    by variance (lowest to highest).
+
+    Args:
+        base_dir: Base directory containing results_sr* directories
+
+    Returns:
+        list of dicts with keys: problem, mean, variance, n_runs, r2_values
+    """
+    import json
+    import glob
+    from collections import defaultdict
+    from pathlib import Path
+
+    def get_results_dirs(base_dir: str) -> list:
+        """Find all results_sr* directories."""
+        base = Path(base_dir)
+        dirs = []
+
+        # Check for results_sr (no number)
+        if (base / "results_sr").is_dir():
+            dirs.append(str(base / "results_sr"))
+
+        # Check for results_sr2, results_sr3, etc.
+        i = 2
+        while True:
+            dir_path = base / f"results_sr{i}"
+            if dir_path.is_dir():
+                dirs.append(str(dir_path))
+                i += 1
+            else:
+                break
+
+        return sorted(dirs)
+
+    def collect_r2_scores(results_dirs: list, min_r2: float = -100) -> dict:
+        """Collect R² scores for each problem across all directories.
+
+        Args:
+            results_dirs: List of directory paths to search
+            min_r2: Minimum R² value to include (filters outliers below this)
+        """
+        scores = defaultdict(list)
+
+        for dir_path in results_dirs:
+            for json_file in glob.glob(os.path.join(dir_path, "*_results.json")):
+                try:
+                    with open(json_file, 'r') as f:
+                        data = json.load(f)
+
+                    dataset = data.get("dataset", "")
+                    test_r2 = data.get("test_r2")
+
+                    if dataset and test_r2 is not None:
+                        if test_r2 >= min_r2:
+                            scores[dataset].append(test_r2)
+                except (json.JSONDecodeError, IOError) as e:
+                    print(f"Warning: Could not read {json_file}: {e}")
+
+        return dict(scores)
+
+    def calculate_stats(scores: list) -> tuple:
+        """Calculate mean and sample variance (unbiased estimate using n-1)."""
+        n = len(scores)
+        if n == 0:
+            return float('nan'), float('nan')
+
+        mean = sum(scores) / n
+
+        if n == 1:
+            return mean, float('nan')
+
+        # Sample variance with Bessel's correction (n-1 denominator)
+        variance = sum((x - mean) ** 2 for x in scores) / (n - 1)
+
+        return mean, variance
+
+    # Main logic
+    results_dirs = get_results_dirs(base_dir)
+
+    if not results_dirs:
+        print("No results_sr* directories found.")
+        return []
+
+    print(f"Found {len(results_dirs)} results directories:")
+    for d in results_dirs:
+        print(f"  - {d}")
+    print()
+
+    scores = collect_r2_scores(results_dirs)
+
+    if not scores:
+        print("No results found.")
+        return []
+
+    # Calculate stats for each problem
+    stats = []
+    for problem, r2_values in scores.items():
+        mean, variance = calculate_stats(r2_values)
+        stats.append({
+            'problem': problem,
+            'mean': mean,
+            'variance': variance,
+            'n_runs': len(r2_values),
+            'r2_values': r2_values
+        })
+
+    # Sort by variance (lowest to highest), putting NaN at the end
+    stats.sort(key=lambda x: (x['variance'] != x['variance'], x['variance']))
+
+    # Print results
+    print(f"{'Problem':<30} {'Mean R²':>10} {'Variance':>12} {'N':>4}  R² values")
+    print("-" * 100)
+
+    for s in stats:
+        var_str = f"{s['variance']:.6f}" if s['variance'] == s['variance'] else "N/A"
+        r2_vals = ", ".join(f"{v:.4f}" for v in sorted(s['r2_values'], reverse=True))
+        print(f"{s['problem']:<30} {s['mean']:>10.6f} {var_str:>12} {s['n_runs']:>4}  [{r2_vals}]")
+
+    print("-" * 60)
+    print(f"Total problems: {len(stats)}")
+
+    # Summary stats
+    valid_means = [s['mean'] for s in stats if s['mean'] == s['mean']]
+    valid_vars = [s['variance'] for s in stats if s['variance'] == s['variance']]
+
+    if valid_means:
+        overall_mean = sum(valid_means) / len(valid_means)
+        print(f"Average R² across problems: {overall_mean:.6f}")
+
+    if valid_vars:
+        avg_var = sum(valid_vars) / len(valid_vars)
+        print(f"Average variance across problems: {avg_var:.6f}")
+
+    return stats
+
+
+def analyze_best_of_n_match_rate(base_dir: str = ".", min_r2: float = -100):
+    """
+    Analyze symbolic match rate when selecting the best equation by test R²
+    across multiple runs for each problem.
+
+    Also debugs cases where R² = 1.0 but symbolic match fails.
+
+    Args:
+        base_dir: Base directory containing results_sr* directories
+        min_r2: Minimum R² value to include (filters outliers)
+
+    Returns:
+        dict with match statistics
+    """
+    import json
+    import glob
+    from collections import defaultdict
+    from pathlib import Path
+
+    def get_results_dirs(base_dir: str) -> list:
+        """Find all results_sr* directories."""
+        base = Path(base_dir)
+        dirs = []
+        if (base / "results_sr").is_dir():
+            dirs.append(str(base / "results_sr"))
+        i = 2
+        while True:
+            dir_path = base / f"results_sr{i}"
+            if dir_path.is_dir():
+                dirs.append(str(dir_path))
+                i += 1
+            else:
+                break
+        return sorted(dirs)
+
+    # Collect all runs for each problem
+    results_dirs = get_results_dirs(base_dir)
+    if not results_dirs:
+        print("No results_sr* directories found.")
+        return {}
+
+    print(f"Found {len(results_dirs)} results directories")
+
+    # problem -> list of {test_r2, best_equation, ground_truth, n_features, dir}
+    all_runs = defaultdict(list)
+
+    for dir_path in results_dirs:
+        for json_file in glob.glob(os.path.join(dir_path, "*_results.json")):
+            try:
+                with open(json_file, 'r') as f:
+                    data = json.load(f)
+
+                dataset = data.get("dataset", "")
+                test_r2 = data.get("test_r2")
+
+                if dataset and test_r2 is not None and test_r2 >= min_r2:
+                    all_runs[dataset].append({
+                        'test_r2': test_r2,
+                        'best_equation': data.get('best_equation', ''),
+                        'ground_truth': data.get('ground_truth', ''),
+                        'n_features': data.get('n_features', 10),
+                        'dir': dir_path,
+                    })
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Warning: Could not read {json_file}: {e}")
+
+    print(f"Found {len(all_runs)} problems with results\n")
+
+    # For each problem, select the best run by test_r2 and check symbolic match
+    matches = 0
+    total = 0
+    r2_perfect_match = 0
+    r2_perfect_total = 0
+    r2_perfect_failures = []
+
+    results = []
+
+    for problem in sorted(all_runs.keys()):
+        runs = all_runs[problem]
+        if not runs:
+            continue
+
+        # Select best run by test_r2
+        best_run = max(runs, key=lambda x: x['test_r2'])
+        best_eq = best_run['best_equation']
+        ground_truth = best_run['ground_truth']
+        best_r2 = best_run['test_r2']
+        n_features = best_run['n_features']
+
+        if not ground_truth:
+            continue
+
+        # Get variable names for symbolic matching
+        try:
+            var_names = get_dataset_var_names(problem)
+        except Exception:
+            var_names = None
+
+        # Check symbolic match
+        match_result = check_sr_symbolic_match(best_eq, ground_truth, n_features, var_names)
+        is_match = match_result.get('match', False)
+
+        total += 1
+        if is_match:
+            matches += 1
+
+        results.append({
+            'problem': problem,
+            'best_r2': best_r2,
+            'best_equation': best_eq,
+            'ground_truth': ground_truth,
+            'match': is_match,
+            'n_runs': len(runs),
+        })
+
+        # Debug: check R² = 1.0 cases
+        if abs(best_r2 - 1.0) < 1e-6:  # R² essentially equals 1.0
+            r2_perfect_total += 1
+            if is_match:
+                r2_perfect_match += 1
+            else:
+                r2_perfect_failures.append({
+                    'problem': problem,
+                    'best_equation': best_eq,
+                    'ground_truth': ground_truth,
+                    'r2': best_r2,
+                })
+
+    # Print results
+    match_rate = 100 * matches / total if total > 0 else 0
+    print("=" * 80)
+    print("BEST-OF-N SYMBOLIC MATCH RATE (selecting best equation by test R²)")
+    print("=" * 80)
+    print(f"Total problems: {total}")
+    print(f"Symbolic matches: {matches}")
+    print(f"Match rate: {match_rate:.1f}%")
+    print()
+
+    # Debug: R² = 1.0 analysis
+    print("=" * 80)
+    print("DEBUG: R² = 1.0 SYMBOLIC MATCH ANALYSIS")
+    print("=" * 80)
+    if r2_perfect_total > 0:
+        r2_perfect_rate = 100 * r2_perfect_match / r2_perfect_total
+        print(f"Problems with R² = 1.0: {r2_perfect_total}")
+        print(f"Of those, symbolic matches: {r2_perfect_match}")
+        print(f"Match rate for R² = 1.0: {r2_perfect_rate:.1f}%")
+        print()
+
+        if r2_perfect_failures:
+            print(f"FAILURES (R² = 1.0 but no symbolic match): {len(r2_perfect_failures)}")
+            print("-" * 80)
+            for f in r2_perfect_failures:
+                print(f"Problem: {f['problem']}")
+                print(f"  R²:         {f['r2']:.6f}")
+                print(f"  Predicted:  {f['best_equation']}")
+                print(f"  Ground:     {f['ground_truth']}")
+                print()
+    else:
+        print("No problems with R² = 1.0 found.")
+
+    # Print per-problem results sorted by match status then R²
+    print("=" * 80)
+    print("PER-PROBLEM RESULTS (sorted by match, then R²)")
+    print("=" * 80)
+    print(f"{'Problem':<30} {'Match':>6} {'Best R²':>10} {'N':>4}")
+    print("-" * 55)
+
+    # Sort: matches first, then by R² descending
+    results.sort(key=lambda x: (not x['match'], -x['best_r2']))
+
+    for r in results:
+        match_str = "YES" if r['match'] else "NO"
+        print(f"{r['problem']:<30} {match_str:>6} {r['best_r2']:>10.6f} {r['n_runs']:>4}")
+
+    return {
+        'total': total,
+        'matches': matches,
+        'match_rate': match_rate,
+        'r2_perfect_total': r2_perfect_total,
+        'r2_perfect_match': r2_perfect_match,
+        'r2_perfect_failures': r2_perfect_failures,
+        'results': results,
+    }
+
+
+def quick_r2_solve_rate(base_dir: str = ".", r2_threshold: float = 0.9999):
+    """
+    Quickly print R² >= threshold solve rate for each results directory.
+
+    Args:
+        base_dir: Base directory containing results_sr* directories
+        r2_threshold: R² threshold to count as "solved" (default 0.9999)
+    """
+    import json
+    import glob
+    from pathlib import Path
+
+    base = Path(base_dir)
+    dirs = []
+    if (base / "results_sr").is_dir():
+        dirs.append(("results_sr", str(base / "results_sr")))
+    i = 2
+    while True:
+        dir_name = f"results_sr{i}"
+        dir_path = base / dir_name
+        if dir_path.is_dir():
+            dirs.append((dir_name, str(dir_path)))
+            i += 1
+        else:
+            break
+
+    print(f"R² >= {r2_threshold} solve rate per run:")
+    print("-" * 50)
+
+    all_solved = {}  # problem -> list of which runs solved it
+
+    for dir_name, dir_path in dirs:
+        solved = 0
+        total = 0
+        for json_file in glob.glob(os.path.join(dir_path, "*_results.json")):
+            try:
+                with open(json_file, 'r') as f:
+                    data = json.load(f)
+                dataset = data.get("dataset", "")
+                test_r2 = data.get("test_r2")
+                if dataset and test_r2 is not None:
+                    total += 1
+                    if test_r2 >= r2_threshold:
+                        solved += 1
+                        if dataset not in all_solved:
+                            all_solved[dataset] = []
+                        all_solved[dataset].append(dir_name)
+            except:
+                pass
+
+        rate = 100 * solved / total if total > 0 else 0
+        print(f"{dir_name:<15} {solved:>3}/{total:<3} ({rate:>5.1f}%)")
+
+    # Best-of-N analysis
+    print("-" * 50)
+    n_runs = len(dirs)
+    total_problems = len(all_solved) if all_solved else 0
+
+    # Count problems solved by at least one run
+    solved_by_any = sum(1 for p, runs in all_solved.items() if len(runs) >= 1)
+    print(f"Solved by ANY run: {solved_by_any} problems")
+
+    # Count problems solved by all runs
+    solved_by_all = sum(1 for p, runs in all_solved.items() if len(runs) == n_runs)
+    print(f"Solved by ALL runs: {solved_by_all} problems")
+
+
+def print_comparison_summary(base_dir: str = ".", pysr_dir: str = None, sr_seeds: list = None,
+                             r2_threshold: float = 0.9999, split_file: str = None):
+    """
+    Print average R² and solve rate (R² >= threshold) for PySR and selected SR seeds.
+
+    Args:
+        base_dir: Base directory containing results
+        pysr_dir: Path to PySR results directory (default: results_pysr/12_20)
+        sr_seeds: List of SR seed directories to compare (default: ['results_sr', 'results_sr2'])
+        r2_threshold: R² threshold to count as "solved" (default 0.9999, i.e. ~1.0)
+        split_file: Optional path to split file (e.g., splits/split_val.txt) to filter problems
+    """
+    import json
+    from pathlib import Path
+
+    base = Path(base_dir)
+
+    if pysr_dir is None:
+        pysr_dir = base / "results_pysr" / "12_20"
+    else:
+        pysr_dir = Path(pysr_dir)
+
+    if sr_seeds is None:
+        sr_seeds = ['results_sr', 'results_sr2']
+
+    # Load split filter if provided
+    filter_problems = None
+    split_name = "all"
+    if split_file:
+        split_path = base / split_file if not Path(split_file).is_absolute() else Path(split_file)
+        if split_path.exists():
+            with open(split_path) as f:
+                filter_problems = set(line.strip() for line in f if line.strip())
+            split_name = split_path.stem
+
+    print("=" * 70)
+    print(f"COMPARISON: Average R² and Solve Rate (R² >= {r2_threshold})")
+    if filter_problems:
+        print(f"Filtered to: {split_name} ({len(filter_problems)} problems)")
+    print("=" * 70)
+
+    def load_results_from_dir(results_dir, filter_set=None):
+        """Load R² values from JSON result files in a directory."""
+        r2_values = []
+        results_dir = Path(results_dir)
+
+        for json_file in results_dir.glob('*_results.json'):
+            try:
+                with open(json_file) as f:
+                    data = json.load(f)
+
+                dataset = data.get('dataset', '')
+                test_r2 = data.get('test_r2')
+
+                # Apply filter if provided
+                if filter_set and dataset not in filter_set:
+                    continue
+
+                if test_r2 is not None:
+                    r2_values.append(test_r2)
+            except Exception:
+                pass
+
+        return r2_values
+
+    def compute_stats(r2_values):
+        """Compute statistics for a set of R² values."""
+        n_problems = len(r2_values)
+        if n_problems == 0:
+            return None
+
+        # Filter outliers for average (keep R² >= -10)
+        r2_filtered = [r2 for r2 in r2_values if r2 >= -10]
+        avg_r2 = sum(r2_filtered) / len(r2_filtered) if r2_filtered else 0
+        n_solved_9999 = sum(1 for r2 in r2_values if r2 >= r2_threshold)
+        n_solved_exact = sum(1 for r2 in r2_values if r2 == 1.0)
+        n_outliers = n_problems - len(r2_filtered)
+
+        return {
+            'n_problems': n_problems,
+            'avg_r2': avg_r2,
+            'n_outliers': n_outliers,
+            'n_solved_9999': n_solved_9999,
+            'n_solved_exact': n_solved_exact,
+        }
+
+    # Collect all results
+    all_results = {}
+
+    # ---- PySR Results ----
+    if pysr_dir.exists():
+        r2_values = load_results_from_dir(pysr_dir, filter_problems)
+        all_results[f"PySR ({pysr_dir.parent.name}/{pysr_dir.name})"] = compute_stats(r2_values)
+    else:
+        print(f"\nPySR: Directory not found at {pysr_dir}")
+
+    # ---- SR Seed Results ----
+    for seed_dir in sr_seeds:
+        seed_path = base / seed_dir
+        if not seed_path.exists():
+            print(f"\n{seed_dir}: Directory not found")
+            continue
+
+        r2_values = load_results_from_dir(seed_path, filter_problems)
+        all_results[seed_dir] = compute_stats(r2_values)
+
+    # Print results table
+    print(f"\n{'Method':<35} {'N':>4}  {'Avg R²':>8}  {'≥0.9999':>12}  {'=1.0':>12}")
+    print("-" * 75)
+
+    for name, stats in all_results.items():
+        if stats is None:
+            print(f"{name:<35} No results found")
+            continue
+
+        n = stats['n_problems']
+        avg_r2 = stats['avg_r2']
+        n_9999 = stats['n_solved_9999']
+        n_exact = stats['n_solved_exact']
+        rate_9999 = 100 * n_9999 / n
+        rate_exact = 100 * n_exact / n
+
+        avg_str = f"{avg_r2:.4f}"
+        if stats['n_outliers'] > 0:
+            avg_str += "*"
+
+        print(f"{name:<35} {n:>4}  {avg_str:>8}  {n_9999:>3}/{n:<3} ({rate_9999:>5.1f}%)  {n_exact:>3}/{n:<3} ({rate_exact:>5.1f}%)")
+
+    print("\n" + "=" * 70)
+
+
 if __name__ == "__main__":
-    exit(main())
+    # quick_r2_solve_rate("/home/sca63/meta_sr")
+    # analyze_r2_across_runs("/home/sca63/meta_sr")
+    print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_train.txt")
+    print()
+    print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_val.txt")
+    print()
+    print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_test.txt")

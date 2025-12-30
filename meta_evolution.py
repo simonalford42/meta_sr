@@ -151,6 +151,15 @@ class OperatorBundle:
         new_bundle.set_operator(operator_type, operator)
         return new_bundle
 
+    def get_codes(self) -> dict:
+        """Get a dictionary of operator codes"""
+        return {
+            "selection": self.selection.code,
+            "mutation": self.mutation.code,
+            "crossover": self.crossover.code,
+            "fitness": self.fitness.code,
+        }
+
 
 # Hardcoded baseline timeouts
 _SOFT_TIMEOUT = 0.00326 * 100  # 326ms
@@ -325,7 +334,7 @@ def semantics_aware_selection(population: List[Operator]) -> Tuple[Operator, Ope
     Select two complementary operators for crossover
 
     Algorithm 1 from the paper: Select parent_a randomly, then select parent_b
-    with highest complementarity score
+    with highest complementarity score (excluding parent_a)
     """
     import random
 
@@ -333,15 +342,19 @@ def semantics_aware_selection(population: List[Operator]) -> Tuple[Operator, Ope
         return random.choice(population), random.choice(population)
 
     # Select first parent randomly
-    parent_a = random.choice(population)
+    parent_a_idx = random.randrange(len(population))
+    parent_a = population[parent_a_idx]
 
-    # Compute complementarity scores
+    # Compute complementarity scores for all candidates except parent_a
     n_datasets = len(parent_a.score_vector)
-    complementarity_scores = []
+    best_comp_score = float('-inf')
+    best_candidate = None
 
-    for candidate in population:
+    for i, candidate in enumerate(population):
+        if i == parent_a_idx:
+            continue  # Exclude parent_a from consideration
+
         if len(candidate.score_vector) != n_datasets:
-            complementarity_scores.append(0)
             continue
 
         # Complementarity = average of max(score_a, score_candidate) across datasets
@@ -349,13 +362,16 @@ def semantics_aware_selection(population: List[Operator]) -> Tuple[Operator, Ope
             max(parent_a.score_vector[j], candidate.score_vector[j])
             for j in range(n_datasets)
         ])
-        complementarity_scores.append(comp_score)
 
-    # Select parent_b with highest complementarity
-    best_idx = np.argmax(complementarity_scores)
-    parent_b = population[best_idx]
+        if comp_score > best_comp_score:
+            best_comp_score = comp_score
+            best_candidate = candidate
 
-    return parent_a, parent_b
+    # Fallback if no valid candidate found (shouldn't happen with len >= 2)
+    if best_candidate is None:
+        best_candidate = population[(parent_a_idx + 1) % len(population)]
+
+    return parent_a, best_candidate
 
 
 def multi_objective_survival_selection(
@@ -415,44 +431,6 @@ def extract_code_from_response(response_text: str, operator_type: str) -> str:
     return response_text
 
 
-def generate_initial_operator(
-    operator_type: str,
-    model: str = "openai/gpt-5-mini",
-    llm_temperature: float = 0.7,
-    llm_seed: int = None,
-) -> str:
-    """Generate an initial operator using LLM"""
-
-    template = TEMPLATES[operator_type]
-    properties = PROPERTIES[operator_type]
-
-    prompt = f"""Your task is to develop an innovative and novel {operator_type} operator for symbolic regression using genetic programming in Python.
-
-{properties}
-
-Ensure that your newly designed function adheres to the following signature:
-{template}
-
-You do not need to provide a usage example.
-
-Embrace creativity, novelty, and bold experimentation to push the boundaries of the state of the art in {operator_type} operators for genetic programming."""
-
-    kwargs = {"temperature": llm_temperature}
-    if llm_seed is not None:
-        kwargs["seed"] = llm_seed
-    response = chat_completion(
-        model=model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
-        **kwargs,
-    )
-
-    code = extract_code_from_response(get_content(response), operator_type)
-    return code
-
-
 def format_trace_feedback(trace_feedback: List, max_traces_per_dataset: int = 10) -> str:
     """
     Format trace feedback into a string for use in LLM prompts.
@@ -506,45 +484,129 @@ def format_trace_feedback(trace_feedback: List, max_traces_per_dataset: int = 10
     return "\n".join(lines)
 
 
+SR_ALGORITHM_PSEUDOCODE = """def fit(self, X, y):
+    population = self.create_initial_population(X, y)
+
+    for generation in range(self.n_generations):
+        fitnesses = [self.fitness_operator(expr, X, y) for expr in population]
+
+        if random.random() < self.optimize_prob:
+            # optimize constants with BFGS
+            population = [self.optimize_constants(e, X, y) for e in population]
+        else:
+            # Elitism: keep best
+            new_population = [self.best_expression(population, fitnesses)]
+
+            # Generate rest through evolution
+            n_crossover = np.random.binomial(len(population) - 1, self.crossover_prob)
+            n_mutation = len(population) - 1 - n_crossover
+
+            # Use selection operator to retrieve candidate crossover/mutation parent(s)
+            crossover_pairs, to_mutate = self.selection_operator(
+                population, fitnesses, n_crossover, n_mutation
+            )
+
+            # Crossover/mutate to create new population
+            for parent1, parent2 in crossover_pairs[:n_crossover]:
+                child = self.crossover_operator(parent1, parent2, X, y)
+                new_population.append(child)
+
+            for parent in to_mutate[:n_mutation]:
+                child = self.mutation_operator(parent, X, y)
+                new_population.append(child)
+
+            population = new_population
+
+    self.best_model_ = self.best_expression(population, fitnesses)
+    return self"""
+
+
+def _format_other_operators(operator_bundle: "OperatorBundle", exclude_type: str) -> str:
+    """Format the other operators' code for inclusion in prompts."""
+    sections = []
+    for op_type in OPERATOR_TYPES:
+        if op_type != exclude_type:
+            op = operator_bundle.get_operator(op_type)
+            sections.append(f"# {op_type.upper()} OPERATOR:\n{op.code}")
+    return "\n\n".join(sections)
+
+
 def mutate_operator(
     elite_operator: Operator,
     operator_type: str,
+    operator_bundle: "OperatorBundle" = None,
     model: str = "openai/gpt-5-mini",
     use_trace_feedback: bool = False,
     llm_temperature: float = 0.7,
     llm_seed: int = None,
+    sample_index: int = None,
 ) -> str:
-    """Mutate an operator using LLM"""
+    """Mutate an operator using LLM.
 
+    Args:
+        elite_operator: The operator to use as inspiration for mutation
+        operator_type: Type of operator being mutated
+        operator_bundle: Bundle containing other operators (for context)
+        model: LLM model to use
+        use_trace_feedback: Whether to include evolution traces in prompt
+        llm_temperature: Sampling temperature
+        llm_seed: Random seed for reproducibility
+        sample_index: Optional index to ensure unique samples (varies cache key)
+
+    Returns:
+        Generated code string for the new operator
+    """
     template = TEMPLATES[operator_type]
-    properties = PROPERTIES[operator_type]
 
-    baseline = f"""Inspirational Example:
-{elite_operator.code}
+    # Build context sections
+    other_operators_section = ""
+    if operator_bundle is not None:
+        other_operators_section = f"""
+The other operators in the algorithm:
+{_format_other_operators(operator_bundle, operator_type)}
+"""
 
-Use this as inspiration to create a distinctly original and inventive {operator_type} operator."""
-
-    # Add trace feedback if enabled and available
     trace_section = ""
     if use_trace_feedback and elite_operator.trace_feedback:
-        trace_section = "\n" + format_trace_feedback(elite_operator.trace_feedback) + "\n"
+        trace_section = f"""
+Evolution traces from recent runs (showing how the algorithm progressed):
+{format_trace_feedback(elite_operator.trace_feedback)}
+"""
 
-    prompt = f"""Your task is to develop an innovative and novel {operator_type} operator for symbolic regression using genetic programming in Python.
+    prompt = f"""You are improving an evolutionary symbolic regression algorithm by proposing a better variant of one of its operators.
 
-{baseline}
-{trace_section}
-{properties}
+## Current {operator_type} operator to improve:
+```python
+{elite_operator.code}
+```
 
-Ensure that your newly designed function adheres to the following signature:
+## SR algorithm pseudocode:
+```python
+{SR_ALGORITHM_PSEUDOCODE}
+```
+{other_operators_section}{trace_section}
+## Your task:
+Propose an improved or alternative {operator_type} operator. Consider:
+- What limitations does the current operator have?
+- How could it better explore the search space?
+- Are there algorithmic improvements or heuristics that could help?
+
+Your function must match this signature:
+```python
 {template}
+```
 
-You do not need to provide a usage example.
-
-Embrace creativity, novelty, and bold experimentation to push the boundaries of the state of the art in {operator_type} operators for genetic programming."""
+Provide only the function implementation, no usage examples needed."""
 
     kwargs = {"temperature": llm_temperature}
     if llm_seed is not None:
-        kwargs["seed"] = llm_seed
+        # Incorporate sample_index into the seed so different samples get different
+        # random states on the server side (not just different cache keys)
+        effective_seed = llm_seed if sample_index is None else llm_seed + sample_index
+        kwargs["seed"] = effective_seed
+    # Add sample_index to kwargs to make cache key unique for each sample
+    if sample_index is not None:
+        kwargs["sample_index"] = sample_index
     response = chat_completion(
         model=model,
         messages=[
@@ -562,50 +624,84 @@ def crossover_operators(
     parent_a: Operator,
     parent_b: Operator,
     operator_type: str,
+    operator_bundle: "OperatorBundle" = None,
     model: str = "openai/gpt-5-mini",
     use_trace_feedback: bool = False,
     llm_temperature: float = 0.7,
     llm_seed: int = None,
 ) -> str:
-    """Crossover two operators using LLM"""
+    """Crossover two operators using LLM.
 
+    Args:
+        parent_a: First parent operator
+        parent_b: Second parent operator
+        operator_type: Type of operator being crossed over
+        operator_bundle: Bundle containing other operators (for context)
+        model: LLM model to use
+        use_trace_feedback: Whether to include evolution traces in prompt
+        llm_temperature: Sampling temperature
+        llm_seed: Random seed for reproducibility
+
+    Returns:
+        Generated code string for the new operator
+    """
     template = TEMPLATES[operator_type]
-    properties = PROPERTIES[operator_type]
 
-    # Add trace feedback if enabled - combine traces from both parents
+    # Build context sections
+    other_operators_section = ""
+    if operator_bundle is not None:
+        other_operators_section = f"""
+The other operators in the algorithm:
+{_format_other_operators(operator_bundle, operator_type)}
+"""
+
+    # Combine trace feedback from both parents
     trace_section = ""
     if use_trace_feedback:
         combined_feedback = []
         if parent_a.trace_feedback:
             combined_feedback.extend(parent_a.trace_feedback)
         if parent_b.trace_feedback:
-            # Avoid duplicates if parents have same traces
             for fb in parent_b.trace_feedback:
                 if fb not in combined_feedback:
                     combined_feedback.append(fb)
         if combined_feedback:
-            trace_section = "\n" + format_trace_feedback(combined_feedback) + "\n"
+            trace_section = f"""
+Evolution traces from recent runs:
+{format_trace_feedback(combined_feedback)}
+"""
 
-    prompt = f"""You are tasked with designing a novel {operator_type} operator for symbolic regression using genetic programming.
+    prompt = f"""You are improving an evolutionary symbolic regression algorithm by combining two existing operators into a better one.
 
-Your goal is to synthesize a new operator that combines the strengths and mitigates the weaknesses of the two operators shown below:
+## Parent operators to combine:
 
-— Operator A —
-Score (Higher is Better): {parent_a.score:.3f}, Lines of Code: {parent_a.lines_of_code}
-Code:
+### Operator A (Score: {parent_a.score:.3f}, {parent_a.lines_of_code} lines):
+```python
 {parent_a.code}
+```
 
-— Operator B —
-Score (Higher is Better): {parent_b.score:.3f}, Lines of Code: {parent_b.lines_of_code}
-Code:
+### Operator B (Score: {parent_b.score:.3f}, {parent_b.lines_of_code} lines):
+```python
 {parent_b.code}
-{trace_section}
-{properties}
+```
 
-Ensure that your newly designed function adheres to the following signature:
+## SR algorithm pseudocode:
+```python
+{SR_ALGORITHM_PSEUDOCODE}
+```
+{other_operators_section}{trace_section}
+## Your task:
+Synthesize a new {operator_type} operator that combines the strengths of both parents. Consider:
+- What works well in each parent?
+- How can you combine their best ideas?
+- Can you improve on both?
+
+Your function must match this signature:
+```python
 {template}
+```
 
-You do not need to provide a usage example."""
+Provide only the function implementation, no usage examples needed."""
 
     kwargs = {"temperature": llm_temperature}
     if llm_seed is not None:
@@ -621,7 +717,3 @@ You do not need to provide a usage example."""
 
     code = extract_code_from_response(get_content(response), operator_type)
     return code
-
-
-# Backwards compatibility aliases
-SelectionOperator = Operator

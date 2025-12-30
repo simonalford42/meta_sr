@@ -183,16 +183,18 @@ def run_pysr_on_dataset(
 
     # Configure PySR
     model = PySRRegressor(
-        procs=n_cpus,
-        populations=3 * n_cpus,
-        niterations=niterations,
+        procs=1,
+        # populations=3 * n_cpus,
         timeout_in_seconds=int(time_minutes * 60),
         binary_operators=["+", "-", "*", "/"],
         unary_operators=["sin", "cos", "exp", "log", "sqrt", "square"],
         maxsize=max_size,
         maxdepth=20,
         batching=False,
-        ncycles_per_iteration=1000,
+        ncycles_per_iteration=10,
+        niterations=niterations,
+        population_size=100,
+        populations=1,
         random_state=seed,
         output_directory=results_dir,
         constraints={

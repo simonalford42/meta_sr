@@ -1,14 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=pysr_1hr
-#SBATCH --output=out/pysr_%A_%a.out
-#SBATCH --error=out/pysr_%A_%a.err
+#SBATCH --job-name=sr_srbench
+#SBATCH --output=out/sr_%A_%a.out
 #SBATCH --array=0-129%30
-#SBATCH --time=01:30:00
-#SBATCH --mem=32G
+#SBATCH --time=01:00:00
+#SBATCH --mem=16G
 #SBATCH --partition=default_partition
- # total nodes
-#SBATCH -N 1
- # total cores
 #SBATCH -n 1
 #SBATCH --requeue
 
@@ -18,12 +14,11 @@ conda activate meta_sr
 DATASETS=($(cat splits/srbench_all.txt))
 DATASET_NAME=${DATASETS[$SLURM_ARRAY_TASK_ID]}
 
-    python run_pysr_srbench.py \
+python run_sr_srbench.py \
     --dataset "$DATASET_NAME" \
-    --time_minutes 60 \
+    --generations 1000 \
+    --population 100 \
     --max_samples 1000 \
-    --seed 42 \
-    --results_dir results_pysr \
-    --n_cpus 1 \
-    --niterations 1000 \
+    --seed 529 \
+    --results_dir results_sr5
     "$@"

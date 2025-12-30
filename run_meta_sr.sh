@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 
  # job name
-#SBATCH -J run
-#SBATCH -o out/%A.out
- # total nodes
-#SBATCH -N 1
+#SBATCH -J meta_sr
+#SBATCH -o out/meta_%A.out
  # total cores
-#SBATCH -n 32
+#SBATCH -n 1
 #SBATCH --requeue
  # total limit (hh:mm:ss)
-#SBATCH -t 09:00:00
-#SBATCH --mem=100G
+#SBATCH -t 29:00:00
+#SBATCH --mem=50G
 #SBATCH --partition=default_partition
 
 source /home/sca63/mambaforge/etc/profile.d/conda.sh
 conda activate meta_sr
 
-python -u main.py --slurm --stages fitness --population 1 --n-crossover 0 --n-mutation 0 --generations 2 --no-trace-feedback
+python -u main.py --population 5 --n-crossover 0 --n-mutation 4 --generations 20 --n-runs 3 --sr-generations 1000 --split splits/split_train.txt --max-samples 1000 --model openai/gpt-5-mini "$@"

@@ -10,10 +10,30 @@ import numpy as np
 import pandas as pd
 import json
 import pickle
+import sys
 
 
 # Path to PMLB datasets
 PMLB_PATH = Path(__file__).parent / 'pmlb' / 'datasets'
+
+class TeeLogger:
+    """Logger that writes to both stdout and a file."""
+
+    def __init__(self, log_file: str):
+        self.terminal = sys.stdout
+        self.log_file = open(log_file, 'w', buffering=1)  # Line buffered
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log_file.write(message)
+        self.log_file.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log_file.flush()
+
+    def close(self):
+        self.log_file.close()
 
 
 def load_pickle(path):
@@ -101,6 +121,12 @@ def load_srbench_dataset(dataset_name: str, max_samples: Optional[int] = None) -
             pass
 
     return X, y, formula
+
+
+def load_dataset_names_from_split(split_file: str) -> List[str]:
+    with open(split_file, 'r') as f:
+        dataset_names = [line.strip() for line in f if line.strip()]
+    return dataset_names
 
 
 def load_datasets_from_split(split_file: str, max_samples: Optional[int] = None, data_seed: Optional[int] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, str]]:

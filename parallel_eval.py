@@ -12,9 +12,10 @@ import sys
 import time
 import json
 import subprocess
+from meta_evolution import OperatorBundle
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Set
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -29,6 +30,7 @@ class TaskSpec:
     seed: int  # Seed for train/val split and SR
     data_seed: int  # Seed for dataset loading (subsampling)
     max_samples: Optional[int] = None  # Used by workers to load datasets
+    run_index: int = 0  # Which run this is (for n_runs > 1)
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -48,6 +50,7 @@ class TaskResult:
     score: float  # R^2 score
     traces: List[str]
     error: Optional[str] = None
+    run_index: int = 0  # Which run this is (for n_runs > 1)
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -69,10 +72,11 @@ def _init_worker():
 
 def _evaluate_task(spec: TaskSpec) -> TaskResult:
     """
-    Worker function: evaluate one operator on one dataset.
+    Worker function: evaluate one operator on one dataset for a single run.
 
     Reconstructs the operator from code string, runs SR, returns score.
     Also reconstructs frozen operators from previous stages.
+    Uses run_index to vary the seed for different runs.
     """
     import numpy as np
     from meta_evolution import create_operator, OperatorBundle, OperatorException
@@ -93,9 +97,10 @@ def _evaluate_task(spec: TaskSpec) -> TaskResult:
         _rnd.seed(spec.data_seed)
         X, y, _ = load_srbench_dataset(spec.dataset_name, max_samples=spec.max_samples)
 
-        # Seed for train/val split and SR (evaluation seed)
-        np.random.seed(spec.seed)
-        _rnd.seed(spec.seed)
+        # Seed for train/val split and SR (base seed + run_index for different runs)
+        run_seed = spec.seed + spec.run_index
+        np.random.seed(run_seed)
+        _rnd.seed(run_seed)
 
         # Train/val split
         n_samples = len(y)
@@ -121,17 +126,19 @@ def _evaluate_task(spec: TaskSpec) -> TaskResult:
         y_pred = best_ind.evaluate(X_val)
         y_pred = np.clip(y_pred, -1e10, 1e10)
 
-        # Compute R^2 score
+        # Compute R^2 score, clipped to minimum 0
         ss_res = np.sum((y_val - y_pred) ** 2)
         ss_tot = np.sum((y_val - np.mean(y_val)) ** 2)
         r2 = 1 - (ss_res / (ss_tot + 1e-10))
+        r2 = max(r2, 0)
 
         return TaskResult(
             operator_id=spec.operator_id,
             dataset_name=spec.dataset_name,
             score=float(r2),
             traces=trace,
-            error=None
+            error=None,
+            run_index=spec.run_index,
         )
 
     except OperatorException as e:
@@ -140,7 +147,8 @@ def _evaluate_task(spec: TaskSpec) -> TaskResult:
             dataset_name=spec.dataset_name,
             score=-1.0,
             traces=[],
-            error=str(e)
+            error=str(e),
+            run_index=spec.run_index,
         )
     except Exception as e:
         return TaskResult(
@@ -148,42 +156,77 @@ def _evaluate_task(spec: TaskSpec) -> TaskResult:
             dataset_name=spec.dataset_name,
             score=-1.0,
             traces=[],
-            error=f"Unexpected error: {str(e)}"
+            error=f"Unexpected error: {str(e)}",
+            run_index=spec.run_index,
         )
 
 
 def _aggregate_results(
     results: List[TaskResult],
     dataset_names: List[str],
-) -> Dict[int, Tuple[float, List[float], List[Dict]]]:
-    """Aggregate task results per operator."""
-    operator_results: Dict[int, Tuple[float, List[float], List[Dict]]] = {}
+    num_operators: int,
+) -> List[Tuple[float, List[float], List[Dict]]]:
+    """Aggregate task results per operator, averaging across runs for each dataset.
 
-    # Group results by operator_id
-    results_by_op: Dict[int, List[TaskResult]] = {}
+    Args:
+        results: List of TaskResult objects (may include placeholders with operator_id=-1)
+        dataset_names: List of dataset names in order
+        num_operators: Expected number of operators (0 to num_operators-1)
+
+    Returns:
+        List of (avg_score, score_vector, trace_feedback) tuples, one per operator
+    """
+    # Group results by (operator_id, dataset_name), filtering out invalid operator_ids
+    results_by_op_dataset: Dict[Tuple[int, str], List[TaskResult]] = {}
     for r in results:
-        if r.operator_id not in results_by_op:
-            results_by_op[r.operator_id] = []
-        results_by_op[r.operator_id].append(r)
+        # Skip placeholder results with invalid operator_id
+        if r.operator_id < 0 or r.operator_id >= num_operators:
+            continue
+        key = (r.operator_id, r.dataset_name)
+        if key not in results_by_op_dataset:
+            results_by_op_dataset[key] = []
+        results_by_op_dataset[key].append(r)
 
-    # Compute aggregates
-    for op_id, op_results in results_by_op.items():
-        # Build score vector in dataset order
-        score_by_dataset = {r.dataset_name: r.score for r in op_results}
-        score_vector = [score_by_dataset.get(name, -1.0) for name in dataset_names]
-        avg_score = float(np.mean(score_vector))
-
-        # Build trace feedback
+    # Compute aggregates for each operator (0 to num_operators-1)
+    operator_results: List[Tuple[float, List[float], List[Dict]]] = []
+    for op_id in range(num_operators):
+        score_vector = []
         trace_feedback = []
-        for r in op_results:
-            trace_feedback.append({
-                "dataset": r.dataset_name,
-                "traces": r.traces,
-                "final_score": r.score,
-                "error": r.error,
-            })
 
-        operator_results[op_id] = (avg_score, score_vector, trace_feedback)
+        for dataset_name in dataset_names:
+            key = (op_id, dataset_name)
+            if key in results_by_op_dataset:
+                run_results = results_by_op_dataset[key]
+                # Average scores across runs
+                run_scores = [r.score for r in run_results]
+                avg_dataset_score = float(np.mean(run_scores))
+                # Combine traces from all runs
+                all_traces = []
+                errors = []
+                for r in run_results:
+                    all_traces.extend(r.traces)
+                    if r.error:
+                        errors.append(r.error)
+
+                score_vector.append(avg_dataset_score)
+                trace_feedback.append({
+                    "dataset": dataset_name,
+                    "traces": all_traces,
+                    "final_score": avg_dataset_score,
+                    "run_scores": run_scores,
+                    "error": "; ".join(errors) if errors else None,
+                })
+            else:
+                score_vector.append(-1.0)
+                trace_feedback.append({
+                    "dataset": dataset_name,
+                    "traces": [],
+                    "final_score": -1.0,
+                    "error": "No results found",
+                })
+
+        avg_score = float(np.mean(score_vector))
+        operator_results.append((avg_score, score_vector, trace_feedback))
 
     return operator_results
 
@@ -213,6 +256,10 @@ class SlurmEvaluator:
         mem_per_cpu: str = "4G",
         dataset_max_samples: Optional[int] = None,
         data_seed: int = 42,
+        max_retries: int = 3,
+        exclude_nodes: Optional[str] = None,
+        constraint: Optional[str] = None,
+        bad_nodes_file: Optional[str] = "bad_nodes.txt",
     ):
         """
         Initialize SLURM evaluator.
@@ -223,6 +270,9 @@ class SlurmEvaluator:
             time_limit: Time limit per task (HH:MM:SS)
             mem_per_cpu: Memory per CPU
             data_seed: Seed for dataset loading (subsampling)
+            max_retries: Maximum number of retries for failed tasks
+            exclude_nodes: Comma-separated list of nodes to exclude (e.g., "node01,node02")
+            constraint: SLURM constraint for node selection (e.g., "avx2" or "cpu_gen:cascadelake")
         """
         self.results_dir = Path(results_dir)
         self.slurm_dir = self.results_dir / "slurm"
@@ -233,16 +283,22 @@ class SlurmEvaluator:
         self.mem_per_cpu = mem_per_cpu
         self.dataset_max_samples = dataset_max_samples
         self.data_seed = data_seed
+        self.max_retries = max_retries
+        self.exclude_nodes = exclude_nodes
+        self.constraint = constraint
+        # File to persist and read bad nodes list (one hostname per line)
+        self.bad_nodes_file = Path(bad_nodes_file).resolve() if bad_nodes_file else None
 
         self._batch_counter = 0
 
     def evaluate_bundles(
         self,
-        bundles: List[Tuple[int, Dict[str, str]]],  # [(id, bundle_codes)]
+        bundles: List[OperatorBundle],
         dataset_names: List[str],
         sr_kwargs: Dict,
         seed: int = 42,
-    ) -> Dict[int, Tuple[float, List[float], List[Dict]]]:
+        n_runs: int = 1,
+    ) -> List[Tuple[float, List[float], List[Dict]]]:
         """Evaluate full bundles via SLURM job array."""
         # Create batch directory
         batch_id = f"eval_{self._batch_counter:04d}"
@@ -252,22 +308,28 @@ class SlurmEvaluator:
         results_subdir = batch_dir / "results"
         results_subdir.mkdir(exist_ok=True)
 
+        # Prepare bundle codes
+        bundles_codes = [o.get_codes() for o in bundles]
+
         # Build task specs (no X/y in JSON); include full bundle codes
+        # Create n_runs tasks per (operator, dataset) pair, each with different run_index
         tasks = []
-        for op_id, bundle_codes in bundles:
+        for op_id, bundle_codes in enumerate(bundles_codes):
             for dataset_name in dataset_names:
-                tasks.append(TaskSpec(
-                    operator_id=op_id,
-                    bundle_codes=bundle_codes,
-                    dataset_name=dataset_name,
-                    sr_kwargs=sr_kwargs,
-                    seed=seed,
-                    data_seed=self.data_seed,
-                    max_samples=self.dataset_max_samples,
-                ))
+                for run_idx in range(n_runs):
+                    tasks.append(TaskSpec(
+                        operator_id=op_id,
+                        bundle_codes=bundle_codes,
+                        dataset_name=dataset_name,
+                        sr_kwargs=sr_kwargs,
+                        seed=seed,
+                        data_seed=self.data_seed,
+                        max_samples=self.dataset_max_samples,
+                        run_index=run_idx,
+                    ))
 
         n_tasks = len(tasks)
-        print(f"  SLURM eval: {n_tasks} tasks in batch {batch_id}")
+        print(f"  SLURM eval: {n_tasks} tasks in batch {batch_id} ({len(bundles)} operators x {len(dataset_names)} datasets x {n_runs} runs)")
 
         # Save task specifications
         tasks_file = batch_dir / "tasks.json"
@@ -275,6 +337,7 @@ class SlurmEvaluator:
             json.dump([t.to_json_dict() for t in tasks], f)
 
         # Submit SLURM job array
+        # Ensure latest bad nodes are considered when building the script
         job_script = self._create_job_script(batch_dir, n_tasks)
         job_id = self._submit_job(job_script)
         print(f"  Submitted SLURM job array: {job_id} ({n_tasks} tasks)")
@@ -283,34 +346,85 @@ class SlurmEvaluator:
         # Wait for completion
         self._wait_for_job(job_id, n_tasks, batch_dir)
 
-        # Collect results
-        results = self._collect_results(results_subdir, n_tasks)
+        # After job finishes, update bad_nodes.txt from logs before any retries
+        try:
+            self._update_bad_nodes_from_logs(batch_dir)
+        except Exception as e:
+            print(f"  WARNING: Failed to update bad nodes from logs: {e}")
+
+        # Collect results and retry failed tasks
+        results, failed_indices = self._collect_results(results_subdir, n_tasks)
+
+        # Retry failed tasks
+        retry_count = 0
+        while failed_indices and retry_count < self.max_retries:
+            retry_count += 1
+            print(f"  Retrying {len(failed_indices)} failed tasks (attempt {retry_count}/{self.max_retries})...")
+
+            # Submit retry job for only the failed tasks
+            # Re-read bad_nodes.txt so retries avoid newly identified bad nodes
+            retry_job_script = self._create_retry_job_script(batch_dir, failed_indices, retry_count)
+            retry_job_id = self._submit_job(retry_job_script)
+            print(f"    Submitted retry job: {retry_job_id}")
+
+            # Wait for retry to complete
+            self._wait_for_retry_job(retry_job_id, len(failed_indices), batch_dir, failed_indices)
+
+            # Re-collect results (updates results list in place for retried tasks)
+            for idx in failed_indices:
+                result_file = results_subdir / f"task_{idx:06d}.json"
+                if result_file.exists():
+                    with open(result_file, 'r') as f:
+                        data = json.load(f)
+                    results[idx] = TaskResult.from_json_dict(data)
+
+            # Check what's still failed
+            _, failed_indices = self._collect_results(results_subdir, n_tasks)
+
+            # Update bad_nodes.txt again based on retry logs
+            try:
+                self._update_bad_nodes_from_logs(batch_dir)
+            except Exception as e:
+                print(f"    WARNING: Failed to update bad nodes from retry logs: {e}")
+
+        if failed_indices:
+            print(f"  WARNING: {len(failed_indices)} tasks still failed after {self.max_retries} retries")
 
         # Save combined results
         combined_file = batch_dir / "combined.json"
         with open(combined_file, 'w') as f:
             json.dump([r.to_json_dict() for r in results], f, indent=2)
 
-        return _aggregate_results(results, dataset_names)
+        return _aggregate_results(results, dataset_names, num_operators=len(bundles))
 
-    def _create_job_script(self, batch_dir: Path, n_tasks: int) -> Path:
-        """Create SLURM job array submission script."""
-        # Use absolute paths to avoid cwd issues
+    def _create_retry_job_script(self, batch_dir: Path, failed_indices: List[int], retry_num: int) -> Path:
+        """Create SLURM job script for retrying specific failed tasks."""
         abs_batch = batch_dir.resolve()
         logs_dir = (abs_batch / "logs").resolve()
         tasks_file = (abs_batch / "tasks.json").resolve()
         results_dir = (abs_batch / "results").resolve()
 
+        # Create array specification for only the failed indices
+        array_spec = ",".join(str(i) for i in failed_indices)
+
+        # Build optional SBATCH directives
+        optional_directives = ""
+        exclude_arg = self._get_exclude_nodes()
+        if exclude_arg:
+            optional_directives += f"#SBATCH --exclude={exclude_arg}\n"
+        if self.constraint:
+            optional_directives += f"#SBATCH --constraint={self.constraint}\n"
+
         script_content = f"""#!/bin/bash
-#SBATCH --job-name=meta_sr_eval
-#SBATCH --output={logs_dir}/task_%a.out
-#SBATCH --error={logs_dir}/task_%a.err
-#SBATCH --array=0-{n_tasks - 1}
+#SBATCH --job-name=meta_sr_retry_{retry_num}
+#SBATCH --output={logs_dir}/retry{retry_num}_task_%a.out
+#SBATCH --error={logs_dir}/retry{retry_num}_task_%a.err
+#SBATCH --array={array_spec}
 #SBATCH --time={self.time_limit}
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu={self.mem_per_cpu}
 #SBATCH --partition={self.partition}
-
+{optional_directives}
 # Environment setup
 source /home/sca63/mambaforge/etc/profile.d/conda.sh
 conda activate meta_sr
@@ -324,6 +438,94 @@ export NUMEXPR_NUM_THREADS=1
 # Ensure Python can import project modules
 cd "$SLURM_SUBMIT_DIR"
 export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
+
+# Log which node this task is running on
+echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
+
+# Run the worker script
+python -m parallel_eval --worker \\
+    --tasks-file "{tasks_file}" \\
+    --task-index $SLURM_ARRAY_TASK_ID \\
+    --output-dir "{results_dir}"
+"""
+
+        script_path = abs_batch / f"retry_{retry_num}.sh"
+        with open(script_path, 'w') as f:
+            f.write(script_content)
+
+        return script_path
+
+    def _wait_for_retry_job(self, job_id: str, n_tasks: int, batch_dir: Path, task_indices: List[int]):
+        """Wait for retry job to complete."""
+        start_time = time.time()
+        last_completed = 0
+        poll_interval = 5  # Faster polling for retries
+
+        while True:
+            # Count completed result files for the specific task indices
+            results_dir = batch_dir / "results"
+            completed = sum(1 for i in task_indices if (results_dir / f"task_{i:06d}.json").exists())
+
+            if completed != last_completed:
+                elapsed = time.time() - start_time
+                print(f"    Retry progress: {completed}/{n_tasks} tasks complete ({elapsed:.0f}s elapsed)")
+                last_completed = completed
+
+            if completed >= n_tasks:
+                print(f"    Retry completed in {time.time() - start_time:.1f}s")
+                break
+
+            # Check job status
+            job_status = self._get_job_status(job_id)
+            if job_status in ('COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'):
+                if completed < n_tasks:
+                    print(f"    Retry job ended with status {job_status}, {completed}/{n_tasks} results")
+                break
+
+            time.sleep(poll_interval)
+
+    def _create_job_script(self, batch_dir: Path, n_tasks: int) -> Path:
+        """Create SLURM job array submission script."""
+        # Use absolute paths to avoid cwd issues
+        abs_batch = batch_dir.resolve()
+        logs_dir = (abs_batch / "logs").resolve()
+        tasks_file = (abs_batch / "tasks.json").resolve()
+        results_dir = (abs_batch / "results").resolve()
+
+        # Build optional SBATCH directives
+        optional_directives = ""
+        exclude_arg = self._get_exclude_nodes()
+        if exclude_arg:
+            optional_directives += f"#SBATCH --exclude={exclude_arg}\n"
+        if self.constraint:
+            optional_directives += f"#SBATCH --constraint={self.constraint}\n"
+
+        script_content = f"""#!/bin/bash
+#SBATCH --job-name=meta_sr_eval
+#SBATCH --output={logs_dir}/task_%a.out
+#SBATCH --error={logs_dir}/task_%a.err
+#SBATCH --array=0-{n_tasks - 1}
+#SBATCH --time={self.time_limit}
+#SBATCH --cpus-per-task=1
+#SBATCH --mem-per-cpu={self.mem_per_cpu}
+#SBATCH --partition={self.partition}
+{optional_directives}
+# Environment setup
+source /home/sca63/mambaforge/etc/profile.d/conda.sh
+conda activate meta_sr
+
+# Avoid thread oversubscription
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
+# Ensure Python can import project modules
+cd "$SLURM_SUBMIT_DIR"
+export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
+
+# Log which node this task is running on
+echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
 
 # Run the worker script
 python -m parallel_eval --worker \\
@@ -341,6 +543,92 @@ python -m parallel_eval --worker \\
 
         return script_path
 
+    # ------------------------- Bad nodes utilities -------------------------
+    def _get_exclude_nodes(self) -> Optional[str]:
+        """Combine explicitly excluded nodes with nodes listed in bad_nodes_file.
+
+        Returns a comma-separated list or None if empty.
+        """
+        nodes: Set[str] = set()
+        if self.exclude_nodes:
+            nodes.update([n.strip() for n in self.exclude_nodes.split(',') if n.strip()])
+        if self.bad_nodes_file and self.bad_nodes_file.exists():
+            try:
+                for line in self.bad_nodes_file.read_text().splitlines():
+                    name = line.strip()
+                    if name and not name.startswith('#'):
+                        # Strip domain suffix (e.g., "node.domain.edu" -> "node")
+                        short_name = name.split('.')[0]
+                        nodes.add(short_name)
+            except Exception:
+                pass
+        if not nodes:
+            return None
+        return ",".join(sorted(nodes))
+
+    def _update_bad_nodes_from_logs(self, batch_dir: Path) -> None:
+        """Scan this batch's logs for 'Illegal instruction' and save offending nodes.
+
+        Appends any new nodes to bad_nodes_file (creating it if needed).
+        """
+        if not self.bad_nodes_file:
+            return
+        logs_dir = (batch_dir / "logs")
+        if not logs_dir.exists():
+            return
+
+        offending: Set[str] = set()
+        # Map task out/err files by basename without extension to pair them
+        # We look for any *.err containing 'Illegal instruction'
+        for err_path in logs_dir.glob("*.err"):
+            try:
+                with open(err_path, "r", encoding="utf-8", errors="ignore") as f:
+                    if "Illegal instruction" not in f.read():
+                        continue
+            except Exception:
+                continue
+
+            out_path = err_path.with_suffix("")
+            out_path = out_path.with_suffix(".out")
+            hostname = None
+            try:
+                with open(out_path, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        if "running on node:" in line:
+                            hostname = line.strip().split(":", 1)[-1].strip()
+                            break
+            except Exception:
+                hostname = None
+
+            if hostname:
+                # Strip domain suffix (e.g., "node.domain.edu" -> "node")
+                short_name = hostname.split('.')[0]
+                offending.add(short_name)
+
+        if not offending:
+            return
+
+        # Merge with existing file contents and write back sorted unique
+        existing: Set[str] = set()
+        if self.bad_nodes_file.exists():
+            try:
+                for ln in self.bad_nodes_file.read_text().splitlines():
+                    name = ln.strip()
+                    if name:
+                        # Also strip domain when reading existing entries
+                        existing.add(name.split('.')[0])
+            except Exception:
+                pass
+        new_nodes = sorted(offending - existing)
+        if not new_nodes:
+            return
+        # Ensure parent dir exists
+        self.bad_nodes_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.bad_nodes_file, "a", encoding="utf-8") as f:
+            for n in new_nodes:
+                f.write(n + "\n")
+        print(f"  Added {len(new_nodes)} node(s) to {self.bad_nodes_file}: {', '.join(new_nodes)}")
+
     def _submit_job(self, script_path: Path) -> str:
         """Submit SLURM job and return job ID."""
         result = subprocess.run(
@@ -350,7 +638,7 @@ python -m parallel_eval --worker \\
         )
 
         if result.returncode != 0:
-            raise RuntimeError(f"sbatch failed: {result.stderr}")
+            raise RuntimeError(f"sbatch failed: {result.stderr}. Command: sbatch {script_path}")
 
         # Parse job ID from output like "Submitted batch job 12345"
         output = result.stdout.strip()
@@ -412,19 +700,28 @@ python -m parallel_eval --worker \\
 
         return result.stdout.strip()
 
-    def _collect_results(self, results_dir: Path, n_tasks: int) -> List[TaskResult]:
-        """Collect results from result files."""
+    def _collect_results(self, results_dir: Path, n_tasks: int) -> Tuple[List[TaskResult], List[int]]:
+        """Collect results from result files.
+
+        Returns:
+            results: List of TaskResult objects (with placeholders for missing)
+            failed_indices: List of task indices that failed or are missing
+        """
         results = []
-        missing = []
+        failed_indices = []
 
         for i in range(n_tasks):
             result_file = results_dir / f"task_{i:06d}.json"
             if result_file.exists():
                 with open(result_file, 'r') as f:
                     data = json.load(f)
-                results.append(TaskResult.from_json_dict(data))
+                result = TaskResult.from_json_dict(data)
+                results.append(result)
+                # Also mark as failed if error contains "illegal instruction" or similar
+                if result.error and ("illegal" in result.error.lower() or "signal" in result.error.lower()):
+                    failed_indices.append(i)
             else:
-                missing.append(i)
+                failed_indices.append(i)
                 # Create a placeholder error result
                 results.append(TaskResult(
                     operator_id=-1,
@@ -434,11 +731,10 @@ python -m parallel_eval --worker \\
                     error=f"Result file missing for task {i}",
                 ))
 
-        if missing:
-            raise ValueError(f"  WARNING: Missing results for {len(missing)} tasks: {missing[:10]}{'...' if len(missing) > 10 else ''}")
-            # print(f"  WARNING: Missing results for {len(missing)} tasks: {missing[:10]}{'...' if len(missing) > 10 else ''}")
+        if failed_indices:
+            print(f"  WARNING: {len(failed_indices)} failed/missing tasks: {failed_indices[:10]}{'...' if len(failed_indices) > 10 else ''}")
 
-        return results
+        return results, failed_indices
 
 
 def get_default_n_workers() -> int:
