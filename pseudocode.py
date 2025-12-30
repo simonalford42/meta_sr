@@ -6,6 +6,7 @@ from typing import Dict
 
 def fit(self, X, y):
     population = self.create_initial_population(X, y)
+
     for generation in range(self.n_generations):
         fitnesses = [self.fitness_operator(expr, X, y) for expr in population]
 

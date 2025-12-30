@@ -718,8 +718,8 @@ Examples:
                        help='Population size (default: 100)')
     parser.add_argument('-r', '--runs', type=int, default=1,
                        help='Number of runs per dataset (default: 1)')
-    parser.add_argument('-m', '--max-samples', type=int, default=10000,
-                       help='Max samples per dataset (default: 10000)')
+    parser.add_argument('-m', '--max-samples', type=int, default=1000,
+                       help='Max samples per dataset (default: 1000)')
 
     # Model parameters
     parser.add_argument('--max-depth', type=int, default=20,
@@ -751,7 +751,6 @@ Examples:
     if args.dataset:
         X, y, formula = load_srbench_dataset(args.dataset, max_samples=args.max_samples)
         datasets = {args.dataset: (X, y, formula)}
-        print(f"  Loaded {args.dataset}: {X.shape[0]} samples, {X.shape[1]} features")
     elif args.split:
         datasets = load_datasets_from_split(args.split, max_samples=args.max_samples)
     else:  # args.datasets
@@ -780,3 +779,4 @@ Examples:
 
 if __name__ == "__main__":
     exit(main())
+    # test_on_problems(HARDER_PROBLEMS, "")
