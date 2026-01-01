@@ -20,14 +20,15 @@ from parallel_eval import SlurmEvaluator
 
 def compute_meta_score(score_vector: List[float]) -> tuple:
     """
-    Compute the meta-evolution score from a vector of R² scores.
+    Compute meta-evolution metrics from a vector of R² scores.
 
-    Primary metric: number of tasks with R² = 1.0
-    Tiebreaker: average R² (clipped to minimum 0)
+    Note: Selection uses avg_r2 directly, but we still track n_perfect for logging.
 
     Returns:
         (composite_score, n_perfect, avg_r2)
-        where composite_score = n_perfect + avg_r2 (so n_perfect dominates)
+        - composite_score: n_perfect + avg_r2 (legacy, not used for selection)
+        - n_perfect: count of tasks with R² = 1.0
+        - avg_r2: average R² (clipped to minimum 0)
     """
     n_perfect = sum(1 for s in score_vector if s >= 1.0 - 1e-9)  # Allow small floating point tolerance
     avg_r2 = float(np.mean([max(0.0, s) for s in score_vector]))
@@ -202,6 +203,43 @@ class RunLogger:
 _run_logger: Optional[RunLogger] = None
 
 
+def _print_bundle_results(bundles: List[OperatorBundle], show_all_runs: bool = True):
+    """Print results for all bundles, optionally showing all run scores."""
+    for i, bundle in enumerate(bundles):
+        skipped = getattr(bundle, 'quick_eval_only', False)
+        status = " (SKIPPED - no improvement on quick eval)" if skipped else ""
+        print(f"Bundle {i+1}:{status}")
+        if hasattr(bundle, 'trace_feedback') and bundle.trace_feedback:
+            for tf in bundle.trace_feedback:
+                dataset = tf["dataset"]
+                score = tf["final_score"]
+                run_scores = tf.get("run_scores", [])
+                error = tf.get("error")
+                if error:
+                    print(f"    {dataset}: R²={score:.4f} (Error: {error})")
+                elif show_all_runs and run_scores and len(run_scores) > 1:
+                    runs_str = " ".join(f"{s:.2f}" for s in run_scores)
+                    print(f"    {dataset}: R²={score:.4f} ({runs_str})")
+                else:
+                    print(f"    {dataset}: R²={score:.4f}")
+        print(f"  n_perfect={bundle.n_perfect}, avg_r2={bundle.avg_r2:.4f}")
+
+
+def _apply_results_to_bundle(bundle: OperatorBundle, avg_score: float, score_vector: List[float], trace_feedback: List[Dict]):
+    """Apply evaluation results to a bundle and propagate to operators."""
+    bundle.score_vector = score_vector
+    bundle.score, bundle.n_perfect, bundle.avg_r2 = compute_meta_score(score_vector)
+    bundle.trace_feedback = trace_feedback
+
+    # Propagate bundle scores to individual operators for semantics-aware selection
+    for op_type in ["fitness", "selection", "mutation", "crossover"]:
+        op = bundle.get_operator(op_type)
+        op.score_vector = score_vector
+        op.score = bundle.score
+        op.n_perfect = bundle.n_perfect
+        op.avg_r2 = bundle.avg_r2
+
+
 def evaluate_bundle_population(
     bundles: List[OperatorBundle],
     label: str,
@@ -210,9 +248,11 @@ def evaluate_bundle_population(
     slurm_evaluator: SlurmEvaluator,
     seed: Optional[int] = None,
     n_runs: Optional[int] = 1,
+    quick_eval_datasets: Optional[List[str]] = None,
+    baseline_quick_scores: Optional[Dict[str, float]] = None,
 ) -> None:
     """
-    Evaluate a population of bundles.
+    Evaluate a population of bundles, with optional quick-eval filtering.
 
     Mutates bundles in-place, setting score, n_perfect, avg_r2, score_vector, trace_feedback.
     Also propagates these scores to individual operators within each bundle for
@@ -226,6 +266,10 @@ def evaluate_bundle_population(
         slurm_evaluator: SlurmEvaluator for multi-node parallelization
         seed: Base random seed for reproducibility
         n_runs: Number of runs per evaluation
+        quick_eval_datasets: If provided, first evaluate on this subset (2 runs).
+            Bundles that don't improve on any task vs baseline skip full eval.
+        baseline_quick_scores: Dict mapping dataset name -> baseline R² score.
+            Required if quick_eval_datasets is provided.
     """
     print(f"\n=== Evaluating {label} ({len(bundles)} bundles) ===")
 
@@ -234,41 +278,96 @@ def evaluate_bundle_population(
 
     all_dataset_names = list(datasets.keys())
 
-    results = slurm_evaluator.evaluate_bundles(
-        bundles=bundles,
-        dataset_names=all_dataset_names,
-        sr_kwargs=sr_kwargs,
-        seed=seed if seed is not None else 42,
-        n_runs=n_runs if n_runs is not None else 1,
-    )
+    # Quick eval mode: first evaluate on subset, filter out non-improving bundles
+    if quick_eval_datasets and baseline_quick_scores:
+        print(f"  Quick eval: {len(quick_eval_datasets)} datasets, 2 runs each")
 
-    for i, (bundle, result) in enumerate(zip(bundles, results)):
-        avg_score, score_vector, trace_feedback = result
-        bundle.score_vector = score_vector
-        bundle.score, bundle.n_perfect, bundle.avg_r2 = compute_meta_score(score_vector)
-        bundle.trace_feedback = trace_feedback
+        quick_results = slurm_evaluator.evaluate_bundles(
+            bundles=bundles,
+            dataset_names=quick_eval_datasets,
+            sr_kwargs=sr_kwargs,
+            seed=seed if seed is not None else 42,
+            n_runs=2,  # Always 2 runs for quick eval
+        )
 
-        # Propagate bundle scores to individual operators for semantics-aware selection
-        for op_type in ["fitness", "selection", "mutation", "crossover"]:
-            op = bundle.get_operator(op_type)
-            op.score_vector = score_vector
-            op.score = bundle.score
-            op.n_perfect = bundle.n_perfect
-            op.avg_r2 = bundle.avg_r2
+        # Determine which bundles show improvement
+        bundles_to_full_eval = []
+        bundles_skipped = []
 
-    # Print results for all bundles
-    for i, bundle in enumerate(bundles):
-        print(f"Bundle {i+1}:")
-        if hasattr(bundle, 'trace_feedback') and bundle.trace_feedback:
-            for tf in bundle.trace_feedback:
+        for bundle, (avg_score, score_vector, trace_feedback) in zip(bundles, quick_results):
+            # Check if any task improved over baseline
+            improved = False
+            for tf in trace_feedback:
                 dataset = tf["dataset"]
                 score = tf["final_score"]
-                error = tf.get("error")
-                if error:
-                    print(f"    {dataset}: R²={score:.4f} (Error: {error})")
-                else:
-                    print(f"    {dataset}: R²={score:.4f}")
-        print(f"  n_perfect={bundle.n_perfect}, avg_r2={bundle.avg_r2:.4f}")
+                baseline = baseline_quick_scores.get(dataset, -1.0)
+                if score > baseline:
+                    improved = True
+                    break
+
+            if improved:
+                bundles_to_full_eval.append(bundle)
+            else:
+                # Mark as skipped, assign -1 scores for all datasets
+                bundle.quick_eval_only = True
+                full_score_vector = []
+                full_trace_feedback = []
+                for ds_name in all_dataset_names:
+                    if ds_name in quick_eval_datasets:
+                        # Use quick eval results for quick eval datasets
+                        idx = quick_eval_datasets.index(ds_name)
+                        full_score_vector.append(score_vector[idx])
+                        full_trace_feedback.append(trace_feedback[idx])
+                    else:
+                        # -1 for skipped datasets
+                        full_score_vector.append(-1.0)
+                        full_trace_feedback.append({
+                            "dataset": ds_name,
+                            "traces": [],
+                            "final_score": -1.0,
+                            "run_scores": [],
+                            "error": "Skipped (no improvement on quick eval)",
+                        })
+                _apply_results_to_bundle(bundle, float(np.mean(full_score_vector)), full_score_vector, full_trace_feedback)
+                bundles_skipped.append(bundle)
+
+        print(f"  Quick eval complete: {len(bundles_to_full_eval)} bundles improved, {len(bundles_skipped)} skipped")
+
+        if not bundles_to_full_eval:
+            # All bundles skipped
+            _print_bundle_results(bundles)
+            return
+
+        # Full eval only for bundles that improved
+        print(f"  Full eval: {len(bundles_to_full_eval)} bundles on {len(all_dataset_names)} datasets")
+        full_results = slurm_evaluator.evaluate_bundles(
+            bundles=bundles_to_full_eval,
+            dataset_names=all_dataset_names,
+            sr_kwargs=sr_kwargs,
+            seed=seed if seed is not None else 42,
+            n_runs=n_runs if n_runs is not None else 1,
+        )
+
+        for bundle, (avg_score, score_vector, trace_feedback) in zip(bundles_to_full_eval, full_results):
+            bundle.quick_eval_only = False
+            _apply_results_to_bundle(bundle, avg_score, score_vector, trace_feedback)
+
+    else:
+        # No quick eval - evaluate all bundles on all datasets
+        results = slurm_evaluator.evaluate_bundles(
+            bundles=bundles,
+            dataset_names=all_dataset_names,
+            sr_kwargs=sr_kwargs,
+            seed=seed if seed is not None else 42,
+            n_runs=n_runs if n_runs is not None else 1,
+        )
+
+        for bundle, (avg_score, score_vector, trace_feedback) in zip(bundles, results):
+            bundle.quick_eval_only = False
+            _apply_results_to_bundle(bundle, avg_score, score_vector, trace_feedback)
+
+    # Print results for all bundles
+    _print_bundle_results(bundles)
 
 
 def evaluate_final_bundle(
@@ -308,8 +407,11 @@ def evaluate_final_bundle(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
+    # Use a separate subdirectory for final evaluation to avoid batch ID collision
+    # with the main evolution's SLURM evaluator
+    final_eval_dir = str(output_path / "final_eval")
     slurm_evaluator = SlurmEvaluator(
-        results_dir=output_dir,
+        results_dir=final_eval_dir,
         partition=slurm_config.get('partition', 'default_partition'),
         time_limit=slurm_config.get('time_limit', '02:00:00'),
         mem_per_cpu=slurm_config.get('mem_per_cpu', '4G'),
@@ -349,7 +451,7 @@ def evaluate_final_bundle(
             "error": trace_feedback[i].get("error") if i < len(trace_feedback) else None,
         }
 
-    # Save results to output directory
+    # Save results to main output directory (not the final_eval subdirectory)
     srbench_output_path = output_path / "srbench_evaluation.json"
     with open(srbench_output_path, "w") as f:
         json.dump(srbench_results, f, indent=2)
@@ -447,7 +549,14 @@ def run_meta_evolution(
     if datasets is None:
         print("No datasets provided; loading default split 'splits/split_train_small.txt'.")
         datasets = load_datasets_from_split('splits/split_train_small.txt', max_samples=1000)
-    print(f"Datasets: {list(datasets.keys())}")
+    all_dataset_names = list(datasets.keys())
+    print(f"Datasets: {all_dataset_names}")
+
+    # Select 1/4 of datasets for quick evaluation (fixed for entire evolution)
+    n_quick = max(1, len(all_dataset_names) // 4)
+    rng = random.Random(seed if seed is not None else 42)
+    quick_eval_datasets = rng.sample(all_dataset_names, n_quick)
+    print(f"Quick eval datasets ({n_quick}/{len(all_dataset_names)}): {quick_eval_datasets}")
 
     try:
         # === Generation 0: Baseline with default operators ===
@@ -458,7 +567,7 @@ def run_meta_evolution(
         default_bundle = OperatorBundle.create_default()
         population = [default_bundle]
 
-        # Evaluate baseline
+        # Evaluate baseline (full eval, no quick filtering for baseline)
         evaluate_bundle_population(
             bundles=population,
             label="Baseline",
@@ -471,6 +580,13 @@ def run_meta_evolution(
 
         best_bundle = default_bundle
         print(f"\nBaseline: n_perfect={best_bundle.n_perfect}, avg_r2={best_bundle.avg_r2:.4f}")
+
+        # Extract baseline scores on quick eval datasets for comparison
+        baseline_quick_scores = {}
+        for tf in default_bundle.trace_feedback:
+            if tf["dataset"] in quick_eval_datasets:
+                baseline_quick_scores[tf["dataset"]] = tf["final_score"]
+        print(f"Baseline quick eval scores: {baseline_quick_scores}")
 
         # Log generation 0
         logger.log_bundle_generation(
@@ -489,8 +605,8 @@ def run_meta_evolution(
             print(f"Generation {gen+1}/{n_generations} - Evolving {operator_type.upper()}")
             print(f"{'='*60}")
 
-            # Elitism: keep the best bundle
-            elite = max(population, key=lambda b: b.score)
+            # Elitism: keep the best bundle (by avg_r2, not n_perfect)
+            elite = max(population, key=lambda b: b.avg_r2)
             print(f"Elite: n_perfect={elite.n_perfect}, avg_r2={elite.avg_r2:.4f}")
 
             offspring = []
@@ -498,6 +614,8 @@ def run_meta_evolution(
             # Crossover
             print(f"\nGenerating {n_crossover} offspring via crossover...")
             for i in range(n_crossover):
+                print(f"\n--- Crossover {i+1}/{n_crossover} ---")
+                print(f"Parent operators for {operator_type}:")
                 for attempt in range(10):
                     # Select two parent bundles based on overall score
                     # Use semantics_aware_selection on the operators of the current type
@@ -510,6 +628,10 @@ def run_meta_evolution(
                     parent_a = parent_a_op._parent_bundle
                     parent_b = parent_b_op._parent_bundle
 
+                    if attempt == 0:
+                        print(f"  Parent A ({operator_type}):\n{parent_a_op.code[:300]}...")
+                        print(f"  Parent B ({operator_type}):\n{parent_b_op.code[:300]}...")
+
                     # Crossover the specific operator type
                     code = crossover_operators(
                         parent_a.get_operator(operator_type),
@@ -520,12 +642,13 @@ def run_meta_evolution(
                         llm_temperature=llm_temperature,
                         llm_seed=llm_seed,
                     )
+                    print(f"  [Attempt {attempt+1}] Generated crossover code:\n{code[:400]}...")
                     new_op, passed, error = create_and_test_operator(code, operator_type)
 
                     if passed:
-                        # Create new bundle: use operators from the better-scoring parent,
+                        # Create new bundle: use operators from the better-scoring parent (by avg_r2),
                         # except for the crossed-over operator type
-                        better_parent = parent_a if parent_a.score >= parent_b.score else parent_b
+                        better_parent = parent_a if parent_a.avg_r2 >= parent_b.avg_r2 else parent_b
                         new_bundle = OperatorBundle(
                             selection=better_parent.selection if operator_type != "selection" else new_op,
                             mutation=better_parent.mutation if operator_type != "mutation" else new_op,
@@ -541,6 +664,8 @@ def run_meta_evolution(
             # Mutation
             print(f"\nGenerating {n_mutation} offspring via mutation...")
             for i in range(n_mutation):
+                print(f"\n--- Mutation {i+1}/{n_mutation} ---")
+                print(f"  Mutating elite's {operator_type} operator:\n{elite.get_operator(operator_type).code[:300]}...")
                 for attempt in range(10):
                     code = mutate_operator(
                         elite.get_operator(operator_type),
@@ -551,6 +676,7 @@ def run_meta_evolution(
                         llm_seed=llm_seed,
                         sample_index=gen * n_mutation + i * 10 + attempt,
                     )
+                    print(f"  [Attempt {attempt+1}] Generated mutation code:\n{code[:400]}...")
                     new_op, passed, error = create_and_test_operator(code, operator_type)
 
                     if passed:
@@ -567,7 +693,7 @@ def run_meta_evolution(
                 else:
                     raise ValueError(f"Failed to generate valid {operator_type} mutation after 10 attempts")
 
-            # Evaluate offspring
+            # Evaluate offspring with quick eval filtering
             if offspring:
                 evaluate_bundle_population(
                     bundles=offspring,
@@ -577,14 +703,16 @@ def run_meta_evolution(
                     slurm_evaluator=slurm_evaluator,
                     seed=seed,
                     n_runs=n_runs,
+                    quick_eval_datasets=quick_eval_datasets,
+                    baseline_quick_scores=baseline_quick_scores,
                 )
 
             # Update population: elite + offspring
             population = [elite] + offspring
 
-            # Track best
-            current_best = max(population, key=lambda b: b.score)
-            if current_best.score > best_bundle.score:
+            # Track best (by avg_r2, not n_perfect)
+            current_best = max(population, key=lambda b: b.avg_r2)
+            if current_best.avg_r2 > best_bundle.avg_r2:
                 best_bundle = current_best
 
             # Generation summary
