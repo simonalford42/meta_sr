@@ -23,6 +23,134 @@ from sr_operators import (
 # System prompt for LLM
 SYSTEM_PROMPT = """When writing code, prefer NumPy vectorized operations and avoid explicit Python for-loops unless absolutely necessary. Please implement code within 30 lines."""
 
+# Flag to enable diversity-encouraging prompts (set to False to use original prompts)
+USE_DIVERSE_PROMPTS = True
+
+# Number of ideas to brainstorm before picking one
+N_BRAINSTORM_IDEAS = 15
+
+
+def brainstorm_operator_ideas(
+    operator_type: str,
+    current_code: str,
+    model: str = "openai/gpt-4o-mini",
+    n_ideas: int = N_BRAINSTORM_IDEAS,
+    llm_temperature: float = 1.0,
+) -> List[str]:
+    """Brainstorm diverse implementation ideas for an operator.
+
+    Returns a list of one-sentence descriptions of different approaches.
+    """
+    import random
+
+    prompt = f"""You are brainstorming different algorithmic approaches for a {operator_type} operator in an evolutionary symbolic regression algorithm.
+
+Current implementation (for reference - we want DIFFERENT approaches):
+```python
+{current_code}
+```
+
+Generate exactly {n_ideas} DIVERSE one-sentence descriptions of fundamentally different {operator_type} implementations.
+
+Requirements:
+- Each idea must be a genuinely different algorithmic approach
+- NO minor variations (e.g., "same but with different parameters")
+- Include ideas from different paradigms: probabilistic, deterministic, adaptive, semantic, multi-objective, etc.
+- Be creative - include unconventional ideas too
+
+Format your response as a numbered list:
+1. [One sentence description]
+2. [One sentence description]
+...
+{n_ideas}. [One sentence description]"""
+
+    response = chat_completion(
+        model=model,
+        messages=[
+            {"role": "system", "content": "You are an expert in evolutionary computation and genetic programming. Be creative and diverse in your suggestions."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=llm_temperature,
+    )
+
+    content = get_content(response)
+
+    # Parse numbered list
+    ideas = []
+    for line in content.split('\n'):
+        line = line.strip()
+        # Match lines starting with number followed by . or )
+        if line and len(line) > 3:
+            # Remove numbering prefix like "1.", "1)", "1:", etc.
+            import re
+            match = re.match(r'^\d+[\.\)\:\-]\s*(.+)$', line)
+            if match:
+                idea = match.group(1).strip()
+                if idea:
+                    ideas.append(idea)
+
+    return ideas
+
+
+def pick_and_implement_idea(
+    operator_type: str,
+    idea: str,
+    current_code: str,
+    template: str,
+    other_operators_section: str = "",
+    trace_section: str = "",
+    model: str = "openai/gpt-4o-mini",
+    llm_temperature: float = 0.7,
+    llm_seed: int = None,
+    sample_index: int = None,
+) -> str:
+    """Implement a specific idea for an operator."""
+    from operator_templates import SR_ALGORITHM_PSEUDOCODE
+
+    prompt = f"""You are implementing a specific approach for a {operator_type} operator in an evolutionary symbolic regression algorithm.
+
+## The approach to implement:
+**{idea}**
+
+## Current implementation (for reference):
+```python
+{current_code}
+```
+
+## SR algorithm pseudocode:
+```python
+{SR_ALGORITHM_PSEUDOCODE}
+```
+{other_operators_section}{trace_section}
+## Your task:
+Implement the {operator_type} operator using EXACTLY the approach described above: "{idea}"
+
+Your function must match this signature:
+```python
+{template}
+```
+
+Provide only the function implementation."""
+
+    kwargs = {"temperature": llm_temperature}
+    if llm_seed is not None:
+        effective_seed = llm_seed if sample_index is None else llm_seed + sample_index
+        kwargs["seed"] = effective_seed
+    if sample_index is not None:
+        kwargs["sample_index"] = sample_index
+
+    response = chat_completion(
+        model=model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ],
+        **kwargs,
+    )
+
+    code = extract_code_from_response(get_content(response), operator_type)
+    return code
+
 
 class OperatorException(Exception):
     """Custom exception for operator errors"""
@@ -573,6 +701,44 @@ Evolution traces from recent runs (showing how the algorithm progressed):
 {format_trace_feedback(elite_operator.trace_feedback)}
 """
 
+    # Two-stage approach: brainstorm ideas, then pick one randomly and implement
+    if USE_DIVERSE_PROMPTS:
+        import random
+
+        # Stage 1: Brainstorm diverse ideas
+        ideas = brainstorm_operator_ideas(
+            operator_type=operator_type,
+            current_code=elite_operator.code,
+            model=model,
+            n_ideas=N_BRAINSTORM_IDEAS,
+            llm_temperature=1.0,  # High temperature for creative brainstorming
+        )
+
+        if not ideas:
+            print(f"Warning: No ideas generated for {operator_type}, falling back to original prompt")
+            # Fall through to original prompt
+        else:
+            # Pick a random idea
+            rng = random.Random(llm_seed + sample_index if llm_seed and sample_index else None)
+            selected_idea = rng.choice(ideas)
+            print(f"  Selected idea: {selected_idea}")
+
+            # Stage 2: Implement the selected idea
+            code = pick_and_implement_idea(
+                operator_type=operator_type,
+                idea=selected_idea,
+                current_code=elite_operator.code,
+                template=template,
+                other_operators_section=other_operators_section,
+                trace_section=trace_section,
+                model=model,
+                llm_temperature=llm_temperature,
+                llm_seed=llm_seed,
+                sample_index=sample_index,
+            )
+            return code
+
+    # Original prompt (fallback or when USE_DIVERSE_PROMPTS is False)
     prompt = f"""You are improving an evolutionary symbolic regression algorithm by proposing a better variant of one of its operators.
 
 ## Current {operator_type} operator to improve:
@@ -600,11 +766,8 @@ Provide only the function implementation, no usage examples needed."""
 
     kwargs = {"temperature": llm_temperature}
     if llm_seed is not None:
-        # Incorporate sample_index into the seed so different samples get different
-        # random states on the server side (not just different cache keys)
         effective_seed = llm_seed if sample_index is None else llm_seed + sample_index
         kwargs["seed"] = effective_seed
-    # Add sample_index to kwargs to make cache key unique for each sample
     if sample_index is not None:
         kwargs["sample_index"] = sample_index
     response = chat_completion(
@@ -671,6 +834,45 @@ Evolution traces from recent runs:
 {format_trace_feedback(combined_feedback)}
 """
 
+    # Two-stage approach: brainstorm ideas considering both parents, then pick one randomly and implement
+    if USE_DIVERSE_PROMPTS:
+        import random
+
+        # For crossover, combine parent codes as context for brainstorming
+        combined_code = f"Parent A:\n{parent_a.code}\n\nParent B:\n{parent_b.code}"
+
+        # Stage 1: Brainstorm diverse ideas
+        ideas = brainstorm_operator_ideas(
+            operator_type=operator_type,
+            current_code=combined_code,
+            model=model,
+            n_ideas=N_BRAINSTORM_IDEAS,
+            llm_temperature=1.0,
+        )
+
+        if not ideas:
+            print(f"Warning: No ideas generated for {operator_type} crossover, falling back to original prompt")
+        else:
+            # Pick a random idea
+            rng = random.Random(llm_seed if llm_seed else None)
+            selected_idea = rng.choice(ideas)
+            print(f"  Selected idea: {selected_idea}")
+
+            # Stage 2: Implement the selected idea
+            code = pick_and_implement_idea(
+                operator_type=operator_type,
+                idea=selected_idea,
+                current_code=combined_code,
+                template=template,
+                other_operators_section=other_operators_section,
+                trace_section=trace_section,
+                model=model,
+                llm_temperature=llm_temperature,
+                llm_seed=llm_seed,
+            )
+            return code
+
+    # Original prompt (fallback or when USE_DIVERSE_PROMPTS is False)
     prompt = f"""You are improving an evolutionary symbolic regression algorithm by combining two existing operators into a better one.
 
 ## Parent operators to combine:
