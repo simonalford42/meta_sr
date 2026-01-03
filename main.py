@@ -287,7 +287,7 @@ def evaluate_bundle_population(
             dataset_names=quick_eval_datasets,
             sr_kwargs=sr_kwargs,
             seed=seed if seed is not None else 42,
-            n_runs=2,  # Always 2 runs for quick eval
+            n_runs=min(2, n_runs) if n_runs is not None else 2,
         )
 
         # Determine which bundles show improvement
@@ -628,9 +628,9 @@ def run_meta_evolution(
                     parent_a = parent_a_op._parent_bundle
                     parent_b = parent_b_op._parent_bundle
 
-                    if attempt == 0:
-                        print(f"  Parent A ({operator_type}):\n{parent_a_op.code[:300]}...")
-                        print(f"  Parent B ({operator_type}):\n{parent_b_op.code[:300]}...")
+                    # if attempt == 0:
+                        # print(f"  Parent A ({operator_type}):\n{parent_a_op.code[:300]}...")
+                        # print(f"  Parent B ({operator_type}):\n{parent_b_op.code[:300]}...")
 
                     # Crossover the specific operator type
                     code = crossover_operators(
@@ -642,7 +642,7 @@ def run_meta_evolution(
                         llm_temperature=llm_temperature,
                         llm_seed=llm_seed,
                     )
-                    print(f"  [Attempt {attempt+1}] Generated crossover code:\n{code[:400]}...")
+                    print(f"  [Attempt {attempt+1}] Generated crossover code:\n{code}...")
                     new_op, passed, error = create_and_test_operator(code, operator_type)
 
                     if passed:
@@ -665,7 +665,7 @@ def run_meta_evolution(
             print(f"\nGenerating {n_mutation} offspring via mutation...")
             for i in range(n_mutation):
                 print(f"\n--- Mutation {i+1}/{n_mutation} ---")
-                print(f"  Mutating elite's {operator_type} operator:\n{elite.get_operator(operator_type).code[:300]}...")
+                # print(f"  Mutating elite's {operator_type} operator:\n{elite.get_operator(operator_type).code[:300]}...")
                 for attempt in range(10):
                     code = mutate_operator(
                         elite.get_operator(operator_type),
@@ -676,7 +676,7 @@ def run_meta_evolution(
                         llm_seed=llm_seed,
                         sample_index=gen * n_mutation + i * 10 + attempt,
                     )
-                    print(f"  [Attempt {attempt+1}] Generated mutation code:\n{code[:400]}...")
+                    print(f"  [Attempt {attempt+1}] Generated mutation code:\n{code}...")
                     new_op, passed, error = create_and_test_operator(code, operator_type)
 
                     if passed:
@@ -746,7 +746,7 @@ def run_meta_evolution(
             }
             print(f"\n{op_type.upper()}:")
             print(f"  LOC: {op.lines_of_code}")
-            print(f"  Code preview: {op.code[:100]}...")
+            print(f"  Code:\n{op.code}...")
 
         # Add bundle-level metrics to results
         results["bundle"] = {
@@ -804,7 +804,7 @@ if __name__ == "__main__":
     # Model
     parser.add_argument('--model', type=str, default='openai/gpt-5-mini',
                        help='LLM model to use (default: openai/gpt-5-mini)')
-    parser.add_argument('--temperature', type=float, default=0.7, help='LLM sampling temperature')
+    parser.add_argument('--temperature', type=float, default=1.0, help='LLM sampling temperature')
 
     # Operator types to evolve (round-robin order)
     parser.add_argument('--operator-types', type=str, default='fitness,selection,mutation,crossover',
