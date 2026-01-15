@@ -1257,19 +1257,21 @@ def compare_seeds(dir1, dir2, r2_threshold=0.999, use_symbolic=True, verbose=Tru
     }
 
 
-def analyze_r2_across_runs(base_dir: str = "."):
+def analyze_r2_across_runs(base_dir: str = ".", verbose: bool = True):
     """
     Analyze R² scores across multiple results_sr{i} directories.
 
-    Calculates mean and sample variance (unbiased, using n-1 denominator)
-    for each problem across all available runs, then prints results sorted
-    by variance (lowest to highest).
+    Shows mean and std of average R² across tasks for:
+    1. All tasks (whole split)
+    2. Train split (splits/split_train.txt)
+    3. Val split (splits/split_val.txt)
 
     Args:
         base_dir: Base directory containing results_sr* directories
+        verbose: Whether to print per-problem details
 
     Returns:
-        list of dicts with keys: problem, mean, variance, n_runs, r2_values
+        dict with summary statistics for each split
     """
     import json
     import glob
@@ -1297,13 +1299,16 @@ def analyze_r2_across_runs(base_dir: str = "."):
 
         return sorted(dirs)
 
-    def collect_r2_scores(results_dirs: list, min_r2: float = -100) -> dict:
-        """Collect R² scores for each problem across all directories.
+    def load_split(split_path: str) -> set:
+        """Load dataset names from a split file."""
+        try:
+            with open(split_path, 'r') as f:
+                return set(line.strip() for line in f if line.strip())
+        except FileNotFoundError:
+            return set()
 
-        Args:
-            results_dirs: List of directory paths to search
-            min_r2: Minimum R² value to include (filters outliers below this)
-        """
+    def collect_r2_scores(results_dirs: list, min_r2: float = -100) -> dict:
+        """Collect R² scores for each problem across all directories."""
         scores = defaultdict(list)
 
         for dir_path in results_dirs:
@@ -1323,8 +1328,8 @@ def analyze_r2_across_runs(base_dir: str = "."):
 
         return dict(scores)
 
-    def calculate_stats(scores: list) -> tuple:
-        """Calculate mean and sample variance (unbiased estimate using n-1)."""
+    def calculate_per_problem_stats(scores: list) -> tuple:
+        """Calculate mean and sample variance for a single problem."""
         n = len(scores)
         if n == 0:
             return float('nan'), float('nan')
@@ -1334,69 +1339,123 @@ def analyze_r2_across_runs(base_dir: str = "."):
         if n == 1:
             return mean, float('nan')
 
-        # Sample variance with Bessel's correction (n-1 denominator)
         variance = sum((x - mean) ** 2 for x in scores) / (n - 1)
-
         return mean, variance
 
+    def calculate_split_summary(stats: list, split_name: str) -> dict:
+        """Calculate mean and std of avg R² across problems in a split."""
+        if not stats:
+            return {'n_problems': 0, 'mean': float('nan'), 'std': float('nan')}
+
+        # Get the mean R² for each run (averaged across problems)
+        means = [s['mean'] for s in stats if s['mean'] == s['mean']]  # filter NaN
+
+        if not means:
+            return {'n_problems': 0, 'mean': float('nan'), 'std': float('nan')}
+
+        n = len(means)
+        avg = sum(means) / n
+        if n > 1:
+            std = (sum((x - avg) ** 2 for x in means) / (n - 1)) ** 0.5
+        else:
+            std = float('nan')
+
+        return {
+            'n_problems': n,
+            'mean': avg,
+            'std': std,
+            'vals': means,
+        }
+
     # Main logic
+    base = Path(base_dir)
     results_dirs = get_results_dirs(base_dir)
 
     if not results_dirs:
         print("No results_sr* directories found.")
-        return []
+        return {}
 
     print(f"Found {len(results_dirs)} results directories:")
     for d in results_dirs:
         print(f"  - {d}")
     print()
 
-    scores = collect_r2_scores(results_dirs)
+    # Collect all R² scores
+    all_scores = collect_r2_scores(results_dirs)
+    return all_scores
 
-    if not scores:
+    if not all_scores:
         print("No results found.")
-        return []
+        return {}
 
-    # Calculate stats for each problem
-    stats = []
-    for problem, r2_values in scores.items():
-        mean, variance = calculate_stats(r2_values)
-        stats.append({
+    # Load splits
+    train_split = load_split(base / "splits" / "split_train.txt")
+    val_split = load_split(base / "splits" / "split_val.txt")
+
+    # Calculate per-problem stats
+    all_stats = []
+    train_stats = []
+    val_stats = []
+
+    for problem, r2_values in all_scores.items():
+        mean, variance = calculate_per_problem_stats(r2_values)
+        stat = {
             'problem': problem,
             'mean': mean,
             'variance': variance,
+            'std': variance ** 0.5 if variance == variance else float('nan'),
             'n_runs': len(r2_values),
             'r2_values': r2_values
-        })
+        }
+        all_stats.append(stat)
 
-    # Sort by variance (lowest to highest), putting NaN at the end
-    stats.sort(key=lambda x: (x['variance'] != x['variance'], x['variance']))
+        if problem in train_split:
+            train_stats.append(stat)
+        if problem in val_split:
+            val_stats.append(stat)
 
-    # Print results
-    print(f"{'Problem':<30} {'Mean R²':>10} {'Variance':>12} {'N':>4}  R² values")
-    print("-" * 100)
+    # Sort by variance
+    all_stats.sort(key=lambda x: (x['variance'] != x['variance'], x['variance']))
 
-    for s in stats:
-        var_str = f"{s['variance']:.6f}" if s['variance'] == s['variance'] else "N/A"
-        r2_vals = ", ".join(f"{v:.4f}" for v in sorted(s['r2_values'], reverse=True))
-        print(f"{s['problem']:<30} {s['mean']:>10.6f} {var_str:>12} {s['n_runs']:>4}  [{r2_vals}]")
+    # Print per-problem details if verbose
+    if verbose:
+        print(f"{'Problem':<35} {'Mean R²':>10} {'Std':>10} {'N':>4}  R² values")
+        print("-" * 100)
 
-    print("-" * 60)
-    print(f"Total problems: {len(stats)}")
+        for s in all_stats:
+            std_str = f"{s['std']:.4f}" if s['std'] == s['std'] else "N/A"
+            r2_vals = ", ".join(f"{v:.4f}" for v in sorted(s['r2_values'], reverse=True))
+            print(f"{s['problem']:<35} {s['mean']:>10.4f} {std_str:>10} {s['n_runs']:>4}  [{r2_vals}]")
 
-    # Summary stats
-    valid_means = [s['mean'] for s in stats if s['mean'] == s['mean']]
-    valid_vars = [s['variance'] for s in stats if s['variance'] == s['variance']]
+        print()
 
-    if valid_means:
-        overall_mean = sum(valid_means) / len(valid_means)
-        print(f"Average R² across problems: {overall_mean:.6f}")
+    # Calculate and print summary for each split
+    summaries = {}
 
-    if valid_vars:
-        avg_var = sum(valid_vars) / len(valid_vars)
-        print(f"Average variance across problems: {avg_var:.6f}")
+    print("=" * 70)
+    print("SUMMARY: Mean and Std of Avg R² Across Tasks")
+    print("=" * 70)
+    print(f"{'Split':<20} {'N Problems':>12} {'Mean R²':>12} {'Std R²':>12} {'Vals':>12}")
+    print("-" * 58)
 
-    return stats
+    for split_name, stats in [("All", all_stats), ("Train", train_stats), ("Val", val_stats)]:
+        summary = calculate_split_summary(stats, split_name)
+        summaries[split_name.lower()] = summary
+
+        mean_str = f"{summary['mean']:.4f}" if summary['mean'] == summary['mean'] else "N/A"
+        std_str = f"{summary['std']:.4f}" if summary['std'] == summary['std'] else "N/A"
+        vals_str = f"{summary['vals']}" if 'vals' in summary else "N/A"
+
+        print(f"{split_name:<20} {summary['n_problems']:>12} {mean_str:>12} {std_str:>12} {vals_str:>12}")
+
+    print("=" * 70)
+
+    return {
+        'all': summaries.get('all', {}),
+        'train': summaries.get('train', {}),
+        'val': summaries.get('val', {}),
+        'per_problem': all_stats,
+    }
 
 
 def analyze_best_of_n_match_rate(base_dir: str = ".", min_r2: float = -100):
@@ -1786,8 +1845,9 @@ def print_comparison_summary(base_dir: str = ".", pysr_dir: str = None, sr_seeds
 if __name__ == "__main__":
     # quick_r2_solve_rate("/home/sca63/meta_sr")
     # analyze_r2_across_runs("/home/sca63/meta_sr")
-    print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_train.txt")
-    print()
-    print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_val.txt")
-    print()
-    print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_test.txt")
+    # print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_train.txt")
+    # print()
+    # print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_val.txt")
+    # print()
+    # print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_test.txt")
+    analyze_r2_across_runs()

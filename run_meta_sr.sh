@@ -14,5 +14,5 @@
 source /home/sca63/mambaforge/etc/profile.d/conda.sh
 conda activate meta_sr
 
-# python -u main.py --population 5 --n-crossover 0 --n-mutation 4 --generations 20 --n-runs 3 --sr-generations 1000 --split splits/split_train.txt --max-samples 1000 --model openai/gpt-5-mini "$@"
-python -u main.py --population 2 --n-crossover 0 --n-mutation 1 --generations 5 --n-runs 1 --sr-generations 100 --split splits/split_train.txt --max-samples 1000 --model openai/gpt-5-mini "$@"
+python -u main.py --population 10 --n-crossover 3 --n-mutation 6 --generations 10 --n-runs 1 --sr-generations 1000 --split splits/split_train.txt --max-samples 1000 --model openai/gpt-5-mini "$@"
+# python -u main.py --population 5 --n-crossover 0 --n-mutation 4 --generations 2 --n-runs 1 --sr-generations 100 --split splits/split_train.txt --max-samples 1000 --model openai/gpt-5-mini "$@"

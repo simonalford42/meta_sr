@@ -6,7 +6,7 @@ Usage:
 
     # Make API calls (automatically cached)
     response = chat_completion(
-        model="openai/gpt-4o-mini",
+        model="openai/gpt-5-mini",
         messages=[{"role": "user", "content": "Hello"}],
         max_tokens=100
     )
@@ -29,6 +29,7 @@ import json
 import hashlib
 import time
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional
 
 from sqlalchemy import Column, Integer, String, Float, Text, create_engine, select
@@ -256,6 +257,7 @@ def chat_completion(
         if not missing_indices:
             # All samples cached, reconstruct response
             cached_choices.sort(key=lambda x: x[0])
+            print(f"      [API] cached (no API call)")
             return {
                 'choices': [choice for _, choice in cached_choices],
                 'model': model,
@@ -273,6 +275,7 @@ def chat_completion(
     if use_cache and n_samples == 1 and sample_index_offset == 0:
         cached_response = _cache.lookup(model, messages, temperature, max_tokens, cache_kwargs)
         if cached_response is not None:
+            print(f"      [API] cached (no API call)")
             return cached_response
 
     if api_key is None:
@@ -289,6 +292,7 @@ def chat_completion(
         "model": model,
         "messages": messages,
         "usage": {"include": True},  # Request usage/cost info
+        "reasoning": {"effort": "high"},  # Use minimal reasoning for faster responses
         **kwargs
     }
 
@@ -307,6 +311,7 @@ def chat_completion(
 
     for attempt in range(max_retries + 1):
         try:
+            api_start = time.time()
             response = requests.post(
                 OPENROUTER_API_URL,
                 headers=headers,
@@ -314,7 +319,13 @@ def chat_completion(
                 timeout=120,  # 2 minute timeout
             )
             response.raise_for_status()
+            api_elapsed = time.time() - api_start
             data = response.json()
+
+            # Print per-call timing and token info
+            if "usage" in data:
+                u = data["usage"]
+                print(f"      [API] {api_elapsed:.1f}s | in={u.get('prompt_tokens', 0):,} out={u.get('completion_tokens', 0):,} tokens")
 
             # Track usage
             if "usage" in data:
@@ -425,3 +436,40 @@ def chat_completion(
 def get_content(response: Dict[str, Any]) -> str:
     """Helper to extract content from a chat completion response"""
     return response["choices"][0]["message"]["content"]
+
+
+def chat_completion_batch(
+    requests_list: List[Dict[str, Any]],
+    max_workers: int = 8
+) -> List[Dict[str, Any]]:
+    """
+    Execute multiple chat completions in parallel.
+
+    Args:
+        requests_list: List of dicts, each containing kwargs for chat_completion()
+            e.g. [{"model": "...", "messages": [...], "temperature": 0.7}, ...]
+        max_workers: Maximum number of concurrent requests
+
+    Returns:
+        List of responses in the same order as requests_list.
+        If a request fails, its entry will be {"error": str(exception)}.
+    """
+    results = [None] * len(requests_list)
+
+    def call_with_index(idx: int, req: Dict[str, Any]) -> tuple:
+        try:
+            response = chat_completion(**req)
+            return (idx, response)
+        except Exception as e:
+            return (idx, {"error": str(e)})
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(call_with_index, i, req)
+            for i, req in enumerate(requests_list)
+        ]
+        for future in as_completed(futures):
+            idx, response = future.result()
+            results[idx] = response
+
+    return results
