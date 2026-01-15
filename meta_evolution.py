@@ -3,13 +3,14 @@ Meta-Evolution using LLMs to evolve operators for symbolic regression
 """
 import numpy as np
 import re
+import time
 from typing import List, Tuple
 from dataclasses import dataclass, field
 import inspect
 import textwrap
 
 from operators import Node
-from completions import chat_completion, get_content
+from completions import chat_completion, chat_completion_batch, get_content
 from utils import run_with_timeout, print_code_with_error, print_error_in_generated_code
 from operator_templates import TEMPLATES, PROPERTIES, FUNCTION_NAMES, OPERATOR_TYPES
 from sr_operators import (
@@ -33,15 +34,19 @@ N_BRAINSTORM_IDEAS = 15
 def brainstorm_operator_ideas(
     operator_type: str,
     current_code: str,
-    model: str = "openai/gpt-4o-mini",
+    model: str = "openai/gpt-5-mini",
     n_ideas: int = N_BRAINSTORM_IDEAS,
     llm_temperature: float = 1.0,
+    return_prompt_only: bool = False,
 ) -> List[str]:
     """Brainstorm diverse implementation ideas for an operator.
 
     Returns a list of one-sentence descriptions of different approaches.
+    If return_prompt_only=True, returns (system_prompt, user_prompt) tuple instead.
     """
     import random
+
+    system_prompt = "You are an expert in evolutionary computation and genetic programming. Be creative and diverse in your suggestions."
 
     prompt = f"""You are brainstorming different algorithmic approaches for a {operator_type} operator in an evolutionary symbolic regression algorithm.
 
@@ -64,14 +69,19 @@ Format your response as a numbered list:
 ...
 {n_ideas}. [One sentence description]"""
 
+    if return_prompt_only:
+        return (system_prompt, prompt)
+
+    llm_start = time.time()
     response = chat_completion(
         model=model,
         messages=[
-            {"role": "system", "content": "You are an expert in evolutionary computation and genetic programming. Be creative and diverse in your suggestions."},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ],
         temperature=llm_temperature,
     )
+    print(f"    [TIMING] Brainstorm LLM call in {time.time() - llm_start:.1f}s")
 
     content = get_content(response)
 
@@ -99,13 +109,16 @@ def pick_and_implement_idea(
     template: str,
     other_operators_section: str = "",
     trace_section: str = "",
-    model: str = "openai/gpt-4o-mini",
+    model: str = "openai/gpt-5-mini",
     llm_temperature: float = 0.7,
     llm_seed: int = None,
     sample_index: int = None,
+    return_prompt_only: bool = False,
 ) -> str:
-    """Implement a specific idea for an operator."""
-    from operator_templates import SR_ALGORITHM_PSEUDOCODE
+    """Implement a specific idea for an operator.
+
+    If return_prompt_only=True, returns (system_prompt, user_prompt) tuple instead.
+    """
 
     prompt = f"""You are implementing a specific approach for a {operator_type} operator in an evolutionary symbolic regression algorithm.
 
@@ -132,6 +145,9 @@ Your function must match this signature:
 
 Provide only the function implementation."""
 
+    if return_prompt_only:
+        return (SYSTEM_PROMPT, prompt)
+
     kwargs = {"temperature": llm_temperature}
     if llm_seed is not None:
         effective_seed = llm_seed if sample_index is None else llm_seed + sample_index
@@ -139,6 +155,7 @@ Provide only the function implementation."""
     if sample_index is not None:
         kwargs["sample_index"] = sample_index
 
+    llm_start = time.time()
     response = chat_completion(
         model=model,
         messages=[
@@ -147,6 +164,7 @@ Provide only the function implementation."""
         ],
         **kwargs,
     )
+    print(f"    [TIMING] Implement idea LLM call in {time.time() - llm_start:.1f}s")
 
     code = extract_code_from_response(get_content(response), operator_type)
     return code
@@ -288,10 +306,23 @@ class OperatorBundle:
             "fitness": self.fitness.code,
         }
 
+    def get_hash(self) -> str:
+        """Get a deterministic hash for this bundle based on operator codes."""
+        import json
+        import hashlib
+        codes = self.get_codes()
+        key_str = json.dumps(codes, sort_keys=True, ensure_ascii=True)
+        return hashlib.sha256(key_str.encode()).hexdigest()
+
 
 # Hardcoded baseline timeouts
 _SOFT_TIMEOUT = 0.00326 * 100  # 326ms
 _HARD_TIMEOUT = 1  # 1 second for infinite loops
+
+# Performance test configuration
+_PERF_TEST_DATASET = "feynman_I_29_16"  # Small dataset for quick validation
+_PERF_TEST_TIMEOUT = 5.0  # seconds - operator fails if SR takes longer than this
+_PERF_TEST_GENERATIONS = 10  # Number of SR generations to run
 
 
 def _get_test_cases(operator_type: str):
@@ -429,10 +460,12 @@ def create_and_test_operator(code: str, operator_type: str) -> Tuple[Operator, b
         - error_message: None if passed, otherwise description of failure
     """
     # Create the operator
+    test_start = time.time()
     try:
         op = create_operator(code, operator_type)
     except Exception as e:
         print(f"Compilation failed: {e}")
+        print(f"    [TIMING] Operator testing in {time.time() - test_start:.2f}s (compile failed)")
         return None, False, f"Compilation failed: {e}"
 
     # Run tests
@@ -452,7 +485,133 @@ def create_and_test_operator(code: str, operator_type: str) -> Tuple[Operator, b
             if not isinstance(error, tuple):
                 print(error)
                 print_code_with_error(code, title="Generated code (likely infinite loop)")
+            print(f"    [TIMING] Operator testing in {time.time() - test_start:.2f}s (test failed)")
             return op, False, str(error)
+
+    print(f"    [TIMING] Operator testing in {time.time() - test_start:.2f}s")
+    return op, True, None
+
+
+def _run_performance_test(
+    op: 'Operator',
+    operator_type: str,
+    dataset_name: str = _PERF_TEST_DATASET,
+    timeout: float = _PERF_TEST_TIMEOUT,
+    n_generations: int = _PERF_TEST_GENERATIONS,
+) -> Tuple[bool, str]:
+    """
+    Run a performance test on an operator by running SR on a real dataset.
+
+    Tests if the operator can complete n_generations of SR within the timeout.
+    Uses default operators for the other operator types.
+
+    Args:
+        op: The operator to test
+        operator_type: Type of the operator ("selection", "mutation", "crossover", "fitness")
+        dataset_name: Name of the SRBench dataset to use
+        timeout: Maximum time in seconds for the test
+        n_generations: Number of SR generations to run
+
+    Returns:
+        (passed, error_message) where passed is True if test completed within timeout
+    """
+    import random as _rnd
+    from utils import load_srbench_dataset
+    from sr import symbolic_regression
+
+    try:
+        # Load dataset
+        np.random.seed(42)
+        _rnd.seed(42)
+        X, y, _ = load_srbench_dataset(dataset_name, max_samples=200)
+
+        # Train/val split
+        n_samples = len(y)
+        n_train = int(0.8 * n_samples)
+        indices = np.random.permutation(n_samples)
+        train_idx = indices[:n_train]
+        X_train, y_train = X[train_idx], y[train_idx]
+
+        # Build operator kwargs - use default for other operator types
+        sr_operators = {
+            "selection_operator": default_selection_operator,
+            "mutation_operator": default_mutation_operator,
+            "crossover_operator": default_crossover_operator,
+            "fitness_operator": default_fitness_function,
+        }
+        # Replace the relevant operator with the one being tested
+        sr_operators[f"{operator_type}_operator"] = op
+
+        # Run SR with timing
+        start_time = time.time()
+        try:
+            symbolic_regression(
+                X_train, y_train,
+                **sr_operators,
+                n_generations=n_generations,
+                population_size=50,  # Small population for speed
+            )
+        except Exception as e:
+            return False, f"Performance test failed with error: {e}"
+
+        elapsed = time.time() - start_time
+
+        if elapsed > timeout:
+            return False, f"Performance test timeout: {elapsed:.2f}s > {timeout}s limit"
+
+        return True, None
+
+    except FileNotFoundError as e:
+        # Dataset not found - skip performance test but warn
+        print(f"    WARNING: Performance test skipped - dataset not found: {e}")
+        return True, None  # Don't fail validation if dataset unavailable
+    except Exception as e:
+        return False, f"Performance test error: {e}"
+
+
+def create_and_test_operator_with_perf(
+    code: str,
+    operator_type: str,
+    run_perf_test: bool = True,
+    perf_timeout: float = _PERF_TEST_TIMEOUT,
+) -> Tuple['Operator', bool, str]:
+    """
+    Create an Operator from code and run validation tests including performance test.
+
+    This is the full validation including the real-dataset performance test.
+
+    Args:
+        code: Python code string defining the operator function
+        operator_type: One of "selection", "mutation", "crossover", "fitness"
+        run_perf_test: If True, run the performance test after unit tests
+        perf_timeout: Timeout for the performance test in seconds
+
+    Returns:
+        (operator, passed, error_message) where:
+        - operator: Operator instance (may be None if compilation failed)
+        - passed: True if compilation, unit tests, and performance test passed
+        - error_message: None if passed, otherwise description of failure
+    """
+    # First run the basic unit tests
+    op, passed, error = create_and_test_operator(code, operator_type)
+
+    if not passed:
+        return op, passed, error
+
+    # Run performance test if enabled
+    if run_perf_test:
+        perf_start = time.time()
+        perf_passed, perf_error = _run_performance_test(
+            op, operator_type, timeout=perf_timeout
+        )
+        perf_elapsed = time.time() - perf_start
+
+        if not perf_passed:
+            print(f"    [TIMING] Performance test in {perf_elapsed:.2f}s (FAILED)")
+            print(f"    Performance test failed: {perf_error}")
+            return op, False, perf_error
+
+        print(f"    [TIMING] Performance test in {perf_elapsed:.2f}s (passed)")
 
     return op, True, None
 
@@ -613,39 +772,43 @@ def format_trace_feedback(trace_feedback: List, max_traces_per_dataset: int = 10
 
 
 SR_ALGORITHM_PSEUDOCODE = """def fit(self, X, y):
-    population = self.create_initial_population(X, y)
+    n_vars = X.shape[1]
+    population = self.create_initial_population(n_vars)
 
     for generation in range(self.n_generations):
-        fitnesses = [self.fitness_operator(expr, X, y) for expr in population]
+        # Evaluate fitness for each individual
+        fitnesses = [self.fitness_operator(self.loss_function, ind, X, y) for ind in population]
 
-        if random.random() < self.optimize_prob:
-            # optimize constants with BFGS
-            population = [self.optimize_constants(e, X, y) for e in population]
+        if self.constant_optimization and random.random() < self.optimize_probability:
+            # Occasionally optimize constants via BFGS
+            population = [self.optimize_constants(expr, X, y) for expr in population]
         else:
-            # Elitism: keep best
-            new_population = [self.best_expression(population, fitnesses)]
+            # Elitism: keep the best individual
+            best_idx = np.argmax(fitnesses)
+            new_population = [population[best_idx].copy()]
 
-            # Generate rest through evolution
+            # Decide how many crossovers vs mutations
             n_crossover = np.random.binomial(len(population) - 1, self.crossover_prob)
             n_mutation = len(population) - 1 - n_crossover
 
-            # Use selection operator to retrieve candidate crossover/mutation parent(s)
+            # Selection operator returns parents for crossover and mutation
             crossover_pairs, to_mutate = self.selection_operator(
                 population, fitnesses, n_crossover, n_mutation
             )
 
-            # Crossover/mutate to create new population
+            # Apply crossover operator
             for parent1, parent2 in crossover_pairs[:n_crossover]:
-                child = self.crossover_operator(parent1, parent2, X, y)
+                child = self.crossover_operator(self, parent1, parent2)
                 new_population.append(child)
 
+            # Apply mutation operator
             for parent in to_mutate[:n_mutation]:
-                child = self.mutation_operator(parent, X, y)
+                child = self.mutation_operator(self, parent, n_vars)
                 new_population.append(child)
 
             population = new_population
 
-    self.best_model_ = self.best_expression(population, fitnesses)
+    self.best_model_ = population[np.argmax(fitnesses)]
     return self"""
 
 
@@ -659,6 +822,100 @@ def _format_other_operators(operator_bundle: "OperatorBundle", exclude_type: str
     return "\n\n".join(sections)
 
 
+REFINE_SYSTEM_PROMPT = """You are an expert in evolutionary computation, genetic programming, and symbolic regression optimization.
+
+Your task is to refine and improve operator implementations to maximize performance. You excel at:
+- Identifying subtle inefficiencies and edge cases
+- Making targeted improvements that compound over generations
+- Balancing exploration and exploitation in evolutionary search
+- Writing clean, efficient NumPy-vectorized code
+
+When writing code, prefer NumPy vectorized operations and avoid explicit Python for-loops. Keep implementations under 30 lines."""
+
+
+def build_refine_prompt(
+    operator_type: str,
+    current_code: str,
+    template: str,
+    other_operators_code: dict,
+    trace_feedback_str: str = "",
+) -> str:
+    """Build the exploitation/refinement prompt for incremental improvements."""
+
+    other_ops_section = "\n\n".join([
+        f"### {op_type.upper()} OPERATOR\n```python\n{code}\n```"
+        for op_type, code in other_operators_code.items()
+    ])
+
+    prompt = f"""## Context: Meta-Evolution for Symbolic Regression
+
+You are part of a **meta-evolution** system that evolves the operators of a symbolic regression (SR) algorithm. The goal is to discover operator implementations that, when combined, achieve high R² scores on held-out validation datasets.
+
+### How Meta-Evolution Works
+1. We maintain a population of SR algorithm configurations (bundles of operators)
+2. Each bundle is evaluated by running the SR algorithm on training datasets
+3. Bundles are scored by their average R² across datasets
+4. Better-performing bundles survive; their operators are refined or recombined
+5. Over generations, operators co-adapt to work well together
+
+### Your Role: Exploitation/Refinement
+Your task is to **refine** the {operator_type} operator to maximize performance. This is the "exploitation" phase of meta-evolution—not exploring radically new approaches, but making targeted improvements to reach peak performance.
+
+**Focus on these levels of refinement (from larger to smaller changes):**
+1. **Variant adjustments**: Slight modifications to the algorithmic approach
+2. **Implementation improvements**: Better ways to achieve the same goal (efficiency, numerical stability)
+3. **Edge case handling**: Robustness to degenerate inputs, boundary conditions
+4. **Hyperparameter tuning**: Adjusting constants, thresholds, probabilities
+5. **Bug fixes**: Correcting logical errors or inefficiencies
+
+**Avoid**: Completely new algorithms or drastic restructuring. The current approach has shown promise—help it reach its potential.
+
+---
+
+## Current SR Algorithm Bundle
+
+The SR algorithm uses these four operators together. Your refined {operator_type} operator must work well with the others.
+
+### {operator_type.upper()} OPERATOR (← You are refining this one)
+```python
+{current_code}
+```
+
+{other_ops_section}
+
+---
+
+## SR Algorithm Structure (Pseudocode)
+
+The following is simplified pseudocode. The actual implementation follows this structure closely.
+
+```python
+{SR_ALGORITHM_PSEUDOCODE}
+```
+
+---
+{trace_feedback_str}
+## Your Task
+
+Refine the **{operator_type}** operator to improve overall SR performance. Consider:
+
+1. **What's working?** Identify the strengths of the current implementation
+2. **What could be better?** Look for:
+   - Numerical instabilities or edge cases
+   - Inefficient operations that could be vectorized
+   - Magic numbers that could be tuned
+   - Missing checks or guards
+   - Opportunities to better balance exploration/exploitation
+3. **How do the operators interact?** Your {operator_type} operator works with the others—ensure compatibility
+
+**Output only the refined function implementation matching this signature:**
+```python
+{template}
+```"""
+
+    return prompt
+
+
 def mutate_operator(
     elite_operator: Operator,
     operator_type: str,
@@ -668,6 +925,9 @@ def mutate_operator(
     llm_temperature: float = 0.7,
     llm_seed: int = None,
     sample_index: int = None,
+    return_prompt_only: bool = False,
+    use_brainstorm: bool = None,
+    use_refine: bool = False,
 ) -> str:
     """Mutate an operator using LLM.
 
@@ -680,11 +940,81 @@ def mutate_operator(
         llm_temperature: Sampling temperature
         llm_seed: Random seed for reproducibility
         sample_index: Optional index to ensure unique samples (varies cache key)
+        return_prompt_only: If True, returns prompts instead of calling API
+        use_brainstorm: If True, use two-stage brainstorm approach. If False, use single-stage.
+                        If None (default), uses module constant USE_DIVERSE_PROMPTS.
+        use_refine: If True, use exploitation/refinement prompt instead of exploration prompts.
+                    This mode focuses on incremental improvements rather than creative mutations.
 
     Returns:
-        Generated code string for the new operator
+        Generated code string for the new operator, or prompts dict if return_prompt_only=True
     """
     template = TEMPLATES[operator_type]
+
+    # Build trace feedback section if available
+    trace_feedback_str = ""
+    if use_trace_feedback and elite_operator.trace_feedback:
+        trace_feedback_str = f"""
+## Evolution Traces from Recent Runs
+
+These traces show how the SR algorithm performed with the current operators. Use them to identify what's working and what needs improvement.
+
+{format_trace_feedback(elite_operator.trace_feedback)}
+
+---
+"""
+
+    # REFINE MODE: exploitation/incremental improvement prompt
+    if use_refine:
+        # Get other operators' code for context
+        if operator_bundle is not None:
+            other_operators_code = {
+                op_type: operator_bundle.get_operator(op_type).code
+                for op_type in OPERATOR_TYPES if op_type != operator_type
+            }
+        else:
+            # Fall back to default operators if no bundle provided
+            other_operators_code = {
+                op_type: get_default_operator(op_type).code
+                for op_type in OPERATOR_TYPES if op_type != operator_type
+            }
+
+        prompt = build_refine_prompt(
+            operator_type=operator_type,
+            current_code=elite_operator.code,
+            template=template,
+            other_operators_code=other_operators_code,
+            trace_feedback_str=trace_feedback_str,
+        )
+
+        if return_prompt_only:
+            return {
+                "refine": {"system": REFINE_SYSTEM_PROMPT, "user": prompt},
+            }
+
+        kwargs = {"temperature": llm_temperature}
+        if llm_seed is not None:
+            effective_seed = llm_seed if sample_index is None else llm_seed + sample_index
+            kwargs["seed"] = effective_seed
+        if sample_index is not None:
+            kwargs["sample_index"] = sample_index
+
+        llm_start = time.time()
+        response = chat_completion(
+            model=model,
+            messages=[
+                {"role": "system", "content": REFINE_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            **kwargs,
+        )
+        print(f"    [TIMING] Refine LLM call in {time.time() - llm_start:.1f}s")
+
+        code = extract_code_from_response(get_content(response), operator_type)
+        return code
+
+    # Determine whether to use brainstorm approach
+    do_brainstorm = USE_DIVERSE_PROMPTS if use_brainstorm is None else use_brainstorm
 
     # Build context sections
     other_operators_section = ""
@@ -702,10 +1032,38 @@ Evolution traces from recent runs (showing how the algorithm progressed):
 """
 
     # Two-stage approach: brainstorm ideas, then pick one randomly and implement
-    if USE_DIVERSE_PROMPTS:
+    if do_brainstorm:
         import random
 
         # Stage 1: Brainstorm diverse ideas
+        if return_prompt_only:
+            brainstorm_prompts = brainstorm_operator_ideas(
+                operator_type=operator_type,
+                current_code=elite_operator.code,
+                model=model,
+                n_ideas=N_BRAINSTORM_IDEAS,
+                llm_temperature=1.0,
+                return_prompt_only=True,
+            )
+            # For prompt-only mode, show implementation prompt with placeholder idea
+            implement_prompts = pick_and_implement_idea(
+                operator_type=operator_type,
+                idea="<SELECTED_IDEA_FROM_BRAINSTORM>",
+                current_code=elite_operator.code,
+                template=template,
+                other_operators_section=other_operators_section,
+                trace_section=trace_section,
+                model=model,
+                llm_temperature=llm_temperature,
+                llm_seed=llm_seed,
+                sample_index=sample_index,
+                return_prompt_only=True,
+            )
+            return {
+                "stage1_brainstorm": {"system": brainstorm_prompts[0], "user": brainstorm_prompts[1]},
+                "stage2_implement": {"system": implement_prompts[0], "user": implement_prompts[1]},
+            }
+
         ideas = brainstorm_operator_ideas(
             operator_type=operator_type,
             current_code=elite_operator.code,
@@ -764,12 +1122,18 @@ Your function must match this signature:
 
 Provide only the function implementation, no usage examples needed."""
 
+    if return_prompt_only:
+        return {
+            "fallback_single_stage": {"system": SYSTEM_PROMPT, "user": prompt},
+        }
+
     kwargs = {"temperature": llm_temperature}
     if llm_seed is not None:
         effective_seed = llm_seed if sample_index is None else llm_seed + sample_index
         kwargs["seed"] = effective_seed
     if sample_index is not None:
         kwargs["sample_index"] = sample_index
+    llm_start = time.time()
     response = chat_completion(
         model=model,
         messages=[
@@ -778,6 +1142,7 @@ Provide only the function implementation, no usage examples needed."""
         ],
         **kwargs,
     )
+    print(f"    [TIMING] Fallback mutation LLM call in {time.time() - llm_start:.1f}s")
 
     code = extract_code_from_response(get_content(response), operator_type)
     return code
@@ -792,6 +1157,9 @@ def crossover_operators(
     use_trace_feedback: bool = False,
     llm_temperature: float = 0.7,
     llm_seed: int = None,
+    sample_index: int = None,
+    return_prompt_only: bool = False,
+    use_brainstorm: bool = None,
 ) -> str:
     """Crossover two operators using LLM.
 
@@ -804,9 +1172,13 @@ def crossover_operators(
         use_trace_feedback: Whether to include evolution traces in prompt
         llm_temperature: Sampling temperature
         llm_seed: Random seed for reproducibility
+        sample_index: Optional index to ensure unique samples (varies cache key)
+        return_prompt_only: If True, returns prompts instead of calling API
+        use_brainstorm: If True, use two-stage brainstorm approach. If False, use single-stage.
+                        If None (default), uses module constant USE_DIVERSE_PROMPTS.
 
     Returns:
-        Generated code string for the new operator
+        Generated code string for the new operator, or prompts dict if return_prompt_only=True
     """
     template = TEMPLATES[operator_type]
 
@@ -834,14 +1206,45 @@ Evolution traces from recent runs:
 {format_trace_feedback(combined_feedback)}
 """
 
+    # Determine whether to use brainstorm approach
+    do_brainstorm = USE_DIVERSE_PROMPTS if use_brainstorm is None else use_brainstorm
+
+    # For crossover, combine parent codes as context
+    combined_code = f"Parent A:\n{parent_a.code}\n\nParent B:\n{parent_b.code}"
+
     # Two-stage approach: brainstorm ideas considering both parents, then pick one randomly and implement
-    if USE_DIVERSE_PROMPTS:
+    if do_brainstorm:
         import random
 
-        # For crossover, combine parent codes as context for brainstorming
-        combined_code = f"Parent A:\n{parent_a.code}\n\nParent B:\n{parent_b.code}"
-
         # Stage 1: Brainstorm diverse ideas
+        if return_prompt_only:
+            brainstorm_prompts = brainstorm_operator_ideas(
+                operator_type=operator_type,
+                current_code=combined_code,
+                model=model,
+                n_ideas=N_BRAINSTORM_IDEAS,
+                llm_temperature=1.0,
+                return_prompt_only=True,
+            )
+            # For prompt-only mode, show implementation prompt with placeholder idea
+            implement_prompts = pick_and_implement_idea(
+                operator_type=operator_type,
+                idea="<SELECTED_IDEA_FROM_BRAINSTORM>",
+                current_code=combined_code,
+                template=template,
+                other_operators_section=other_operators_section,
+                trace_section=trace_section,
+                model=model,
+                llm_temperature=llm_temperature,
+                llm_seed=llm_seed,
+                sample_index=sample_index,
+                return_prompt_only=True,
+            )
+            return {
+                "stage1_brainstorm": {"system": brainstorm_prompts[0], "user": brainstorm_prompts[1]},
+                "stage2_implement": {"system": implement_prompts[0], "user": implement_prompts[1]},
+            }
+
         ideas = brainstorm_operator_ideas(
             operator_type=operator_type,
             current_code=combined_code,
@@ -854,7 +1257,7 @@ Evolution traces from recent runs:
             print(f"Warning: No ideas generated for {operator_type} crossover, falling back to original prompt")
         else:
             # Pick a random idea
-            rng = random.Random(llm_seed if llm_seed else None)
+            rng = random.Random(llm_seed + sample_index if llm_seed and sample_index else llm_seed)
             selected_idea = rng.choice(ideas)
             print(f"  Selected idea: {selected_idea}")
 
@@ -869,6 +1272,7 @@ Evolution traces from recent runs:
                 model=model,
                 llm_temperature=llm_temperature,
                 llm_seed=llm_seed,
+                sample_index=sample_index,
             )
             return code
 
@@ -905,9 +1309,18 @@ Your function must match this signature:
 
 Provide only the function implementation, no usage examples needed."""
 
+    if return_prompt_only:
+        return {
+            "fallback_single_stage": {"system": SYSTEM_PROMPT, "user": prompt},
+        }
+
     kwargs = {"temperature": llm_temperature}
     if llm_seed is not None:
-        kwargs["seed"] = llm_seed
+        effective_seed = llm_seed if sample_index is None else llm_seed + sample_index
+        kwargs["seed"] = effective_seed
+    if sample_index is not None:
+        kwargs["sample_index"] = sample_index
+    llm_start = time.time()
     response = chat_completion(
         model=model,
         messages=[
@@ -916,6 +1329,426 @@ Provide only the function implementation, no usage examples needed."""
         ],
         **kwargs,
     )
+    print(f"    [TIMING] Fallback crossover LLM call in {time.time() - llm_start:.1f}s")
 
     code = extract_code_from_response(get_content(response), operator_type)
     return code
+
+
+def _parse_brainstorm_ideas(response_text: str) -> List[str]:
+    """Parse numbered list of ideas from brainstorm response."""
+    ideas = []
+    for line in response_text.split('\n'):
+        line = line.strip()
+        if line and len(line) > 3:
+            match = re.match(r'^\d+[\.\)\:\-]\s*(.+)$', line)
+            if match:
+                idea = match.group(1).strip()
+                if idea:
+                    ideas.append(idea)
+    return ideas
+
+
+def generate_offspring_batch(
+    crossover_specs: List[dict],
+    mutation_specs: List[dict],
+    operator_type: str,
+    model: str = "openai/gpt-5-mini",
+    use_trace_feedback: bool = False,
+    llm_temperature: float = 0.7,
+    llm_seed: int = None,
+    use_refine: bool = False,
+    max_retries: int = 10,
+    run_perf_test: bool = True,
+    perf_timeout: float = _PERF_TEST_TIMEOUT,
+) -> List["OperatorBundle"]:
+    """
+    Generate offspring via crossover and mutation with parallel LLM calls.
+
+    Args:
+        crossover_specs: List of dicts with keys:
+            - parent_a: OperatorBundle (first parent)
+            - parent_b: OperatorBundle (second parent)
+            - better_parent: OperatorBundle (for inheriting non-evolved operators)
+        mutation_specs: List of dicts with keys:
+            - elite: OperatorBundle (parent to mutate)
+            - sample_index_base: int (base for sample_index to ensure uniqueness)
+        operator_type: Type of operator to evolve
+        model: LLM model to use
+        use_trace_feedback: Whether to include evolution traces
+        llm_temperature: Sampling temperature for implementation
+        llm_seed: Random seed
+        use_refine: Whether to use refinement mode for mutations
+        max_retries: Maximum retry attempts per offspring
+        run_perf_test: Whether to run performance test (SR on real data) during validation
+        perf_timeout: Timeout in seconds for performance test (default: 5s)
+
+    Returns:
+        List of OperatorBundle instances (one per successful offspring)
+    """
+    import random
+
+    n_crossover = len(crossover_specs)
+    n_mutation = len(mutation_specs)
+    n_total = n_crossover + n_mutation
+
+    if n_total == 0:
+        return []
+
+    print(f"\n[BATCH] Generating {n_crossover} crossover + {n_mutation} mutation offspring in parallel...")
+
+    # Track which offspring still need generation (index -> spec)
+    pending_crossover = {i: spec for i, spec in enumerate(crossover_specs)}
+    pending_mutation = {i: spec for i, spec in enumerate(mutation_specs)}
+
+    # Results storage
+    crossover_results = [None] * n_crossover  # Will hold OperatorBundle
+    mutation_results = [None] * n_mutation
+
+    template = TEMPLATES[operator_type]
+
+    for retry_round in range(max_retries):
+        n_pending = len(pending_crossover) + len(pending_mutation)
+        if n_pending == 0:
+            break
+
+        print(f"\n[BATCH] Round {retry_round + 1}/{max_retries}: {n_pending} offspring pending")
+
+        # ============ STAGE 1: Brainstorm (parallel) ============
+        brainstorm_requests = []
+        request_mapping = []  # Track which request corresponds to which offspring
+
+        # Prepare crossover brainstorm requests
+        for idx, spec in pending_crossover.items():
+            parent_a = spec["parent_a"]
+            parent_b = spec["parent_b"]
+            combined_code = f"Parent A:\n{parent_a.get_operator(operator_type).code}\n\nParent B:\n{parent_b.get_operator(operator_type).code}"
+
+            system_prompt = "You are an expert in evolutionary computation and genetic programming. Be creative and diverse in your suggestions."
+            user_prompt = f"""You are brainstorming different algorithmic approaches for a {operator_type} operator in an evolutionary symbolic regression algorithm.
+
+Current implementation (for reference - we want DIFFERENT approaches):
+```python
+{combined_code}
+```
+
+Generate exactly {N_BRAINSTORM_IDEAS} DIVERSE one-sentence descriptions of fundamentally different {operator_type} implementations.
+
+Requirements:
+- Each idea must be a genuinely different algorithmic approach
+- NO minor variations (e.g., "same but with different parameters")
+- Include ideas from different paradigms: probabilistic, deterministic, adaptive, semantic, multi-objective, etc.
+- Be creative - include unconventional ideas too
+
+Format your response as a numbered list:
+1. [One sentence description]
+2. [One sentence description]
+...
+{N_BRAINSTORM_IDEAS}. [One sentence description]"""
+
+            brainstorm_requests.append({
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 1.0,  # High temp for brainstorming
+            })
+            request_mapping.append(("crossover", idx))
+
+        # Prepare mutation brainstorm requests (unless using refine mode)
+        if not use_refine:
+            for idx, spec in pending_mutation.items():
+                elite = spec["elite"]
+                elite_op = elite.get_operator(operator_type)
+
+                system_prompt = "You are an expert in evolutionary computation and genetic programming. Be creative and diverse in your suggestions."
+                user_prompt = f"""You are brainstorming different algorithmic approaches for a {operator_type} operator in an evolutionary symbolic regression algorithm.
+
+Current implementation (for reference - we want DIFFERENT approaches):
+```python
+{elite_op.code}
+```
+
+Generate exactly {N_BRAINSTORM_IDEAS} DIVERSE one-sentence descriptions of fundamentally different {operator_type} implementations.
+
+Requirements:
+- Each idea must be a genuinely different algorithmic approach
+- NO minor variations (e.g., "same but with different parameters")
+- Include ideas from different paradigms: probabilistic, deterministic, adaptive, semantic, multi-objective, etc.
+- Be creative - include unconventional ideas too
+
+Format your response as a numbered list:
+1. [One sentence description]
+2. [One sentence description]
+...
+{N_BRAINSTORM_IDEAS}. [One sentence description]"""
+
+                brainstorm_requests.append({
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "temperature": 1.0,
+                })
+                request_mapping.append(("mutation", idx))
+
+        # Execute brainstorm in parallel
+        brainstorm_ideas = {}  # (type, idx) -> selected_idea
+        if brainstorm_requests:
+            print(f"    [BATCH] Running {len(brainstorm_requests)} brainstorm calls in parallel...")
+            brainstorm_start = time.time()
+            brainstorm_responses = chat_completion_batch(brainstorm_requests)
+            print(f"    [TIMING] Brainstorm batch in {time.time() - brainstorm_start:.1f}s")
+
+            # Parse ideas and select one for each
+            for i, response in enumerate(brainstorm_responses):
+                key = request_mapping[i]
+                if "error" in response:
+                    print(f"    Warning: Brainstorm failed for {key}: {response['error']}")
+                    brainstorm_ideas[key] = None
+                else:
+                    ideas = _parse_brainstorm_ideas(get_content(response))
+                    if ideas:
+                        rng_seed = llm_seed + i if llm_seed else None
+                        rng = random.Random(rng_seed)
+                        selected = rng.choice(ideas)
+                        brainstorm_ideas[key] = selected
+                        print(f"    [{key[0]} {key[1]}] Selected: {selected[:80]}...")
+                    else:
+                        brainstorm_ideas[key] = None
+
+        # ============ STAGE 2: Implement (parallel) ============
+        implement_requests = []
+        implement_mapping = []
+
+        # Prepare crossover implement requests
+        for idx, spec in pending_crossover.items():
+            parent_a = spec["parent_a"]
+            parent_b = spec["parent_b"]
+            combined_code = f"Parent A:\n{parent_a.get_operator(operator_type).code}\n\nParent B:\n{parent_b.get_operator(operator_type).code}"
+
+            idea = brainstorm_ideas.get(("crossover", idx))
+            if idea is None:
+                # Fallback prompt without idea
+                prompt = f"""You are improving an evolutionary symbolic regression algorithm by combining two existing operators into a better one.
+
+## Parent operators to combine:
+{combined_code}
+
+## SR algorithm pseudocode:
+```python
+{SR_ALGORITHM_PSEUDOCODE}
+```
+
+## Your task:
+Synthesize a new {operator_type} operator that combines the strengths of both parents.
+
+Your function must match this signature:
+```python
+{template}
+```
+
+Provide only the function implementation."""
+            else:
+                prompt = f"""You are implementing a specific approach for a {operator_type} operator in an evolutionary symbolic regression algorithm.
+
+## The approach to implement:
+**{idea}**
+
+## Current implementation (for reference):
+```python
+{combined_code}
+```
+
+## SR algorithm pseudocode:
+```python
+{SR_ALGORITHM_PSEUDOCODE}
+```
+
+## Your task:
+Implement the {operator_type} operator using EXACTLY the approach described above: "{idea}"
+
+Your function must match this signature:
+```python
+{template}
+```
+
+Provide only the function implementation."""
+
+            kwargs = {"temperature": llm_temperature}
+            if llm_seed is not None:
+                kwargs["seed"] = llm_seed + retry_round * 1000 + idx
+
+            implement_requests.append({
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                **kwargs,
+            })
+            implement_mapping.append(("crossover", idx))
+
+        # Prepare mutation implement requests
+        for idx, spec in pending_mutation.items():
+            elite = spec["elite"]
+            elite_op = elite.get_operator(operator_type)
+            sample_idx_base = spec.get("sample_index_base", 0)
+
+            if use_refine:
+                # Build refine prompt
+                other_ops_code = {
+                    op_type: elite.get_operator(op_type).code
+                    for op_type in OPERATOR_TYPES if op_type != operator_type
+                }
+                trace_str = ""
+                if use_trace_feedback and elite_op.trace_feedback:
+                    trace_str = f"""
+## Evolution Traces from Recent Runs
+{format_trace_feedback(elite_op.trace_feedback)}
+---
+"""
+                prompt = build_refine_prompt(
+                    operator_type=operator_type,
+                    current_code=elite_op.code,
+                    template=template,
+                    other_operators_code=other_ops_code,
+                    trace_feedback_str=trace_str,
+                )
+                system = REFINE_SYSTEM_PROMPT
+            else:
+                idea = brainstorm_ideas.get(("mutation", idx))
+                if idea is None:
+                    # Fallback prompt
+                    prompt = f"""You are improving an evolutionary symbolic regression algorithm by proposing a better variant of one of its operators.
+
+## Current {operator_type} operator to improve:
+```python
+{elite_op.code}
+```
+
+## SR algorithm pseudocode:
+```python
+{SR_ALGORITHM_PSEUDOCODE}
+```
+
+## Your task:
+Propose an improved or alternative {operator_type} operator.
+
+Your function must match this signature:
+```python
+{template}
+```
+
+Provide only the function implementation."""
+                else:
+                    prompt = f"""You are implementing a specific approach for a {operator_type} operator in an evolutionary symbolic regression algorithm.
+
+## The approach to implement:
+**{idea}**
+
+## Current implementation (for reference):
+```python
+{elite_op.code}
+```
+
+## SR algorithm pseudocode:
+```python
+{SR_ALGORITHM_PSEUDOCODE}
+```
+
+## Your task:
+Implement the {operator_type} operator using EXACTLY the approach described above: "{idea}"
+
+Your function must match this signature:
+```python
+{template}
+```
+
+Provide only the function implementation."""
+                system = SYSTEM_PROMPT
+
+            kwargs = {"temperature": llm_temperature}
+            sample_idx = sample_idx_base + retry_round
+            if llm_seed is not None:
+                kwargs["seed"] = llm_seed + sample_idx
+            kwargs["sample_index"] = sample_idx
+
+            implement_requests.append({
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt}
+                ],
+                **kwargs,
+            })
+            implement_mapping.append(("mutation", idx))
+
+        # Execute implement in parallel
+        print(f"    [BATCH] Running {len(implement_requests)} implement calls in parallel...")
+        implement_start = time.time()
+        implement_responses = chat_completion_batch(implement_requests)
+        print(f"    [TIMING] Implement batch in {time.time() - implement_start:.1f}s")
+
+        # ============ STAGE 3: Validate (sequential) ============
+        print(f"    [BATCH] Validating {len(implement_responses)} generated operators...")
+        validate_start = time.time()
+
+        for i, response in enumerate(implement_responses):
+            op_type, idx = implement_mapping[i]
+
+            if "error" in response:
+                print(f"    [{op_type} {idx}] LLM error: {response['error']}")
+                continue
+
+            try:
+                code = extract_code_from_response(get_content(response), operator_type)
+                new_op, passed, error = create_and_test_operator_with_perf(
+                    code, operator_type,
+                    run_perf_test=run_perf_test,
+                    perf_timeout=perf_timeout,
+                )
+
+                if passed:
+                    if op_type == "crossover":
+                        spec = pending_crossover[idx]
+                        better_parent = spec["better_parent"]
+                        new_bundle = OperatorBundle(
+                            selection=better_parent.selection if operator_type != "selection" else new_op,
+                            mutation=better_parent.mutation if operator_type != "mutation" else new_op,
+                            crossover=better_parent.crossover if operator_type != "crossover" else new_op,
+                            fitness=better_parent.fitness if operator_type != "fitness" else new_op,
+                        )
+                        crossover_results[idx] = new_bundle
+                        del pending_crossover[idx]
+                        print(f"    [crossover {idx}] ✓ Validated successfully")
+                    else:
+                        spec = pending_mutation[idx]
+                        elite = spec["elite"]
+                        new_bundle = OperatorBundle(
+                            selection=elite.selection if operator_type != "selection" else new_op,
+                            mutation=elite.mutation if operator_type != "mutation" else new_op,
+                            crossover=elite.crossover if operator_type != "crossover" else new_op,
+                            fitness=elite.fitness if operator_type != "fitness" else new_op,
+                        )
+                        mutation_results[idx] = new_bundle
+                        del pending_mutation[idx]
+                        print(f"    [mutation {idx}] ✓ Validated successfully")
+                else:
+                    print(f"    [{op_type} {idx}] ✗ Validation failed: {error[:100]}...")
+            except Exception as e:
+                print(f"    [{op_type} {idx}] ✗ Error: {str(e)[:100]}...")
+
+        print(f"    [TIMING] Validation in {time.time() - validate_start:.1f}s")
+
+    # Check for failures
+    if pending_crossover or pending_mutation:
+        failed = list(pending_crossover.keys()) + [f"mut_{i}" for i in pending_mutation.keys()]
+        raise ValueError(f"Failed to generate valid operators after {max_retries} attempts: {failed}")
+
+    # Combine results
+    all_results = [r for r in crossover_results if r is not None] + [r for r in mutation_results if r is not None]
+    print(f"\n[BATCH] Successfully generated {len(all_results)} offspring")
+    return all_results

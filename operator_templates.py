@@ -15,7 +15,8 @@ def fitness(loss_function, individual, X, y):
     Compute fitness score for an individual.
 
     Args:
-        loss_function: A callable loss_function(individual, X, y) -> float (lower is better)
+        loss_function: A callable loss_function(individual, X, y) -> float (lower is better).
+                       Handles numerical stability (overflow, invalid values).
         individual: A Node representing the expression tree
         X: numpy array of input features (n_samples, n_features)
         y: numpy array of target values (n_samples,)
@@ -27,15 +28,8 @@ def fitness(loss_function, individual, X, y):
         individual.size() -> int: number of nodes in expression tree
         individual.height() -> int: height of expression tree
         individual.evaluate(X) -> np.ndarray: evaluate expression on input X
-
-    Notes:
-        - The loss_function handles numerical stability (overflow, invalid values)
-        - Consider penalizing complexity (size, height) to favor simpler expressions
-        - Return higher values for better individuals
     \"\"\"
-    # Implementation here
-
-    return fitness_score
+    pass
 """,
 
     "selection": """
@@ -48,25 +42,20 @@ def selection(population: List[Node], fitnesses: np.ndarray, n_crossover: int, n
 
     Args:
         population: current population of individuals (Nodes)
-        fitnesses: numpy array of fitness values for each individual (higher is better), same length as population
+        fitnesses: numpy array of fitness values for each individual (higher is better)
         n_crossover: number of pairs to select for crossover
         n_mutation: number of individuals to select for mutation
-        (n_crossover + n_mutation = len(population) - 1)
 
     Returns:
         (crossover_pairs, mutants) where:
-        - crossover_pairs: List of (Node, Node) tuples, length should be n_crossover
-        - mutants: List of Node objects, length should be n_mutation
-        - Better pairs/mutants should be at the front of the lists (we may not use all of them)
+        - crossover_pairs: List of (Node, Node) tuples
+        - mutants: List of Node objects
 
     Available Node methods:
         node.size() -> int: number of nodes in expression tree
         node.height() -> int: height of expression tree
-
     \"\"\"
-    # Implementation here
-
-    return (crossover_pairs, mutants)
+    pass
 """,
 
     "mutation": """
@@ -83,28 +72,21 @@ def mutation(self, individual, n_vars):
         n_vars: Number of input variables (e.g., 2 means x0, x1 are available)
 
     Returns:
-        Node: A new mutated individual (should be a modified copy, not the original)
+        Node: A new mutated individual
 
     Available from self:
         self.max_size: Maximum allowed tree size
         self.create_terminal(n_vars) -> Node: Create a random terminal (variable or constant)
         self.create_random_tree(max_depth, n_vars, depth=0, full=True) -> Node: Create a random subtree
-        self.binary_operators: List of available binary operators (e.g., ['+', '-', '*', '/'])
-        self.unary_operators: List of available unary operators (e.g., ['sin', 'cos', 'exp'])
+        self.binary_operators: List of binary operators ['+', '-', '*', '/']
+        self.unary_operators: List of unary operators ['sin', 'cos', 'exp', ...]
 
     Available Node methods:
         node.copy() -> Node: Create a deep copy of the node
         node.size() -> int: Number of nodes in expression tree
         node.height() -> int: Height of expression tree
-
-    Notes:
-        - Always work on a copy of the individual, not the original
-        - Check size constraints (self.max_size) before returning
-        - If mutation would exceed size limit, return the original individual
     \"\"\"
-    # Implementation here
-
-    return new_individual
+    pass
 """,
 
     "crossover": """
@@ -127,22 +109,15 @@ def crossover(self, parent1, parent2):
         self.max_size: Maximum allowed tree size
         self.create_terminal(n_vars) -> Node: Create a random terminal
         self.create_random_tree(max_depth, n_vars, depth=0, full=True) -> Node: Create a random subtree
-        self.binary_operators: List of available binary operators
-        self.unary_operators: List of available unary operators
+        self.binary_operators: List of binary operators ['+', '-', '*', '/']
+        self.unary_operators: List of unary operators ['sin', 'cos', 'exp', ...]
 
     Available Node methods:
         node.copy() -> Node: Create a deep copy of the node
         node.size() -> int: Number of nodes in expression tree
         node.height() -> int: Height of expression tree
-
-    Notes:
-        - Typically swap subtrees between parents
-        - Check size constraints (self.max_size) before returning
-        - If crossover would exceed size limit, return a copy of parent1
     \"\"\"
-    # Implementation here
-
-    return child
+    pass
 """,
 }
 

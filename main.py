@@ -12,10 +12,12 @@ from meta_evolution import (
     semantics_aware_selection,
     mutate_operator,
     crossover_operators,
+    generate_offspring_batch,
 )
 from completions import print_usage
-from utils import load_datasets_from_split, TeeLogger, load_dataset_names_from_split
+from utils import load_datasets_from_split, TeeLogger, load_dataset_names_from_split, Timing
 from parallel_eval import SlurmEvaluator
+from hyperparameter_tuning import tune_bundle_hyperparameters, identify_hyperparameters
 
 
 def compute_meta_score(score_vector: List[float]) -> tuple:
@@ -178,6 +180,34 @@ class RunLogger:
         gen_file = gen_dir / f"gen_{generation:03d}.json"
         with open(gen_file, "w") as f:
             json.dump(gen_data, f, indent=2)
+
+    def log_hyperparameter_tuning(
+        self,
+        generation: int,
+        operator_type: str,
+        best_params: Dict,
+        score_before: float,
+        score_after: float,
+    ):
+        """Log hyperparameter tuning results."""
+        hp_data = {
+            "generation": generation,
+            "operator_type": operator_type,
+            "best_params": best_params,
+            "score_before": score_before,
+            "score_after": score_after,
+            "improvement": score_after - score_before,
+        }
+
+        # Store in run_data
+        self.run_data.setdefault("hyperparameter_tuning", []).append(hp_data)
+
+        # Save to file
+        hp_dir = self.output_dir / "hyperparameter_tuning"
+        hp_dir.mkdir(parents=True, exist_ok=True)
+        hp_file = hp_dir / f"gen_{generation:03d}_{operator_type}.json"
+        with open(hp_file, "w") as f:
+            json.dump(hp_data, f, indent=2)
 
     def save_final_results(self, results: Dict):
         """Save final results."""
@@ -420,6 +450,8 @@ def evaluate_final_bundle(
         max_retries=slurm_config.get('max_retries', 3),
         exclude_nodes=slurm_config.get('exclude_nodes'),
         constraint=slurm_config.get('constraint'),
+        max_concurrent_jobs=slurm_config.get('max_workers'),
+        use_cache=slurm_config.get('use_cache', True),
     )
 
     srbench_datasets = load_dataset_names_from_split(split_file)
@@ -485,10 +517,14 @@ def run_meta_evolution(
     datasets: Optional[Dict] = None,
     operator_types: List[str] = None,
     use_trace_feedback: bool = False,
+    use_refine: bool = False,
     seed: Optional[int] = None,
     n_runs: int = 1,
     llm_temperature: float = 0.7,
     llm_seed: Optional[int] = None,
+    hp_tuning_frequency: int = 0,
+    hp_tuning_trials: int = 10,
+    hp_tuning_batch_size: int = 10,
 ) -> OperatorBundle:
     """
     Run meta-evolution with round-robin operator type selection.
@@ -508,6 +544,14 @@ def run_meta_evolution(
         datasets: Dictionary of datasets to evaluate on.
         operator_types: Order of operator types to cycle through (default: fitness, selection, mutation, crossover)
         use_trace_feedback: Whether to include SR evolution traces in mutation/crossover prompts.
+        use_refine: Whether to use refinement/exploitation prompts for mutations.
+        seed: Random seed for reproducibility.
+        n_runs: Number of evaluation runs per bundle.
+        llm_temperature: Temperature for LLM sampling.
+        llm_seed: Seed for LLM sampling.
+        hp_tuning_frequency: Run hyperparameter tuning every N generations (0 = disabled).
+        hp_tuning_trials: Number of trials for hyperparameter optimization.
+        hp_tuning_batch_size: Number of HP configurations to evaluate in parallel.
 
     Returns:
         final_bundle: The best OperatorBundle found
@@ -529,6 +573,8 @@ def run_meta_evolution(
         max_retries=slurm_config.get('max_retries', 3),
         exclude_nodes=slurm_config.get('exclude_nodes'),
         constraint=slurm_config.get('constraint'),
+        max_concurrent_jobs=slurm_config.get('max_workers'),
+        use_cache=slurm_config.get('use_cache', True),
     )
 
     # Save configuration
@@ -542,6 +588,8 @@ def run_meta_evolution(
         "operator_types": operator_types,
         "use_trace_feedback": use_trace_feedback,
         "slurm_config": slurm_config,
+        "hp_tuning_frequency": hp_tuning_frequency,
+        "hp_tuning_trials": hp_tuning_trials,
     }
     logger.set_config(config)
 
@@ -609,89 +657,52 @@ def run_meta_evolution(
             elite = max(population, key=lambda b: b.avg_r2)
             print(f"Elite: n_perfect={elite.n_perfect}, avg_r2={elite.avg_r2:.4f}")
 
-            offspring = []
+            import time
+            generation_start = time.time()
 
-            # Crossover
-            print(f"\nGenerating {n_crossover} offspring via crossover...")
+            # Build specs for batch generation
+            crossover_specs = []
             for i in range(n_crossover):
-                print(f"\n--- Crossover {i+1}/{n_crossover} ---")
-                print(f"Parent operators for {operator_type}:")
-                for attempt in range(10):
-                    # Select two parent bundles based on overall score
-                    # Use semantics_aware_selection on the operators of the current type
-                    parent_operators = [b.get_operator(operator_type) for b in population]
-                    # Temporarily attach bundle reference to operators for selection
-                    for op, bundle in zip(parent_operators, population):
-                        op._parent_bundle = bundle
+                # Select two parent bundles using semantics-aware selection
+                parent_operators = [b.get_operator(operator_type) for b in population]
+                for op, bundle in zip(parent_operators, population):
+                    op._parent_bundle = bundle
 
-                    parent_a_op, parent_b_op = semantics_aware_selection(parent_operators)
-                    parent_a = parent_a_op._parent_bundle
-                    parent_b = parent_b_op._parent_bundle
+                parent_a_op, parent_b_op = semantics_aware_selection(parent_operators)
+                parent_a = parent_a_op._parent_bundle
+                parent_b = parent_b_op._parent_bundle
+                better_parent = parent_a if parent_a.avg_r2 >= parent_b.avg_r2 else parent_b
 
-                    # if attempt == 0:
-                        # print(f"  Parent A ({operator_type}):\n{parent_a_op.code[:300]}...")
-                        # print(f"  Parent B ({operator_type}):\n{parent_b_op.code[:300]}...")
+                crossover_specs.append({
+                    "parent_a": parent_a,
+                    "parent_b": parent_b,
+                    "better_parent": better_parent,
+                })
 
-                    # Crossover the specific operator type
-                    code = crossover_operators(
-                        parent_a.get_operator(operator_type),
-                        parent_b.get_operator(operator_type),
-                        operator_type=operator_type,
-                        model=model,
-                        use_trace_feedback=use_trace_feedback,
-                        llm_temperature=llm_temperature,
-                        llm_seed=llm_seed,
-                    )
-                    print(f"  [Attempt {attempt+1}] Generated crossover code:\n{code}...")
-                    new_op, passed, error = create_and_test_operator(code, operator_type)
-
-                    if passed:
-                        # Create new bundle: use operators from the better-scoring parent (by avg_r2),
-                        # except for the crossed-over operator type
-                        better_parent = parent_a if parent_a.avg_r2 >= parent_b.avg_r2 else parent_b
-                        new_bundle = OperatorBundle(
-                            selection=better_parent.selection if operator_type != "selection" else new_op,
-                            mutation=better_parent.mutation if operator_type != "mutation" else new_op,
-                            crossover=better_parent.crossover if operator_type != "crossover" else new_op,
-                            fitness=better_parent.fitness if operator_type != "fitness" else new_op,
-                        )
-                        offspring.append(new_bundle)
-                        print(f"  Crossover {i+1}: Parent A n_perfect={parent_a.n_perfect}, Parent B n_perfect={parent_b.n_perfect}")
-                        break
-                else:
-                    raise ValueError(f"Failed to generate valid {operator_type} crossover after 10 attempts")
-
-            # Mutation
-            print(f"\nGenerating {n_mutation} offspring via mutation...")
+            mutation_specs = []
             for i in range(n_mutation):
-                print(f"\n--- Mutation {i+1}/{n_mutation} ---")
-                # print(f"  Mutating elite's {operator_type} operator:\n{elite.get_operator(operator_type).code[:300]}...")
-                for attempt in range(10):
-                    code = mutate_operator(
-                        elite.get_operator(operator_type),
-                        operator_type=operator_type,
-                        model=model,
-                        use_trace_feedback=use_trace_feedback,
-                        llm_temperature=llm_temperature,
-                        llm_seed=llm_seed,
-                        sample_index=gen * n_mutation + i * 10 + attempt,
-                    )
-                    print(f"  [Attempt {attempt+1}] Generated mutation code:\n{code}...")
-                    new_op, passed, error = create_and_test_operator(code, operator_type)
+                mutation_specs.append({
+                    "elite": elite,
+                    "sample_index_base": gen * n_mutation * 10 + i * 10,
+                })
 
-                    if passed:
-                        # Create new bundle: use elite's operators except for the mutated one
-                        new_bundle = OperatorBundle(
-                            selection=elite.selection if operator_type != "selection" else new_op,
-                            mutation=elite.mutation if operator_type != "mutation" else new_op,
-                            crossover=elite.crossover if operator_type != "crossover" else new_op,
-                            fitness=elite.fitness if operator_type != "fitness" else new_op,
-                        )
-                        offspring.append(new_bundle)
-                        print(f"  Mutation {i+1}: from elite")
-                        break
-                else:
-                    raise ValueError(f"Failed to generate valid {operator_type} mutation after 10 attempts")
+            # Generate all offspring in parallel
+            offspring = generate_offspring_batch(
+                crossover_specs=crossover_specs,
+                mutation_specs=mutation_specs,
+                operator_type=operator_type,
+                model=model,
+                use_trace_feedback=use_trace_feedback,
+                llm_temperature=llm_temperature,
+                llm_seed=llm_seed,
+                use_refine=use_refine,
+                max_retries=10,
+            )
+
+            generation_time = time.time() - generation_start
+            print(f"[TIMING] Total population generation ({n_crossover} crossover + {n_mutation} mutation) in {generation_time:.1f} seconds")
+
+            eval_start = time.time()
 
             # Evaluate offspring with quick eval filtering
             if offspring:
@@ -706,6 +717,9 @@ def run_meta_evolution(
                     quick_eval_datasets=quick_eval_datasets,
                     baseline_quick_scores=baseline_quick_scores,
                 )
+
+            eval_time = time.time() - eval_start
+            print(f"[TIMING] Evaluation ({len(offspring)} bundles) in {eval_time:.1f} seconds")
 
             # Update population: elite + offspring
             population = [elite] + offspring
@@ -722,6 +736,78 @@ def run_meta_evolution(
             print(f"  Population size: {len(population)}")
             print(f"  Avg population n_perfect: {np.mean([b.n_perfect for b in population]):.2f}")
             print(f"  Avg population avg_r2: {np.mean([b.avg_r2 for b in population]):.4f}")
+
+            # === Hyperparameter Tuning Step ===
+            # Run hyperparameter tuning every hp_tuning_frequency generations
+            if hp_tuning_frequency > 0 and (gen + 1) % hp_tuning_frequency == 0:
+                print(f"\n{'='*60}")
+                print(f"HYPERPARAMETER TUNING (Generation {gen+1})")
+                print(f"{'='*60}")
+
+                score_before = best_bundle.avg_r2
+
+                # Create batch evaluation function for hyperparameter tuning
+                # This evaluates on quick_eval_datasets for speed, using SLURM parallelism
+                def hp_batch_evaluate_fn(bundles_to_eval):
+                    """Evaluate multiple bundles in parallel for HP tuning."""
+                    if not bundles_to_eval:
+                        return []
+                    results = slurm_evaluator.evaluate_bundles(
+                        bundles=bundles_to_eval,
+                        dataset_names=quick_eval_datasets,
+                        sr_kwargs=sr_kwargs,
+                        seed=seed if seed is not None else 42,
+                        n_runs=1,  # Single run for speed
+                    )
+                    return [r[0] for r in results]  # Extract avg_score from each result
+
+                # Tune only the operator type we just evolved
+                tuned_bundle, best_params = tune_bundle_hyperparameters(
+                    bundle=best_bundle,
+                    batch_evaluate_fn=hp_batch_evaluate_fn,
+                    operator_types=[operator_type],  # Only tune the just-evolved operator
+                    n_trials=hp_tuning_trials,
+                    batch_size=hp_tuning_batch_size,
+                    tune_jointly=True,
+                    model=model,
+                    seed=seed,
+                    verbose=True,
+                )
+
+                # Evaluate the tuned bundle on full dataset
+                if best_params.get(operator_type):
+                    print(f"\nEvaluating tuned bundle on full dataset...")
+                    evaluate_bundle_population(
+                        bundles=[tuned_bundle],
+                        label="Tuned bundle",
+                        datasets=datasets,
+                        sr_kwargs=sr_kwargs,
+                        slurm_evaluator=slurm_evaluator,
+                        seed=seed,
+                        n_runs=n_runs,
+                    )
+
+                    score_after = tuned_bundle.avg_r2
+
+                    # Log hyperparameter tuning
+                    logger.log_hyperparameter_tuning(
+                        generation=gen + 1,
+                        operator_type=operator_type,
+                        best_params=best_params.get(operator_type, {}),
+                        score_before=score_before,
+                        score_after=score_after,
+                    )
+
+                    # Update best bundle if tuned version is better
+                    if score_after > best_bundle.avg_r2:
+                        print(f"  Hyperparameter tuning improved score: {score_before:.4f} -> {score_after:.4f}")
+                        best_bundle = tuned_bundle
+                        # Update population with tuned bundle
+                        population = [tuned_bundle] + [b for b in population if b is not elite]
+                    else:
+                        print(f"  Hyperparameter tuning did not improve score: {score_before:.4f} -> {score_after:.4f}")
+                else:
+                    print(f"  No hyperparameters found to tune for {operator_type}")
 
             # Log generation data
             logger.log_bundle_generation(
@@ -767,6 +853,7 @@ def run_meta_evolution(
 
 if __name__ == "__main__":
     import argparse
+    print('Command: python ' + ' '.join(sys.argv))
 
     parser = argparse.ArgumentParser(
         description='Run meta-evolution of SR algorithm',
@@ -810,11 +897,23 @@ if __name__ == "__main__":
     parser.add_argument('--operator-types', type=str, default='fitness,selection,mutation,crossover',
                        help='Comma-separated operator types to evolve in round-robin order')
 
+    # Hyperparameter tuning options
+    parser.add_argument('--hp-tuning-frequency', type=int, default=0,
+                       help='Run hyperparameter tuning every N generations (0 = disabled, e.g., 3 for every 3 generations)')
+    parser.add_argument('--hp-tuning-trials', type=int, default=10,
+                       help='Number of optimization trials per operator for hyperparameter tuning (default: 10)')
+
+    # Parallelism
+    parser.add_argument('--max-workers', type=int, default=200,
+                       help='Max parallel SLURM jobs/workers at a time (default: 200). Used for batch size in HP tuning.')
+
     # Other options
     parser.add_argument('--no-trace-feedback', action='store_true', help='Disable trace feedback to LLM')
+    parser.add_argument('--refine', action='store_true', help='Use exploitation/refinement prompt instead of exploration')
     parser.add_argument('--output-dir', type=str, default=None, help='Output directory (default: results/run_TIMESTAMP)')
     parser.add_argument('--n-runs', type=int, default=1, help='Number of runs for meta-evolution (default: 1)')
     parser.add_argument('--seed', type=int, default=0, help='Base random seed for reproducibility')
+    parser.add_argument('--no-eval-cache', action='store_true', help='Disable evaluation result caching')
 
     args = parser.parse_args()
     assert args.n_crossover + args.n_mutation == args.population - 1, "n_crossover + n_mutation must equal population_size - 1"
@@ -839,6 +938,8 @@ if __name__ == "__main__":
         'max_retries': args.max_retries,
         'exclude_nodes': args.exclude_nodes,
         'constraint': args.constraint,
+        'max_workers': args.max_workers,
+        'use_cache': not args.no_eval_cache,
     }
 
     datasets = load_datasets_from_split(args.split, max_samples=args.max_samples, data_seed=args.seed)
@@ -869,10 +970,14 @@ if __name__ == "__main__":
             datasets=datasets,
             operator_types=operator_types,
             use_trace_feedback=not args.no_trace_feedback,
+            use_refine=args.refine,
             seed=args.seed,
             n_runs=args.n_runs,
             llm_temperature=llm_temperature,
             llm_seed=llm_seed,
+            hp_tuning_frequency=args.hp_tuning_frequency,
+            hp_tuning_trials=args.hp_tuning_trials,
+            hp_tuning_batch_size=args.max_workers,
         )
     except KeyboardInterrupt:
         interrupted = True
