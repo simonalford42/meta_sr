@@ -280,7 +280,7 @@ class BaseSlurmEvaluator(ABC):
         start_time = time.time()
         last_completed = initial_cached
         poll_interval = 10
-        tasks_to_run = n_tasks - initial_cached
+        first_check = True
 
         while True:
             # Count completed result files
@@ -288,6 +288,12 @@ class BaseSlurmEvaluator(ABC):
             completed = len(list(results_dir.glob("task_*.json")))
 
             elapsed = time.time() - start_time
+
+            # On first check, detect cached results (completed with near-zero elapsed time)
+            if first_check and completed > 0 and elapsed < 2:
+                initial_cached = completed
+                last_completed = completed
+                first_check = False
 
             if completed != last_completed:
                 # Calculate rate based on newly completed tasks (excluding cached)
@@ -298,6 +304,7 @@ class BaseSlurmEvaluator(ABC):
                 print(f"    Progress: {completed}/{n_tasks} tasks complete "
                       f"({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)")
                 last_completed = completed
+                first_check = False
 
             if completed >= n_tasks:
                 print(f"  All {n_tasks} tasks completed in {time.time() - start_time:.1f}s")
