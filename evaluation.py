@@ -1842,12 +1842,302 @@ def print_comparison_summary(base_dir: str = ".", pysr_dir: str = None, sr_seeds
     print("\n" + "=" * 70)
 
 
+def plot_pysr_r2_thresholds(pysr_dirs: list, labels: list = None, base_dir: str = ".",
+                             split_file: str = None, output_path: str = None, max_nines: int = 6):
+    """
+    Plot number of tasks achieving various R² thresholds for different PySR runs.
+
+    Args:
+        pysr_dirs: List of PySR result directories
+        labels: List of labels for legend (e.g., ['1e3', '1e4', ...]). If None, extracted from dir names.
+        base_dir: Base directory containing results
+        split_file: Optional path to split file to filter problems
+        output_path: Optional path to save the plot (if None, displays interactively)
+        max_nines: Maximum number of 9s after decimal point (default 6, i.e., 0.999999).
+                   Beyond ~6 nines, floating point precision becomes unreliable.
+    """
+    import json
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+
+    base = Path(base_dir)
+
+    # Load split filter if provided
+    filter_problems = None
+    if split_file:
+        split_path = base / split_file if not Path(split_file).is_absolute() else Path(split_file)
+        if split_path.exists():
+            with open(split_path) as f:
+                filter_problems = set(line.strip() for line in f if line.strip())
+
+    def load_r2_values(results_dir, filter_set=None):
+        """Load R² values from JSON result files."""
+        r2_values = []
+        results_dir = Path(results_dir)
+
+        for json_file in results_dir.glob('*_results.json'):
+            try:
+                with open(json_file) as f:
+                    data = json.load(f)
+
+                dataset = data.get('dataset', '')
+                test_r2 = data.get('test_r2')
+
+                if filter_set and dataset not in filter_set:
+                    continue
+
+                if test_r2 is not None:
+                    r2_values.append(test_r2)
+            except Exception:
+                pass
+
+        return r2_values
+
+    # Generate R² thresholds: 0.9, 0.99, 0.999, ... up to max_nines
+    base_thresholds = []
+    for n in range(1, max_nines + 1):
+        thresh = 1.0 - 10**(-n)  # 0.9, 0.99, 0.999, ...
+        base_thresholds.append(thresh)
+
+    # Collect data for all directories
+    all_data = {}
+    all_r2_values = []
+
+    for i, pysr_dir in enumerate(pysr_dirs):
+        pysr_path = base / pysr_dir if not Path(pysr_dir).is_absolute() else Path(pysr_dir)
+        if not pysr_path.exists():
+            print(f"Warning: {pysr_dir} not found, skipping")
+            continue
+
+        r2_values = load_r2_values(pysr_path, filter_problems)
+        print(pysr_dir, f"({len(r2_values)} tasks loaded)")
+        all_r2_values.extend(r2_values)
+
+        # Determine label
+        if labels and i < len(labels):
+            label = labels[i]
+        else:
+            # Try to extract from directory name (e.g., results_pysr_1e4 -> 1e4)
+            name = pysr_path.name
+            if '_1e' in name:
+                label = '1e' + name.split('_1e')[-1]
+            else:
+                label = name
+
+        all_data[label] = r2_values
+
+    if not all_data:
+        print("No data found!")
+        return
+
+    # Always include all thresholds plus 1.0 at the end
+    thresholds_to_show = base_thresholds + [1.0]
+
+    # Create x-axis labels: 0.9, 0.99, 0.999, ..., 1.0
+    def format_threshold(t, n_nines=None):
+        if t == 1.0:
+            return "1.0"
+        if n_nines is not None:
+            return "0." + "9" * n_nines
+        # Fallback
+        return f"{t:.10f}".rstrip('0')
+
+    x_labels = [format_threshold(t, i+1) if i < len(base_thresholds) else "1.0"
+                for i, t in enumerate(thresholds_to_show)]
+    x_positions = list(range(len(thresholds_to_show)))
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    colors = plt.cm.viridis(np.linspace(0, 0.9, len(all_data)))
+
+    for (label, r2_values), color in zip(all_data.items(), colors):
+        counts = []
+        for thresh in thresholds_to_show:
+            if thresh == 1.0:
+                count = sum(1 for r2 in r2_values if r2 == 1.0)
+            else:
+                count = sum(1 for r2 in r2_values if r2 >= thresh)
+            counts.append(count)
+
+        ax.plot(x_positions, counts, 'o-', label=label, color=color, markersize=8, linewidth=2)
+
+    ax.set_xlabel('R² Threshold', fontsize=12)
+    ax.set_ylabel('Number of Tasks', fontsize=12)
+    ax.set_title('Tasks Achieving R² Thresholds by Number of Evaluations', fontsize=14)
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(x_labels, rotation=45, ha='right')
+    ax.legend(title='Evaluations', loc='best')
+    ax.grid(True, alpha=0.3)
+
+    # Add total tasks annotation
+    total_tasks = len(list(all_data.values())[0]) if all_data else 0
+    ax.axhline(y=total_tasks, color='gray', linestyle='--', alpha=0.5)
+    ax.text(len(x_positions) - 1, total_tasks + 1, f'Total: {total_tasks}', ha='right', va='bottom', color='gray')
+
+    plt.tight_layout()
+
+    if output_path:
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        print(f"Plot saved to {output_path}")
+    else:
+        plt.show()
+
+    return fig, ax
+
+
+def print_multi_pysr_comparison(pysr_dirs: list, base_dir: str = ".", sr_seeds: list = None,
+                                 r2_threshold: float = 0.9999, split_file: str = None):
+    """
+    Print average R² and solve rate for multiple PySR directories.
+
+    Args:
+        pysr_dirs: List of PySR result directories (relative to base_dir or absolute paths)
+        base_dir: Base directory containing results
+        sr_seeds: List of SR seed directories to compare (default: None, no SR comparison)
+        r2_threshold: R² threshold to count as "solved" (default 0.9999)
+        split_file: Optional path to split file to filter problems
+    """
+    import json
+    from pathlib import Path
+
+    base = Path(base_dir)
+
+    if sr_seeds is None:
+        sr_seeds = []
+
+    # Load split filter if provided
+    filter_problems = None
+    split_name = "all"
+    if split_file:
+        split_path = base / split_file if not Path(split_file).is_absolute() else Path(split_file)
+        if split_path.exists():
+            with open(split_path) as f:
+                filter_problems = set(line.strip() for line in f if line.strip())
+            split_name = split_path.stem
+
+    print("=" * 80)
+    print(f"COMPARISON: Average R² and Solve Rate (R² >= {r2_threshold})")
+    if filter_problems:
+        print(f"Filtered to: {split_name} ({len(filter_problems)} problems)")
+    print("=" * 80)
+
+    def load_results_from_dir(results_dir, filter_set=None):
+        """Load R² values from JSON result files in a directory."""
+        r2_values = []
+        results_dir = Path(results_dir)
+
+        for json_file in results_dir.glob('*_results.json'):
+            try:
+                with open(json_file) as f:
+                    data = json.load(f)
+
+                dataset = data.get('dataset', '')
+                test_r2 = data.get('test_r2')
+
+                if filter_set and dataset not in filter_set:
+                    continue
+
+                if test_r2 is not None:
+                    r2_values.append(test_r2)
+            except Exception:
+                pass
+
+        return r2_values
+
+    def compute_stats(r2_values):
+        """Compute statistics for a set of R² values."""
+        n_problems = len(r2_values)
+        if n_problems == 0:
+            return None
+
+        r2_filtered = [r2 for r2 in r2_values if r2 >= -10]
+        avg_r2 = sum(r2_filtered) / len(r2_filtered) if r2_filtered else 0
+        n_solved_9999 = sum(1 for r2 in r2_values if r2 >= r2_threshold)
+        n_solved_exact = sum(1 for r2 in r2_values if r2 == 1.0)
+        n_outliers = n_problems - len(r2_filtered)
+
+        return {
+            'n_problems': n_problems,
+            'avg_r2': avg_r2,
+            'n_outliers': n_outliers,
+            'n_solved_9999': n_solved_9999,
+            'n_solved_exact': n_solved_exact,
+        }
+
+    all_results = {}
+
+    # ---- PySR Results ----
+    for pysr_dir in pysr_dirs:
+        pysr_path = base / pysr_dir if not Path(pysr_dir).is_absolute() else Path(pysr_dir)
+        if pysr_path.exists():
+            r2_values = load_results_from_dir(pysr_path, filter_problems)
+            all_results[f"PySR: {pysr_dir}"] = compute_stats(r2_values)
+        else:
+            print(f"  Warning: {pysr_dir} not found")
+
+    # ---- SR Seed Results ----
+    for seed_dir in sr_seeds:
+        seed_path = base / seed_dir
+        if seed_path.exists():
+            r2_values = load_results_from_dir(seed_path, filter_problems)
+            all_results[seed_dir] = compute_stats(r2_values)
+
+    # Print results table
+    print(f"\n{'Method':<40} {'N':>4}  {'Avg R²':>8}  {'≥0.9999':>12}  {'=1.0':>12}")
+    print("-" * 82)
+
+    for name, stats in all_results.items():
+        if stats is None:
+            print(f"{name:<40} No results found")
+            continue
+
+        n = stats['n_problems']
+        avg_r2 = stats['avg_r2']
+        n_9999 = stats['n_solved_9999']
+        n_exact = stats['n_solved_exact']
+        rate_9999 = 100 * n_9999 / n
+        rate_exact = 100 * n_exact / n
+
+        avg_str = f"{avg_r2:.4f}"
+        if stats['n_outliers'] > 0:
+            avg_str += "*"
+
+        print(f"{name:<40} {n:>4}  {avg_str:>8}  {n_9999:>3}/{n:<3} ({rate_9999:>5.1f}%)  {n_exact:>3}/{n:<3} ({rate_exact:>5.1f}%)")
+
+    print("\n" + "=" * 80)
+
+
 if __name__ == "__main__":
     # quick_r2_solve_rate("/home/sca63/meta_sr")
     # analyze_r2_across_runs("/home/sca63/meta_sr")
-    # print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_train.txt")
+    # print_comparison_summary("/home/sca63/meta_sr", pysr_dir='results_pysr_1e4', split_file="splits/srbench_all.txt")
     # print()
     # print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_val.txt")
     # print()
     # print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_test.txt")
-    analyze_r2_across_runs()
+    # analyze_r2_across_runs()
+    # print_multi_pysr_comparison(
+    #     pysr_dirs=[
+    #         "results_pysr_1e3",
+    #         "results_pysr_1e4",
+    #         "results_pysr_1e5",
+    #         "results_pysr_1e6",
+    #         "results_pysr_1e7",
+    #         "results_pysr_1e8",
+    #     ],
+    #     r2_threshold=0.999999,
+    #     split_file="splits/srbench_all.txt"
+    # )
+    plot_pysr_r2_thresholds(
+      pysr_dirs=[
+          "results_pysr_1e3",
+          "results_pysr_1e4",
+          "results_pysr_1e5",
+          "results_pysr_1e6",
+          "results_pysr_1e7",
+          "results_pysr_1e8",
+      ],
+      split_file="splits/srbench_all.txt",
+      output_path="pysr_r2_thresholds.png"  # or None to display interactively
+  )

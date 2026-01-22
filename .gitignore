@@ -3,3 +3,6 @@ startup.sh
 out
 results_pysr
 results
+outputs
+__pycache__
+caches

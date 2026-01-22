@@ -653,11 +653,13 @@ def run_meta_evolution(
             print(f"Generation {gen+1}/{n_generations} - Evolving {operator_type.upper()}")
             print(f"{'='*60}")
 
+            import time
+            gen_total_start = time.time()
+
             # Elitism: keep the best bundle (by avg_r2, not n_perfect)
             elite = max(population, key=lambda b: b.avg_r2)
             print(f"Elite: n_perfect={elite.n_perfect}, avg_r2={elite.avg_r2:.4f}")
 
-            import time
             generation_start = time.time()
 
             # Build specs for batch generation
@@ -726,16 +728,28 @@ def run_meta_evolution(
 
             # Track best (by avg_r2, not n_perfect)
             current_best = max(population, key=lambda b: b.avg_r2)
-            if current_best.avg_r2 > best_bundle.avg_r2:
+            new_elite_found = current_best.avg_r2 > best_bundle.avg_r2
+            if new_elite_found:
                 best_bundle = current_best
+
+            # Print elite bundle code if new elite was found
+            if new_elite_found:
+                print(f"\n*** NEW ELITE FOUND (avg_r2={best_bundle.avg_r2:.4f}) ***")
+                for op_type in operator_types:
+                    op = best_bundle.get_operator(op_type)
+                    print(f"\n--- {op_type.upper()} ---")
+                    print(op.code)
 
             # Generation summary
             print(f"\nGeneration {gen+1} Summary:")
             print(f"  Evolved: {operator_type}")
             print(f"  Best: n_perfect={best_bundle.n_perfect}, avg_r2={best_bundle.avg_r2:.4f}")
-            print(f"  Population size: {len(population)}")
-            print(f"  Avg population n_perfect: {np.mean([b.n_perfect for b in population]):.2f}")
-            print(f"  Avg population avg_r2: {np.mean([b.avg_r2 for b in population]):.4f}")
+            # Only calculate avg_r2 among bundles that got full eval (not biased by -1's from quick eval)
+            full_eval_bundles = [b for b in population if not getattr(b, 'quick_eval_only', False)]
+            if full_eval_bundles:
+                print(f"  Avg population avg_r2 (full eval only, n={len(full_eval_bundles)}): {np.mean([b.avg_r2 for b in full_eval_bundles]):.4f}")
+            else:
+                print(f"  Avg population avg_r2: N/A (no bundles got full eval)")
 
             # === Hyperparameter Tuning Step ===
             # Run hyperparameter tuning every hp_tuning_frequency generations
@@ -808,6 +822,9 @@ def run_meta_evolution(
                         print(f"  Hyperparameter tuning did not improve score: {score_before:.4f} -> {score_after:.4f}")
                 else:
                     print(f"  No hyperparameters found to tune for {operator_type}")
+
+            gen_total_time = time.time() - gen_total_start
+            print(f"[TIMING] Total generation time: {gen_total_time:.1f} seconds")
 
             # Log generation data
             logger.log_bundle_generation(

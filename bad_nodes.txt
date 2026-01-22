@@ -1,4 +1,0 @@
-snavely-cpu-03
-snavely-cpu-04
-snavely-cpu-06
-snavely-cpu-07

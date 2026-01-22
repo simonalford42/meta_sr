@@ -103,16 +103,15 @@ def get_cpu_count():
 
 def run_pysr_on_dataset(
     dataset_name,
-    time_minutes=10,
     max_samples=10000,
     results_dir='results_pysr',
     seed=42,
-    n_cpus=None,
     max_size=40,
-    niterations=1000000,
+    # niterations=None,
     binary_operators=None,
     unary_operators=None,
-    verbose=True
+    verbose=True,
+    max_evals=None,
 ):
     """
     Run PySR on a single dataset.
@@ -135,9 +134,6 @@ def run_pysr_on_dataset(
     """
     start_time = time.time()
 
-    if n_cpus is None:
-        n_cpus = get_cpu_count()
-
     if binary_operators is None:
         binary_operators = ["+", "-", "*", "/", "^"]
 
@@ -147,8 +143,6 @@ def run_pysr_on_dataset(
     if verbose:
         print(f"=" * 60)
         print(f"Running PySR on: {dataset_name}")
-        print(f"Time limit: {time_minutes} minutes")
-        print(f"Using {n_cpus} CPUs")
         print(f"=" * 60)
 
     # Load data
@@ -179,23 +173,28 @@ def run_pysr_on_dataset(
         print(f"Train samples: {len(y_train)}, Test samples: {len(y_test)}")
 
     # https://stackoverflow.com/a/57474787/4383594
-    n_cpus = int(os.environ.get('SLURM_CPUS_ON_NODE')) * int(os.environ.get('SLURM_JOB_NUM_NODES'))
+    try:
+        n_cpus = int(os.environ.get('SLURM_CPUS_ON_NODE')) * int(os.environ.get('SLURM_JOB_NUM_NODES'))
+    except (TypeError, ValueError):
+        n_cpus = 1
 
     # Configure PySR
     model = PySRRegressor(
-        procs=1,
-        # populations=3 * n_cpus,
-        timeout_in_seconds=int(time_minutes * 60),
+        # timeout_in_seconds=int(time_minutes * 60),
         binary_operators=["+", "-", "*", "/"],
         unary_operators=["sin", "cos", "exp", "log", "sqrt", "square"],
         maxsize=max_size,
-        maxdepth=20,
+        maxdepth=10,
         batching=False,
-        ncycles_per_iteration=10,
-        niterations=niterations,
-        population_size=100,
-        populations=1,
+        # ncycles_per_iteration=10,
+        parallelism='multithreading',
+        procs=n_cpus,
+        populations=3*n_cpus,
+        niterations=1000000000000,
+        # population_size=100,
+        max_evals=max_evals,
         random_state=seed,
+        # verbosity=5,
         output_directory=results_dir,
         constraints={
             **dict(
@@ -262,10 +261,9 @@ def run_pysr_on_dataset(
         'test_samples': len(y_test),
         'n_features': X.shape[1],
         'fit_time_seconds': fit_time,
-        'time_limit_minutes': time_minutes,
         'best_equation': best_equation_str,
         'seed': seed,
-        'n_cpus': n_cpus,
+        # 'n_cpus': n_cpus,
         'max_size': max_size,
     }
 
@@ -303,10 +301,6 @@ def main():
     parser.add_argument('--array_index', type=int, default=None,
                        help='SLURM array task index (0-based). Uses SLURM_ARRAY_TASK_ID if not specified.')
 
-    # Time settings
-    parser.add_argument('--time_minutes', type=float, default=10,
-                       help='Time limit in minutes for PySR')
-
     # Data settings
     parser.add_argument('--max_samples', type=int, default=1000,
                        help='Maximum samples to use from each dataset')
@@ -314,12 +308,11 @@ def main():
                        help='Random seed')
 
     # PySR settings
-    parser.add_argument('--n_cpus', type=int, default=None,
-                       help='Number of CPUs (auto-detected if not specified)')
-    parser.add_argument('--max_size', type=int, default=40,
-                       help='Maximum expression size')
-    parser.add_argument('--niterations', type=int, default=1000000,
-                       help='Maximum iterations (time is usually the limit)')
+    # group = parser.add_mutually_exclusive_group(required=True)
+    # group.add_argument('--niterations', type=int, default=None,
+                    #    help='Maximum iterations')
+    parser.add_argument('--max_evals', type=int, default=None,
+                       help='Maximum evaluations')
 
     # Output settings
     parser.add_argument('--results_dir', type=str, default='results_pysr',
@@ -329,6 +322,8 @@ def main():
 
     args = parser.parse_args()
 
+    # print script execution command
+    print("Executing command: " + " ".join(os.sys.argv))
     verbose = not args.quiet
 
     # Determine which dataset(s) to run
@@ -355,13 +350,11 @@ def main():
         try:
             results = run_pysr_on_dataset(
                 dataset_name=dataset_name,
-                time_minutes=args.time_minutes,
                 max_samples=args.max_samples,
                 results_dir=args.results_dir,
                 seed=args.seed,
-                n_cpus=args.n_cpus,
-                max_size=args.max_size,
-                niterations=args.niterations,
+                # niterations=100000000000,
+                max_evals=args.max_evals,
                 verbose=verbose
             )
 

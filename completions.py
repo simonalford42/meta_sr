@@ -63,7 +63,7 @@ class ChatCompletionCache(Base):
 class CompletionsCacheDB:
     """Simple SQLite cache for chat completions."""
 
-    def __init__(self, database_path: str = "completions_cache.db"):
+    def __init__(self, database_path: str = "caches/completions_cache.db"):
         self.engine = create_engine(f"sqlite:///{database_path}")
         Base.metadata.create_all(self.engine)
 

@@ -1,0 +1,581 @@
+================================================================================
+ANALYSIS OF R^2 IMPROVEMENTS ACROSS GENERATIONS
+================================================================================
+
+============================================================
+Generation 0 (BASELINE): avg_r2=0.8374
+n_perfect: 2
+============================================================
+Default operators:
+
+FITNESS:
+----------------------------------------
+def fitness(loss_function, individual, X, y):
+    loss = loss_function(individual, X, y)
+    complexity_penalty = 0.01 * individual.size()
+    return -loss - complexity_penalty
+
+SELECTION:
+----------------------------------------
+def selection(population: List[Node], fitnesses: np.ndarray[float], n_crossover: int, n_mutation: int) -> Tuple[List[Tuple[Node, Node]], List[Node]]:
+    """Select individuals via tournament selection"""
+    def select_individual():
+        tournament_size = 3
+        tournament_indices = random.sample(range(len(population)), tournament_size)
+        best_idx = max(tournament_indices, key=lambda i: fitnesses[i])
+        return best_idx
+
+    crossover_pairs = [(population[select_individual()], population[select_individual()]) for _ in range(n_crossover)]
+    mutants = [population[select_individual()] for _ in range(n_mutation)]
+    return crossover_pairs, mutants
+
+MUTATION:
+----------------------------------------
+def mutation(self, individual, n_vars):
+    """Simple mutation: replace a random node"""
+    new_individual = individual.copy()
+
+    def get_all_nodes(node):
+        if node is None:
+            return []
+        if node.left is None and node.right is None:
+            return [node]
+        nodes = [node]
+        nodes.extend(get_all_nodes(node.left))
+        nodes.extend(get_all_nodes(node.right))
+        return nodes
+
+    nodes = get_all_nodes(new_individual)
+    target_node = random.choice(nodes)
+
+    if random.random() < 0.5:
+        replacement = self.create_terminal(n_vars)
+        target_node.value = replacement.value
+        target_node.left = None
+        target_node.right = None
+    else:
+        replacement = self.create_random_tree(max_depth=2, n_vars=n_vars)
+        target_node.value = replacement.value
+        target_node.left = replacement.left
+        target_node.right = replacement.right
+
+    if new_individual.size() > self.max_size:
+        return individual
+
+    return new_individual
+
+CROSSOVER:
+----------------------------------------
+def crossover(self, parent1, parent2):
+    """Simple crossover: swap random subtrees"""
+    def get_all_nodes(node):
+        if node is None:
+            return []
+        if node.left is None and node.right is None:
+            return [node]
+        nodes = [node]
+        nodes.extend(get_all_nodes(node.left))
+        nodes.extend(get_all_nodes(node.right))
+        return nodes
+
+    child = parent1.copy()
+    child_nodes = get_all_nodes(child)
+    parent2_nodes = get_all_nodes(parent2)
+
+    if len(child_nodes) == 0 or len(parent2_nodes) == 0:
+        return child
+
+    target_node = random.choice(child_nodes)
+    source_node = random.choice(parent2_nodes)
+
+    target_node.value = source_node.value
+    target_node.left = source_node.left.copy() if source_node.left else None
+    target_node.right = source_node.right.copy() if source_node.right else None
+
+    if child.size() > self.max_size:
+        return parent1
+
+    return child
+
+
+Found 7 generations with R^2 improvement:
+
+============================================================
+Generation 1: R^2 0.8374 -> 0.9179 (+0.0805)
+Evolved operator: FITNESS
+n_perfect: 2
+============================================================
+
+FITNESS implementation:
+----------------------------------------
+def fitness(loss_function, individual, X, y):
+    """
+    Compute fitness score for an individual.
+
+    Args:
+        loss_function: A callable loss_function(individual, X, y) -> float (lower is better).
+                       Handles numerical stability (overflow, invalid values).
+        individual: A Node representing the expression tree
+        X: numpy array of input features (n_samples, n_features)
+        y: numpy array of target values (n_samples,)
+
+    Returns:
+        float: fitness score (higher is better)
+
+    Available Node methods:
+        individual.size() -> int: number of nodes in expression tree
+        individual.height() -> int: height of expression tree
+        individual.evaluate(X) -> np.ndarray: evaluate expression on input X
+    """
+    # Robust evaluation of loss and predictions
+    try:
+        loss = float(loss_function(individual, X, y))
+    except Exception:
+        return -1e9
+    try:
+        y_pred = np.asarray(individual.evaluate(X), dtype=float)
+    except Exception:
+        return -1e9
+
+    # Sanitize predictions (replace non-finite with mean of finite values)
+    finite = np.isfinite(y_pred)
+    if not np.all(finite):
+        if np.any(finite):
+            fill = float(np.mean(y_pred[finite]))
+            y_pred = np.where(finite, y_pred, fill)
+        else:
+            return -1e9
+
+    y = np.asarray(y, dtype=float)
+    n = max(1, y.size)
+    eps = 1e-8
+
+    # R^2-style signal explanation
+    ss_res = float(np.sum((y - y_pred) ** 2))
+    ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+    r2 = 1.0 - ss_res / (ss_tot + eps)
+    r2 = float(np.clip(r2, -10.0, 1.0))
+
+    # Scale-invariant improvement relative to trivial mean predictor
+    baseline_mse = ss_tot / n
+    improvement = 1.0 - loss / (baseline_mse + eps)
+    improvement = float(np.clip(improvement, -10.0, 10.0))
+
+    # Complexity-aware penalty (size + lightweight height term), adaptively scaled
+    size = float(individual.size())
+    height = float(individual.height()) if hasattr(individual, "height") else 1.0
+    comp = 0.01 * size + 0.02 * np.log1p(size) + 0.005 * height
+
+    # Reduce penalty when improvement is large; increase when model is poor
+    penalty_scale = float(1.0 / (1.0 + np.exp(2.0 * improvement)))  # in (0,1], shrinks for large positive improvement
+
+    # Final fitness combines normalized improvement, predictive quality (r2), and complexity cost
+    score = improvement + 0.5 * r2 - penalty_scale * comp - 0.001 * size
+
+    return float(score)
+
+============================================================
+Generation 2: R^2 0.9179 -> 0.9222 (+0.0043)
+Evolved operator: SELECTION
+n_perfect: 3
+============================================================
+
+SELECTION implementation:
+----------------------------------------
+def selection(population: List[Node], fitnesses: np.ndarray, n_crossover: int, n_mutation: int) -> Tuple[List[Tuple[Node, Node]], List[Node]]:
+    """
+    Select individuals for crossover and mutation.
+
+    Args:
+        population: current population of individuals (Nodes)
+        fitnesses: numpy array of fitness values for each individual (higher is better)
+        n_crossover: number of pairs to select for crossover
+        n_mutation: number of individuals to select for mutation
+
+    Returns:
+        (crossover_pairs, mutants) where:
+        - crossover_pairs: List of (Node, Node) tuples
+        - mutants: List of Node objects
+
+    Available Node methods:
+        node.size() -> int: number of nodes in expression tree
+        node.height() -> int: height of expression tree
+    """
+    eps = 1e-8
+    N = len(population)
+    if N == 0 or (n_crossover == 0 and n_mutation == 0):
+        return [], []
+    f = np.asarray(fitnesses, dtype=float)
+    f = np.nan_to_num(f, nan=-1e9, posinf=1e9, neginf=-1e9)
+    # Softmax-like fitness probabilities with adaptive scaling
+    scale = max(np.std(f), eps)
+    logits = (f - f.max()) / (scale + eps)
+    p_f = np.exp(logits)
+    p_f /= (p_f.sum() + eps)
+    # Simple complexity bias to encourage compact / diverse structures
+    sizes = np.array([ind.size() for ind in population], dtype=float)
+    comp = 1.0 / (1.0 + sizes)  # favors smaller trees
+    p_comp = comp / (comp.sum() + eps)
+    alpha = 0.25  # blend factor between fitness and complexity
+    p = (1.0 - alpha) * p_f + alpha * p_comp
+    p /= (p.sum() + eps)
+    # For crossover, bias one parent toward the top quantile (exploitation) and the other toward mixture (exploration)
+    crossover_pairs: List[Tuple[Node, Node]] = []
+    if n_crossover > 0:
+        q75 = float(np.quantile(f, 0.75))
+        p_top = p.copy()
+        p_top[f < q75] = 0.0
+        if p_top.sum() <= eps:
+            p_top = p.copy()
+        else:
+            p_top /= p_top.sum()
+        idx1 = np.random.choice(N, size=n_crossover, replace=True, p=p_top)
+        idx2 = np.random.choice(N, size=n_crossover, replace=True, p=p)
+        crossover_pairs = [(population[int(a)], population[int(b)]) for a, b in zip(idx1, idx2)]
+    mutants: List[Node] = []
+    if n_mutation > 0:
+        midx = np.random.choice(N, size=n_mutation, replace=True, p=p)
+        mutants = [population[int(i)] for i in midx]
+    return crossover_pairs, mutants
+
+============================================================
+Generation 5: R^2 0.9222 -> 0.9247 (+0.0025)
+Evolved operator: FITNESS
+n_perfect: 1
+============================================================
+
+FITNESS implementation:
+----------------------------------------
+def fitness(loss_function, individual, X, y):
+    """
+    Compute fitness score for an individual.
+
+    Args:
+        loss_function: A callable loss_function(individual, X, y) -> float (lower is better).
+                       Handles numerical stability (overflow, invalid values).
+        individual: A Node representing the expression tree
+        X: numpy array of input features (n_samples, n_features)
+        y: numpy array of target values (n_samples,)
+
+    Returns:
+        float: fitness score (higher is better)
+
+    Available Node methods:
+        individual.size() -> int: number of nodes in expression tree
+        individual.height() -> int: height of expression tree
+        individual.evaluate(X) -> np.ndarray: evaluate expression on input X
+    """
+    eps = 1e-8
+    # Robust prediction
+    try:
+        y_pred = np.asarray(individual.evaluate(X), dtype=float)
+    except Exception:
+        return -1e9
+    finite = np.isfinite(y_pred)
+    if not np.any(finite):
+        return -1e9
+    if not np.all(finite):
+        y_pred = np.where(finite, y_pred, float(np.median(y_pred[finite])))
+    y = np.asarray(y, dtype=float)
+    n = max(1, y.size)
+    # Basic accuracy (robust R^2)
+    ss_res = float(np.sum((y - y_pred) ** 2))
+    ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+    r2 = 1.0 - ss_res / (ss_tot + eps)
+    r2 = float(np.clip(r2, -5.0, 1.0))
+    # Use provided loss when possible, fallback to empirical mse
+    try:
+        loss = float(loss_function(individual, X, y))
+        if not np.isfinite(loss):
+            loss = ss_res / n
+    except Exception:
+        loss = ss_res / n
+    baseline_mse = ss_tot / n
+    improvement = 1.0 - loss / (baseline_mse + eps)
+    improvement = float(np.clip(improvement, -5.0, 5.0))
+    # Stability: sensitivity to small input perturbations (vectorized)
+    if X.size == 0:
+        stability = 1.0
+    else:
+        stdev = np.std(X, axis=0)
+        noise = (1e-3 * (stdev + 1e-6)) * np.random.randn(*X.shape)
+        try:
+            y_pred_n = np.asarray(individual.evaluate(X + noise), dtype=float)
+            if not np.any(np.isfinite(y_pred_n)):
+                stability = 0.0
+            else:
+                finite_n = np.isfinite(y_pred_n)
+                if not np.all(finite_n):
+                    y_pred_n = np.where(finite_n, y_pred_n, float(np.median(y_pred_n[finite_n])))
+                sens = np.mean((y_pred - y_pred_n) ** 2) / (np.mean(y_pred ** 2) + eps)
+                stability = float(np.exp(-5.0 * sens))
+        except Exception:
+            stability = 0.0
+    # Complexity-aware adaptive penalty (reduced for stable / improving models)
+    size = float(individual.size())
+    height = float(individual.height()) if hasattr(individual, "height") else 1.0
+    comp = 0.05 * size + 0.01 * np.log1p(size) + 0.005 * height
+    penalty_scale = (1.0 - stability) * (1.0 / (1.0 + np.exp(2.0 * improvement)))
+    # Combine signals: accuracy, improvement, stability, and complexity
+    score = 0.5 * improvement + 0.4 * r2 + 0.6 * stability - penalty_scale * comp - 0.001 * size
+    return float(score)
+
+============================================================
+Generation 6: R^2 0.9247 -> 0.9363 (+0.0116)
+Evolved operator: SELECTION
+n_perfect: 6
+============================================================
+
+SELECTION implementation:
+----------------------------------------
+def selection(population: List[Node], fitnesses: np.ndarray, n_crossover: int, n_mutation: int) -> Tuple[List[Tuple[Node, Node]], List[Node]]:
+    """
+    Select individuals for crossover and mutation.
+
+    Args:
+        population: current population of individuals (Nodes)
+        fitnesses: numpy array of fitness values for each individual (higher is better)
+        n_crossover: number of pairs to select for crossover
+        n_mutation: number of individuals to select for mutation
+
+    Returns:
+        (crossover_pairs, mutants) where:
+        - crossover_pairs: List of (Node, Node) tuples
+        - mutants: List of Node objects
+
+    Available Node methods:
+        node.size() -> int: number of nodes in expression tree
+        node.height() -> int: height of expression tree
+    """
+    eps = 1e-8
+    N = len(population)
+    if N == 0 or (n_crossover == 0 and n_mutation == 0):
+        return [], []
+    f = np.asarray(fitnesses, dtype=float)
+    f = np.nan_to_num(f, nan=-1e9, posinf=1e9, neginf=-1e9)
+    sizes = np.array([ind.size() for ind in population], dtype=float)
+    heights = np.array([ind.height() if hasattr(ind, "height") else ind.size() for ind in population], dtype=float)
+    # Rank-based weighting (linear rank selection)
+    desc = np.argsort(-f)
+    ranks = np.empty(N, dtype=int); ranks[desc] = np.arange(N) + 1
+    rank_weights = (N - ranks + 1).astype(float)
+    # Diversity-aware sharing: reduce weight in dense regions (gaussian kernel on size/height)
+    feat = np.vstack((sizes, heights)).T
+    feat_mean = feat.mean(axis=0); feat_std = feat.std(axis=0); feat_std[feat_std < eps] = 1.0
+    fn = (feat - feat_mean) / feat_std
+    d2 = np.sum((fn[:, None, :] - fn[None, :, :]) ** 2, axis=2)
+    sigma = 0.5
+    density = np.sum(np.exp(-d2 / (2 * (sigma ** 2))), axis=1) - 1.0
+    sharing = 1.0 / (1.0 + density)
+    weights = rank_weights * sharing
+    p = weights / (weights.sum() + eps)
+    # Crossover: tournament for parent A (exploitation), probability-sampled parent B (exploration)
+    crossover_pairs: List[Tuple[Node, Node]] = []
+    if n_crossover > 0:
+        k = max(1, min(3, N))
+        participants = np.random.randint(0, N, size=(n_crossover, k))
+        part_f = f[participants]
+        winners_pos = np.argmax(part_f, axis=1)
+        idx1 = participants[np.arange(n_crossover), winners_pos]
+        if p.sum() <= eps:
+            p = np.ones(N) / N
+        idx2 = np.random.choice(N, size=n_crossover, replace=True, p=p)
+        crossover_pairs = [(population[int(a)], population[int(b)]) for a, b in zip(idx1, idx2)]
+    mutants: List[Node] = []
+    if n_mutation > 0:
+        if p.sum() <= eps:
+            p = np.ones(N) / N
+        midx = np.random.choice(N, size=n_mutation, replace=True, p=p)
+        mutants = [population[int(i)] for i in midx]
+    return crossover_pairs, mutants
+
+============================================================
+Generation 7: R^2 0.9363 -> 0.9739 (+0.0376)
+Evolved operator: MUTATION
+n_perfect: 5
+============================================================
+
+MUTATION implementation:
+----------------------------------------
+def mutation(self, individual, n_vars):
+    """
+    Hybrid, size-aware mutation: randomly choose between
+    - point mutation (operator/terminal swap),
+    - subtree replacement (small grow/shrink),
+    - hoist (promote a child subtree).
+    Keeps changes constrained by self.max_size.
+    """
+    new_ind = individual.copy()
+    stack = [(new_ind, None)]
+    nodes = []
+    while stack:
+        node, _ = stack.pop()
+        nodes.append(node)
+        if node.right is not None: stack.append((node.right, node))
+        if node.left is not None:  stack.append((node.left, node))
+    if not nodes: return individual
+    sizes = np.array([n.size() for n in nodes], dtype=float)
+    arities = np.array([0 if (n.left is None and n.right is None) else (1 if n.right is None else 2) for n in nodes], dtype=int)
+    total = new_ind.size()
+    probs = np.array([0.4, 0.4, 0.2]) if total > 2 else np.array([0.6, 0.4, 0.0])
+    strat = np.random.choice([0, 1, 2], p=probs / probs.sum())
+    # POINT mutation: tweak operator or replace terminal
+    if strat == 0:
+        weights = (sizes + 1.0) * (np.where(arities == 0, 3.0, 1.0))
+        i = np.random.choice(len(nodes), p=weights / weights.sum())
+        node = nodes[i]
+        if arities[i] == 0:
+            t = self.create_terminal(n_vars)
+            node.value, node.left, node.right = t.value, None, None
+        elif arities[i] == 1:
+            opts = [op for op in getattr(self, "unary_operators", []) if op != node.value]
+            if opts: node.value = random.choice(opts)
+        else:
+            opts = [op for op in getattr(self, "binary_operators", []) if op != node.value]
+            if opts: node.value = random.choice(opts)
+    # SUBTREE replacement: replace chosen node with a small random subtree
+    elif strat == 1:
+        i = np.random.choice(len(nodes), p=sizes / sizes.sum())
+        target = nodes[i]
+        allowed = self.max_size - (total - target.size())
+        if allowed <= 0:
+            return individual
+        depth = int(min(3, max(1, allowed)))
+        rep = self.create_random_tree(max_depth=depth, n_vars=n_vars).copy()
+        target.value = rep.value
+        target.left = rep.left.copy() if rep.left else None
+        target.right = rep.right.copy() if rep.right else None
+    # HOIST: promote one child subtree into its parent (reduces bloat)
+    else:
+        cand = [i for i, a in enumerate(arities) if a >= 1]
+        if not cand: return individual
+        cs = sizes[cand]
+        ci = np.random.choice(cand, p=cs / cs.sum())
+        target = nodes[ci]
+        children = [c for c in (target.left, target.right) if c is not None]
+        if not children: return individual
+        child_sizes = np.array([c.size() for c in children], dtype=float)
+        chosen = children[int(np.random.choice(len(children), p=child_sizes / child_sizes.sum()))]
+        c = chosen.copy()
+        target.value = c.value
+        target.left = c.left
+        target.right = c.right
+    if new_ind.size() > self.max_size:
+        return individual
+    return new_ind
+
+============================================================
+Generation 11: R^2 0.9739 -> 0.9763 (+0.0024)
+Evolved operator: MUTATION
+n_perfect: 4
+============================================================
+
+MUTATION implementation:
+----------------------------------------
+def mutation(self, individual, n_vars):
+    """Geometric‑semantic first mutation (F' = (1-alpha)*F + alpha*R) with a size‑aware subtree fallback."""
+    ind = individual.copy(); total = ind.size()
+    # Try a semantic (phenotype) mutation: convex blend with a small random function R
+    if np.random.rand() < 0.6:
+        alpha = float(np.clip(np.random.laplace(0.0, 0.1), -0.9, 0.9))
+        extra = self.max_size - total - 4
+        if extra >= 1:
+            R = self.create_random_tree(max_depth=int(min(3, max(1, extra))), n_vars=n_vars).copy()
+            c1 = self.create_terminal(n_vars); c1.left = c1.right = None; c1.value = float(1.0 - alpha)
+            c2 = self.create_terminal(n_vars); c2.left = c2.right = None; c2.value = float(alpha)
+            mul1 = self.create_random_tree(max_depth=1, n_vars=n_vars); mul1.value = '*'; mul1.left = c1; mul1.right = ind
+            mul2 = self.create_random_tree(max_depth=1, n_vars=n_vars); mul2.value = '*'; mul2.left = c2; mul2.right = R
+            root = self.create_random_tree(max_depth=1, n_vars=n_vars); root.value = '+'; root.left = mul1; root.right = mul2
+            if root.size() <= self.max_size:
+                return root
+    # Fallback: size-aware subtree replacement (select subtree proportional to its size)
+    stack = [ind]; nodes = []
+    while stack:
+        n = stack.pop(); nodes.append(n)
+        if getattr(n, "left", None) is not None: stack.append(n.left)
+        if getattr(n, "right", None) is not None: stack.append(n.right)
+    if not nodes:
+        return individual
+    sizes = np.array([nd.size() for nd in nodes], dtype=float); probs = sizes / sizes.sum()
+    idx = int(np.random.choice(len(nodes), p=probs))
+    target = nodes[idx]; allowed = self.max_size - (total - target.size())
+    if allowed <= 0:
+        return individual
+    depth = int(min(3, max(1, allowed)))
+    rep = self.create_random_tree(max_depth=depth, n_vars=n_vars).copy()
+    target.value = rep.value
+    target.left = rep.left.copy() if rep.left else None
+    target.right = rep.right.copy() if rep.right else None
+    return ind if ind.size() <= self.max_size else individual
+
+============================================================
+Generation 13: R^2 0.9763 -> 0.9818 (+0.0055)
+Evolved operator: FITNESS
+n_perfect: 6
+============================================================
+
+FITNESS implementation:
+----------------------------------------
+def fitness(loss_function, individual, X, y):
+    """
+    Compute fitness score for an individual.
+
+    Args:
+        loss_function: A callable loss_function(individual, X, y) -> float (lower is better).
+                       Handles numerical stability (overflow, invalid values).
+        individual: A Node representing the expression tree
+        X: numpy array of input features (n_samples, n_features)
+        y: numpy array of target values (n_samples,)
+
+    Returns:
+        float: fitness score (higher is better)
+
+    Available Node methods:
+        individual.size() -> int: number of nodes in expression tree
+        individual.height() -> int: height of expression tree
+        individual.evaluate(X) -> np.ndarray: evaluate expression on input X
+    """
+    eps = 1e-8
+    try:
+        y_pred = np.asarray(individual.evaluate(X), dtype=float).ravel()
+    except Exception:
+        return -1e9
+    finite = np.isfinite(y_pred)
+    if not np.any(finite):
+        return -1e9
+    if not np.all(finite):
+        y_pred = np.where(finite, y_pred, float(np.median(y_pred[finite])))
+    y = np.asarray(y, dtype=float).ravel(); n = max(1, y.size)
+    r = y - y_pred; sse = float(np.sum(r * r)); sse0 = float(np.sum((y - np.mean(y)) ** 2))
+    mse = sse / n; med_sq = float(np.median(r * r)) + eps; sse_est = max(sse, n * med_sq)
+    size = float(individual.size()); height = float(individual.height()) if hasattr(individual, "height") else 1.0
+    k = max(1.0, size + 0.5 * height)
+    nll = 0.5 * n * (np.log(2 * np.pi) + 1.0 + np.log(sse_est / n + eps)); bic = 2.0 * nll + k * np.log(n + eps)
+    nll0 = 0.5 * n * (np.log(2 * np.pi) + 1.0 + np.log(sse0 / n + eps)); bic0 = 2.0 * nll0 + 1.0 * np.log(n + eps)
+    rel_bic = float(np.clip((bic0 - bic) / (abs(bic0) + eps), -5.0, 5.0))
+    if X.size == 0:
+        stability = 1.0
+    else:
+        stdev = np.std(X, axis=0); noise = (1e-3 * (stdev + 1e-6)) * np.random.randn(*X.shape)
+        try:
+            y_pred_n = np.asarray(individual.evaluate(X + noise), dtype=float).ravel()
+            finite_n = np.isfinite(y_pred_n)
+            if not np.any(finite_n):
+                stability = 0.0
+            else:
+                if not np.all(finite_n):
+                    y_pred_n = np.where(finite_n, y_pred_n, float(np.median(y_pred_n[finite_n])))
+                ratio = np.median((y_pred - y_pred_n) ** 2) / (np.median(y_pred ** 2) + eps)
+                stability = float(np.exp(-8.0 * ratio))
+        except Exception:
+            stability = 0.0
+    try:
+        loss_val = float(loss_function(individual, X, y)); loss_val = loss_val if np.isfinite(loss_val) else mse
+    except Exception:
+        loss_val = mse
+    baseline_mse = float(sse0 / n)
+    loss_imp = float(np.clip(1.0 - loss_val / (baseline_mse + eps), -5.0, 5.0))
+    comp = (size + 0.5 * height) / (1.0 + np.log1p(n)); penalty = 0.05 * np.log1p(comp)
+    score = 1.6 * rel_bic + 0.9 * loss_imp + 0.9 * stability - penalty
+    return float(np.clip(score, -1e6, 1e6))
+

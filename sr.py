@@ -201,6 +201,7 @@ class BasicSR:
     def fit(self, X, y):
         """Evolve expressions to fit the data"""
         n_vars = X.shape[1]
+        print(f'n_vars={n_vars}')
         population = self.create_initial_population(n_vars)
         heritages = [[] for _ in population]
         self.trajectory = []

@@ -24,151 +24,6 @@ from sr_operators import (
 # System prompt for LLM
 SYSTEM_PROMPT = """When writing code, prefer NumPy vectorized operations and avoid explicit Python for-loops unless absolutely necessary. Please implement code within 30 lines."""
 
-# Flag to enable diversity-encouraging prompts (set to False to use original prompts)
-USE_DIVERSE_PROMPTS = True
-
-# Number of ideas to brainstorm before picking one
-N_BRAINSTORM_IDEAS = 15
-
-
-def brainstorm_operator_ideas(
-    operator_type: str,
-    current_code: str,
-    model: str = "openai/gpt-5-mini",
-    n_ideas: int = N_BRAINSTORM_IDEAS,
-    llm_temperature: float = 1.0,
-    return_prompt_only: bool = False,
-) -> List[str]:
-    """Brainstorm diverse implementation ideas for an operator.
-
-    Returns a list of one-sentence descriptions of different approaches.
-    If return_prompt_only=True, returns (system_prompt, user_prompt) tuple instead.
-    """
-    import random
-
-    system_prompt = "You are an expert in evolutionary computation and genetic programming. Be creative and diverse in your suggestions."
-
-    prompt = f"""You are brainstorming different algorithmic approaches for a {operator_type} operator in an evolutionary symbolic regression algorithm.
-
-Current implementation (for reference - we want DIFFERENT approaches):
-```python
-{current_code}
-```
-
-Generate exactly {n_ideas} DIVERSE one-sentence descriptions of fundamentally different {operator_type} implementations.
-
-Requirements:
-- Each idea must be a genuinely different algorithmic approach
-- NO minor variations (e.g., "same but with different parameters")
-- Include ideas from different paradigms: probabilistic, deterministic, adaptive, semantic, multi-objective, etc.
-- Be creative - include unconventional ideas too
-
-Format your response as a numbered list:
-1. [One sentence description]
-2. [One sentence description]
-...
-{n_ideas}. [One sentence description]"""
-
-    if return_prompt_only:
-        return (system_prompt, prompt)
-
-    llm_start = time.time()
-    response = chat_completion(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=llm_temperature,
-    )
-    print(f"    [TIMING] Brainstorm LLM call in {time.time() - llm_start:.1f}s")
-
-    content = get_content(response)
-
-    # Parse numbered list
-    ideas = []
-    for line in content.split('\n'):
-        line = line.strip()
-        # Match lines starting with number followed by . or )
-        if line and len(line) > 3:
-            # Remove numbering prefix like "1.", "1)", "1:", etc.
-            import re
-            match = re.match(r'^\d+[\.\)\:\-]\s*(.+)$', line)
-            if match:
-                idea = match.group(1).strip()
-                if idea:
-                    ideas.append(idea)
-
-    return ideas
-
-
-def pick_and_implement_idea(
-    operator_type: str,
-    idea: str,
-    current_code: str,
-    template: str,
-    other_operators_section: str = "",
-    trace_section: str = "",
-    model: str = "openai/gpt-5-mini",
-    llm_temperature: float = 0.7,
-    llm_seed: int = None,
-    sample_index: int = None,
-    return_prompt_only: bool = False,
-) -> str:
-    """Implement a specific idea for an operator.
-
-    If return_prompt_only=True, returns (system_prompt, user_prompt) tuple instead.
-    """
-
-    prompt = f"""You are implementing a specific approach for a {operator_type} operator in an evolutionary symbolic regression algorithm.
-
-## The approach to implement:
-**{idea}**
-
-## Current implementation (for reference):
-```python
-{current_code}
-```
-
-## SR algorithm pseudocode:
-```python
-{SR_ALGORITHM_PSEUDOCODE}
-```
-{other_operators_section}{trace_section}
-## Your task:
-Implement the {operator_type} operator using EXACTLY the approach described above: "{idea}"
-
-Your function must match this signature:
-```python
-{template}
-```
-
-Provide only the function implementation."""
-
-    if return_prompt_only:
-        return (SYSTEM_PROMPT, prompt)
-
-    kwargs = {"temperature": llm_temperature}
-    if llm_seed is not None:
-        effective_seed = llm_seed if sample_index is None else llm_seed + sample_index
-        kwargs["seed"] = effective_seed
-    if sample_index is not None:
-        kwargs["sample_index"] = sample_index
-
-    llm_start = time.time()
-    response = chat_completion(
-        model=model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
-        **kwargs,
-    )
-    print(f"    [TIMING] Implement idea LLM call in {time.time() - llm_start:.1f}s")
-
-    code = extract_code_from_response(get_content(response), operator_type)
-    return code
-
 
 class OperatorException(Exception):
     """Custom exception for operator errors"""
@@ -822,17 +677,6 @@ def _format_other_operators(operator_bundle: "OperatorBundle", exclude_type: str
     return "\n\n".join(sections)
 
 
-REFINE_SYSTEM_PROMPT = """You are an expert in evolutionary computation, genetic programming, and symbolic regression optimization.
-
-Your task is to refine and improve operator implementations to maximize performance. You excel at:
-- Identifying subtle inefficiencies and edge cases
-- Making targeted improvements that compound over generations
-- Balancing exploration and exploitation in evolutionary search
-- Writing clean, efficient NumPy-vectorized code
-
-When writing code, prefer NumPy vectorized operations and avoid explicit Python for-loops. Keep implementations under 30 lines."""
-
-
 def build_refine_prompt(
     operator_type: str,
     current_code: str,
@@ -908,7 +752,183 @@ Refine the **{operator_type}** operator to improve overall SR performance. Consi
    - Opportunities to better balance exploration/exploitation
 3. **How do the operators interact?** Your {operator_type} operator works with the others—ensure compatibility
 
+**Requirements:**
+- Prefer NumPy vectorized operations; avoid explicit Python for-loops
+- Keep implementation under 30 lines
+
 **Output only the refined function implementation matching this signature:**
+```python
+{template}
+```"""
+
+    return prompt
+
+
+def build_explore_prompt(
+    operator_type: str,
+    current_code: str,
+    template: str,
+    other_operators_code: dict,
+    trace_feedback_str: str = "",
+) -> str:
+    """Build the exploration prompt for trying new operator approaches."""
+
+    other_ops_section = "\n\n".join([
+        f"### {op_type.upper()} OPERATOR\n```python\n{code}\n```"
+        for op_type, code in other_operators_code.items()
+    ])
+
+    prompt = f"""## Context: Meta-Evolution for Symbolic Regression
+
+You are part of a **meta-evolution** system that evolves the operators of a symbolic regression (SR) algorithm. The goal is to discover operator implementations that, when combined, achieve high R² scores on held-out validation datasets.
+
+### How Meta-Evolution Works
+1. We maintain a population of SR algorithm configurations (bundles of operators)
+2. Each bundle is evaluated by running the SR algorithm on training datasets
+3. Bundles are scored by their average R² across datasets
+4. Better-performing bundles survive; their operators are refined or recombined
+5. Over generations, operators co-adapt to work well together
+
+### Your Role: Exploration
+Your task is to **explore** a new approach for the {operator_type} operator. This is the "exploration" phase—we want to try different ideas that might improve performance.
+
+Note: You are changing just this one operator (the {operator_type}), not the whole SR algorithm. The other operators will remain the same.
+
+**Choose ONE of these levels of change (from most to least different):**
+1. **New approach for this operator**: Try a fundamentally different technique for this operator's task (e.g., a different selection scheme, a different mutation strategy, a different fitness formulation)
+2. **Hybrid approach**: Keep part of the current approach but add or substitute a significant new component
+3. **Algorithmic variant**: Use a different variant of the same general approach (e.g., different probability distribution, different traversal order, different weighting scheme)
+4. **Behavioral shift**: Keep the same algorithm but change constants, thresholds, or decision logic to significantly alter its behavior
+
+---
+
+## Current SR Algorithm Bundle
+
+The SR algorithm uses these four operators together. Your new {operator_type} operator should work with the others.
+
+### {operator_type.upper()} OPERATOR (← You are changing this one)
+```python
+{current_code}
+```
+
+{other_ops_section}
+
+---
+
+## SR Algorithm Structure (Pseudocode)
+
+```python
+{SR_ALGORITHM_PSEUDOCODE}
+```
+
+---
+{trace_feedback_str}
+## Your Task
+
+Propose a new **{operator_type}** operator that tries a different approach. Consider:
+
+1. **What is the current approach doing?** Understand it before changing it
+2. **What are its limitations?** Where might it be suboptimal?
+3. **What alternatives exist?** Are there other ways to accomplish this operator's goal?
+4. **Will it work with the other operators?** Ensure compatibility
+
+**Requirements:**
+- Prefer NumPy vectorized operations; avoid explicit Python for-loops
+- Keep implementation under 30 lines
+
+**Output only the new function implementation matching this signature:**
+```python
+{template}
+```"""
+
+    return prompt
+
+
+def build_crossover_prompt(
+    operator_type: str,
+    parent_a_code: str,
+    parent_b_code: str,
+    parent_a_score: float,
+    parent_b_score: float,
+    template: str,
+    other_operators_code: dict,
+    trace_feedback_str: str = "",
+) -> str:
+    """Build the crossover prompt for combining two parent operators."""
+
+    other_ops_section = "\n\n".join([
+        f"### {op_type.upper()} OPERATOR\n```python\n{code}\n```"
+        for op_type, code in other_operators_code.items()
+    ])
+
+    prompt = f"""## Context: Meta-Evolution for Symbolic Regression
+
+You are part of a **meta-evolution** system that evolves the operators of a symbolic regression (SR) algorithm. The goal is to discover operator implementations that, when combined, achieve high R² scores on held-out validation datasets.
+
+### How Meta-Evolution Works
+1. We maintain a population of SR algorithm configurations (bundles of operators)
+2. Each bundle is evaluated by running the SR algorithm on training datasets
+3. Bundles are scored by their average R² across datasets
+4. Better-performing bundles survive; their operators are refined or recombined
+5. Over generations, operators co-adapt to work well together
+
+### Your Role: Crossover/Recombination
+Your task is to **combine** two successful {operator_type} operators into a new, potentially better one. This is the "crossover" operation in meta-evolution—synthesizing the best ideas from both parents.
+
+**Approaches to crossover (from more to less integrative):**
+1. **Deep synthesis**: Identify the core insight of each parent and create a unified algorithm that embodies both
+2. **Hybrid approach**: Take complementary components from each parent and combine them (e.g., parent A's selection logic with parent B's scoring mechanism)
+3. **Adaptive switching**: Create an operator that dynamically chooses between parent strategies based on context
+4. **Best-of refinement**: Take the better parent's approach and incorporate specific improvements from the other
+
+**Think about**: Why did each parent succeed? What problem does each solve well? Can you get the benefits of both?
+
+---
+
+## Parent Operators to Combine
+
+### PARENT A (R² Score: {parent_a_score:.3f})
+```python
+{parent_a_code}
+```
+
+### PARENT B (R² Score: {parent_b_score:.3f})
+```python
+{parent_b_code}
+```
+
+---
+
+## Other Operators in the Bundle
+
+Your crossed-over {operator_type} operator must work with these other operators.
+
+{other_ops_section}
+
+---
+
+## SR Algorithm Structure (Pseudocode)
+
+```python
+{SR_ALGORITHM_PSEUDOCODE}
+```
+
+---
+{trace_feedback_str}
+## Your Task
+
+Create a new **{operator_type}** operator that combines the strengths of both parents. Consider:
+
+1. **What makes each parent effective?** Identify the key insight or mechanism in each
+2. **Are they complementary?** Do they solve different sub-problems or the same problem differently?
+3. **What's the best integration strategy?** Deep synthesis, component mixing, or adaptive selection?
+4. **Can you improve on both?** Sometimes combining reveals new optimizations
+
+**Requirements:**
+- Prefer NumPy vectorized operations; avoid explicit Python for-loops
+- Keep implementation under 30 lines
+
+**Output only the combined function implementation matching this signature:**
 ```python
 {template}
 ```"""
@@ -926,7 +946,6 @@ def mutate_operator(
     llm_seed: int = None,
     sample_index: int = None,
     return_prompt_only: bool = False,
-    use_brainstorm: bool = None,
     use_refine: bool = False,
 ) -> str:
     """Mutate an operator using LLM.
@@ -941,10 +960,8 @@ def mutate_operator(
         llm_seed: Random seed for reproducibility
         sample_index: Optional index to ensure unique samples (varies cache key)
         return_prompt_only: If True, returns prompts instead of calling API
-        use_brainstorm: If True, use two-stage brainstorm approach. If False, use single-stage.
-                        If None (default), uses module constant USE_DIVERSE_PROMPTS.
-        use_refine: If True, use exploitation/refinement prompt instead of exploration prompts.
-                    This mode focuses on incremental improvements rather than creative mutations.
+        use_refine: If True, use exploitation/refinement prompt (incremental improvements).
+                    If False (default), use exploration prompt (creative/expansive changes).
 
     Returns:
         Generated code string for the new operator, or prompts dict if return_prompt_only=True
@@ -989,7 +1006,7 @@ These traces show how the SR algorithm performed with the current operators. Use
 
         if return_prompt_only:
             return {
-                "refine": {"system": REFINE_SYSTEM_PROMPT, "user": prompt},
+                "refine": {"system": SYSTEM_PROMPT, "user": prompt},
             }
 
         kwargs = {"temperature": llm_temperature}
@@ -1003,7 +1020,7 @@ These traces show how the SR algorithm performed with the current operators. Use
         response = chat_completion(
             model=model,
             messages=[
-                {"role": "system", "content": REFINE_SYSTEM_PROMPT},
+                {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
             **kwargs,
@@ -1013,118 +1030,31 @@ These traces show how the SR algorithm performed with the current operators. Use
         code = extract_code_from_response(get_content(response), operator_type)
         return code
 
-    # Determine whether to use brainstorm approach
-    do_brainstorm = USE_DIVERSE_PROMPTS if use_brainstorm is None else use_brainstorm
-
-    # Build context sections
-    other_operators_section = ""
+    # EXPLORE MODE: creative/expansive exploration prompt
+    # Get other operators' code for context
     if operator_bundle is not None:
-        other_operators_section = f"""
-The other operators in the algorithm:
-{_format_other_operators(operator_bundle, operator_type)}
-"""
+        other_operators_code = {
+            op_type: operator_bundle.get_operator(op_type).code
+            for op_type in OPERATOR_TYPES if op_type != operator_type
+        }
+    else:
+        # Fall back to default operators if no bundle provided
+        other_operators_code = {
+            op_type: get_default_operator(op_type).code
+            for op_type in OPERATOR_TYPES if op_type != operator_type
+        }
 
-    trace_section = ""
-    if use_trace_feedback and elite_operator.trace_feedback:
-        trace_section = f"""
-Evolution traces from recent runs (showing how the algorithm progressed):
-{format_trace_feedback(elite_operator.trace_feedback)}
-"""
-
-    # Two-stage approach: brainstorm ideas, then pick one randomly and implement
-    if do_brainstorm:
-        import random
-
-        # Stage 1: Brainstorm diverse ideas
-        if return_prompt_only:
-            brainstorm_prompts = brainstorm_operator_ideas(
-                operator_type=operator_type,
-                current_code=elite_operator.code,
-                model=model,
-                n_ideas=N_BRAINSTORM_IDEAS,
-                llm_temperature=1.0,
-                return_prompt_only=True,
-            )
-            # For prompt-only mode, show implementation prompt with placeholder idea
-            implement_prompts = pick_and_implement_idea(
-                operator_type=operator_type,
-                idea="<SELECTED_IDEA_FROM_BRAINSTORM>",
-                current_code=elite_operator.code,
-                template=template,
-                other_operators_section=other_operators_section,
-                trace_section=trace_section,
-                model=model,
-                llm_temperature=llm_temperature,
-                llm_seed=llm_seed,
-                sample_index=sample_index,
-                return_prompt_only=True,
-            )
-            return {
-                "stage1_brainstorm": {"system": brainstorm_prompts[0], "user": brainstorm_prompts[1]},
-                "stage2_implement": {"system": implement_prompts[0], "user": implement_prompts[1]},
-            }
-
-        ideas = brainstorm_operator_ideas(
-            operator_type=operator_type,
-            current_code=elite_operator.code,
-            model=model,
-            n_ideas=N_BRAINSTORM_IDEAS,
-            llm_temperature=1.0,  # High temperature for creative brainstorming
-        )
-
-        if not ideas:
-            print(f"Warning: No ideas generated for {operator_type}, falling back to original prompt")
-            # Fall through to original prompt
-        else:
-            # Pick a random idea
-            rng = random.Random(llm_seed + sample_index if llm_seed and sample_index else None)
-            selected_idea = rng.choice(ideas)
-            print(f"  Selected idea: {selected_idea}")
-
-            # Stage 2: Implement the selected idea
-            code = pick_and_implement_idea(
-                operator_type=operator_type,
-                idea=selected_idea,
-                current_code=elite_operator.code,
-                template=template,
-                other_operators_section=other_operators_section,
-                trace_section=trace_section,
-                model=model,
-                llm_temperature=llm_temperature,
-                llm_seed=llm_seed,
-                sample_index=sample_index,
-            )
-            return code
-
-    # Original prompt (fallback or when USE_DIVERSE_PROMPTS is False)
-    prompt = f"""You are improving an evolutionary symbolic regression algorithm by proposing a better variant of one of its operators.
-
-## Current {operator_type} operator to improve:
-```python
-{elite_operator.code}
-```
-
-## SR algorithm pseudocode:
-```python
-{SR_ALGORITHM_PSEUDOCODE}
-```
-{other_operators_section}{trace_section}
-## Your task:
-Propose an improved or alternative {operator_type} operator. Consider:
-- What limitations does the current operator have?
-- How could it better explore the search space?
-- Are there algorithmic improvements or heuristics that could help?
-
-Your function must match this signature:
-```python
-{template}
-```
-
-Provide only the function implementation, no usage examples needed."""
+    prompt = build_explore_prompt(
+        operator_type=operator_type,
+        current_code=elite_operator.code,
+        template=template,
+        other_operators_code=other_operators_code,
+        trace_feedback_str=trace_feedback_str,
+    )
 
     if return_prompt_only:
         return {
-            "fallback_single_stage": {"system": SYSTEM_PROMPT, "user": prompt},
+            "explore": {"system": SYSTEM_PROMPT, "user": prompt},
         }
 
     kwargs = {"temperature": llm_temperature}
@@ -1133,6 +1063,7 @@ Provide only the function implementation, no usage examples needed."""
         kwargs["seed"] = effective_seed
     if sample_index is not None:
         kwargs["sample_index"] = sample_index
+
     llm_start = time.time()
     response = chat_completion(
         model=model,
@@ -1142,7 +1073,7 @@ Provide only the function implementation, no usage examples needed."""
         ],
         **kwargs,
     )
-    print(f"    [TIMING] Fallback mutation LLM call in {time.time() - llm_start:.1f}s")
+    print(f"    [TIMING] Explore LLM call in {time.time() - llm_start:.1f}s")
 
     code = extract_code_from_response(get_content(response), operator_type)
     return code
@@ -1159,7 +1090,6 @@ def crossover_operators(
     llm_seed: int = None,
     sample_index: int = None,
     return_prompt_only: bool = False,
-    use_brainstorm: bool = None,
 ) -> str:
     """Crossover two operators using LLM.
 
@@ -1174,24 +1104,14 @@ def crossover_operators(
         llm_seed: Random seed for reproducibility
         sample_index: Optional index to ensure unique samples (varies cache key)
         return_prompt_only: If True, returns prompts instead of calling API
-        use_brainstorm: If True, use two-stage brainstorm approach. If False, use single-stage.
-                        If None (default), uses module constant USE_DIVERSE_PROMPTS.
 
     Returns:
         Generated code string for the new operator, or prompts dict if return_prompt_only=True
     """
     template = TEMPLATES[operator_type]
 
-    # Build context sections
-    other_operators_section = ""
-    if operator_bundle is not None:
-        other_operators_section = f"""
-The other operators in the algorithm:
-{_format_other_operators(operator_bundle, operator_type)}
-"""
-
-    # Combine trace feedback from both parents
-    trace_section = ""
+    # Build trace feedback section from both parents
+    trace_feedback_str = ""
     if use_trace_feedback:
         combined_feedback = []
         if parent_a.trace_feedback:
@@ -1201,117 +1121,42 @@ The other operators in the algorithm:
                 if fb not in combined_feedback:
                     combined_feedback.append(fb)
         if combined_feedback:
-            trace_section = f"""
-Evolution traces from recent runs:
+            trace_feedback_str = f"""
+## Evolution Traces from Recent Runs
+
+These traces show how the SR algorithm performed with the parent operators.
+
 {format_trace_feedback(combined_feedback)}
+
+---
 """
 
-    # Determine whether to use brainstorm approach
-    do_brainstorm = USE_DIVERSE_PROMPTS if use_brainstorm is None else use_brainstorm
+    # Get other operators' code for context
+    if operator_bundle is not None:
+        other_operators_code = {
+            op_type: operator_bundle.get_operator(op_type).code
+            for op_type in OPERATOR_TYPES if op_type != operator_type
+        }
+    else:
+        other_operators_code = {
+            op_type: get_default_operator(op_type).code
+            for op_type in OPERATOR_TYPES if op_type != operator_type
+        }
 
-    # For crossover, combine parent codes as context
-    combined_code = f"Parent A:\n{parent_a.code}\n\nParent B:\n{parent_b.code}"
-
-    # Two-stage approach: brainstorm ideas considering both parents, then pick one randomly and implement
-    if do_brainstorm:
-        import random
-
-        # Stage 1: Brainstorm diverse ideas
-        if return_prompt_only:
-            brainstorm_prompts = brainstorm_operator_ideas(
-                operator_type=operator_type,
-                current_code=combined_code,
-                model=model,
-                n_ideas=N_BRAINSTORM_IDEAS,
-                llm_temperature=1.0,
-                return_prompt_only=True,
-            )
-            # For prompt-only mode, show implementation prompt with placeholder idea
-            implement_prompts = pick_and_implement_idea(
-                operator_type=operator_type,
-                idea="<SELECTED_IDEA_FROM_BRAINSTORM>",
-                current_code=combined_code,
-                template=template,
-                other_operators_section=other_operators_section,
-                trace_section=trace_section,
-                model=model,
-                llm_temperature=llm_temperature,
-                llm_seed=llm_seed,
-                sample_index=sample_index,
-                return_prompt_only=True,
-            )
-            return {
-                "stage1_brainstorm": {"system": brainstorm_prompts[0], "user": brainstorm_prompts[1]},
-                "stage2_implement": {"system": implement_prompts[0], "user": implement_prompts[1]},
-            }
-
-        ideas = brainstorm_operator_ideas(
-            operator_type=operator_type,
-            current_code=combined_code,
-            model=model,
-            n_ideas=N_BRAINSTORM_IDEAS,
-            llm_temperature=1.0,
-        )
-
-        if not ideas:
-            print(f"Warning: No ideas generated for {operator_type} crossover, falling back to original prompt")
-        else:
-            # Pick a random idea
-            rng = random.Random(llm_seed + sample_index if llm_seed and sample_index else llm_seed)
-            selected_idea = rng.choice(ideas)
-            print(f"  Selected idea: {selected_idea}")
-
-            # Stage 2: Implement the selected idea
-            code = pick_and_implement_idea(
-                operator_type=operator_type,
-                idea=selected_idea,
-                current_code=combined_code,
-                template=template,
-                other_operators_section=other_operators_section,
-                trace_section=trace_section,
-                model=model,
-                llm_temperature=llm_temperature,
-                llm_seed=llm_seed,
-                sample_index=sample_index,
-            )
-            return code
-
-    # Original prompt (fallback or when USE_DIVERSE_PROMPTS is False)
-    prompt = f"""You are improving an evolutionary symbolic regression algorithm by combining two existing operators into a better one.
-
-## Parent operators to combine:
-
-### Operator A (Score: {parent_a.score:.3f}, {parent_a.lines_of_code} lines):
-```python
-{parent_a.code}
-```
-
-### Operator B (Score: {parent_b.score:.3f}, {parent_b.lines_of_code} lines):
-```python
-{parent_b.code}
-```
-
-## SR algorithm pseudocode:
-```python
-{SR_ALGORITHM_PSEUDOCODE}
-```
-{other_operators_section}{trace_section}
-## Your task:
-Synthesize a new {operator_type} operator that combines the strengths of both parents. Consider:
-- What works well in each parent?
-- How can you combine their best ideas?
-- Can you improve on both?
-
-Your function must match this signature:
-```python
-{template}
-```
-
-Provide only the function implementation, no usage examples needed."""
+    prompt = build_crossover_prompt(
+        operator_type=operator_type,
+        parent_a_code=parent_a.code,
+        parent_b_code=parent_b.code,
+        parent_a_score=parent_a.score if parent_a.score is not None else 0.0,
+        parent_b_score=parent_b.score if parent_b.score is not None else 0.0,
+        template=template,
+        other_operators_code=other_operators_code,
+        trace_feedback_str=trace_feedback_str,
+    )
 
     if return_prompt_only:
         return {
-            "fallback_single_stage": {"system": SYSTEM_PROMPT, "user": prompt},
+            "crossover": {"system": SYSTEM_PROMPT, "user": prompt},
         }
 
     kwargs = {"temperature": llm_temperature}
@@ -1320,6 +1165,7 @@ Provide only the function implementation, no usage examples needed."""
         kwargs["seed"] = effective_seed
     if sample_index is not None:
         kwargs["sample_index"] = sample_index
+
     llm_start = time.time()
     response = chat_completion(
         model=model,
@@ -1329,24 +1175,10 @@ Provide only the function implementation, no usage examples needed."""
         ],
         **kwargs,
     )
-    print(f"    [TIMING] Fallback crossover LLM call in {time.time() - llm_start:.1f}s")
+    print(f"    [TIMING] Crossover LLM call in {time.time() - llm_start:.1f}s")
 
     code = extract_code_from_response(get_content(response), operator_type)
     return code
-
-
-def _parse_brainstorm_ideas(response_text: str) -> List[str]:
-    """Parse numbered list of ideas from brainstorm response."""
-    ideas = []
-    for line in response_text.split('\n'):
-        line = line.strip()
-        if line and len(line) > 3:
-            match = re.match(r'^\d+[\.\)\:\-]\s*(.+)$', line)
-            if match:
-                idea = match.group(1).strip()
-                if idea:
-                    ideas.append(idea)
-    return ideas
 
 
 def generate_offspring_batch(
@@ -1378,7 +1210,7 @@ def generate_offspring_batch(
         use_trace_feedback: Whether to include evolution traces
         llm_temperature: Sampling temperature for implementation
         llm_seed: Random seed
-        use_refine: Whether to use refinement mode for mutations
+        use_refine: Whether to use refinement mode for mutations (explore mode if False)
         max_retries: Maximum retry attempts per offspring
         run_perf_test: Whether to run performance test (SR on real data) during validation
         perf_timeout: Timeout in seconds for performance test (default: 5s)
@@ -1386,7 +1218,6 @@ def generate_offspring_batch(
     Returns:
         List of OperatorBundle instances (one per successful offspring)
     """
-    import random
 
     n_crossover = len(crossover_specs)
     n_mutation = len(mutation_specs)
@@ -1414,172 +1245,57 @@ def generate_offspring_batch(
 
         print(f"\n[BATCH] Round {retry_round + 1}/{max_retries}: {n_pending} offspring pending")
 
-        # ============ STAGE 1: Brainstorm (parallel) ============
-        brainstorm_requests = []
-        request_mapping = []  # Track which request corresponds to which offspring
-
-        # Prepare crossover brainstorm requests
-        for idx, spec in pending_crossover.items():
-            parent_a = spec["parent_a"]
-            parent_b = spec["parent_b"]
-            combined_code = f"Parent A:\n{parent_a.get_operator(operator_type).code}\n\nParent B:\n{parent_b.get_operator(operator_type).code}"
-
-            system_prompt = "You are an expert in evolutionary computation and genetic programming. Be creative and diverse in your suggestions."
-            user_prompt = f"""You are brainstorming different algorithmic approaches for a {operator_type} operator in an evolutionary symbolic regression algorithm.
-
-Current implementation (for reference - we want DIFFERENT approaches):
-```python
-{combined_code}
-```
-
-Generate exactly {N_BRAINSTORM_IDEAS} DIVERSE one-sentence descriptions of fundamentally different {operator_type} implementations.
-
-Requirements:
-- Each idea must be a genuinely different algorithmic approach
-- NO minor variations (e.g., "same but with different parameters")
-- Include ideas from different paradigms: probabilistic, deterministic, adaptive, semantic, multi-objective, etc.
-- Be creative - include unconventional ideas too
-
-Format your response as a numbered list:
-1. [One sentence description]
-2. [One sentence description]
-...
-{N_BRAINSTORM_IDEAS}. [One sentence description]"""
-
-            brainstorm_requests.append({
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": 1.0,  # High temp for brainstorming
-            })
-            request_mapping.append(("crossover", idx))
-
-        # Prepare mutation brainstorm requests (unless using refine mode)
-        if not use_refine:
-            for idx, spec in pending_mutation.items():
-                elite = spec["elite"]
-                elite_op = elite.get_operator(operator_type)
-
-                system_prompt = "You are an expert in evolutionary computation and genetic programming. Be creative and diverse in your suggestions."
-                user_prompt = f"""You are brainstorming different algorithmic approaches for a {operator_type} operator in an evolutionary symbolic regression algorithm.
-
-Current implementation (for reference - we want DIFFERENT approaches):
-```python
-{elite_op.code}
-```
-
-Generate exactly {N_BRAINSTORM_IDEAS} DIVERSE one-sentence descriptions of fundamentally different {operator_type} implementations.
-
-Requirements:
-- Each idea must be a genuinely different algorithmic approach
-- NO minor variations (e.g., "same but with different parameters")
-- Include ideas from different paradigms: probabilistic, deterministic, adaptive, semantic, multi-objective, etc.
-- Be creative - include unconventional ideas too
-
-Format your response as a numbered list:
-1. [One sentence description]
-2. [One sentence description]
-...
-{N_BRAINSTORM_IDEAS}. [One sentence description]"""
-
-                brainstorm_requests.append({
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    "temperature": 1.0,
-                })
-                request_mapping.append(("mutation", idx))
-
-        # Execute brainstorm in parallel
-        brainstorm_ideas = {}  # (type, idx) -> selected_idea
-        if brainstorm_requests:
-            print(f"    [BATCH] Running {len(brainstorm_requests)} brainstorm calls in parallel...")
-            brainstorm_start = time.time()
-            brainstorm_responses = chat_completion_batch(brainstorm_requests)
-            print(f"    [TIMING] Brainstorm batch in {time.time() - brainstorm_start:.1f}s")
-
-            # Parse ideas and select one for each
-            for i, response in enumerate(brainstorm_responses):
-                key = request_mapping[i]
-                if "error" in response:
-                    print(f"    Warning: Brainstorm failed for {key}: {response['error']}")
-                    brainstorm_ideas[key] = None
-                else:
-                    ideas = _parse_brainstorm_ideas(get_content(response))
-                    if ideas:
-                        rng_seed = llm_seed + i if llm_seed else None
-                        rng = random.Random(rng_seed)
-                        selected = rng.choice(ideas)
-                        brainstorm_ideas[key] = selected
-                        print(f"    [{key[0]} {key[1]}] Selected: {selected[:80]}...")
-                    else:
-                        brainstorm_ideas[key] = None
-
-        # ============ STAGE 2: Implement (parallel) ============
+        # ============ Build LLM requests (parallel) ============
         implement_requests = []
         implement_mapping = []
 
-        # Prepare crossover implement requests
+        # Prepare crossover requests
         for idx, spec in pending_crossover.items():
             parent_a = spec["parent_a"]
             parent_b = spec["parent_b"]
-            combined_code = f"Parent A:\n{parent_a.get_operator(operator_type).code}\n\nParent B:\n{parent_b.get_operator(operator_type).code}"
+            parent_a_op = parent_a.get_operator(operator_type)
+            parent_b_op = parent_b.get_operator(operator_type)
 
-            idea = brainstorm_ideas.get(("crossover", idx))
-            if idea is None:
-                # Fallback prompt without idea
-                prompt = f"""You are improving an evolutionary symbolic regression algorithm by combining two existing operators into a better one.
+            # Get other operators' code for context
+            other_ops_code = {
+                op_type: parent_a.get_operator(op_type).code
+                for op_type in OPERATOR_TYPES if op_type != operator_type
+            }
 
-## Parent operators to combine:
-{combined_code}
+            # Build trace feedback from both parents
+            trace_str = ""
+            if use_trace_feedback:
+                combined_feedback = []
+                if parent_a_op.trace_feedback:
+                    combined_feedback.extend(parent_a_op.trace_feedback)
+                if parent_b_op.trace_feedback:
+                    for fb in parent_b_op.trace_feedback:
+                        if fb not in combined_feedback:
+                            combined_feedback.append(fb)
+                if combined_feedback:
+                    trace_str = f"""
+## Evolution Traces from Recent Runs
+{format_trace_feedback(combined_feedback)}
+---
+"""
 
-## SR algorithm pseudocode:
-```python
-{SR_ALGORITHM_PSEUDOCODE}
-```
-
-## Your task:
-Synthesize a new {operator_type} operator that combines the strengths of both parents.
-
-Your function must match this signature:
-```python
-{template}
-```
-
-Provide only the function implementation."""
-            else:
-                prompt = f"""You are implementing a specific approach for a {operator_type} operator in an evolutionary symbolic regression algorithm.
-
-## The approach to implement:
-**{idea}**
-
-## Current implementation (for reference):
-```python
-{combined_code}
-```
-
-## SR algorithm pseudocode:
-```python
-{SR_ALGORITHM_PSEUDOCODE}
-```
-
-## Your task:
-Implement the {operator_type} operator using EXACTLY the approach described above: "{idea}"
-
-Your function must match this signature:
-```python
-{template}
-```
-
-Provide only the function implementation."""
+            prompt = build_crossover_prompt(
+                operator_type=operator_type,
+                parent_a_code=parent_a_op.code,
+                parent_b_code=parent_b_op.code,
+                parent_a_score=parent_a_op.score if parent_a_op.score is not None else 0.0,
+                parent_b_score=parent_b_op.score if parent_b_op.score is not None else 0.0,
+                template=template,
+                other_operators_code=other_ops_code,
+                trace_feedback_str=trace_str,
+            )
 
             kwargs = {"temperature": llm_temperature}
+            # Use sample_index to vary cache key on retries (so failed generations get fresh API calls)
+            sample_idx = retry_round * 1000 + idx
             if llm_seed is not None:
-                kwargs["seed"] = llm_seed + retry_round * 1000 + idx
+                kwargs["seed"] = llm_seed + sample_idx
+            kwargs["sample_index"] = sample_idx
 
             implement_requests.append({
                 "model": model,
@@ -1591,25 +1307,29 @@ Provide only the function implementation."""
             })
             implement_mapping.append(("crossover", idx))
 
-        # Prepare mutation implement requests
+        # Prepare mutation requests
         for idx, spec in pending_mutation.items():
             elite = spec["elite"]
             elite_op = elite.get_operator(operator_type)
             sample_idx_base = spec.get("sample_index_base", 0)
 
-            if use_refine:
-                # Build refine prompt
-                other_ops_code = {
-                    op_type: elite.get_operator(op_type).code
-                    for op_type in OPERATOR_TYPES if op_type != operator_type
-                }
-                trace_str = ""
-                if use_trace_feedback and elite_op.trace_feedback:
-                    trace_str = f"""
+            # Get other operators' code for context
+            other_ops_code = {
+                op_type: elite.get_operator(op_type).code
+                for op_type in OPERATOR_TYPES if op_type != operator_type
+            }
+
+            # Build trace feedback
+            trace_str = ""
+            if use_trace_feedback and elite_op.trace_feedback:
+                trace_str = f"""
 ## Evolution Traces from Recent Runs
 {format_trace_feedback(elite_op.trace_feedback)}
 ---
 """
+
+            if use_refine:
+                # Refinement/exploitation mode
                 prompt = build_refine_prompt(
                     operator_type=operator_type,
                     current_code=elite_op.code,
@@ -1617,57 +1337,16 @@ Provide only the function implementation."""
                     other_operators_code=other_ops_code,
                     trace_feedback_str=trace_str,
                 )
-                system = REFINE_SYSTEM_PROMPT
+                system = SYSTEM_PROMPT
             else:
-                idea = brainstorm_ideas.get(("mutation", idx))
-                if idea is None:
-                    # Fallback prompt
-                    prompt = f"""You are improving an evolutionary symbolic regression algorithm by proposing a better variant of one of its operators.
-
-## Current {operator_type} operator to improve:
-```python
-{elite_op.code}
-```
-
-## SR algorithm pseudocode:
-```python
-{SR_ALGORITHM_PSEUDOCODE}
-```
-
-## Your task:
-Propose an improved or alternative {operator_type} operator.
-
-Your function must match this signature:
-```python
-{template}
-```
-
-Provide only the function implementation."""
-                else:
-                    prompt = f"""You are implementing a specific approach for a {operator_type} operator in an evolutionary symbolic regression algorithm.
-
-## The approach to implement:
-**{idea}**
-
-## Current implementation (for reference):
-```python
-{elite_op.code}
-```
-
-## SR algorithm pseudocode:
-```python
-{SR_ALGORITHM_PSEUDOCODE}
-```
-
-## Your task:
-Implement the {operator_type} operator using EXACTLY the approach described above: "{idea}"
-
-Your function must match this signature:
-```python
-{template}
-```
-
-Provide only the function implementation."""
+                # Exploration mode
+                prompt = build_explore_prompt(
+                    operator_type=operator_type,
+                    current_code=elite_op.code,
+                    template=template,
+                    other_operators_code=other_ops_code,
+                    trace_feedback_str=trace_str,
+                )
                 system = SYSTEM_PROMPT
 
             kwargs = {"temperature": llm_temperature}
