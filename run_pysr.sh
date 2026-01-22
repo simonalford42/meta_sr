@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=pysr_1hr
+#SBATCH --job-name=pysr
 #SBATCH --output=out/pysr_%A_%a.out
 #SBATCH --error=out/pysr_%A_%a.err
-#SBATCH --array=0-129%30
-#SBATCH --time=01:30:00
+#SBATCH --array=0-129
+#SBATCH --time=01:00:00
 #SBATCH --mem=32G
 #SBATCH --partition=default_partition
  # total nodes
@@ -18,12 +18,12 @@ conda activate meta_sr
 DATASETS=($(cat splits/srbench_all.txt))
 DATASET_NAME=${DATASETS[$SLURM_ARRAY_TASK_ID]}
 
-    python run_pysr_srbench.py \
+echo "Running PySR on dataset: $DATASET_NAME"
+python -u run_pysr_srbench.py \
     --dataset "$DATASET_NAME" \
-    --time_minutes 60 \
-    --max_samples 1000 \
+    --max_samples 2000 \
     --seed 42 \
     --results_dir results_pysr \
-    --n_cpus 1 \
-    --niterations 1000 \
     "$@"
+
+echo "Done"
