@@ -20,6 +20,35 @@ from pathlib import Path
 from slurm_eval import BaseSlurmEvaluator, init_worker
 
 
+def _load_dynamic_mutations(custom_mutation_code: Dict[str, str]) -> None:
+    """
+    Load custom mutation code into Julia at runtime.
+
+    Args:
+        custom_mutation_code: Dict mapping mutation name to Julia code string.
+                              e.g., {"my_mutation": "function my_mutation(...) ... end"}
+    """
+    from juliacall import Main as jl
+
+    # Import the custom mutations module
+    jl.seval("using SymbolicRegression")
+    jl.seval("using SymbolicRegression.CustomMutationsModule")
+
+    # Clear any previously loaded dynamic mutations
+    jl.seval("clear_dynamic_mutations!()")
+
+    # Load each mutation using raw strings to avoid Julia $ interpolation issues
+    for name, code in custom_mutation_code.items():
+        print(f"  Loading mutation: {name}", flush=True)
+        # Use triple-quoted raw string to handle multiline code with special chars
+        # raw"..." doesn't interpolate $, but we still need to escape the delimiter
+        escaped_code = code.replace('"""', '\\"\\"\\"')
+        jl.seval(f'load_mutation_from_string!(:{name}, raw"""{escaped_code}""")')
+
+    # Reinitialize to pick up new mutations (preserves dynamic weights)
+    jl.seval("reload_custom_mutations!()")
+
+
 @dataclass
 class PySRTaskSpec:
     """Specification for a single PySR evaluation task."""
@@ -140,6 +169,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
     try:
         # Seed for dataset loading
+        print(f"[{spec.dataset_name}] Loading dataset...", flush=True)
         np.random.seed(spec.data_seed)
         _rnd.seed(spec.data_seed)
         X, y, _ = load_srbench_dataset(spec.dataset_name, max_samples=spec.max_samples)
@@ -157,17 +187,26 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         X_train, y_train = X[train_idx], y[train_idx]
         X_val, y_val = X[val_idx], y[val_idx]
 
+        print('Loading PySR')
         # Build PySR model with specified mutation weights
         from pysr import PySRRegressor
 
+        # Load dynamic mutations if provided
+        if spec.custom_mutation_code:
+            print(f"[{spec.dataset_name}] Loading {len(spec.custom_mutation_code)} custom mutation(s)", flush=True)
+            _load_dynamic_mutations(spec.custom_mutation_code)
+
         # Create and fit model
+        print(f"[{spec.dataset_name}] Creating PySR model with {len(model_kwargs)} params", flush=True)
         model = PySRRegressor(**model_kwargs)
 
         # Generate variable names based on number of features
         n_features = X_train.shape[1]
         variable_names = [f"x{i}" for i in range(n_features)]
 
+        print(f"[{spec.dataset_name}] Starting fit: {X_train.shape[0]} train samples, {n_features} features", flush=True)
         model.fit(X_train, y_train, variable_names=variable_names)
+        print(f"[{spec.dataset_name}] Fit complete after {_time.time() - start_time:.1f}s", flush=True)
 
         # Get best equation
         best = model.get_best()
@@ -185,6 +224,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         r2 = max(r2, 0)  # Clip negative R^2 to 0
 
         runtime = _time.time() - start_time
+        print(f"[{spec.dataset_name}] Done: R²={r2:.4f}, equation={best_equation}", flush=True)
 
         result = PySRTaskResult(
             config_id=spec.config_id,
@@ -448,6 +488,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         job_id = self._submit_job(job_script)
         print(f"  Submitted SLURM job array: {job_id}")
         print(f"    Script: {job_script}")
+        logs_dir = batch_dir / "logs"
+        print(f"    Watch logs: tail -f {logs_dir}/task_<N>.out")
 
         # Wait for completion
         job_completed = self._wait_for_job(job_id, n_tasks, batch_dir)
@@ -551,8 +593,8 @@ export JULIA_PROJECT="$SLURM_SUBMIT_DIR/SymbolicRegression.jl"
 # Log which node this task is running on
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
 
-# Run the worker script
-python -m parallel_eval_pysr --worker \\
+# Run the worker script (-u for unbuffered output)
+python -u -m parallel_eval_pysr --worker \\
     --tasks-file "{tasks_file}" \\
     --task-index $SLURM_ARRAY_TASK_ID \\
     --output-dir "{results_dir}"{no_cache_flag}
@@ -611,8 +653,8 @@ export JULIA_PROJECT="$SLURM_SUBMIT_DIR/SymbolicRegression.jl"
 # Log which node this task is running on
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
 
-# Run the worker script
-python -m parallel_eval_pysr --worker \\
+# Run the worker script (-u for unbuffered output)
+python -u -m parallel_eval_pysr --worker \\
     --tasks-file "{tasks_file}" \\
     --task-index $SLURM_ARRAY_TASK_ID \\
     --output-dir "{results_dir}"{no_cache_flag}
@@ -746,8 +788,8 @@ def get_default_pysr_kwargs() -> Dict[str, Any]:
         "binary_operators": ["+", "-", "*", "/"],
         "unary_operators": ["sin", "cos", "exp", "log"],
         "procs": 0,  # Serial mode for single-task evaluation
-        "verbosity": 0,
-        "progress": False,
+        "verbosity": 1,  # Show PySR progress
+        "progress": True,  # Show progress bar
         "temp_equation_file": False,
         "delete_tempfiles": True,
     }
