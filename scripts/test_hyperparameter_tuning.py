@@ -61,7 +61,7 @@ def selection(population, fitnesses, n_crossover, n_mutation):
 
     # Test identification (this will call the LLM)
     print("\nIdentifying hyperparameters (calling LLM)...")
-    hyperparams = identify_hyperparameters(operator, model="openai/gpt-4o-mini")
+    hyperparams = identify_hyperparameters(operator, model="openai/gpt-5-mini")
 
     if hyperparams:
         print(f"\nFound {len(hyperparams)} hyperparameters:")
@@ -126,7 +126,7 @@ def test_operator_validation():
         operator = get_default_operator(op_type)
 
         # Identify hyperparameters
-        hyperparams = identify_hyperparameters(operator, model="openai/gpt-4o-mini")
+        hyperparams = identify_hyperparameters(operator, model="openai/gpt-5-mini")
 
         if not hyperparams:
             print(f"  No hyperparameters found for {op_type}")

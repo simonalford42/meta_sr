@@ -2106,6 +2106,7 @@ def print_multi_pysr_comparison(pysr_dirs: list, base_dir: str = ".", sr_seeds: 
         print(f"{name:<40} {n:>4}  {avg_str:>8}  {n_9999:>3}/{n:<3} ({rate_9999:>5.1f}%)  {n_exact:>3}/{n:<3} ({rate_exact:>5.1f}%)")
 
     print("\n" + "=" * 80)
+    return all_results['PySR: results/results_pysr_1e6']
 
 
 if __name__ == "__main__":
@@ -2117,27 +2118,40 @@ if __name__ == "__main__":
     # print()
     # print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_test.txt")
     # analyze_r2_across_runs()
-    # print_multi_pysr_comparison(
-    #     pysr_dirs=[
-    #         "results_pysr_1e3",
-    #         "results_pysr_1e4",
-    #         "results_pysr_1e5",
-    #         "results_pysr_1e6",
-    #         "results_pysr_1e7",
-    #         "results_pysr_1e8",
-    #     ],
-    #     r2_threshold=0.999999,
-    #     split_file="splits/srbench_all.txt"
-    # )
-    plot_pysr_r2_thresholds(
-      pysr_dirs=[
-          "results_pysr_1e3",
-          "results_pysr_1e4",
-          "results_pysr_1e5",
-          "results_pysr_1e6",
-          "results_pysr_1e7",
-          "results_pysr_1e8",
-      ],
-      split_file="splits/srbench_all.txt",
-      output_path="pysr_r2_thresholds.png"  # or None to display interactively
-  )
+    old_1e6 = print_multi_pysr_comparison(
+        pysr_dirs=[
+            "results/results_pysr_1e3",
+            "results/results_pysr_1e4",
+            "results/results_pysr_1e5",
+            "results/results_pysr_1e6",
+            "results/results_pysr_1e7",
+            "results/results_pysr_1e8",
+        ],
+        r2_threshold=0.999999,
+        split_file="splits/srbench_all.txt"
+    )
+    from utils import load_json
+    combined = load_json('results/pysr_1e6_4/slurm_pysr/eval_0000/combined.json')
+    r2_s = {res['dataset_name']: res['r2_score'] for res in combined}
+    r2_s = {k:v for k,v in r2_s.items() if v > -10}
+    avg_r2 = sum(r2_s.values()) / len(r2_s)
+    print(avg_r2)
+    num_high = sum(1 for r2 in r2_s.values() if r2 >= 0.9999)
+    num_perfect = sum(1 for r2 in r2_s.values() if r2 == 1.0)
+    print(len(r2_s))
+    print(num_high)
+    print(num_perfect)
+    # r2s2 = {k:v for k in r2_s if i in old_1e6}
+    # print(r2_s)
+#     plot_pysr_r2_thresholds(
+#       pysr_dirs=[
+#           "results_pysr_1e3",
+#           "results_pysr_1e4",
+#           "results_pysr_1e5",
+#           "results_pysr_1e6",
+#           "results_pysr_1e7",
+#           "results_pysr_1e8",
+#       ],
+#       split_file="splits/srbench_all.txt",
+#       output_path="pysr_r2_thresholds.png"  # or None to display interactively
+#   )

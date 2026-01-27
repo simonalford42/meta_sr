@@ -30,14 +30,10 @@ def main() -> None:
     parser.add_argument("--partition", type=str, default="default_partition")
     parser.add_argument("--time_limit", type=str, default="00:30:00")  # 30 min per task
     parser.add_argument("--mem_per_cpu", type=str, default="8G")  # PySR/Julia needs more memory
-    parser.add_argument("--max_samples", type=int, default=500)
+    parser.add_argument("--max_samples", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n_runs", type=int, default=1)
     parser.add_argument("--custom_weight", type=float, default=1.0)
-    parser.add_argument("--niterations", type=int, default=100)  # Reasonable default
-    parser.add_argument("--populations", type=int, default=None)
-    parser.add_argument("--population_size", type=int, default=None)
-    parser.add_argument("--maxsize", type=int, default=None)
     parser.add_argument("--no_cache", action="store_true")
     parser.add_argument("--job_timeout", type=float, default=3600.0,
                        help="Max time to wait for job completion in seconds (default: 3600)")
@@ -46,13 +42,6 @@ def main() -> None:
     dataset_names = load_dataset_names_from_split(args.split_file)
 
     pysr_kwargs = get_default_pysr_kwargs()
-    pysr_kwargs["niterations"] = args.niterations
-    if args.populations is not None:
-        pysr_kwargs["populations"] = args.populations
-    if args.population_size is not None:
-        pysr_kwargs["population_size"] = args.population_size
-    if args.maxsize is not None:
-        pysr_kwargs["maxsize"] = args.maxsize
     # Force single-core execution within PySR.
     pysr_kwargs["procs"] = 0
     pysr_kwargs["parallelism"] = "serial"

@@ -292,7 +292,7 @@ def chat_completion(
         "model": model,
         "messages": messages,
         "usage": {"include": True},  # Request usage/cost info
-        "reasoning": {"effort": "high"},  # Use minimal reasoning for faster responses
+        "reasoning": {"effort": "high"},  # Enable extended reasoning for better code generation
         **kwargs
     }
 
@@ -434,8 +434,20 @@ def chat_completion(
 
 
 def get_content(response: Dict[str, Any]) -> str:
-    """Helper to extract content from a chat completion response"""
-    return response["choices"][0]["message"]["content"]
+    """Helper to extract content from a chat completion response.
+
+    For reasoning models, the actual output may be in the 'reasoning' field
+    if content is empty (though this is not ideal - see note in chat_completion).
+    """
+    message = response["choices"][0]["message"]
+    content = message.get("content", "") or ""
+    # Fallback: if content is empty but reasoning exists, try to extract from reasoning
+    # Note: This is a workaround for when reasoning mode accidentally consumes all tokens
+    if not content.strip() and "reasoning" in message and message["reasoning"]:
+        # Reasoning contains the model's thinking, not the final answer
+        # Log a warning since this typically means the model didn't finish properly
+        print("  WARNING: Empty content field - model may have run out of tokens during reasoning")
+    return content
 
 
 def chat_completion_batch(
