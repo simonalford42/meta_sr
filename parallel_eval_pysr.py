@@ -169,10 +169,13 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
     try:
         # Seed for dataset loading
+        t0 = _time.time()
         print(f"[{spec.dataset_name}] Loading dataset...", flush=True)
         np.random.seed(spec.data_seed)
         _rnd.seed(spec.data_seed)
         X, y, _ = load_srbench_dataset(spec.dataset_name, max_samples=spec.max_samples)
+        t_load_data = _time.time() - t0
+        print(f"[{spec.dataset_name}] Dataset loaded in {t_load_data:.1f}s", flush=True)
 
         np.random.seed(run_seed)
         _rnd.seed(run_seed)
@@ -187,26 +190,34 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         X_train, y_train = X[train_idx], y[train_idx]
         X_val, y_val = X[val_idx], y[val_idx]
 
-        print('Loading PySR')
         # Build PySR model with specified mutation weights
+        t1 = _time.time()
+        print(f"[{spec.dataset_name}] Loading PySR...", flush=True)
         from pysr import PySRRegressor
+        t_load_pysr = _time.time() - t1
+        print(f"[{spec.dataset_name}] PySR loaded in {t_load_pysr:.1f}s", flush=True)
 
         # Load dynamic mutations if provided
         if spec.custom_mutation_code:
+            t2 = _time.time()
             print(f"[{spec.dataset_name}] Loading {len(spec.custom_mutation_code)} custom mutation(s)", flush=True)
             _load_dynamic_mutations(spec.custom_mutation_code)
+            print(f"[{spec.dataset_name}] Custom mutations loaded in {_time.time() - t2:.1f}s", flush=True)
 
         # Create and fit model
         print(f"[{spec.dataset_name}] Creating PySR model with {len(model_kwargs)} params", flush=True)
+        print('\n'.join(f"{k}: {v}" for k, v in model_kwargs.items()))
         model = PySRRegressor(**model_kwargs)
 
         # Generate variable names based on number of features
         n_features = X_train.shape[1]
         variable_names = [f"x{i}" for i in range(n_features)]
 
-        print(f"[{spec.dataset_name}] Starting fit: {X_train.shape[0]} train samples, {n_features} features", flush=True)
+        t3 = _time.time()
+        print(f"[{spec.dataset_name}] Starting PySR search: {X_train.shape[0]} train samples, {n_features} features", flush=True)
         model.fit(X_train, y_train, variable_names=variable_names)
-        print(f"[{spec.dataset_name}] Fit complete after {_time.time() - start_time:.1f}s", flush=True)
+        t_search = _time.time() - t3
+        print(f"[{spec.dataset_name}] PySR search complete in {t_search:.1f}s (total: {_time.time() - start_time:.1f}s)", flush=True)
 
         # Get best equation
         best = model.get_best()
@@ -779,17 +790,43 @@ def run_pysr_worker(tasks_file: str, task_index: int, output_dir: str, use_cache
 # =============================================================================
 
 def get_default_pysr_kwargs() -> Dict[str, Any]:
-    """Get default PySR parameters for evaluation."""
+    """
+    Get default PySR parameters for evaluation.
+
+    Based on run_pysr_srbench.py settings, but configured for single-core execution.
+    """
     return {
-        "niterations": 40,
+        # Search settings (matching run_pysr_srbench.py)
+        # "timeout_in_seconds": int(1 * 60), # disabled
+        "niterations": 10000000,
         "populations": 15,
         "population_size": 33,
-        "maxsize": 20,
+        "maxsize": 40,
+        "maxdepth": 10,
         "binary_operators": ["+", "-", "*", "/"],
-        "unary_operators": ["sin", "cos", "exp", "log"],
-        "procs": 0,  # Serial mode for single-task evaluation
-        "verbosity": 1,  # Show PySR progress
-        "progress": True,  # Show progress bar
+        "unary_operators": ["sin", "cos", "exp", "log", "sqrt", "square"],
+        "constraints": {
+            "sin": 9,
+            "cos": 9,
+            "exp": 9,
+            "log": 9,
+            "sqrt": 9,
+            "/": (-1, 9),
+        },
+        "nested_constraints": {
+            "sin": {"sin": 0, "cos": 0, "exp": 1, "log": 1, "sqrt": 1, "square": 1},
+            "cos": {"sin": 0, "cos": 0, "exp": 1, "log": 1, "sqrt": 1, "square": 1},
+            "exp": {"exp": 0, "log": 0},
+            "log": {"exp": 0, "log": 0},
+            "sqrt": {"sqrt": 0},
+        },
+        # Execution settings (single-core for SLURM task parallelism)
+        "procs": 0,
+        "parallelism": "serial",
+        "batching": False,
+        # Output settings
+        "verbosity": 1,
+        "progress": True,
         "temp_equation_file": False,
         "delete_tempfiles": True,
     }
@@ -798,17 +835,19 @@ def get_default_pysr_kwargs() -> Dict[str, Any]:
 def get_default_mutation_weights() -> Dict[str, float]:
     """Get default PySR mutation weights."""
     return {
-        "weight_add_node": 0.79,
-        "weight_insert_node": 5.1,
-        "weight_delete_node": 1.7,
-        "weight_do_nothing": 0.21,
-        "weight_mutate_constant": 0.048,
-        "weight_mutate_operator": 0.47,
-        "weight_swap_operands": 0.1,
-        "weight_rotate_tree": 0.0,
-        "weight_randomize": 0.00023,
-        "weight_simplify": 0.002,
-        "weight_optimize": 0.0,
+        ### Disabled default mutation weights. This way SymbolicRegression.jl's weights are not overwritten,
+        ### in case these calculated default weights are incorrect (from prior experimentation, it seems these weights performed slightly worse than the defaults in SymbolicRegression.jl).
+        # "weight_add_node": 0.79,
+        # "weight_insert_node": 5.1,
+        # "weight_delete_node": 1.7,
+        # "weight_do_nothing": 0.21,
+        # "weight_mutate_constant": 0.048,
+        # "weight_mutate_operator": 0.47,
+        # "weight_swap_operands": 0.1,
+        # "weight_rotate_tree": 0.0,
+        # "weight_randomize": 0.00023,
+        # "weight_simplify": 0.002,
+        # "weight_optimize": 0.0,
         # Custom mutation weights (disabled by default)
         "weight_custom_mutation_1": 0.0,
         "weight_custom_mutation_2": 0.0,
