@@ -1,7 +1,7 @@
 import random
 import numpy as np
 from utils import mse
-from main import SelectionOperator, MutationOperator, CrossoverOperator, FitnessOperator, SR
+from evolve_basic_sr import SelectionOperator, MutationOperator, CrossoverOperator, FitnessOperator, SR
 from typing import Dict
 
 def fit(self, X, y):
@@ -14,8 +14,8 @@ def fit(self, X, y):
             # optimize constants with BFGS
             population = [self.optimize_constants(e, X, y) for e in population]
         else:
-            # Elitism: keep best
-            new_population = [self.best_expression(population, fitnesses)]
+            new_population = [self.survival_operator(population, fitnesses)]
+            to_generate = self.population_size
 
             # Generate rest through evolution
             n_crossover = np.random.binomial( len(population) - 1, self.crossover_prob)

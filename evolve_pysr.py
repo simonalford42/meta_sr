@@ -82,6 +82,40 @@ class JuliaMutation:
 # Julia Code Validation
 # =============================================================================
 
+def pre_validate_julia_syntax(code: str) -> Tuple[bool, str]:
+    """
+    Pre-validate Julia code for common LLM-generated syntax errors.
+
+    These checks run before the Julia parser to give better error messages
+    and avoid polluting the run logs with syntax errors.
+
+    Returns:
+        (is_valid, error_message) - error_message is empty if valid
+    """
+    import re
+
+    # Check for repeated field names in named tuples
+    # Pattern: (name=..., name=...) where name appears twice
+    named_tuple_pattern = r'\(\s*(\w+)\s*=\s*[^,)]+\s*,\s*\1\s*='
+    if re.search(named_tuple_pattern, code):
+        return False, "Repeated field name in named tuple (e.g., (left=x, left=y) should be (left=x, right=y))"
+
+    # Check for invalid try-catch syntax: "catch <value>" instead of "catch; <value>" or "catch e; <value>"
+    # Pattern: catch followed by a number or expression that's not a variable name followed by newline/end
+    invalid_catch_pattern = r'\bcatch\s+(\d+[\d.eE+-]*|[^;\s\w])'
+    if re.search(invalid_catch_pattern, code):
+        return False, "Invalid try-catch syntax: use 'catch; ...' or 'catch e; ...' not 'catch <value>'"
+
+    # Check for const inside function (not at module level)
+    # This is tricky - we look for 'const' that appears after 'function' without an 'end' in between
+    # Simple heuristic: if 'const' appears indented (has leading whitespace)
+    const_in_func_pattern = r'^[ \t]+const\s+'
+    if re.search(const_in_func_pattern, code, re.MULTILINE):
+        return False, "Cannot use 'const' inside function body (Julia syntax error)"
+
+    return True, ""
+
+
 def validate_julia_code(name: str, code: str) -> Tuple[bool, str]:
     """
     Validate Julia mutation code by attempting to load it.
@@ -93,6 +127,11 @@ def validate_julia_code(name: str, code: str) -> Tuple[bool, str]:
     Returns:
         (is_valid, error_message) - error_message is empty if valid
     """
+    # First, run pre-validation checks for common LLM errors
+    is_valid, error = pre_validate_julia_syntax(code)
+    if not is_valid:
+        return False, error
+
     try:
         from juliacall import Main as jl
 
@@ -352,7 +391,8 @@ def evaluate_baseline(
     dataset_names: List[str],
     pysr_kwargs: Dict,
     seed: int = 42,
-) -> Tuple[float, List[float]]:
+    n_runs: int = 1,
+) -> Tuple[float, List[float], List[Dict]]:
     """Evaluate PySR without any custom mutations (baseline)."""
     mutation_weights = get_default_mutation_weights()
     # Ensure custom mutations are disabled
@@ -367,9 +407,9 @@ def evaluate_baseline(
         name="baseline",
     )
 
-    results = evaluator.evaluate_configs([config], dataset_names, seed=seed)
-    avg_r2, r2_vector, _ = results[0]
-    return avg_r2, r2_vector
+    results = evaluator.evaluate_configs([config], dataset_names, seed=seed, n_runs=n_runs)
+    avg_r2, r2_vector, result_details = results[0]
+    return avg_r2, r2_vector, result_details
 
 
 def evaluate_mutation(
@@ -378,12 +418,48 @@ def evaluate_mutation(
     dataset_names: List[str],
     pysr_kwargs: Dict,
     seed: int = 42,
+    n_runs: int = 1,
 ) -> Tuple[float, List[float]]:
     """Evaluate a single mutation via SLURM."""
     config = mutation.to_pysr_config(pysr_kwargs)
-    results = evaluator.evaluate_configs([config], dataset_names, seed=seed)
+    results = evaluator.evaluate_configs([config], dataset_names, seed=seed, n_runs=n_runs)
     avg_r2, r2_vector, _ = results[0]
     return avg_r2, r2_vector
+
+
+def evaluate_mutations(
+    mutations: List[JuliaMutation],
+    evaluator: PySRSlurmEvaluator,
+    dataset_names: List[str],
+    pysr_kwargs: Dict,
+    seed: int = 42,
+    n_runs: int = 1,
+) -> List[Tuple[float, List[float], List[Dict]]]:
+    """
+    Evaluate multiple mutations in parallel via a single SLURM job array.
+
+    Args:
+        mutations: List of JuliaMutation objects to evaluate
+        evaluator: PySRSlurmEvaluator instance
+        dataset_names: List of dataset names to evaluate on
+        pysr_kwargs: PySR configuration
+        seed: Random seed
+        n_runs: Number of runs per mutation per dataset (scores are averaged)
+
+    Returns:
+        List of (avg_r2, r2_vector, result_details) tuples, one per mutation.
+        result_details is a list of dicts with keys: dataset, avg_r2, run_r2_scores, etc.
+    """
+    if not mutations:
+        return []
+
+    # Convert all mutations to configs
+    configs = [m.to_pysr_config(pysr_kwargs) for m in mutations]
+
+    # Evaluate all configs in a single SLURM batch
+    results = evaluator.evaluate_configs(configs, dataset_names, seed=seed, n_runs=n_runs)
+
+    return results
 
 
 def select_parent(population: List[JuliaMutation], rng: random.Random) -> JuliaMutation:
@@ -506,6 +582,7 @@ def run_evolution(
     max_samples: int,
     job_timeout: float,
     use_cache: bool = True,
+    n_runs: int = 1,
 ) -> JuliaMutation:
     """
     Run the evolution loop.
@@ -524,6 +601,7 @@ def run_evolution(
         max_samples: Max samples per dataset
         job_timeout: SLURM job timeout in seconds
         use_cache: Whether to use LLM response caching (default True)
+        n_runs: Number of evaluation runs per mutation per dataset (default 1)
 
     Returns:
         Best mutation found
@@ -544,6 +622,7 @@ def run_evolution(
         "seed": seed,
         "pysr_kwargs": pysr_kwargs,
         "max_samples": max_samples,
+        "n_runs": n_runs,
     })
 
     # Set up evaluator
@@ -564,10 +643,21 @@ def run_evolution(
     print("=" * 60)
     print("Evaluating baseline (no custom mutations)...")
     print("=" * 60)
-    baseline_r2, baseline_vector = evaluate_baseline(
-        evaluator, dataset_names, pysr_kwargs, seed
+    baseline_r2, baseline_vector, baseline_details = evaluate_baseline(
+        evaluator, dataset_names, pysr_kwargs, seed, n_runs=n_runs
     )
-    print(f"Baseline avg R²: {baseline_r2:.4f}")
+    # Show per-run averages across all datasets when n_runs > 1
+    if n_runs > 1 and baseline_details:
+        per_run_avgs = []
+        for run_idx in range(n_runs):
+            run_scores = [d["run_r2_scores"][run_idx] for d in baseline_details
+                          if len(d.get("run_r2_scores", [])) > run_idx]
+            if run_scores:
+                per_run_avgs.append(np.mean(run_scores))
+        runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
+        print(f"Baseline avg R²: {baseline_r2:.4f} [{runs_str}]")
+    else:
+        print(f"Baseline avg R²: {baseline_r2:.4f}")
     logger.log_baseline(baseline_r2, baseline_vector)
 
     # Generate initial population
@@ -622,22 +712,32 @@ def run_evolution(
 
     print(f"\nGenerated {len(population)} valid mutations")
 
-    # Evaluate initial population
+    # Evaluate initial population (all mutations in parallel via single SLURM job)
     print("\n" + "=" * 60)
-    print("Evaluating initial population...")
+    print(f"Evaluating initial population ({len(population)} mutations in parallel)...")
     print("=" * 60)
 
-    for i, mutation in enumerate(population):
-        print(f"\nEvaluating {mutation.name} ({i + 1}/{len(population)})...")
-        try:
-            avg_r2, r2_vector = evaluate_mutation(
-                mutation, evaluator, dataset_names, pysr_kwargs, seed
-            )
+    try:
+        results = evaluate_mutations(population, evaluator, dataset_names, pysr_kwargs, seed, n_runs=n_runs)
+        for mutation, (avg_r2, r2_vector, result_details) in zip(population, results):
             mutation.score = avg_r2
             mutation.score_vector = r2_vector
-            print(f"  Score: {avg_r2:.4f} (baseline: {baseline_r2:.4f})")
-        except Exception as e:
-            print(f"  Evaluation failed: {e}")
+            # Show per-run averages across all datasets when n_runs > 1
+            if n_runs > 1 and result_details:
+                # Compute average across datasets for each run
+                per_run_avgs = []
+                for run_idx in range(n_runs):
+                    run_scores = [d["run_r2_scores"][run_idx] for d in result_details
+                                  if len(d.get("run_r2_scores", [])) > run_idx]
+                    if run_scores:
+                        per_run_avgs.append(np.mean(run_scores))
+                runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
+                print(f"  {mutation.name}: Avg {avg_r2:.4f} [{runs_str}]")
+            else:
+                print(f"  {mutation.name}: {avg_r2:.4f}")
+    except Exception as e:
+        print(f"  Batch evaluation failed: {e}")
+        for mutation in population:
             mutation.score = -1.0
             mutation.score_vector = []
 
@@ -712,18 +812,29 @@ def run_evolution(
 
         print(f"\nGenerated {len(offspring)} offspring")
 
-        # Evaluate offspring
-        for i, mutation in enumerate(offspring):
-            print(f"\nEvaluating {mutation.name} ({i + 1}/{len(offspring)})...")
-            try:
-                avg_r2, r2_vector = evaluate_mutation(
-                    mutation, evaluator, dataset_names, pysr_kwargs, seed
-                )
+        # Evaluate offspring (all mutations in parallel via single SLURM job)
+        print(f"\nEvaluating {len(offspring)} offspring in parallel...")
+        try:
+            results = evaluate_mutations(offspring, evaluator, dataset_names, pysr_kwargs, seed, n_runs=n_runs)
+            for mutation, (avg_r2, r2_vector, result_details) in zip(offspring, results):
                 mutation.score = avg_r2
                 mutation.score_vector = r2_vector
-                print(f"  Score: {avg_r2:.4f}")
-            except Exception as e:
-                print(f"  Evaluation failed: {e}")
+                # Show per-run averages across all datasets when n_runs > 1
+                if n_runs > 1 and result_details:
+                    # Compute average across datasets for each run
+                    per_run_avgs = []
+                    for run_idx in range(n_runs):
+                        run_scores = [d["run_r2_scores"][run_idx] for d in result_details
+                                      if len(d.get("run_r2_scores", [])) > run_idx]
+                        if run_scores:
+                            per_run_avgs.append(np.mean(run_scores))
+                    runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
+                    print(f"  {mutation.name}: Avg {avg_r2:.4f} [{runs_str}]")
+                else:
+                    print(f"  {mutation.name}: {avg_r2:.4f}")
+        except Exception as e:
+            print(f"  Batch evaluation failed: {e}")
+            for mutation in offspring:
                 mutation.score = -1.0
                 mutation.score_vector = []
 
@@ -763,7 +874,7 @@ def main():
     )
 
     # Evolution settings
-    parser.add_argument("--generations", type=int, default=5,
+    parser.add_argument("--generations", type=int, default=20,
                         help="Number of generations to evolve")
     parser.add_argument("--population", type=int, default=4,
                         help="Population size")
@@ -771,6 +882,8 @@ def main():
                         help="Number of offspring per generation")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed")
+    parser.add_argument("--n-runs", type=int, default=3,
+                        help="Number of evaluation runs per mutation per dataset (scores are averaged)")
 
     # Dataset settings
     parser.add_argument("--split", type=str, default="splits/split_train.txt",
@@ -781,7 +894,7 @@ def main():
     # PySR settings
     parser.add_argument("--max_evals", type=int, default=100000,
                         help="Maximum evaluations per PySR run")
-    parser.add_argument("--timeout", type=int, default=120,
+    parser.add_argument("--timeout", type=int, default=300,
                         help="PySR timeout in seconds")
 
     # LLM settings
@@ -839,6 +952,7 @@ def main():
         max_samples=args.max_samples,
         job_timeout=args.job_timeout,
         use_cache=not args.no_cache,
+        n_runs=args.n_runs,
     )
 
     print(f"\nResults saved to: {args.output_dir}")

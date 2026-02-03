@@ -291,8 +291,8 @@ def _aggregate_results(
             key = (op_id, dataset_name)
             if key in results_by_op_dataset:
                 run_results = results_by_op_dataset[key]
-                # Average scores across runs
-                run_scores = [r.score for r in run_results]
+                # Average scores across runs (handle potential None values defensively)
+                run_scores = [r.score if r.score is not None else -1.0 for r in run_results]
                 avg_dataset_score = float(np.mean(run_scores))
                 # Combine traces from all runs
                 all_traces = []
@@ -418,11 +418,15 @@ class SlurmEvaluator(BaseSlurmEvaluator):
                         )
                         if cached is not None:
                             # Pre-write cached result to results directory
+                            # Handle potential None values from cache
+                            score = cached["score"]
+                            if score is None:
+                                score = -1.0
                             cached_result = TaskResult(
                                 operator_id=task.operator_id,
                                 dataset_name=task.dataset_name,
-                                score=cached["score"],
-                                traces=cached["traces"],
+                                score=score,
+                                traces=cached["traces"] if cached["traces"] is not None else [],
                                 error=cached["error"],
                                 run_index=task.run_index,
                                 timed_out=cached["timed_out"],
