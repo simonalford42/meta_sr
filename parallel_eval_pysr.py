@@ -33,17 +33,32 @@ def _load_dynamic_mutations(custom_mutation_code: Dict[str, str]) -> None:
     # Import the custom mutations module
     jl.seval("using SymbolicRegression")
     jl.seval("using SymbolicRegression.CustomMutationsModule")
+    jl.seval("using SymbolicRegression.CoreModule: CUSTOM_MUTATION_NAMES")
 
     # Clear any previously loaded dynamic mutations
     jl.seval("clear_dynamic_mutations!()")
 
+    # Reset all custom mutation slots to :none
+    for i in range(1, 6):
+        jl.seval(f"CUSTOM_MUTATION_NAMES[:custom_mutation_{i}] = :none")
+
     # Load each mutation using raw strings to avoid Julia $ interpolation issues
-    for name, code in custom_mutation_code.items():
-        print(f"  Loading mutation: {name}", flush=True)
+    slot_assignments = []
+    for idx, (name, code) in enumerate(custom_mutation_code.items(), start=1):
+        if idx > 5:
+            print(f"WARNING: More than 5 mutations provided, only first 5 will be used", flush=True)
+            break
+
         # Use triple-quoted raw string to handle multiline code with special chars
         # raw"..." doesn't interpolate $, but we still need to escape the delimiter
         escaped_code = code.replace('"""', '\\"\\"\\"')
         jl.seval(f'load_mutation_from_string!(:{name}, raw"""{escaped_code}""")')
+
+        # CRITICAL: Map the slot to the actual mutation name
+        # This is what allows PySR to find and call the mutation!
+        slot_name = f"custom_mutation_{idx}"
+        jl.seval(f"CUSTOM_MUTATION_NAMES[:{slot_name}] = :{name}")
+        slot_assignments.append(f"{slot_name} => {name}")
 
     # Reinitialize to pick up new mutations (preserves dynamic weights)
     jl.seval("reload_custom_mutations!()")
@@ -205,8 +220,6 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             print(f"[{spec.dataset_name}] Custom mutations loaded in {_time.time() - t2:.1f}s", flush=True)
 
         # Create and fit model
-        print(f"[{spec.dataset_name}] Creating PySR model with {len(model_kwargs)} params", flush=True)
-        print('\n'.join(f"{k}: {v}" for k, v in model_kwargs.items()))
         model = PySRRegressor(**model_kwargs)
 
         # Generate variable names based on number of features
@@ -356,7 +369,8 @@ def _aggregate_pysr_results(
             key = (config_id, dataset_name)
             if key in results_by_config_dataset:
                 run_results = results_by_config_dataset[key]
-                run_scores = [r.r2_score for r in run_results]
+                # Handle potential None values defensively
+                run_scores = [r.r2_score if r.r2_score is not None else -1.0 for r in run_results]
                 avg_r2 = float(np.mean(run_scores))
 
                 # Combine results from all runs
@@ -485,72 +499,149 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                     ))
 
         n_tasks = len(tasks)
+
+        # Pre-filter cached tasks
+        uncached_indices = []
+        n_cached = 0
+        if self.use_cache:
+            try:
+                from evaluation_cache import get_pysr_cache
+                cache = get_pysr_cache()
+                if cache is not None:
+                    for task_idx, task in enumerate(tasks):
+                        # Build the same mutation kwargs that _evaluate_pysr_task uses
+                        pysr_mutation_kwargs = {}
+                        for key, value in task.mutation_weights.items():
+                            if not key.startswith('weight_'):
+                                key = f'weight_{key}'
+                            if 'custom_mutation' in key and not task.allow_custom_mutations:
+                                continue
+                            pysr_mutation_kwargs[key] = value
+                        model_kwargs = {**pysr_mutation_kwargs, **task.pysr_kwargs}
+                        model_kwargs['random_state'] = task.seed + task.run_index
+
+                        cached = cache.lookup(
+                            mutation_weights=pysr_mutation_kwargs,
+                            pysr_kwargs=task.pysr_kwargs,
+                            dataset_name=task.dataset_name,
+                            seed=task.seed,
+                            data_seed=task.data_seed,
+                            max_samples=task.max_samples,
+                            run_index=task.run_index,
+                            custom_mutation_code=task.custom_mutation_code,
+                            allow_custom_mutations=task.allow_custom_mutations,
+                            pysr_model_kwargs=model_kwargs,
+                        )
+                        if cached is not None:
+                            # Pre-write cached result to results directory
+                            # Handle potential None values from cache
+                            r2_score = cached["r2_score"]
+                            if r2_score is None:
+                                r2_score = -1.0
+                            best_loss = cached["best_loss"]
+                            if best_loss is None:
+                                best_loss = float("inf")
+                            cached_result = PySRTaskResult(
+                                config_id=task.config_id,
+                                dataset_name=task.dataset_name,
+                                r2_score=r2_score,
+                                best_equation=cached["best_equation"],
+                                best_loss=best_loss,
+                                error=cached["error"],
+                                run_index=task.run_index,
+                                timed_out=cached.get("timed_out", False),
+                                runtime_seconds=cached.get("runtime_seconds", 0.0),
+                            )
+                            result_file = results_subdir / f"task_{task_idx:06d}.json"
+                            with open(result_file, 'w') as f:
+                                json.dump(cached_result.to_json_dict(), f)
+                            n_cached += 1
+                        else:
+                            uncached_indices.append(task_idx)
+                else:
+                    uncached_indices = list(range(n_tasks))
+            except Exception as e:
+                print(f"  WARNING: Cache pre-filter failed: {e}")
+                uncached_indices = list(range(n_tasks))
+        else:
+            uncached_indices = list(range(n_tasks))
+
         batch_id = batch_dir.name
         print(f"  PySR SLURM eval: {n_tasks} tasks in batch {batch_id} "
               f"({len(configs)} configs x {len(dataset_names)} datasets x {n_runs} runs)")
+        if n_cached > 0:
+            print(f"    Cache: {n_cached} tasks cached, {len(uncached_indices)} tasks to run")
 
         # Save task specifications
         tasks_file = batch_dir / "tasks.json"
         with open(tasks_file, 'w') as f:
             json.dump([t.to_json_dict() for t in tasks], f)
 
-        # Submit SLURM job array
-        job_script = self._create_job_script(batch_dir, n_tasks)
-        job_id = self._submit_job(job_script)
-        print(f"  Submitted SLURM job array: {job_id}")
-        print(f"    Script: {job_script}")
-        logs_dir = batch_dir / "logs"
-        print(f"    Watch logs: tail -f {logs_dir}/task_<N>.out")
+        # Skip SLURM if all tasks are cached
+        if not uncached_indices:
+            print(f"  All {n_tasks} tasks served from cache - skipping SLURM")
+            results, failed_indices = self._collect_results(results_subdir, n_tasks, timed_out=False)
+        else:
+            # Submit SLURM job array for uncached tasks only
+            if len(uncached_indices) < n_tasks:
+                job_script = self._create_retry_job_script(batch_dir, uncached_indices, 0)
+            else:
+                job_script = self._create_job_script(batch_dir, n_tasks)
+            job_id = self._submit_job(job_script)
+            print(f"  Submitted SLURM job array: {job_id} ({len(uncached_indices)} tasks)")
+            print(f"    Script: {job_script}")
+            logs_dir = batch_dir / "logs"
+            print(f"    Watch logs: tail -f {logs_dir}/task_<N>.out")
 
-        # Wait for completion
-        job_completed = self._wait_for_job(job_id, n_tasks, batch_dir)
+            # Wait for completion
+            job_completed = self._wait_for_job(job_id, n_tasks, batch_dir, initial_cached=n_cached)
 
-        # Update bad nodes from logs
-        try:
-            self._update_bad_nodes_from_logs(batch_dir)
-        except Exception as e:
-            print(f"  WARNING: Failed to update bad nodes from logs: {e}")
-
-        # Collect results
-        results, failed_indices = self._collect_results(
-            results_subdir, n_tasks, timed_out=not job_completed
-        )
-
-        # Retry failed tasks
-        retry_count = 0
-        if not job_completed:
-            print(f"  Skipping retries - job timed out")
-        while job_completed and failed_indices and retry_count < self.max_retries:
-            retry_count += 1
-            print(f"  Retrying {len(failed_indices)} failed tasks "
-                  f"(attempt {retry_count}/{self.max_retries})...")
-
-            retry_job_script = self._create_retry_job_script(
-                batch_dir, failed_indices, retry_count
-            )
-            retry_job_id = self._submit_job(retry_job_script)
-            print(f"    Submitted retry job: {retry_job_id}")
-
-            self._wait_for_retry_job(retry_job_id, len(failed_indices),
-                                      batch_dir, failed_indices)
-
-            # Re-collect results for retried tasks
-            for idx in failed_indices:
-                result_file = results_subdir / f"task_{idx:06d}.json"
-                if result_file.exists():
-                    with open(result_file, 'r') as f:
-                        data = json.load(f)
-                    results[idx] = PySRTaskResult.from_json_dict(data)
-
-            _, failed_indices = self._collect_results(results_subdir, n_tasks)
-
+            # Update bad nodes from logs
             try:
                 self._update_bad_nodes_from_logs(batch_dir)
             except Exception as e:
-                print(f"    WARNING: Failed to update bad nodes: {e}")
+                print(f"  WARNING: Failed to update bad nodes from logs: {e}")
 
-        if failed_indices:
-            print(f"  WARNING: {len(failed_indices)} tasks still failed")
+            # Collect results
+            results, failed_indices = self._collect_results(
+                results_subdir, n_tasks, timed_out=not job_completed
+            )
+
+            # Retry failed tasks
+            retry_count = 0
+            if not job_completed:
+                print(f"  Skipping retries - job timed out")
+            while job_completed and failed_indices and retry_count < self.max_retries:
+                retry_count += 1
+                print(f"  Retrying {len(failed_indices)} failed tasks "
+                      f"(attempt {retry_count}/{self.max_retries})...")
+
+                retry_job_script = self._create_retry_job_script(
+                    batch_dir, failed_indices, retry_count
+                )
+                retry_job_id = self._submit_job(retry_job_script)
+                print(f"    Submitted retry job: {retry_job_id}")
+
+                self._wait_for_retry_job(retry_job_id, len(failed_indices),
+                                          batch_dir, failed_indices)
+
+                # Re-collect results for retried tasks
+                for idx in failed_indices:
+                    result_file = results_subdir / f"task_{idx:06d}.json"
+                    if result_file.exists():
+                        with open(result_file, 'r') as f:
+                            data = json.load(f)
+                        results[idx] = PySRTaskResult.from_json_dict(data)
+
+                _, failed_indices = self._collect_results(results_subdir, n_tasks)
+
+                try:
+                    self._update_bad_nodes_from_logs(batch_dir)
+                except Exception as e:
+                    print(f"    WARNING: Failed to update bad nodes: {e}")
+
+            if failed_indices:
+                print(f"  WARNING: {len(failed_indices)} tasks still failed")
 
         # Save combined results
         combined_file = batch_dir / "combined.json"

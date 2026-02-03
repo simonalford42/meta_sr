@@ -2109,49 +2109,310 @@ def print_multi_pysr_comparison(pysr_dirs: list, base_dir: str = ".", sr_seeds: 
     return all_results['PySR: results/results_pysr_1e6']
 
 
+def plot_pysr_r2_by_noise(results_pattern: str = "results_pysr_*", base_dir: str = ".",
+                          split_file: str = None, output_dir: str = None, max_nines: int = 6,
+                          no_noise_dirs: list = None):
+    """
+    Plot R² threshold curves grouped by noise level.
+
+    Creates a separate plot for each noise level, with lines for each eval count.
+
+    Args:
+        results_pattern: Glob pattern to find result directories (e.g., "results_pysr_*")
+        base_dir: Base directory containing results
+        split_file: Optional path to split file to filter problems
+        output_dir: Directory to save plots (if None, displays interactively)
+        max_nines: Maximum number of 9s after decimal point (default 6)
+        no_noise_dirs: List of directories containing noise=0 results (e.g.,
+                       ["results/results_pysr_1e3", "results/results_pysr_1e4", ...])
+                       These will be added as noise=0.0 data points.
+
+    Directory naming convention expected: results_pysr_{noise}_{max_evals}
+    e.g., results_pysr_0.001_1000, results_pysr_0.01_10000
+    """
+    import json
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+    from collections import defaultdict
+    import re
+
+    base = Path(base_dir)
+
+    # Load split filter if provided
+    filter_problems = None
+    if split_file:
+        split_path = base / split_file if not Path(split_file).is_absolute() else Path(split_file)
+        if split_path.exists():
+            with open(split_path) as f:
+                filter_problems = set(line.strip() for line in f if line.strip())
+
+    def load_r2_values(results_dir, filter_set=None):
+        """Load R² values and noise level from JSON result files."""
+        r2_values = []
+        noise_level = None
+        max_evals = None
+        results_dir = Path(results_dir)
+
+        for json_file in results_dir.glob('*_n*_seed*.json'):
+            try:
+                with open(json_file) as f:
+                    data = json.load(f)
+
+                dataset = data.get('dataset', '')
+                test_r2 = data.get('test_r2')
+
+                # Get noise level from file (if available)
+                if noise_level is None:
+                    noise_level = data.get('target_noise', 0.0)
+
+                if filter_set and dataset not in filter_set:
+                    continue
+
+                if test_r2 is not None:
+                    r2_values.append(test_r2)
+            except Exception:
+                pass
+
+        # Also check older format (*_results.json)
+        for json_file in results_dir.glob('*_results.json'):
+            try:
+                with open(json_file) as f:
+                    data = json.load(f)
+
+                dataset = data.get('dataset', '')
+                test_r2 = data.get('test_r2')
+
+                if noise_level is None:
+                    noise_level = data.get('target_noise', 0.0)
+
+                if filter_set and dataset not in filter_set:
+                    continue
+
+                if test_r2 is not None:
+                    r2_values.append(test_r2)
+            except Exception:
+                pass
+
+        return r2_values, noise_level
+
+    def parse_dir_name(dir_name):
+        """Parse noise level and max_evals from directory name.
+
+        Expected formats:
+        - results_pysr_{noise}_{max_evals} (e.g., results_pysr_0.001_1000)
+        - results_pysr_1e{exp} (e.g., results_pysr_1e4) -> noise=0, evals=10^exp
+        """
+        # Try pattern: results_pysr_{noise}_{evals}
+        match = re.match(r'results_pysr_(\d+\.?\d*)_(\d+)', dir_name)
+        if match:
+            noise = float(match.group(1))
+            evals = int(match.group(2))
+            return noise, evals
+
+        # Try pattern: results_pysr_1e{exp} (no noise)
+        match = re.match(r'results_pysr_1e(\d+)', dir_name)
+        if match:
+            exp = int(match.group(1))
+            evals = 10 ** exp
+            return 0.0, evals
+
+        return None, None
+
+    # Find all matching directories
+    result_dirs = list(base.glob(results_pattern))
+
+    # Also add no_noise_dirs if provided
+    if no_noise_dirs:
+        for nd in no_noise_dirs:
+            nd_path = base / nd if not Path(nd).is_absolute() else Path(nd)
+            if nd_path.exists() and nd_path not in result_dirs:
+                result_dirs.append(nd_path)
+
+    if not result_dirs:
+        print(f"No directories matching '{results_pattern}' found in {base}")
+        return
+
+    print(f"Found {len(result_dirs)} result directories")
+
+    # Group by noise level
+    # Structure: {noise_level: {max_evals: [r2_values]}}
+    data_by_noise = defaultdict(dict)
+
+    for result_dir in sorted(result_dirs):
+        dir_name = result_dir.name
+        noise_from_name, evals_from_name = parse_dir_name(dir_name)
+
+        r2_values, noise_from_file = load_r2_values(result_dir, filter_problems)
+
+        if not r2_values:
+            print(f"  Skipping {dir_name}: no results")
+            continue
+
+        # Prefer noise from file, fall back to directory name
+        noise = noise_from_file if noise_from_file is not None else noise_from_name
+        evals = evals_from_name
+
+        if noise is None or evals is None:
+            print(f"  Skipping {dir_name}: couldn't parse noise/evals")
+            continue
+
+        print(f"  {dir_name}: noise={noise}, evals={evals}, n_tasks={len(r2_values)}")
+        data_by_noise[noise][evals] = r2_values
+
+    if not data_by_noise:
+        print("No valid data found!")
+        return
+
+    # Generate R² thresholds
+    base_thresholds = [1.0 - 10**(-n) for n in range(1, max_nines + 1)]
+    thresholds_to_show = base_thresholds + [1.0]
+
+    def format_threshold(t, n_nines=None):
+        if t == 1.0:
+            return "1.0"
+        if n_nines is not None:
+            return "0." + "9" * n_nines
+        return f"{t:.10f}".rstrip('0')
+
+    x_labels = [format_threshold(t, i+1) if i < len(base_thresholds) else "1.0"
+                for i, t in enumerate(thresholds_to_show)]
+    x_positions = list(range(len(thresholds_to_show)))
+
+    # Create output directory if specified
+    if output_dir:
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+    # Create a plot for each noise level
+    figures = {}
+
+    for noise_level in sorted(data_by_noise.keys()):
+        evals_data = data_by_noise[noise_level]
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # Sort by evals for consistent ordering
+        sorted_evals = sorted(evals_data.keys())
+        colors = plt.cm.viridis(np.linspace(0, 0.9, len(sorted_evals)))
+
+        for evals, color in zip(sorted_evals, colors):
+            r2_values = evals_data[evals]
+
+            counts = []
+            for thresh in thresholds_to_show:
+                if thresh == 1.0:
+                    count = sum(1 for r2 in r2_values if r2 == 1.0)
+                else:
+                    count = sum(1 for r2 in r2_values if r2 >= thresh)
+                counts.append(count)
+
+            # Format evals label nicely (1000 -> 1e3, 10000 -> 1e4, etc.)
+            if evals >= 1000:
+                exp = len(str(evals)) - 1
+                label = f"1e{exp}"
+            else:
+                label = str(evals)
+
+            ax.plot(x_positions, counts, 'o-', label=label, color=color, markersize=8, linewidth=2)
+
+        noise_str = f"{noise_level}" if noise_level > 0 else "0.0 (no noise)"
+        ax.set_xlabel('R² Threshold', fontsize=12)
+        ax.set_ylabel('Number of Tasks', fontsize=12)
+        ax.set_title(f'Tasks Achieving R² Thresholds (Target Noise = {noise_str})', fontsize=14)
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(x_labels, rotation=45, ha='right')
+        ax.legend(title='Evaluations', loc='best')
+        ax.grid(True, alpha=0.3)
+
+        # Add total tasks annotation
+        total_tasks = len(list(evals_data.values())[0]) if evals_data else 0
+        ax.axhline(y=total_tasks, color='gray', linestyle='--', alpha=0.5)
+        ax.text(len(x_positions) - 1, total_tasks + 1, f'Total: {total_tasks}',
+                ha='right', va='bottom', color='gray')
+
+        plt.tight_layout()
+
+        if output_dir:
+            # Save with noise level in filename
+            noise_fname = str(noise_level).replace('.', 'p')
+            out_file = output_path / f"pysr_r2_thresholds_noise_{noise_fname}.png"
+            plt.savefig(out_file, dpi=150, bbox_inches='tight')
+            print(f"Saved: {out_file}")
+            plt.close(fig)
+        else:
+            figures[noise_level] = fig
+
+    # Also create a combined plot with all noise levels (subplots)
+    n_noise_levels = len(data_by_noise)
+    if n_noise_levels > 1:
+        fig, axes = plt.subplots(1, n_noise_levels, figsize=(6 * n_noise_levels, 5), sharey=True)
+        if n_noise_levels == 1:
+            axes = [axes]
+
+        for ax, noise_level in zip(axes, sorted(data_by_noise.keys())):
+            evals_data = data_by_noise[noise_level]
+            sorted_evals = sorted(evals_data.keys())
+            colors = plt.cm.viridis(np.linspace(0, 0.9, len(sorted_evals)))
+
+            for evals, color in zip(sorted_evals, colors):
+                r2_values = evals_data[evals]
+
+                counts = []
+                for thresh in thresholds_to_show:
+                    if thresh == 1.0:
+                        count = sum(1 for r2 in r2_values if r2 == 1.0)
+                    else:
+                        count = sum(1 for r2 in r2_values if r2 >= thresh)
+                    counts.append(count)
+
+                if evals >= 1000:
+                    exp = len(str(evals)) - 1
+                    label = f"1e{exp}"
+                else:
+                    label = str(evals)
+
+                ax.plot(x_positions, counts, 'o-', label=label, color=color, markersize=6, linewidth=1.5)
+
+            noise_str = f"{noise_level}" if noise_level > 0 else "0.0"
+            ax.set_xlabel('R² Threshold', fontsize=10)
+            ax.set_title(f'Noise = {noise_str}', fontsize=12)
+            ax.set_xticks(x_positions)
+            ax.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=8)
+            ax.grid(True, alpha=0.3)
+            ax.legend(title='Evals', loc='best', fontsize=8)
+
+        axes[0].set_ylabel('Number of Tasks', fontsize=10)
+        fig.suptitle('Tasks Achieving R² Thresholds by Noise Level', fontsize=14, y=1.02)
+        plt.tight_layout()
+
+        if output_dir:
+            out_file = output_path / "pysr_r2_thresholds_all_noise.png"
+            plt.savefig(out_file, dpi=150, bbox_inches='tight')
+            print(f"Saved combined plot: {out_file}")
+            plt.close(fig)
+        else:
+            figures['combined'] = fig
+
+    if not output_dir:
+        plt.show()
+
+    return figures
+
+
 if __name__ == "__main__":
-    # quick_r2_solve_rate("/home/sca63/meta_sr")
-    # analyze_r2_across_runs("/home/sca63/meta_sr")
-    # print_comparison_summary("/home/sca63/meta_sr", pysr_dir='results_pysr_1e4', split_file="splits/srbench_all.txt")
-    # print()
-    # print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_val.txt")
-    # print()
-    # print_comparison_summary("/home/sca63/meta_sr", split_file="splits/split_test.txt")
-    # analyze_r2_across_runs()
-    old_1e6 = print_multi_pysr_comparison(
-        pysr_dirs=[
+    # Plot R² thresholds by noise level
+    # Expects directories like: results_pysr_0.001_1000, results_pysr_0.01_10000, etc.
+    # Also includes existing no-noise results from results/results_pysr_1e*
+    plot_pysr_r2_by_noise(
+        results_pattern="results_pysr_*_*",
+        split_file="splits/srbench_all.txt",
+        output_dir="plots",  # or None to display interactively
+        no_noise_dirs=[
             "results/results_pysr_1e3",
             "results/results_pysr_1e4",
             "results/results_pysr_1e5",
             "results/results_pysr_1e6",
             "results/results_pysr_1e7",
             "results/results_pysr_1e8",
-        ],
-        r2_threshold=0.999999,
-        split_file="splits/srbench_all.txt"
+        ]
     )
-    from utils import load_json
-    combined = load_json('results/pysr_1e6_4/slurm_pysr/eval_0000/combined.json')
-    r2_s = {res['dataset_name']: res['r2_score'] for res in combined}
-    r2_s = {k:v for k,v in r2_s.items() if v > -10}
-    avg_r2 = sum(r2_s.values()) / len(r2_s)
-    print(avg_r2)
-    num_high = sum(1 for r2 in r2_s.values() if r2 >= 0.9999)
-    num_perfect = sum(1 for r2 in r2_s.values() if r2 == 1.0)
-    print(len(r2_s))
-    print(num_high)
-    print(num_perfect)
-    # r2s2 = {k:v for k in r2_s if i in old_1e6}
-    # print(r2_s)
-#     plot_pysr_r2_thresholds(
-#       pysr_dirs=[
-#           "results_pysr_1e3",
-#           "results_pysr_1e4",
-#           "results_pysr_1e5",
-#           "results_pysr_1e6",
-#           "results_pysr_1e7",
-#           "results_pysr_1e8",
-#       ],
-#       split_file="splits/srbench_all.txt",
-#       output_path="pysr_r2_thresholds.png"  # or None to display interactively
-#   )

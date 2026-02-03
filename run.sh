@@ -7,10 +7,10 @@
  # total nodes
 #SBATCH -N 1
  # total cores
-#SBATCH -n 32
+#SBATCH -n 1
 #SBATCH --requeue
  # total limit (hh:mm:ss)
-#SBATCH -t 09:00:00
+#SBATCH -t 23:00:00
 #SBATCH --mem=100G
 #SBATCH --partition=ellis
 

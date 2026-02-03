@@ -18,10 +18,10 @@ Usage:
 import argparse
 import json
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 
 import numpy as np
 
@@ -73,6 +73,7 @@ class HPOTrialResult:
     weights: Dict[str, float]
     avg_r2: float
     r2_vector: List[float]
+    result_details: List[Dict]
     improvement_vs_baseline: float
 
 
@@ -107,24 +108,40 @@ class HPOLogger:
         self.run_data["config"] = config
         self._save()
 
-    def log_baseline(self, avg_r2: float, r2_vector: List[float], weights: Dict[str, float]):
+    def log_baseline(
+        self,
+        avg_r2: float,
+        r2_vector: List[float],
+        weights: Dict[str, float],
+        result_details: List[Dict],
+    ):
         """Log baseline results."""
         self.run_data["baseline"] = {
             "avg_r2": avg_r2,
             "r2_vector": r2_vector,
             "weights": weights,
+            "result_details": result_details,
         }
         self._save()
 
     def log_trial(self, trial_result: HPOTrialResult):
         """Log a single trial result."""
-        self.run_data["trials"].append({
+        entry = {
             "trial_number": trial_result.trial_number,
             "weights": trial_result.weights,
             "avg_r2": trial_result.avg_r2,
             "r2_vector": trial_result.r2_vector,
+            "result_details": trial_result.result_details,
             "improvement_vs_baseline": trial_result.improvement_vs_baseline,
-        })
+        }
+        self.run_data["trials"].append(entry)
+
+        trials_dir = self.output_dir / "trials"
+        trials_dir.mkdir(parents=True, exist_ok=True)
+        trial_path = trials_dir / f"trial_{trial_result.trial_number:04d}.json"
+        with open(trial_path, "w") as f:
+            json.dump(entry, f, indent=2)
+
         self._save()
 
     def log_best_trial(self, trial_number: int, avg_r2: float):
@@ -166,12 +183,33 @@ class HPOLogger:
             }, f, indent=2)
         print(f"\nBest weights saved to: {best_weights_file}")
 
+    def close(self):
+        """Clean up and restore stdout."""
+        sys.stdout = self.tee.terminal
+        self.tee.close()
+        print(f"\nAll logs and results saved to: {self.output_dir}/")
+
 
 # =============================================================================
 # Core Functions
 # =============================================================================
 
-def create_weight_config_from_trial(trial) -> Dict[str, float]:
+def _normalize_weight_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        return name
+    return name if name.startswith("weight_") else f"weight_{name}"
+
+
+def _filter_search_space(disabled: List[str]) -> Dict[str, Tuple[float, float, float, str]]:
+    disabled_set = {_normalize_weight_name(d) for d in disabled if d.strip()}
+    return {k: v for k, v in MUTATION_WEIGHT_SEARCH_SPACE.items() if k not in disabled_set}
+
+
+def create_weight_config_from_trial(
+    trial,
+    search_space: Dict[str, Tuple[float, float, float, str]],
+) -> Dict[str, float]:
     """
     Create a mutation weights dict from an Optuna trial.
 
@@ -182,7 +220,7 @@ def create_weight_config_from_trial(trial) -> Dict[str, float]:
         Dict mapping weight names to values
     """
     weights = {}
-    for name, (default, low, high, scale) in MUTATION_WEIGHT_SEARCH_SPACE.items():
+    for name, (default, low, high, scale) in search_space.items():
         if scale == "log":
             # For log scale, ensure low > 0
             weights[name] = trial.suggest_float(name, low, high, log=True)
@@ -195,6 +233,7 @@ def create_weight_config_from_trial(trial) -> Dict[str, float]:
 
 def evaluate_weight_configs_batch(
     weight_configs: List[Dict[str, float]],
+    trial_numbers: List[int],
     evaluator: PySRSlurmEvaluator,
     dataset_names: List[str],
     pysr_kwargs: Dict[str, Any],
@@ -228,7 +267,7 @@ def evaluate_weight_configs_batch(
             pysr_kwargs=pysr_kwargs,
             custom_mutation_code=None,
             allow_custom_mutations=False,
-            name=f"hpo_trial_{i}",
+            name=f"hpo_trial_{trial_numbers[i]}",
         )
         configs.append(config)
 
@@ -242,17 +281,15 @@ def evaluate_baseline(
     pysr_kwargs: Dict[str, Any],
     seed: int,
     n_runs: int,
-) -> Tuple[float, List[float], Dict[str, float]]:
+) -> Tuple[float, List[float], List[Dict], Dict[str, float]]:
     """
     Evaluate PySR with default mutation weights (baseline).
 
     Returns:
-        (avg_r2, r2_vector, default_weights)
+        (avg_r2, r2_vector, result_details, explicit_weights_passed)
     """
-    # Use PySR's built-in defaults
+    # Use PySR's built-in defaults by not overriding weights
     mutation_weights = get_default_mutation_weights()
-    # Add the default built-in weights
-    mutation_weights.update(PYSR_DEFAULT_WEIGHTS)
 
     config = PySRConfig(
         mutation_weights=mutation_weights,
@@ -263,8 +300,8 @@ def evaluate_baseline(
     )
 
     results = evaluator.evaluate_configs([config], dataset_names, seed=seed, n_runs=n_runs)
-    avg_r2, r2_vector, _ = results[0]
-    return avg_r2, r2_vector, PYSR_DEFAULT_WEIGHTS.copy()
+    avg_r2, r2_vector, result_details = results[0]
+    return avg_r2, r2_vector, result_details, mutation_weights.copy()
 
 
 # =============================================================================
@@ -276,6 +313,7 @@ def run_hpo(
     n_parallel: int,
     n_runs: int,
     dataset_names: List[str],
+    disabled_weights: List[str],
     seed: int,
     output_dir: str,
     pysr_kwargs: Dict[str, Any],
@@ -284,6 +322,7 @@ def run_hpo(
     slurm_mem_per_cpu: str,
     max_samples: int,
     job_timeout: float,
+    max_concurrent_jobs: Optional[int],
     use_cache: bool = True,
 ) -> Tuple[Dict[str, float], float]:
     """
@@ -311,142 +350,160 @@ def run_hpo(
 
     np.random.seed(seed)
 
-    # Set up logging
+    search_space = _filter_search_space(disabled_weights)
+    if not search_space:
+        raise ValueError("All mutation weights are disabled; nothing to optimize.")
+
     logger = HPOLogger(output_dir)
-    logger.set_config({
-        "n_trials": n_trials,
-        "n_parallel": n_parallel,
-        "n_runs": n_runs,
-        "n_datasets": len(dataset_names),
-        "dataset_names": dataset_names,
-        "seed": seed,
-        "pysr_kwargs": pysr_kwargs,
-        "max_samples": max_samples,
-        "search_space": {
-            name: {"default": spec[0], "min": spec[1], "max": spec[2], "scale": spec[3]}
-            for name, spec in MUTATION_WEIGHT_SEARCH_SPACE.items()
-        },
-    })
+    try:
+        logger.set_config({
+            "n_trials": n_trials,
+            "n_parallel": n_parallel,
+            "n_runs": n_runs,
+            "n_datasets": len(dataset_names),
+            "dataset_names": dataset_names,
+            "seed": seed,
+            "disabled_weights": [_normalize_weight_name(w) for w in disabled_weights],
+            "pysr_kwargs": pysr_kwargs,
+            "max_samples": max_samples,
+            "max_concurrent_jobs": max_concurrent_jobs,
+            "search_space": {
+                name: {"default": spec[0], "min": spec[1], "max": spec[2], "scale": spec[3]}
+                for name, spec in search_space.items()
+            },
+        })
 
-    # Set up evaluator
-    evaluator = PySRSlurmEvaluator(
-        results_dir=output_dir,
-        partition=slurm_partition,
-        time_limit=slurm_time_limit,
-        mem_per_cpu=slurm_mem_per_cpu,
-        dataset_max_samples=max_samples,
-        data_seed=seed,
-        job_timeout=job_timeout,
-        use_cache=use_cache,
-    )
+        evaluator = PySRSlurmEvaluator(
+            results_dir=output_dir,
+            partition=slurm_partition,
+            time_limit=slurm_time_limit,
+            mem_per_cpu=slurm_mem_per_cpu,
+            dataset_max_samples=max_samples,
+            data_seed=seed,
+            job_timeout=job_timeout,
+            max_concurrent_jobs=max_concurrent_jobs,
+            use_cache=use_cache,
+        )
 
-    # Phase 1: Evaluate baseline
-    print("=" * 60)
-    print("Phase 1: Evaluating baseline (default mutation weights)...")
-    print("=" * 60)
+        # Phase 1: Evaluate baseline
+        print("=" * 60)
+        print("Phase 1: Evaluating baseline (true PySR defaults)...")
+        print("=" * 60)
 
-    baseline_r2, baseline_vector, baseline_weights = evaluate_baseline(
-        evaluator, dataset_names, pysr_kwargs, seed, n_runs
-    )
-    print(f"Baseline avg R²: {baseline_r2:.4f}")
-    print(f"Default weights: {json.dumps(baseline_weights, indent=2)}")
-    logger.log_baseline(baseline_r2, baseline_vector, baseline_weights)
+        baseline_r2, baseline_vector, baseline_details, baseline_weights = evaluate_baseline(
+            evaluator, dataset_names, pysr_kwargs, seed, n_runs
+        )
+        if n_runs > 1 and baseline_details:
+            per_run_avgs = []
+            for run_idx in range(n_runs):
+                run_scores = [d["run_r2_scores"][run_idx] for d in baseline_details
+                              if len(d.get("run_r2_scores", [])) > run_idx]
+                if run_scores:
+                    per_run_avgs.append(float(np.mean(run_scores)))
+            runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
+            print(f"Baseline avg R²: {baseline_r2:.4f} [{runs_str}]")
+        else:
+            print(f"Baseline avg R²: {baseline_r2:.4f}")
+        print("Baseline uses SymbolicRegression.jl defaults (no explicit weight overrides).")
+        logger.log_baseline(baseline_r2, baseline_vector, baseline_weights, baseline_details)
 
-    # Phase 2: Optuna HPO Loop
-    print("\n" + "=" * 60)
-    print(f"Phase 2: Running HPO ({n_trials} trials, {n_parallel} parallel)...")
-    print("=" * 60)
+        # Phase 2: Optuna HPO Loop
+        print("\n" + "=" * 60)
+        print(f"Phase 2: Running HPO ({n_trials} trials, {n_parallel} parallel)...")
+        print("=" * 60)
 
-    # Create Optuna study
-    study = optuna.create_study(
-        direction="maximize",
-        sampler=TPESampler(seed=seed),
-        study_name="pysr_mutation_weights_hpo",
-    )
+        study = optuna.create_study(
+            direction="maximize",
+            sampler=TPESampler(seed=seed),
+            study_name="pysr_mutation_weights_hpo",
+        )
 
-    # Enqueue default weights as first trial
-    study.enqueue_trial(PYSR_DEFAULT_WEIGHTS)
+        trials_completed = 0
+        best_score = baseline_r2
+        best_weights = {}
 
-    trials_completed = 0
-    best_score = baseline_r2
-    best_weights = baseline_weights.copy()
+        while trials_completed < n_trials:
+            batch_size = min(n_parallel, n_trials - trials_completed)
 
-    while trials_completed < n_trials:
-        # Determine how many trials to run in this batch
-        batch_size = min(n_parallel, n_trials - trials_completed)
+            print(f"\n--- Batch {trials_completed // n_parallel + 1}: "
+                  f"Trials {trials_completed + 1}-{trials_completed + batch_size} ---")
 
-        print(f"\n--- Batch {trials_completed // n_parallel + 1}: "
-              f"Trials {trials_completed + 1}-{trials_completed + batch_size} ---")
+            trials = [study.ask() for _ in range(batch_size)]
+            weight_configs = [create_weight_config_from_trial(t, search_space) for t in trials]
+            trial_numbers = [t.number for t in trials]
 
-        # Ask Optuna for trial suggestions
-        trials = [study.ask() for _ in range(batch_size)]
-        weight_configs = [create_weight_config_from_trial(t) for t in trials]
-
-        # Log which trials we're running
-        for i, (trial, weights) in enumerate(zip(trials, weight_configs)):
-            print(f"  Trial {trial.number}: evaluating...")
-
-        # Batch evaluate via SLURM
-        try:
-            results = evaluate_weight_configs_batch(
-                weight_configs, evaluator, dataset_names, pysr_kwargs, seed, n_runs
-            )
-
-            # Tell results back to Optuna and log
-            for trial, weights, (avg_r2, r2_vector, result_details) in zip(trials, weight_configs, results):
-                study.tell(trial, avg_r2)
-
-                improvement = avg_r2 - baseline_r2
-                trial_result = HPOTrialResult(
-                    trial_number=trial.number,
-                    weights=weights,
-                    avg_r2=avg_r2,
-                    r2_vector=r2_vector,
-                    improvement_vs_baseline=improvement,
-                )
-                logger.log_trial(trial_result)
-
-                # Log result
-                sign = "+" if improvement >= 0 else ""
-                print(f"  Trial {trial.number}: R²={avg_r2:.4f} ({sign}{improvement:.4f} vs baseline)")
-
-                # Track best
-                if avg_r2 > best_score:
-                    best_score = avg_r2
-                    best_weights = weights.copy()
-                    logger.log_best_trial(trial.number, avg_r2)
-                    print(f"    *** New best! ***")
-
-        except Exception as e:
-            print(f"  Batch evaluation failed: {e}")
-            # Tell Optuna these trials failed
             for trial in trials:
-                study.tell(trial, float("-inf"))
+                print(f"  Trial {trial.number}: evaluating...")
 
-        trials_completed += batch_size
+            try:
+                results = evaluate_weight_configs_batch(
+                    weight_configs, trial_numbers, evaluator, dataset_names, pysr_kwargs, seed, n_runs
+                )
 
-    # Phase 3: Final Results
-    print("\n" + "=" * 60)
-    print("Phase 3: Final Results")
-    print("=" * 60)
+                for trial, weights, (avg_r2, r2_vector, result_details) in zip(trials, weight_configs, results):
+                    study.tell(trial, avg_r2)
 
-    # Get best trial from study
-    best_trial = study.best_trial
-    print(f"\nBest trial: {best_trial.number}")
-    print(f"Best R²: {best_trial.value:.4f}")
-    print(f"Baseline R²: {baseline_r2:.4f}")
-    print(f"Improvement: {best_trial.value - baseline_r2:+.4f} "
-          f"({(best_trial.value - baseline_r2) / baseline_r2 * 100:+.2f}%)")
+                    improvement = avg_r2 - baseline_r2
+                    trial_result = HPOTrialResult(
+                        trial_number=trial.number,
+                        weights=weights,
+                        avg_r2=avg_r2,
+                        r2_vector=r2_vector,
+                        result_details=result_details,
+                        improvement_vs_baseline=improvement,
+                    )
+                    logger.log_trial(trial_result)
 
-    print(f"\nBest weights:")
-    for name, value in best_trial.params.items():
-        default = PYSR_DEFAULT_WEIGHTS[name]
-        pct_change = ((value - default) / default * 100) if default != 0 else float("inf")
-        print(f"  {name}: {value:.6f} (default: {default:.6f}, {pct_change:+.1f}%)")
+                    sign = "+" if improvement >= 0 else ""
+                    if n_runs > 1 and result_details:
+                        per_run_avgs = []
+                        for run_idx in range(n_runs):
+                            run_scores = [d["run_r2_scores"][run_idx] for d in result_details
+                                          if len(d.get("run_r2_scores", [])) > run_idx]
+                            if run_scores:
+                                per_run_avgs.append(float(np.mean(run_scores)))
+                        runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
+                        print(f"  Trial {trial.number}: R²={avg_r2:.4f} [{runs_str}] "
+                              f"({sign}{improvement:.4f} vs baseline)")
+                    else:
+                        print(f"  Trial {trial.number}: R²={avg_r2:.4f} ({sign}{improvement:.4f} vs baseline)")
 
-    logger.finalize(best_trial.params, best_trial.value, baseline_r2)
+                    if avg_r2 > best_score:
+                        best_score = avg_r2
+                        best_weights = weights.copy()
+                        logger.log_best_trial(trial.number, avg_r2)
+                        print("    *** New best! ***")
 
-    return best_trial.params, best_trial.value
+            except Exception as e:
+                print(f"  Batch evaluation failed: {e}")
+                for trial in trials:
+                    study.tell(trial, float("-inf"))
+
+            trials_completed += batch_size
+
+        # Phase 3: Final Results
+        print("\n" + "=" * 60)
+        print("Phase 3: Final Results")
+        print("=" * 60)
+
+        best_trial = study.best_trial
+        print(f"\nBest trial: {best_trial.number}")
+        print(f"Best R²: {best_trial.value:.4f}")
+        print(f"Baseline R²: {baseline_r2:.4f}")
+        print(f"Improvement: {best_trial.value - baseline_r2:+.4f} "
+              f"({(best_trial.value - baseline_r2) / baseline_r2 * 100:+.2f}%)")
+
+        print(f"\nBest weights:")
+        for name, value in best_trial.params.items():
+            default = PYSR_DEFAULT_WEIGHTS[name]
+            pct_change = ((value - default) / default * 100) if default != 0 else float("inf")
+            print(f"  {name}: {value:.6f} (default: {default:.6f}, {pct_change:+.1f}%)")
+
+        logger.finalize(best_trial.params, best_trial.value, baseline_r2)
+
+        return best_trial.params, best_trial.value
+    finally:
+        logger.close()
 
 
 # =============================================================================
@@ -459,6 +516,22 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
+    # Built-in mutation weights (names to use with --disabled):
+    # mutate_operator: 3.63
+    # insert_node: 2.44
+    # rotate_tree:: 1.42
+    # form_connection: 0.5
+    # break_connection: 0.1
+    # do_nothing: 0.431
+    # delete_node: 0.369
+    # mutate_feature: 0.1
+    # add_node: 0.0771
+    # mutate_constant: 0.0353
+    # simplify: 0.00148
+    # swap_operands: 0.00608
+    # randomize: 0.00695
+    # optimize: 0.0
+
     # HPO settings
     parser.add_argument("--n-trials", type=int, default=50,
                         help="Total Optuna trials")
@@ -468,6 +541,9 @@ def main():
                         help="Seeds per config per dataset")
     parser.add_argument("--seed", type=int, default=42,
                         help="Master seed for reproducibility")
+    parser.add_argument("--disabled", type=str, default="optimize",
+                        help="Comma-separated mutation weights to disable (with or without weight_ prefix). "
+                             "Default disables weight_optimize.")
 
     # Dataset settings
     parser.add_argument("--split", type=str, default="splits/split_train.txt",
@@ -490,6 +566,8 @@ def main():
                         help="Memory per CPU")
     parser.add_argument("--job-timeout", type=float, default=1800.0,
                         help="Max wait for SLURM completion")
+    parser.add_argument("--max-concurrent-jobs", type=int, default=None,
+                        help="Max concurrent SLURM array tasks (passed to job array % limit)")
 
     # Output settings
     parser.add_argument("--output-dir", type=str, default=None,
@@ -513,12 +591,15 @@ def main():
     pysr_kwargs["max_evals"] = args.max_evals
     pysr_kwargs["timeout_in_seconds"] = args.timeout
 
+    disabled_weights = [w.strip() for w in args.disabled.split(",") if w.strip()]
+
     # Run HPO
     best_weights, best_score = run_hpo(
         n_trials=args.n_trials,
         n_parallel=args.n_parallel,
         n_runs=args.n_runs,
         dataset_names=dataset_names,
+        disabled_weights=disabled_weights,
         seed=args.seed,
         output_dir=args.output_dir,
         pysr_kwargs=pysr_kwargs,
@@ -527,6 +608,7 @@ def main():
         slurm_mem_per_cpu=args.mem_per_cpu,
         max_samples=args.max_samples,
         job_timeout=args.job_timeout,
+        max_concurrent_jobs=args.max_concurrent_jobs,
         use_cache=not args.no_cache,
     )
 

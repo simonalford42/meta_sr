@@ -26,6 +26,29 @@ from pathlib import Path
 from pysr import PySRRegressor
 
 
+def add_noise(data, noise_level, seed=None):
+    """
+    Add Gaussian noise scaled by RMS (SRBench method).
+
+    This matches SRBench's implementation in experiment/evaluate_model.py:130-143.
+    Noise is scaled by the RMS of the data: noise_level * sqrt(mean(x²))
+
+    Args:
+        data: Array to add noise to
+        noise_level: Noise level (e.g., 0.001, 0.01, 0.1)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Data with added noise
+    """
+    if noise_level <= 0:
+        return data
+    if seed is not None:
+        np.random.seed(seed)
+    rms = np.sqrt(np.mean(np.square(data)))
+    return data + np.random.normal(0, noise_level * rms, size=data.shape)
+
+
 def load_dataset(dataset_name, pmlb_path=None, max_samples=None, seed=42):
     """
     Load a dataset from the PMLB directory structure.
@@ -112,6 +135,7 @@ def run_pysr_on_dataset(
     unary_operators=None,
     verbose=True,
     max_evals=None,
+    target_noise=0.0,
 ):
     """
     Run PySR on a single dataset.
@@ -168,6 +192,13 @@ def run_pysr_on_dataset(
 
     X_train, y_train = X[train_idx], y[train_idx]
     X_test, y_test = X[test_idx], y[test_idx]
+
+    # Apply noise to training target only (SRBench approach)
+    if target_noise > 0:
+        noise_seed = seed + 1000  # Derived seed for reproducibility
+        y_train = add_noise(y_train, target_noise, seed=noise_seed)
+        if verbose:
+            print(f"Applied target noise: {target_noise} (seed={noise_seed})")
 
     if verbose:
         print(f"Train samples: {len(y_train)}, Test samples: {len(y_test)}")
@@ -265,6 +296,7 @@ def run_pysr_on_dataset(
         'seed': seed,
         # 'n_cpus': n_cpus,
         'max_size': max_size,
+        'target_noise': target_noise,
     }
 
     if verbose:
@@ -273,8 +305,11 @@ def run_pysr_on_dataset(
         print(f"  Test R²:  {r2:.4f}")
         print(f"  Best equation: {best_equation_str}")
 
-    # Save results
-    results_file = os.path.join(results_dir, f"{dataset_name}_results.json")
+    # Save results (include noise level in filename when > 0)
+    if target_noise > 0:
+        results_file = os.path.join(results_dir, f"{dataset_name}_n{max_samples}_noise{target_noise}_seed{seed}.json")
+    else:
+        results_file = os.path.join(results_dir, f"{dataset_name}_n{max_samples}_seed{seed}.json")
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
 
@@ -306,6 +341,8 @@ def main():
                        help='Maximum samples to use from each dataset')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed')
+    parser.add_argument('--target_noise', type=float, default=0.0,
+                       help='Gaussian noise level for target (SRBench standard levels: 0.0, 0.001, 0.01, 0.1)')
 
     # PySR settings
     # group = parser.add_mutually_exclusive_group(required=True)
@@ -355,7 +392,8 @@ def main():
                 seed=args.seed,
                 # niterations=100000000000,
                 max_evals=args.max_evals,
-                verbose=verbose
+                verbose=verbose,
+                target_noise=args.target_noise,
             )
 
             if verbose:
