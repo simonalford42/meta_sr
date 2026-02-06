@@ -23,9 +23,10 @@ If you already cloned without `--recurse-submodules`:
 git submodule update --init --recursive
 ```
 
-This pulls in two submodules:
+This pulls in three submodules:
 - **pmlb/** -- Penn Machine Learning Benchmarks (contains the SRBench datasets)
 - **srbench/** -- SRBench benchmark framework (reference only; we load datasets directly from pmlb)
+- **SymbolicRegression.jl/** -- Custom fork of SymbolicRegression.jl with dynamic mutation loading
 
 ### 2. Create conda environment
 
@@ -39,19 +40,13 @@ Key dependencies: numpy, pandas, scipy, scikit-learn, sympy, pysr, matplotlib, t
 
 ### 3. Install SymbolicRegression.jl (custom fork)
 
-PySR uses Julia's SymbolicRegression.jl under the hood. We use a custom fork that adds dynamic mutation loading (no Julia recompilation needed).
+PySR uses Julia's SymbolicRegression.jl under the hood. The submodule `SymbolicRegression.jl/` is a custom fork that adds dynamic mutation loading (no Julia recompilation needed).
 
-```bash
-# Clone the fork into Julia's dev directory
-mkdir -p ~/.julia/dev
-git clone https://github.com/simonalford42/SymbolicRegression.jl.git ~/.julia/dev/SymbolicRegression.jl
-```
-
-Then tell Julia to use the dev version. Start Julia and run:
+Tell Julia to use it as a dev package. Start Julia and run:
 
 ```julia
 using Pkg
-Pkg.develop(path=expanduser("~/.julia/dev/SymbolicRegression.jl"))
+Pkg.develop(path="/path/to/meta_sr/SymbolicRegression.jl")
 ```
 
 The fork adds `src/CustomMutations.jl` which provides:
@@ -114,6 +109,7 @@ meta_sr/
 ├── outputs/                 # Evolution run outputs (timestamped)
 ├── scripts/                 # Analysis and plotting scripts
 │
+├── SymbolicRegression.jl/   # [submodule] Custom fork with dynamic mutation loading
 ├── pmlb/                    # [submodule] PMLB datasets
 └── srbench/                 # [submodule] SRBench framework
 ```
