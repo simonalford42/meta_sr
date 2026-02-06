@@ -4,3 +4,6 @@
 [submodule "srbench"]
 	path = srbench
 	url = https://github.com/cavalab/srbench.git
+[submodule "SymbolicRegression.jl"]
+	path = SymbolicRegression.jl
+	url = https://github.com/simonalford42/SymbolicRegression.jl.git
