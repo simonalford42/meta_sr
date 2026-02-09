@@ -64,6 +64,9 @@ class CompletionsCacheDB:
     """Simple SQLite cache for chat completions."""
 
     def __init__(self, database_path: str = "caches/completions_cache.db"):
+        db_dir = os.path.dirname(database_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         self.engine = create_engine(f"sqlite:///{database_path}")
         Base.metadata.create_all(self.engine)
 

@@ -5,6 +5,7 @@ Caches operator bundle evaluation results to avoid redundant SR runs.
 Uses SQLite for persistent storage, similar to completions_cache.py.
 """
 
+import os
 import json
 import hashlib
 from datetime import datetime
@@ -64,6 +65,9 @@ class EvaluationCacheDB:
     """SQLite cache for evaluation results."""
 
     def __init__(self, database_path: str = "caches/evaluation_cache.db"):
+        db_dir = os.path.dirname(database_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         self.engine = create_engine(f"sqlite:///{database_path}")
         Base.metadata.create_all(self.engine)
 
@@ -253,6 +257,9 @@ class PySRCacheDB:
     """SQLite cache for PySR evaluation results."""
 
     def __init__(self, database_path: str = "caches/pysr_evaluation_cache.db"):
+        db_dir = os.path.dirname(database_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         self.engine = create_engine(f"sqlite:///{database_path}")
         Base.metadata.create_all(self.engine)
 

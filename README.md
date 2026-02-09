@@ -35,7 +35,9 @@ This project expects SRBench datasets under `pmlb/datasets/<dataset_name>/...`.
 
 Alternatively, the datasets can be retrieved directly from the PMLB repository: https://github.com/EpistasisLab/pmlb
 
-### 4. Create conda environment
+### 3. Create conda environment
+
+Prerequisites: [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
 ```bash
 conda create -n meta_sr python=3.10 -y
@@ -43,24 +45,26 @@ conda activate meta_sr
 uv pip install -r requirements.txt
 ```
 
+### 4. Initialize PySR (installs Julia automatically)
+
+PySR's first import installs Julia and its dependencies into the conda env. This can take several minutes.
+
+```bash
+python -c "from pysr import PySRRegressor; print('PySR OK')"
+```
 
 ### 5. Install SymbolicRegression.jl (custom fork)
 
-PySR uses Julia's SymbolicRegression.jl under the hood. The submodule `SymbolicRegression.jl/` is a custom fork that adds dynamic mutation loading (no Julia recompilation needed).
+The submodule `SymbolicRegression.jl/` is a custom fork that adds dynamic mutation loading (no Julia recompilation needed). It must be dev-installed into PySR's Julia environment, not the global one.
 
-Tell Julia to use it as a dev package. Start Julia and run:
-
-```julia
-using Pkg
-Pkg.develop(path="/path/to/meta_sr/SymbolicRegression.jl")
+```bash
+JULIA_PROJECT=~/.conda/envs/meta_sr/julia_env julia -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'
 ```
 
 The fork adds `src/CustomMutations.jl` which provides:
 - `load_mutation_from_string!(name, code)` -- load Julia mutation code at runtime
 - `load_mutation_from_file!(name, filepath)` -- load from a .jl file
 - `clear_dynamic_mutations!()` -- reset between runs
-
-PySR's first import will install Julia and its dependencies automatically if not already present. This can take a while on first run.
 
 ### 6. Set up OpenRouter API key
 
@@ -69,14 +73,6 @@ LLM calls go through [OpenRouter](https://openrouter.ai/). Set your API key:
 ```bash
 export OPENROUTER_API_KEY="your-key-here"
 ```
-
-### 7. Verify PySR works
-
-```bash
-python -c "from pysr import PySRRegressor; print('PySR OK')"
-```
-
-The first import triggers Julia/SymbolicRegression.jl compilation (can take several minutes).
 
 ## Project Structure
 
