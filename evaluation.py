@@ -253,26 +253,6 @@ def evaluate_model(predicted_node, X, y, ground_truth_str=None):
     return result
 
 
-def evaluate_on_problem(predicted_node, problem_func, seed=42):
-    """
-    Evaluate a predicted model on a problem function.
-
-    Args:
-        predicted_node: Node object (the predicted expression tree)
-        problem_func: Problem function from problems.py
-        seed: Random seed for generating data
-
-    Returns:
-        dict with evaluation metrics (see evaluate_model)
-    """
-    from problems import get_ground_truth
-
-    X, y = problem_func(seed)
-    ground_truth_str = get_ground_truth(problem_func)
-
-    return evaluate_model(predicted_node, X, y, ground_truth_str)
-
-
 # ============================================================================
 # PySR Results Evaluation
 # ============================================================================
