@@ -81,6 +81,8 @@ LLM calls go through [OpenRouter](https://openrouter.ai/). Set your API key:
 export OPENROUTER_API_KEY="your-key-here"
 ```
 
+**Do not commit your API key to the repo.** Use environment variables or a `.env` file (already in `.gitignore`).
+
 ## Project Structure
 
 ```
