@@ -1,6 +1,3 @@
-[submodule "pmlb"]
-	path = pmlb
-	url = https://github.com/EpistasisLab/pmlb.git
 [submodule "srbench"]
 	path = srbench
 	url = https://github.com/cavalab/srbench.git

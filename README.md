@@ -10,25 +10,32 @@ Evaluation is parallelized via SLURM job arrays across SRBench regression datase
 
 ## Setup
 
-### 1. Clone with submodules
+### 1. Clone repo and required submodules
 
 ```bash
-git clone --recurse-submodules https://github.com/simonalford42/meta_sr.git
+git clone https://github.com/simonalford42/meta_sr.git
 cd meta_sr
+git submodule update --init --recursive srbench SymbolicRegression.jl
 ```
 
-If you already cloned without `--recurse-submodules`:
-
-```bash
-git submodule update --init --recursive
-```
-
-This pulls in three submodules:
-- **pmlb/** -- Penn Machine Learning Benchmarks (contains the SRBench datasets)
-- **srbench/** -- SRBench benchmark framework (reference only; we load datasets directly from pmlb)
+Required submodules:
+- **srbench/** -- SRBench benchmark framework
 - **SymbolicRegression.jl/** -- Custom fork of SymbolicRegression.jl with dynamic mutation loading
 
-### 2. Create conda environment
+### 2. Get SRBench datasets
+
+Preferred on the Ellis cluster: copy datasets from shared storage instead of relying on PMLB git-lfs.
+
+```bash
+mkdir -p pmlb/datasets
+rsync -avh --progress /share/ellis/sca63/srbench_pmlb/datasets/ pmlb/datasets/
+```
+
+This project expects SRBench datasets under `pmlb/datasets/<dataset_name>/...`.
+
+Alternatively, the datasets can be retrieved directly from the PMLB repository: https://github.com/EpistasisLab/pmlb
+
+### 4. Create conda environment
 
 ```bash
 conda create -n meta_sr python=3.10 -y
@@ -36,9 +43,8 @@ conda activate meta_sr
 uv pip install -r requirements.txt
 ```
 
-Key dependencies: numpy, pandas, scipy, scikit-learn, sympy, pysr, matplotlib, tqdm.
 
-### 3. Install SymbolicRegression.jl (custom fork)
+### 5. Install SymbolicRegression.jl (custom fork)
 
 PySR uses Julia's SymbolicRegression.jl under the hood. The submodule `SymbolicRegression.jl/` is a custom fork that adds dynamic mutation loading (no Julia recompilation needed).
 
@@ -56,7 +62,7 @@ The fork adds `src/CustomMutations.jl` which provides:
 
 PySR's first import will install Julia and its dependencies automatically if not already present. This can take a while on first run.
 
-### 4. Set up OpenRouter API key
+### 6. Set up OpenRouter API key
 
 LLM calls go through [OpenRouter](https://openrouter.ai/). Set your API key:
 
@@ -64,9 +70,7 @@ LLM calls go through [OpenRouter](https://openrouter.ai/). Set your API key:
 export OPENROUTER_API_KEY="your-key-here"
 ```
 
-Add to your shell profile (`.bashrc` / `.zshrc`) to persist across sessions.
-
-### 5. Verify PySR works
+### 7. Verify PySR works
 
 ```bash
 python -c "from pysr import PySRRegressor; print('PySR OK')"
@@ -110,7 +114,7 @@ meta_sr/
 ├── scripts/                 # Analysis and plotting scripts
 │
 ├── SymbolicRegression.jl/   # [submodule] Custom fork with dynamic mutation loading
-├── pmlb/                    # [submodule] PMLB datasets
+├── pmlb/datasets/           # SRBench datasets (copied from shared storage; not a required submodule)
 └── srbench/                 # [submodule] SRBench framework
 ```
 
@@ -141,34 +145,12 @@ python evolve_basic_sr.py
 sbatch run.sh evolve_basic_sr.py
 ```
 
-### Run PySR on SRBench directly (no evolution)
+### Run PySR on SRBench directly
 
 ```bash
 # Single dataset
-python run_pysr_srbench.py --dataset 192_vineyard --noise 0.001
+python run_pysr_srbench.py --dataset feynman_I_29_16 --noise 0.001
 
 # SLURM array over a split
 python run_pysr_srbench.py --split splits/val.txt --noise 0.01
 ```
-
-### SLURM
-
-The SLURM wrapper (`run.sh`) activates the `meta_sr` conda environment and runs the given script. Default config: partition=ellis, 100GB memory, 48h time limit.
-
-```bash
-sbatch run.sh some_script.py --arg1 value1
-```
-
-For job arrays, the evaluator classes (`SlurmEvaluator`, `PySRSlurmEvaluator`) handle submission and result collection automatically during evolution runs.
-
-## Dataset Splits
-
-Split files in `splits/` list SRBench dataset names (one per line):
-
-| Split | Description |
-|-------|-------------|
-| `train.txt` | Training datasets for evolution |
-| `val.txt` | Validation datasets for selection |
-| `test.txt` | Held-out test datasets |
-| `*_hard.txt` | Harder subsets of each split |
-| `*_small.txt` | Small subsets for quick iteration |
