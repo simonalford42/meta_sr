@@ -690,7 +690,7 @@ Examples:
   python sr.py -d feynman_I_29_16
 
   # Run on datasets from a split file
-  python sr.py -s split_train_small.txt
+  python sr.py -s splits/train_small.txt
 
   # Run on multiple specific datasets
   python sr.py --datasets feynman_I_29_16,feynman_I_30_3

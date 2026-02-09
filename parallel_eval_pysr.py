@@ -64,6 +64,31 @@ def _load_dynamic_mutations(custom_mutation_code: Dict[str, str]) -> None:
     jl.seval("reload_custom_mutations!()")
 
 
+def add_noise(data, noise_level, seed=None):
+    """
+    Add Gaussian noise scaled by RMS (SRBench method).
+
+    This matches SRBench's implementation in experiment/evaluate_model.py:130-143.
+    Noise is scaled by the RMS of the data: noise_level * sqrt(mean(x²))
+
+    Uses a local RNG to avoid contaminating global numpy random state.
+
+    Args:
+        data: Array to add noise to
+        noise_level: Noise level (e.g., 0.001, 0.01, 0.1)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Data with added noise
+    """
+    if noise_level <= 0:
+        return data
+    # Use local RNG to avoid contaminating global state
+    rng = np.random.default_rng(seed)
+    rms = np.sqrt(np.mean(np.square(data)))
+    return data + rng.normal(0, noise_level * rms, size=data.shape)
+
+
 @dataclass
 class PySRTaskSpec:
     """Specification for a single PySR evaluation task."""
@@ -77,6 +102,7 @@ class PySRTaskSpec:
     run_index: int = 0  # Which run this is (for n_runs > 1)
     custom_mutation_code: Optional[Dict[str, str]] = None  # Julia code for custom mutations
     allow_custom_mutations: bool = False  # Pass custom mutation weights to PySR
+    target_noise: float = 0.0  # Gaussian noise level for target (SRBench standard: 0.0, 0.001, 0.01, 0.1)
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -166,6 +192,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     custom_mutation_code=spec.custom_mutation_code,
                     allow_custom_mutations=spec.allow_custom_mutations,
                     pysr_model_kwargs=model_kwargs,
+                    target_noise=spec.target_noise,
                 )
                 if cached is not None:
                     return PySRTaskResult(
@@ -204,6 +231,12 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
         X_train, y_train = X[train_idx], y[train_idx]
         X_val, y_val = X[val_idx], y[val_idx]
+
+        # Apply noise to training target only (SRBench approach)
+        if spec.target_noise > 0:
+            noise_seed = run_seed + 1000  # Derived seed for reproducibility
+            y_train = add_noise(y_train, spec.target_noise, seed=noise_seed)
+            print(f"[{spec.dataset_name}] Applied target noise: {spec.target_noise}", flush=True)
 
         # Build PySR model with specified mutation weights
         t1 = _time.time()
@@ -278,6 +311,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                         custom_mutation_code=spec.custom_mutation_code,
                         allow_custom_mutations=spec.allow_custom_mutations,
                         pysr_model_kwargs=model_kwargs,
+                        target_noise=spec.target_noise,
                         r2_score=result.r2_score,
                         best_equation=result.best_equation,
                         best_loss=result.best_loss,
@@ -320,6 +354,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                         custom_mutation_code=spec.custom_mutation_code,
                         allow_custom_mutations=spec.allow_custom_mutations,
                         pysr_model_kwargs=model_kwargs,
+                        target_noise=spec.target_noise,
                         r2_score=result.r2_score,
                         best_equation=result.best_equation,
                         best_loss=result.best_loss,
@@ -440,6 +475,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         max_concurrent_jobs: Optional[int] = None,
         job_timeout: Optional[float] = 600.0,
         use_cache: bool = True,
+        target_noise: float = 0.0,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -457,6 +493,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             job_timeout=job_timeout,
             use_cache=use_cache,
         )
+        self.target_noise = target_noise
 
     def evaluate_configs(
         self,
@@ -464,6 +501,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         dataset_names: List[str],
         seed: int = 42,
         n_runs: int = 1,
+        target_noise_map: Optional[Dict[str, float]] = None,
     ) -> List[Tuple[float, List[float], List[Dict]]]:
         """
         Evaluate PySR configurations via SLURM job array.
@@ -473,6 +511,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             dataset_names: List of dataset names to evaluate on
             seed: Base random seed
             n_runs: Number of runs per configuration per dataset
+            target_noise_map: Optional dict mapping dataset_name -> noise level.
+                              If provided, overrides self.target_noise for each dataset.
 
         Returns:
             List of (avg_r2, r2_vector, result_details) tuples, one per config
@@ -484,6 +524,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         tasks = []
         for config_id, config in enumerate(configs):
             for dataset_name in dataset_names:
+                # Use per-dataset noise if map provided, otherwise use evaluator default
+                noise = target_noise_map.get(dataset_name, self.target_noise) if target_noise_map else self.target_noise
                 for run_idx in range(n_runs):
                     tasks.append(PySRTaskSpec(
                         config_id=config_id,
@@ -496,6 +538,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         run_index=run_idx,
                         custom_mutation_code=config.custom_mutation_code,
                         allow_custom_mutations=config.allow_custom_mutations,
+                        target_noise=noise,
                     ))
 
         n_tasks = len(tasks)
@@ -531,6 +574,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             custom_mutation_code=task.custom_mutation_code,
                             allow_custom_mutations=task.allow_custom_mutations,
                             pysr_model_kwargs=model_kwargs,
+                            target_noise=task.target_noise,
                         )
                         if cached is not None:
                             # Pre-write cached result to results directory

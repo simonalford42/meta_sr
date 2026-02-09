@@ -5,17 +5,10 @@ Evolve Julia mutation operators for PySR using LLMs.
 This script evolves custom mutation operators for SymbolicRegression.jl/PySR
 by generating Julia code with an LLM, validating it, and evaluating
 performance on SRBench datasets via SLURM.
-
-Usage:
-    python evolve_pysr.py \
-        --generations 10 \
-        --population 4 \
-        --split splits/split_train.txt \
-        --max_evals 100000 \
-        --model openai/gpt-5-mini
 """
 
 import argparse
+import hashlib
 import json
 import random
 import sys
@@ -34,6 +27,42 @@ from parallel_eval_pysr import (
     get_default_pysr_kwargs,
 )
 from utils import load_dataset_names_from_split, TeeLogger
+
+TARGET_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
+
+
+def _stable_target_noise(dataset_name: str, seed: int, noise_levels: List[float]) -> float:
+    """Deterministically assign a target noise level based on dataset name + seed."""
+    digest = hashlib.sha256(f"{seed}:{dataset_name}".encode("utf-8")).digest()
+    idx = int.from_bytes(digest[:4], "little") % len(noise_levels)
+    return noise_levels[idx]
+
+
+def _build_target_noise_map(
+    dataset_names: List[str],
+    seed: int,
+    noise_levels: List[float],
+) -> Dict[str, float]:
+    """Map each dataset name to a deterministic target noise level."""
+    return {name: _stable_target_noise(name, seed, noise_levels) for name in dataset_names}
+
+
+def _evaluate_configs_with_noise_map(
+    evaluator: PySRSlurmEvaluator,
+    configs: List[PySRConfig],
+    dataset_names: List[str],
+    seed: int,
+    n_runs: int,
+    target_noise_map: Optional[Dict[str, float]] = None,
+) -> List[Tuple[float, List[float], List[Dict]]]:
+    """Evaluate configs with optional per-dataset target noise mapping.
+
+    The noise map is passed directly to evaluate_configs, which sets
+    per-task noise levels so all datasets are evaluated in a single batch.
+    """
+    return evaluator.evaluate_configs(
+        configs, dataset_names, seed=seed, n_runs=n_runs, target_noise_map=target_noise_map
+    )
 
 
 # =============================================================================
@@ -167,12 +196,13 @@ def validate_julia_code(name: str, code: str) -> Tuple[bool, str]:
 
 def load_mutations_reference() -> str:
     """Load the MUTATIONS_REFERENCE2.md file as context for LLM."""
-    ref_path = Path.home() / ".julia/dev/SymbolicRegression.jl/src/custom_mutations/MUTATIONS_REFERENCE2.md"
+    base = Path(__file__).resolve().parent / "SymbolicRegression.jl/src/custom_mutations"
+    ref_path = base / "MUTATIONS_REFERENCE2.md"
     if ref_path.exists():
         return ref_path.read_text()
     else:
         # Fall back to original if v2 doesn't exist
-        ref_path = Path.home() / ".julia/dev/SymbolicRegression.jl/src/custom_mutations/MUTATIONS_REFERENCE.md"
+        ref_path = base / "MUTATIONS_REFERENCE.md"
         if ref_path.exists():
             return ref_path.read_text()
         raise FileNotFoundError(f"Could not find MUTATIONS_REFERENCE.md or MUTATIONS_REFERENCE2.md")
@@ -392,6 +422,7 @@ def evaluate_baseline(
     pysr_kwargs: Dict,
     seed: int = 42,
     n_runs: int = 1,
+    target_noise_map: Optional[Dict[str, float]] = None,
 ) -> Tuple[float, List[float], List[Dict]]:
     """Evaluate PySR without any custom mutations (baseline)."""
     mutation_weights = get_default_mutation_weights()
@@ -407,7 +438,14 @@ def evaluate_baseline(
         name="baseline",
     )
 
-    results = evaluator.evaluate_configs([config], dataset_names, seed=seed, n_runs=n_runs)
+    results = _evaluate_configs_with_noise_map(
+        evaluator=evaluator,
+        configs=[config],
+        dataset_names=dataset_names,
+        seed=seed,
+        n_runs=n_runs,
+        target_noise_map=target_noise_map,
+    )
     avg_r2, r2_vector, result_details = results[0]
     return avg_r2, r2_vector, result_details
 
@@ -419,10 +457,18 @@ def evaluate_mutation(
     pysr_kwargs: Dict,
     seed: int = 42,
     n_runs: int = 1,
+    target_noise_map: Optional[Dict[str, float]] = None,
 ) -> Tuple[float, List[float]]:
     """Evaluate a single mutation via SLURM."""
     config = mutation.to_pysr_config(pysr_kwargs)
-    results = evaluator.evaluate_configs([config], dataset_names, seed=seed, n_runs=n_runs)
+    results = _evaluate_configs_with_noise_map(
+        evaluator=evaluator,
+        configs=[config],
+        dataset_names=dataset_names,
+        seed=seed,
+        n_runs=n_runs,
+        target_noise_map=target_noise_map,
+    )
     avg_r2, r2_vector, _ = results[0]
     return avg_r2, r2_vector
 
@@ -434,6 +480,7 @@ def evaluate_mutations(
     pysr_kwargs: Dict,
     seed: int = 42,
     n_runs: int = 1,
+    target_noise_map: Optional[Dict[str, float]] = None,
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """
     Evaluate multiple mutations in parallel via a single SLURM job array.
@@ -457,7 +504,14 @@ def evaluate_mutations(
     configs = [m.to_pysr_config(pysr_kwargs) for m in mutations]
 
     # Evaluate all configs in a single SLURM batch
-    results = evaluator.evaluate_configs(configs, dataset_names, seed=seed, n_runs=n_runs)
+    results = _evaluate_configs_with_noise_map(
+        evaluator=evaluator,
+        configs=configs,
+        dataset_names=dataset_names,
+        seed=seed,
+        n_runs=n_runs,
+        target_noise_map=target_noise_map,
+    )
 
     return results
 
@@ -583,6 +637,8 @@ def run_evolution(
     job_timeout: float,
     use_cache: bool = True,
     n_runs: int = 1,
+    target_noise: float = 0.0,
+    random_target_noise: bool = False,
 ) -> JuliaMutation:
     """
     Run the evolution loop.
@@ -602,6 +658,8 @@ def run_evolution(
         job_timeout: SLURM job timeout in seconds
         use_cache: Whether to use LLM response caching (default True)
         n_runs: Number of evaluation runs per mutation per dataset (default 1)
+        target_noise: Gaussian noise level for target (default 0.0)
+        random_target_noise: If True, use per-dataset noise drawn from TARGET_NOISE_LEVELS
 
     Returns:
         Best mutation found
@@ -611,6 +669,10 @@ def run_evolution(
 
     # Set up logging
     logger = EvolutionLogger(output_dir)
+    target_noise_map = None
+    if random_target_noise:
+        target_noise_map = _build_target_noise_map(dataset_names, seed, TARGET_NOISE_LEVELS)
+
     logger.set_config({
         "n_generations": n_generations,
         "population_size": population_size,
@@ -623,6 +685,10 @@ def run_evolution(
         "pysr_kwargs": pysr_kwargs,
         "max_samples": max_samples,
         "n_runs": n_runs,
+        "target_noise": target_noise,
+        "random_target_noise": random_target_noise,
+        "target_noise_levels": TARGET_NOISE_LEVELS if random_target_noise else None,
+        "target_noise_map": target_noise_map,
     })
 
     # Set up evaluator
@@ -634,6 +700,7 @@ def run_evolution(
         dataset_max_samples=max_samples,
         data_seed=seed,
         job_timeout=job_timeout,
+        target_noise=target_noise,
     )
 
     # Load mutation reference
@@ -644,7 +711,12 @@ def run_evolution(
     print("Evaluating baseline (no custom mutations)...")
     print("=" * 60)
     baseline_r2, baseline_vector, baseline_details = evaluate_baseline(
-        evaluator, dataset_names, pysr_kwargs, seed, n_runs=n_runs
+        evaluator,
+        dataset_names,
+        pysr_kwargs,
+        seed,
+        n_runs=n_runs,
+        target_noise_map=target_noise_map,
     )
     # Show per-run averages across all datasets when n_runs > 1
     if n_runs > 1 and baseline_details:
@@ -718,7 +790,15 @@ def run_evolution(
     print("=" * 60)
 
     try:
-        results = evaluate_mutations(population, evaluator, dataset_names, pysr_kwargs, seed, n_runs=n_runs)
+        results = evaluate_mutations(
+            population,
+            evaluator,
+            dataset_names,
+            pysr_kwargs,
+            seed,
+            n_runs=n_runs,
+            target_noise_map=target_noise_map,
+        )
         for mutation, (avg_r2, r2_vector, result_details) in zip(population, results):
             mutation.score = avg_r2
             mutation.score_vector = r2_vector
@@ -815,7 +895,15 @@ def run_evolution(
         # Evaluate offspring (all mutations in parallel via single SLURM job)
         print(f"\nEvaluating {len(offspring)} offspring in parallel...")
         try:
-            results = evaluate_mutations(offspring, evaluator, dataset_names, pysr_kwargs, seed, n_runs=n_runs)
+            results = evaluate_mutations(
+                offspring,
+                evaluator,
+                dataset_names,
+                pysr_kwargs,
+                seed,
+                n_runs=n_runs,
+                target_noise_map=target_noise_map,
+            )
             for mutation, (avg_r2, r2_vector, result_details) in zip(offspring, results):
                 mutation.score = avg_r2
                 mutation.score_vector = r2_vector
@@ -886,15 +974,23 @@ def main():
                         help="Number of evaluation runs per mutation per dataset (scores are averaged)")
 
     # Dataset settings
-    parser.add_argument("--split", type=str, default="splits/split_train.txt",
+    parser.add_argument("--split", type=str, default="splits/train_hard.txt",
                         help="Path to dataset split file")
     parser.add_argument("--max_samples", type=int, default=1000,
                         help="Maximum samples per dataset")
+    parser.add_argument("--target_noise", type=float, default=0.0,
+                        help="Fixed Gaussian noise level for target (SRBench standard levels: 0.0, 0.001, 0.01, 0.1)")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--random_target_noise", action="store_true",
+                       help="Assign per-dataset target noise from {0.0, 0.001, 0.01, 0.1} using the seed")
+    group.add_argument("--no_random_target_noise", dest="random_target_noise", action="store_false",
+                       help="Disable per-dataset target noise and use --target_noise instead")
+    parser.set_defaults(random_target_noise=True)
 
     # PySR settings
     parser.add_argument("--max_evals", type=int, default=100000,
                         help="Maximum evaluations per PySR run")
-    parser.add_argument("--timeout", type=int, default=300,
+    parser.add_argument("--timeout", type=int, default=3000,
                         help="PySR timeout in seconds")
 
     # LLM settings
@@ -906,11 +1002,11 @@ def main():
     # SLURM settings
     parser.add_argument("--partition", type=str, default="default_partition",
                         help="SLURM partition")
-    parser.add_argument("--time_limit", type=str, default="00:30:00",
+    parser.add_argument("--time_limit", type=str, default="04:00:00",
                         help="SLURM time limit per job")
     parser.add_argument("--mem_per_cpu", type=str, default="8G",
                         help="SLURM memory per CPU")
-    parser.add_argument("--job_timeout", type=float, default=1800.0,
+    parser.add_argument("--job_timeout", type=float, default=3000.0,
                         help="Max time to wait for SLURM job completion")
 
     # Output settings
@@ -953,6 +1049,8 @@ def main():
         job_timeout=args.job_timeout,
         use_cache=not args.no_cache,
         n_runs=args.n_runs,
+        target_noise=args.target_noise,
+        random_target_noise=args.random_target_noise,
     )
 
     print(f"\nResults saved to: {args.output_dir}")

@@ -33,7 +33,7 @@ This pulls in three submodules:
 ```bash
 conda create -n meta_sr python=3.10 -y
 conda activate meta_sr
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 Key dependencies: numpy, pandas, scipy, scikit-learn, sympy, pysr, matplotlib, tqdm.

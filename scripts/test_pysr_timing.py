@@ -59,7 +59,7 @@ def run_pysr_on_dataset(dataset_name, niterations=100, max_samples=500, seed=42)
 
 def main():
     parser = argparse.ArgumentParser(description='Test PySR timing on datasets')
-    parser.add_argument('--split', type=str, default='splits/split_train_small.txt',
+    parser.add_argument('--split', type=str, default='splits/train_small.txt',
                        help='Split file with dataset names')
     parser.add_argument('--niterations', type=int, default=1000,
                        help='Number of PySR iterations (default: 1000)')

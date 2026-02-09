@@ -10,7 +10,7 @@
 #SBATCH -n 1
 #SBATCH --requeue
  # total limit (hh:mm:ss)
-#SBATCH -t 23:00:00
+#SBATCH -t 48:00:00
 #SBATCH --mem=100G
 #SBATCH --partition=ellis
 

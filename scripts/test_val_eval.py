@@ -11,7 +11,7 @@ from utils import load_dataset_names_from_split
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--split', default='splits/split_val.txt')
+    parser.add_argument('--split', default='splits/val.txt')
     parser.add_argument('--max-samples', type=int, default=1000)
     parser.add_argument('--partition', default='default_partition')
     parser.add_argument('--n-generations', type=int, default=1000)

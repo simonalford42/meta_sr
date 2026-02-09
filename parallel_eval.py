@@ -19,6 +19,31 @@ from pathlib import Path
 from slurm_eval import BaseSlurmEvaluator, init_worker
 
 
+def add_noise(data, noise_level, seed=None):
+    """
+    Add Gaussian noise scaled by RMS (SRBench method).
+
+    This matches SRBench's implementation in experiment/evaluate_model.py:130-143.
+    Noise is scaled by the RMS of the data: noise_level * sqrt(mean(x²))
+
+    Uses a local RNG to avoid contaminating global numpy random state.
+
+    Args:
+        data: Array to add noise to
+        noise_level: Noise level (e.g., 0.001, 0.01, 0.1)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Data with added noise
+    """
+    if noise_level <= 0:
+        return data
+    # Use local RNG to avoid contaminating global state
+    rng = np.random.default_rng(seed)
+    rms = np.sqrt(np.mean(np.square(data)))
+    return data + rng.normal(0, noise_level * rms, size=data.shape)
+
+
 @dataclass
 class TaskSpec:
     """Specification for a single evaluation task."""
@@ -30,6 +55,7 @@ class TaskSpec:
     data_seed: int  # Seed for dataset loading (subsampling)
     max_samples: Optional[int] = None  # Used by workers to load datasets
     run_index: int = 0  # Which run this is (for n_runs > 1)
+    target_noise: float = 0.0  # Gaussian noise level for target (SRBench standard: 0.0, 0.001, 0.01, 0.1)
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -95,6 +121,7 @@ def _evaluate_task(spec: TaskSpec, use_cache: bool = True) -> TaskResult:
                     max_samples=spec.max_samples,
                     run_index=spec.run_index,
                     sr_kwargs=spec.sr_kwargs,
+                    target_noise=spec.target_noise,
                 )
                 if cached is not None:
                     return TaskResult(
@@ -136,6 +163,11 @@ def _evaluate_task(spec: TaskSpec, use_cache: bool = True) -> TaskResult:
 
         X_train, y_train = X[train_idx], y[train_idx]
         X_val, y_val = X[val_idx], y[val_idx]
+
+        # Apply noise to training target only (SRBench approach)
+        if spec.target_noise > 0:
+            noise_seed = run_seed + 1000  # Derived seed for reproducibility
+            y_train = add_noise(y_train, spec.target_noise, seed=noise_seed)
 
         # Run symbolic regression
         best_ind, trace = symbolic_regression(
@@ -181,6 +213,7 @@ def _evaluate_task(spec: TaskSpec, use_cache: bool = True) -> TaskResult:
                         max_samples=spec.max_samples,
                         run_index=spec.run_index,
                         sr_kwargs=spec.sr_kwargs,
+                        target_noise=spec.target_noise,
                         score=result.score,
                         traces=result.traces,
                         error=result.error,
@@ -214,6 +247,7 @@ def _evaluate_task(spec: TaskSpec, use_cache: bool = True) -> TaskResult:
                         max_samples=spec.max_samples,
                         run_index=spec.run_index,
                         sr_kwargs=spec.sr_kwargs,
+                        target_noise=spec.target_noise,
                         score=result.score,
                         traces=result.traces,
                         error=result.error,
@@ -245,6 +279,7 @@ def _evaluate_task(spec: TaskSpec, use_cache: bool = True) -> TaskResult:
                         max_samples=spec.max_samples,
                         run_index=spec.run_index,
                         sr_kwargs=spec.sr_kwargs,
+                        target_noise=spec.target_noise,
                         score=result.score,
                         traces=result.traces,
                         error=result.error,
@@ -347,6 +382,7 @@ class SlurmEvaluator(BaseSlurmEvaluator):
         max_concurrent_jobs: Optional[int] = None,
         job_timeout: Optional[float] = 300.0,
         use_cache: bool = True,
+        target_noise: float = 0.0,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -364,6 +400,7 @@ class SlurmEvaluator(BaseSlurmEvaluator):
             job_timeout=job_timeout,
             use_cache=use_cache,
         )
+        self.target_noise = target_noise
 
     def evaluate_bundles(
         self,
@@ -372,8 +409,22 @@ class SlurmEvaluator(BaseSlurmEvaluator):
         sr_kwargs: Dict,
         seed: int = 42,
         n_runs: int = 1,
+        target_noise_map: Optional[Dict[str, float]] = None,
     ) -> List[Tuple[float, List[float], List[Dict]]]:
-        """Evaluate full bundles via SLURM job array."""
+        """Evaluate full bundles via SLURM job array.
+
+        Args:
+            bundles: List of OperatorBundle objects to evaluate
+            dataset_names: List of dataset names to evaluate on
+            sr_kwargs: Arguments for symbolic regression algorithm
+            seed: Base random seed
+            n_runs: Number of runs per bundle per dataset
+            target_noise_map: Optional dict mapping dataset_name -> noise level.
+                              If provided, overrides self.target_noise for each dataset.
+
+        Returns:
+            List of (avg_score, score_vector, trace_feedback) tuples, one per bundle
+        """
         batch_dir = self._new_batch_dir()
         results_subdir = batch_dir / "results"
 
@@ -384,6 +435,8 @@ class SlurmEvaluator(BaseSlurmEvaluator):
         tasks = []
         for op_id, bundle_codes in enumerate(bundles_codes):
             for dataset_name in dataset_names:
+                # Use per-dataset noise if map provided, otherwise use evaluator default
+                noise = target_noise_map.get(dataset_name, self.target_noise) if target_noise_map else self.target_noise
                 for run_idx in range(n_runs):
                     tasks.append(TaskSpec(
                         operator_id=op_id,
@@ -394,6 +447,7 @@ class SlurmEvaluator(BaseSlurmEvaluator):
                         data_seed=self.data_seed,
                         max_samples=self.dataset_max_samples,
                         run_index=run_idx,
+                        target_noise=noise,
                     ))
 
         n_tasks = len(tasks)
@@ -415,6 +469,7 @@ class SlurmEvaluator(BaseSlurmEvaluator):
                             max_samples=task.max_samples,
                             run_index=task.run_index,
                             sr_kwargs=task.sr_kwargs,
+                            target_noise=task.target_noise,
                         )
                         if cached is not None:
                             # Pre-write cached result to results directory

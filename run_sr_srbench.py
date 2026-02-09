@@ -13,7 +13,7 @@ Usage:
     python run_sr_srbench.py --dataset feynman_I_15_10 --bundle-dir results/run_20241220_123456
 
     # Run on all datasets in a split file (SLURM array job)
-    python run_sr_srbench.py --split_file split_train.txt --array_index 5 --generations 500
+    python run_sr_srbench.py --split_file splits/train.txt --array_index 5 --generations 500
 """
 
 import argparse

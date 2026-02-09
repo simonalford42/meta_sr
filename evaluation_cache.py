@@ -88,6 +88,7 @@ class EvaluationCacheDB:
         max_samples: Optional[int],
         run_index: int,
         sr_kwargs: Dict,
+        target_noise: float = 0.0,
     ) -> str:
         """Create a deterministic hash key for the evaluation request."""
         bundle_hash = self._make_bundle_hash(bundle_codes)
@@ -99,6 +100,7 @@ class EvaluationCacheDB:
             "max_samples": max_samples,
             "run_index": run_index,
             "sr_kwargs": sr_kwargs,
+            "target_noise": target_noise,
         }
         key_str = json.dumps(key_data, sort_keys=True, ensure_ascii=True)
         return hashlib.sha256(key_str.encode()).hexdigest()
@@ -112,10 +114,12 @@ class EvaluationCacheDB:
         max_samples: Optional[int],
         run_index: int,
         sr_kwargs: Dict,
+        target_noise: float = 0.0,
     ) -> Optional[Dict[str, Any]]:
         """Look up a cached evaluation result. Returns None if not found."""
         request_hash = self._make_cache_key(
-            bundle_codes, dataset_name, seed, data_seed, max_samples, run_index, sr_kwargs
+            bundle_codes, dataset_name, seed, data_seed, max_samples, run_index, sr_kwargs,
+            target_noise
         )
 
         stmt = select(
@@ -145,16 +149,20 @@ class EvaluationCacheDB:
         max_samples: Optional[int],
         run_index: int,
         sr_kwargs: Dict,
-        score: float,
-        traces: List[str],
+        target_noise: float = 0.0,
+        score: float = 0.0,
+        traces: List[str] = None,
         error: Optional[str] = None,
         timed_out: bool = False,
         eval_type: str = "full",
     ) -> None:
         """Store an evaluation result in the cache."""
+        if traces is None:
+            traces = []
         bundle_hash = self._make_bundle_hash(bundle_codes)
         request_hash = self._make_cache_key(
-            bundle_codes, dataset_name, seed, data_seed, max_samples, run_index, sr_kwargs
+            bundle_codes, dataset_name, seed, data_seed, max_samples, run_index, sr_kwargs,
+            target_noise
         )
 
         entry = EvaluationCacheEntry(
@@ -277,6 +285,7 @@ class PySRCacheDB:
         custom_mutation_code: Optional[Dict[str, str]],
         allow_custom_mutations: bool,
         pysr_model_kwargs: Optional[Dict] = None,
+        target_noise: float = 0.0,
     ) -> str:
         """Create a deterministic hash key for the PySR evaluation request."""
         config_hash = self._make_config_hash(
@@ -290,6 +299,7 @@ class PySRCacheDB:
             "max_samples": max_samples,
             "run_index": run_index,
             "pysr_model_kwargs": pysr_model_kwargs,
+            "target_noise": target_noise,
         }
         key_str = json.dumps(key_data, sort_keys=True, ensure_ascii=True)
         return hashlib.sha256(key_str.encode()).hexdigest()
@@ -306,12 +316,13 @@ class PySRCacheDB:
         custom_mutation_code: Optional[Dict[str, str]] = None,
         allow_custom_mutations: bool = False,
         pysr_model_kwargs: Optional[Dict] = None,
+        target_noise: float = 0.0,
     ) -> Optional[Dict[str, Any]]:
         """Look up a cached PySR evaluation result. Returns None if not found."""
         request_hash = self._make_cache_key(
             mutation_weights, pysr_kwargs, dataset_name, seed, data_seed,
             max_samples, run_index, custom_mutation_code, allow_custom_mutations,
-            pysr_model_kwargs
+            pysr_model_kwargs, target_noise
         )
 
         stmt = select(
@@ -347,12 +358,13 @@ class PySRCacheDB:
         run_index: int,
         custom_mutation_code: Optional[Dict[str, str]],
         allow_custom_mutations: bool,
-        r2_score: float,
-        best_equation: Optional[str],
-        best_loss: float,
+        pysr_model_kwargs: Optional[Dict] = None,
+        target_noise: float = 0.0,
+        r2_score: float = 0.0,
+        best_equation: Optional[str] = None,
+        best_loss: float = float("inf"),
         error: Optional[str] = None,
         timed_out: bool = False,
-        pysr_model_kwargs: Optional[Dict] = None,
         runtime_seconds: float = 0.0,
     ) -> None:
         """Store a PySR evaluation result in the cache."""
@@ -362,7 +374,7 @@ class PySRCacheDB:
         request_hash = self._make_cache_key(
             mutation_weights, pysr_kwargs, dataset_name, seed, data_seed,
             max_samples, run_index, custom_mutation_code, allow_custom_mutations,
-            pysr_model_kwargs
+            pysr_model_kwargs, target_noise
         )
 
         entry = PySRCacheEntry(

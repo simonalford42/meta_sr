@@ -10,10 +10,10 @@ Usage:
     python run_pysr_srbench.py --dataset feynman_I_15_10 --time_minutes 10
 
     # Run on all datasets in a split file for 1 hour each
-    python run_pysr_srbench.py --split_file split_train.txt --time_minutes 60
+    python run_pysr_srbench.py --split_file splits/train.txt --time_minutes 60
 
     # Run with specific SLURM array task
-    python run_pysr_srbench.py --split_file split_train.txt --array_index 5 --time_minutes 60
+    python run_pysr_srbench.py --split_file splits/train.txt --array_index 5 --time_minutes 60
 """
 
 import argparse

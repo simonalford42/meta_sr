@@ -2,7 +2,7 @@
 """
 Example: Evaluate PySR with and without a custom mutation using SLURM.
 
-This script reads dataset names from splits/split_train.txt (by default) and
+This script reads dataset names from splits/train.txt (by default) and
 evaluates two configurations via PySRSlurmEvaluator:
   1) Baseline: custom mutations disabled
   2) Custom: custom_mutation_1 enabled with a configurable weight
@@ -25,7 +25,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Evaluate PySR with and without custom mutations via SLURM."
     )
-    parser.add_argument("--split_file", type=str, default="splits/split_train.txt")
+    parser.add_argument("--split_file", type=str, default="splits/train.txt")
     parser.add_argument("--results_dir", type=str, default="outputs/pysr_custom_vs_baseline")
     parser.add_argument("--partition", type=str, default="default_partition")
     parser.add_argument("--time_limit", type=str, default="00:30:00")  # 30 min per task

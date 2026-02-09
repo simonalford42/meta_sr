@@ -332,7 +332,7 @@ def print_summary(results: Dict):
 def main():
     """Run evaluation with default settings."""
     results = run_evaluation(
-        split_files=["split_train_small.txt", "split_val_small.txt"],
+        split_files=["train_small.txt", "val_small.txt"],
         n_runs=2,
         n_generations=1000,
         train_samples=1000,
