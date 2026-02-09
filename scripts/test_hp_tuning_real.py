@@ -118,7 +118,7 @@ def main():
                        help='Max parallel SLURM jobs at a time (default: 200)')
 
     # Dataset config
-    parser.add_argument('--split', type=str, default='splits/split_train.txt',
+    parser.add_argument('--split', type=str, default='splits/train.txt',
                        help='Path to split file')
     parser.add_argument('--max-samples', type=int, default=1000,
                        help='Max samples per dataset')

@@ -12,7 +12,7 @@ Usage:
     python evaluate_on_validation.py --log out/meta_228219.out --results-dir results/run_20260115_214930 --all-elites
 
     # Specify validation split
-    python evaluate_on_validation.py --log out/meta_228219.out --results-dir results/run_20260115_214930 --split splits/split_val.txt
+    python evaluate_on_validation.py --log out/meta_228219.out --results-dir results/run_20260115_214930 --split splits/val.txt
 """
 
 import re
@@ -439,8 +439,8 @@ def main():
                        help='Path to meta-evolution log file (e.g., out/meta_228219.out)')
     parser.add_argument('--results-dir', type=str, required=True,
                        help='Path to results directory (e.g., results/run_20260115_214930)')
-    parser.add_argument('--split', type=str, default='splits/split_val.txt',
-                       help='Validation split file (default: splits/split_val.txt)')
+    parser.add_argument('--split', type=str, default='splits/val.txt',
+                       help='Validation split file (default: splits/val.txt)')
     parser.add_argument('--output-dir', type=str, default=None,
                        help='Output directory for results (default: <results-dir>/validation_eval)')
 

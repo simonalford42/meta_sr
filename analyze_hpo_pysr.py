@@ -15,15 +15,15 @@ Usage:
     # HPO results
     python analyze_hpo_pysr.py \
         --best-weights outputs/hpo_pysr_*/best_weights.json \
-        --train-split splits/split_train.txt \
-        --val-split splits/split_val.txt \
+        --train-split splits/train.txt \
+        --val-split splits/val.txt \
         --n-runs 5
 
     # Evolve results
     python analyze_hpo_pysr.py \
         --evolve-results outputs/evolve_pysr_*/run_data.json \
-        --train-split splits/split_train.txt \
-        --val-split splits/split_val.txt \
+        --train-split splits/train.txt \
+        --val-split splits/val.txt \
         --n-runs 5
 """
 
@@ -237,9 +237,9 @@ def main() -> None:
     input_group.add_argument("--evolve-results", type=str,
                              help="Path to evolve run_data.json (e.g., outputs/evolve_pysr_*/run_data.json)")
 
-    parser.add_argument("--train-split", type=str, default="splits/split_train.txt",
+    parser.add_argument("--train-split", type=str, default="splits/train.txt",
                         help="Train split file")
-    parser.add_argument("--val-split", type=str, default="splits/split_val.txt",
+    parser.add_argument("--val-split", type=str, default="splits/val.txt",
                         help="Validation split file")
     parser.add_argument("--n-runs", type=int, default=5,
                         help="Number of seeds/runs per config per dataset")
@@ -249,7 +249,7 @@ def main() -> None:
                         help="Maximum samples per dataset")
     parser.add_argument("--max-evals", type=int, default=100000,
                         help="Maximum evaluations per PySR run")
-    parser.add_argument("--timeout", type=int, default=300,
+    parser.add_argument("--timeout", type=int, default=3000,
                         help="PySR timeout in seconds")
     parser.add_argument("--partition", type=str, default="default_partition",
                         help="SLURM partition")
@@ -257,7 +257,7 @@ def main() -> None:
                         help="SLURM time limit per job")
     parser.add_argument("--mem-per-cpu", type=str, default="8G",
                         help="SLURM memory per CPU")
-    parser.add_argument("--job-timeout", type=float, default=1800.0,
+    parser.add_argument("--job-timeout", type=float, default=3000.0,
                         help="Max wait for SLURM completion")
     parser.add_argument("--max-concurrent-jobs", type=int, default=None,
                         help="Max concurrent SLURM array tasks")

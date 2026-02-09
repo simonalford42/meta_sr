@@ -11,7 +11,7 @@ Usage:
         --n-trials 50 \
         --n-parallel 4 \
         --n-runs 3 \
-        --split splits/split_train.txt \
+        --split splits/train.txt \
         --partition <slurm_partition>
 """
 
@@ -546,7 +546,7 @@ def main():
                              "Default disables weight_optimize.")
 
     # Dataset settings
-    parser.add_argument("--split", type=str, default="splits/split_train.txt",
+    parser.add_argument("--split", type=str, default="splits/train.txt",
                         help="Dataset split file")
     parser.add_argument("--max-samples", type=int, default=1000,
                         help="Max samples per dataset")

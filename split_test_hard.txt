@@ -1,0 +1,15 @@
+feynman_I_9_18
+feynman_I_29_16
+feynman_test_19
+feynman_test_2
+feynman_test_1
+feynman_test_4
+feynman_test_15
+feynman_I_16_6
+strogatz_bacres1
+feynman_I_15_3x
+feynman_I_15_10
+feynman_II_13_34
+feynman_III_4_33
+feynman_I_8_14
+strogatz_vdp1

@@ -141,22 +141,25 @@ def check_symbolic_match(predicted_expr, ground_truth_expr, n_vars=None):
     predicted_simplified = simplify(predicted_clean, ratio=1)
     result['simplified_predicted'] = str(predicted_simplified)
 
-    # Calculate symbolic difference
+    # Calculate symbolic difference (and simplify)
     sym_diff = round_floats(ground_truth_clean - predicted_simplified)
+    sym_diff = round_floats(simplify(sym_diff, ratio=1))
 
-    # Calculate symbolic fraction
-    sym_frac = round_floats(predicted_simplified / ground_truth_clean)
-
-    # Check if we can skip full simplification
-    if not sym_diff.is_constant() or sym_frac.is_constant():
-        sym_diff = round_floats(simplify(sym_diff, ratio=1))
+    # Calculate symbolic fraction only if ground truth is not zero
+    sym_frac = None
+    ground_truth_is_zero = ground_truth_clean.equals(0)
+    if not ground_truth_is_zero:
+        sym_frac = round_floats(predicted_simplified / ground_truth_clean)
+        sym_frac = round_floats(simplify(sym_frac, ratio=1))
 
     result['symbolic_error'] = str(sym_diff)
 
     # Check match conditions
-    result['error_is_zero'] = str(sym_diff) == '0'
-    result['error_is_constant'] = bool(sym_diff.is_constant())
-    result['fraction_is_constant'] = bool(sym_frac.is_constant()) if sym_frac.is_constant() is not None else False
+    result['error_is_zero'] = bool(sym_diff.equals(0))
+    result['error_is_constant'] = bool(sym_diff.is_constant()) if sym_diff.is_constant() is not None else False
+    result['fraction_is_constant'] = (
+        bool(sym_frac.is_constant()) if sym_frac is not None and sym_frac.is_constant() is not None else False
+    )
 
     # A match is any of the three conditions
     result['match'] = (
@@ -1263,8 +1266,8 @@ def analyze_r2_across_runs(base_dir: str = ".", verbose: bool = True):
 
     Shows mean and std of average R² across tasks for:
     1. All tasks (whole split)
-    2. Train split (splits/split_train.txt)
-    3. Val split (splits/split_val.txt)
+    2. Train split (splits/train.txt)
+    3. Val split (splits/val.txt)
 
     Args:
         base_dir: Base directory containing results_sr* directories
@@ -1389,8 +1392,8 @@ def analyze_r2_across_runs(base_dir: str = ".", verbose: bool = True):
         return {}
 
     # Load splits
-    train_split = load_split(base / "splits" / "split_train.txt")
-    val_split = load_split(base / "splits" / "split_val.txt")
+    train_split = load_split(base / "splits" / "train.txt")
+    val_split = load_split(base / "splits" / "val.txt")
 
     # Calculate per-problem stats
     all_stats = []
@@ -1721,7 +1724,7 @@ def print_comparison_summary(base_dir: str = ".", pysr_dir: str = None, sr_seeds
         pysr_dir: Path to PySR results directory (default: results_pysr/12_20)
         sr_seeds: List of SR seed directories to compare (default: ['results_sr', 'results_sr2'])
         r2_threshold: R² threshold to count as "solved" (default 0.9999, i.e. ~1.0)
-        split_file: Optional path to split file (e.g., splits/split_val.txt) to filter problems
+        split_file: Optional path to split file (e.g., splits/val.txt) to filter problems
     """
     import json
     from pathlib import Path
@@ -2396,15 +2399,139 @@ def plot_pysr_r2_by_noise(results_pattern: str = "results_pysr_*", base_dir: str
     if not output_dir:
         plt.show()
 
-    return figures
+    return figures, data_by_noise
+
+
+def plot_pysr_r2_by_noise_splits(results_pattern: str, base_dir: str, output_dir: str,
+                                 split_files: list, split_labels: list,
+                                 no_noise_dirs: list, original_split_file: str,
+                                 combined_output_name: str = "pysr_r2_thresholds_all_noise_with_splits.png",
+                                 keep_intermediate: bool = False,
+                                 combined_title_labels: list = None):
+    """
+    Create split-filtered versions of pysr_r2_thresholds_all_noise.png and stack them with the original.
+
+    Args:
+        results_pattern: Glob pattern to find result directories
+        base_dir: Base directory containing results
+        output_dir: Directory to save plots
+        split_files: List of split file paths (relative to base_dir or absolute)
+        split_labels: List of suffix labels for saved images (e.g., ["train_hard", ...])
+        no_noise_dirs: List of directories containing noise=0 results
+        original_split_file: Split file used for the "original" plot (e.g., splits/srbench_all.txt)
+        combined_output_name: Filename for stacked output image
+        keep_intermediate: Keep intermediate per-split directories if True
+    """
+    from pathlib import Path
+    import shutil
+    from PIL import Image, ImageDraw, ImageFont
+
+    if len(split_files) != len(split_labels):
+        raise ValueError("split_files and split_labels must have the same length")
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    original_path = output_path / "pysr_r2_thresholds_all_noise.png"
+    if not original_path.exists():
+        plot_pysr_r2_by_noise(
+            results_pattern=results_pattern,
+            base_dir=base_dir,
+            split_file=original_split_file,
+            output_dir=output_dir,
+            no_noise_dirs=no_noise_dirs,
+        )
+
+    split_images = []
+    for split_file, split_label in zip(split_files, split_labels):
+        tmp_dir = output_path / f"_tmp_{split_label}"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
+        plot_pysr_r2_by_noise(
+            results_pattern=results_pattern,
+            base_dir=base_dir,
+            split_file=split_file,
+            output_dir=str(tmp_dir),
+            no_noise_dirs=no_noise_dirs,
+        )
+
+        tmp_combined = tmp_dir / "pysr_r2_thresholds_all_noise.png"
+        split_out = output_path / f"pysr_r2_thresholds_all_noise_{split_label}.png"
+        if tmp_combined.exists():
+            shutil.copyfile(tmp_combined, split_out)
+            split_images.append(split_out)
+        else:
+            print(f"Warning: combined plot not found for {split_label} at {tmp_combined}")
+
+        if not keep_intermediate:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    image_paths = [original_path] + split_images
+    for path in image_paths:
+        if not path.exists():
+            raise FileNotFoundError(f"Missing image: {path}")
+
+    if combined_title_labels is None:
+        combined_title_labels = ["all"] + split_labels
+    if len(combined_title_labels) != len(image_paths):
+        raise ValueError("combined_title_labels must match number of images")
+
+    images = []
+    for path, title in zip(image_paths, combined_title_labels):
+        with Image.open(path) as img:
+            base_img = img.copy().convert("RGB")
+
+        font = ImageFont.load_default()
+        try:
+            bbox = font.getbbox(title)
+            text_w = bbox[2] - bbox[0]
+            text_h = bbox[3] - bbox[1]
+        except Exception:
+            text_w, text_h = font.getsize(title)
+
+        pad_x = 16
+        pad_y = 10
+        banner_h = text_h + pad_y * 2
+
+        banner = Image.new("RGB", (base_img.width, banner_h), (245, 245, 245))
+        draw = ImageDraw.Draw(banner)
+        text_x = max(pad_x, (base_img.width - text_w) // 2)
+        text_y = (banner_h - text_h) // 2
+        draw.text((text_x, text_y), title, fill=(0, 0, 0), font=font)
+
+        labeled = Image.new("RGB", (base_img.width, base_img.height + banner_h), (255, 255, 255))
+        labeled.paste(banner, (0, 0))
+        labeled.paste(base_img, (0, banner_h))
+        images.append(labeled)
+
+    max_width = max(img.width for img in images)
+    resized = []
+    for img in images:
+        if img.width != max_width:
+            new_height = round(img.height * (max_width / img.width))
+            resized.append(img.resize((max_width, new_height), Image.LANCZOS))
+        else:
+            resized.append(img)
+
+    total_height = sum(img.height for img in resized)
+    combined = Image.new("RGB", (max_width, total_height), (255, 255, 255))
+
+    y_offset = 0
+    for img in resized:
+        combined.paste(img, (0, y_offset))
+        y_offset += img.height
+
+    combined_path = output_path / combined_output_name
+    combined.save(combined_path)
+    print(f"Saved combined rows image: {combined_path}")
 
 
 if __name__ == "__main__":
     # Plot R² thresholds by noise level
     # Expects directories like: results_pysr_0.001_1000, results_pysr_0.01_10000, etc.
     # Also includes existing no-noise results from results/results_pysr_1e*
-    plot_pysr_r2_by_noise(
-        results_pattern="results_pysr_*_*",
+    _, _ = plot_pysr_r2_by_noise(
+        results_pattern="results/results_pysr_*_*",
         split_file="splits/srbench_all.txt",
         output_dir="plots",  # or None to display interactively
         no_noise_dirs=[
@@ -2415,4 +2542,29 @@ if __name__ == "__main__":
             "results/results_pysr_1e7",
             "results/results_pysr_1e8",
         ]
+    )
+
+    plot_pysr_r2_by_noise_splits(
+        results_pattern="results/results_pysr_*_*",
+        base_dir=".",
+        output_dir="plots",
+        split_files=[
+            "splits/train_hard.txt",
+            "splits/val_hard.txt",
+            "splits/test_hard.txt",
+        ],
+        split_labels=[
+            "train_hard",
+            "val_hard",
+            "test_hard",
+        ],
+        no_noise_dirs=[
+            "results/results_pysr_1e3",
+            "results/results_pysr_1e4",
+            "results/results_pysr_1e5",
+            "results/results_pysr_1e6",
+            "results/results_pysr_1e7",
+            "results/results_pysr_1e8",
+        ],
+        original_split_file="splits/srbench_all.txt",
     )

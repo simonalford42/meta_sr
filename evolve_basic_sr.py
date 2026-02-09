@@ -1,6 +1,7 @@
 import numpy as np
 import random
-from typing import List, Dict, Optional
+import hashlib
+from typing import List, Dict, Optional, Tuple
 import json
 import sys
 from datetime import datetime
@@ -18,6 +19,48 @@ from completions import print_usage
 from utils import load_datasets_from_split, TeeLogger, load_dataset_names_from_split, Timing
 from parallel_eval import SlurmEvaluator
 from hyperparameter_tuning import tune_bundle_hyperparameters, identify_hyperparameters
+
+TARGET_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
+
+
+def _stable_target_noise(dataset_name: str, seed: int, noise_levels: List[float]) -> float:
+    """Deterministically assign a target noise level based on dataset name + seed."""
+    digest = hashlib.sha256(f"{seed}:{dataset_name}".encode("utf-8")).digest()
+    idx = int.from_bytes(digest[:4], "little") % len(noise_levels)
+    return noise_levels[idx]
+
+
+def _build_target_noise_map(
+    dataset_names: List[str],
+    seed: int,
+    noise_levels: List[float],
+) -> Dict[str, float]:
+    """Map each dataset name to a deterministic target noise level."""
+    return {name: _stable_target_noise(name, seed, noise_levels) for name in dataset_names}
+
+
+def _evaluate_bundles_with_noise_map(
+    slurm_evaluator: SlurmEvaluator,
+    bundles: List[OperatorBundle],
+    dataset_names: List[str],
+    sr_kwargs: Dict,
+    seed: int,
+    n_runs: int,
+    target_noise_map: Optional[Dict[str, float]] = None,
+) -> List[Tuple[float, List[float], List[Dict]]]:
+    """Evaluate bundles with optional per-dataset target noise mapping.
+
+    The noise map is passed directly to evaluate_bundles, which sets
+    per-task noise levels so all datasets are evaluated in a single batch.
+    """
+    return slurm_evaluator.evaluate_bundles(
+        bundles=bundles,
+        dataset_names=dataset_names,
+        sr_kwargs=sr_kwargs,
+        seed=seed,
+        n_runs=n_runs,
+        target_noise_map=target_noise_map,
+    )
 
 
 def compute_meta_score(score_vector: List[float]) -> tuple:
@@ -280,6 +323,7 @@ def evaluate_bundle_population(
     n_runs: Optional[int] = 1,
     quick_eval_datasets: Optional[List[str]] = None,
     baseline_quick_scores: Optional[Dict[str, float]] = None,
+    target_noise_map: Optional[Dict[str, float]] = None,
 ) -> None:
     """
     Evaluate a population of bundles, with optional quick-eval filtering.
@@ -312,12 +356,14 @@ def evaluate_bundle_population(
     if quick_eval_datasets and baseline_quick_scores:
         print(f"  Quick eval: {len(quick_eval_datasets)} datasets, 2 runs each")
 
-        quick_results = slurm_evaluator.evaluate_bundles(
+        quick_results = _evaluate_bundles_with_noise_map(
+            slurm_evaluator=slurm_evaluator,
             bundles=bundles,
             dataset_names=quick_eval_datasets,
             sr_kwargs=sr_kwargs,
             seed=seed if seed is not None else 42,
             n_runs=min(2, n_runs) if n_runs is not None else 2,
+            target_noise_map=target_noise_map,
         )
 
         # Determine which bundles show improvement
@@ -370,12 +416,14 @@ def evaluate_bundle_population(
 
         # Full eval only for bundles that improved
         print(f"  Full eval: {len(bundles_to_full_eval)} bundles on {len(all_dataset_names)} datasets")
-        full_results = slurm_evaluator.evaluate_bundles(
+        full_results = _evaluate_bundles_with_noise_map(
+            slurm_evaluator=slurm_evaluator,
             bundles=bundles_to_full_eval,
             dataset_names=all_dataset_names,
             sr_kwargs=sr_kwargs,
             seed=seed if seed is not None else 42,
             n_runs=n_runs if n_runs is not None else 1,
+            target_noise_map=target_noise_map,
         )
 
         for bundle, (avg_score, score_vector, trace_feedback) in zip(bundles_to_full_eval, full_results):
@@ -384,12 +432,14 @@ def evaluate_bundle_population(
 
     else:
         # No quick eval - evaluate all bundles on all datasets
-        results = slurm_evaluator.evaluate_bundles(
+        results = _evaluate_bundles_with_noise_map(
+            slurm_evaluator=slurm_evaluator,
             bundles=bundles,
             dataset_names=all_dataset_names,
             sr_kwargs=sr_kwargs,
             seed=seed if seed is not None else 42,
             n_runs=n_runs if n_runs is not None else 1,
+            target_noise_map=target_noise_map,
         )
 
         for bundle, (avg_score, score_vector, trace_feedback) in zip(bundles, results):
@@ -406,7 +456,7 @@ def evaluate_final_bundle(
     sr_kwargs: Dict,
     seed: int,
     slurm_config: Optional[Dict] = None,
-    split_file: str = 'splits/split_val.txt',
+    split_file: str = 'splits/val.txt',
     n_runs: int = 1,
 ) -> Optional[Dict]:
     """
@@ -452,17 +502,24 @@ def evaluate_final_bundle(
         constraint=slurm_config.get('constraint'),
         max_concurrent_jobs=slurm_config.get('max_workers'),
         use_cache=slurm_config.get('use_cache', True),
+        target_noise=slurm_config.get('target_noise', 0.0),
     )
 
     srbench_datasets = load_dataset_names_from_split(split_file)
     print(f"Evaluating on {len(srbench_datasets)} SRBench datasets...")
 
-    eval_results = slurm_evaluator.evaluate_bundles(
+    target_noise_map = None
+    if slurm_config.get("random_target_noise", False):
+        target_noise_map = _build_target_noise_map(srbench_datasets, seed, TARGET_NOISE_LEVELS)
+
+    eval_results = _evaluate_bundles_with_noise_map(
+        slurm_evaluator=slurm_evaluator,
         bundles=[final_bundle],
         dataset_names=srbench_datasets,
         sr_kwargs=sr_kwargs,
         seed=seed,
         n_runs=n_runs,
+        target_noise_map=target_noise_map,
     )
 
     # Extract results for the single bundle (index 0)
@@ -575,6 +632,7 @@ def run_meta_evolution(
         constraint=slurm_config.get('constraint'),
         max_concurrent_jobs=slurm_config.get('max_workers'),
         use_cache=slurm_config.get('use_cache', True),
+        target_noise=slurm_config.get('target_noise', 0.0),
     )
 
     # Save configuration
@@ -595,10 +653,15 @@ def run_meta_evolution(
 
     # Load datasets if not provided (fallback to default split)
     if datasets is None:
-        print("No datasets provided; loading default split 'splits/split_train_small.txt'.")
-        datasets = load_datasets_from_split('splits/split_train_small.txt', max_samples=1000)
+        print("No datasets provided; loading default split 'splits/train_hard.txt'.")
+        datasets = load_datasets_from_split('splits/train_hard.txt', max_samples=1000)
     all_dataset_names = list(datasets.keys())
     print(f"Datasets: {all_dataset_names}")
+
+    target_noise_map = None
+    if slurm_config.get("random_target_noise", False):
+        seed_for_noise = seed if seed is not None else 42
+        target_noise_map = _build_target_noise_map(all_dataset_names, seed_for_noise, TARGET_NOISE_LEVELS)
 
     # Select 1/4 of datasets for quick evaluation (fixed for entire evolution)
     n_quick = max(1, len(all_dataset_names) // 4)
@@ -624,6 +687,7 @@ def run_meta_evolution(
             slurm_evaluator=slurm_evaluator,
             seed=seed,
             n_runs=n_runs,
+            target_noise_map=target_noise_map,
         )
 
         best_bundle = default_bundle
@@ -718,6 +782,7 @@ def run_meta_evolution(
                     n_runs=n_runs,
                     quick_eval_datasets=quick_eval_datasets,
                     baseline_quick_scores=baseline_quick_scores,
+                    target_noise_map=target_noise_map,
                 )
 
             eval_time = time.time() - eval_start
@@ -766,12 +831,14 @@ def run_meta_evolution(
                     """Evaluate multiple bundles in parallel for HP tuning."""
                     if not bundles_to_eval:
                         return []
-                    results = slurm_evaluator.evaluate_bundles(
+                    results = _evaluate_bundles_with_noise_map(
+                        slurm_evaluator=slurm_evaluator,
                         bundles=bundles_to_eval,
                         dataset_names=quick_eval_datasets,
                         sr_kwargs=sr_kwargs,
                         seed=seed if seed is not None else 42,
                         n_runs=1,  # Single run for speed
+                        target_noise_map=target_noise_map,
                     )
                     return [r[0] for r in results]  # Extract avg_score from each result
 
@@ -799,6 +866,7 @@ def run_meta_evolution(
                         slurm_evaluator=slurm_evaluator,
                         seed=seed,
                         n_runs=n_runs,
+                        target_noise_map=target_noise_map,
                     )
 
                     score_after = tuned_bundle.avg_r2
@@ -891,19 +959,27 @@ if __name__ == "__main__":
                        help='SLURM constraint for node selection (e.g., "avx2")')
 
     # Meta-evolution parameters
-    parser.add_argument('--generations', type=int, default=20, help='Total number of generations (default: 20)')
-    parser.add_argument('--population', type=int, default=2, help='Population size (default: 2)')
-    parser.add_argument('--n-crossover', type=int, default=1, help='Number of crossover offspring per generation (default: 1)')
-    parser.add_argument('--n-mutation', type=int, default=0, help='Number of mutation offspring per generation (default: 0)')
+    parser.add_argument('--generations', type=int, default=20, help='Total number of generations')
+    parser.add_argument('--population', type=int, default=5, help='Population size')
+    parser.add_argument('--n-crossover', type=int, default=1, help='Number of crossover offspring per generation')
+    parser.add_argument('--n-mutation', type=int, default=3, help='Number of mutation offspring per generation')
 
     # SR parameters
     parser.add_argument('--sr-population', type=int, default=100, help='SR population size (default: 100)')
     parser.add_argument('--sr-generations', type=int, default=1000, help='SR generations (default: 1000)')
 
     # Dataset
-    parser.add_argument('--split', type=str, default='splits/split_train.txt',
-                       help='Path to split file with dataset names (default: splits/split_train.txt)')
+    parser.add_argument('--split', type=str, default='splits/train_hard.txt',
+                       help='Path to split file with dataset names (default: splits/train_hard.txt)')
     parser.add_argument('--max-samples', type=int, default=1000, help='Max samples per dataset (default: 1000)')
+    parser.add_argument('--target_noise', type=float, default=0.0,
+                       help='Fixed Gaussian noise level for target (SRBench standard levels: 0.0, 0.001, 0.01, 0.1)')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--random_target_noise', action='store_true',
+                       help='Assign per-dataset target noise from {0.0, 0.001, 0.01, 0.1} using the seed')
+    group.add_argument('--no_random_target_noise', dest='random_target_noise', action='store_false',
+                       help='Disable per-dataset target noise and use --target_noise instead')
+    parser.set_defaults(random_target_noise=True)
 
     # Model
     parser.add_argument('--model', type=str, default='openai/gpt-5-mini',
@@ -928,7 +1004,7 @@ if __name__ == "__main__":
     parser.add_argument('--no-trace-feedback', action='store_true', help='Disable trace feedback to LLM')
     parser.add_argument('--refine', action='store_true', help='Use exploitation/refinement prompt instead of exploration')
     parser.add_argument('--output-dir', type=str, default=None, help='Output directory (default: results/run_TIMESTAMP)')
-    parser.add_argument('--n-runs', type=int, default=1, help='Number of runs for meta-evolution (default: 1)')
+    parser.add_argument('--n-runs', type=int, default=3, help='Number of runs for meta-evolution (default: 1)')
     parser.add_argument('--seed', type=int, default=0, help='Base random seed for reproducibility')
     parser.add_argument('--no-eval-cache', action='store_true', help='Disable evaluation result caching')
 
@@ -957,6 +1033,8 @@ if __name__ == "__main__":
         'constraint': args.constraint,
         'max_workers': args.max_workers,
         'use_cache': not args.no_eval_cache,
+        'target_noise': args.target_noise,
+        'random_target_noise': args.random_target_noise,
     }
 
     datasets = load_datasets_from_split(args.split, max_samples=args.max_samples, data_seed=args.seed)
@@ -1011,7 +1089,7 @@ if __name__ == "__main__":
             sr_kwargs=sr_kwargs,
             seed=args.seed,
             slurm_config=slurm_config,
-            split_file='splits/split_val.txt',
+            split_file='splits/val.txt',
             n_runs=2,
         )
     else:

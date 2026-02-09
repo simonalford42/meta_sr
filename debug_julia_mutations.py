@@ -426,7 +426,7 @@ Examples:
                         help="Evaluate mutations using SLURM")
     parser.add_argument("--no-eval", action="store_true",
                         help="Don't evaluate, just generate and show")
-    parser.add_argument("--split", type=str, default="splits/split_train_small.txt",
+    parser.add_argument("--split", type=str, default="splits/train_small.txt",
                         help="Dataset split file")
     parser.add_argument("--max-samples", type=int, default=500,
                         help="Max samples per dataset")

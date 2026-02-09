@@ -5,7 +5,10 @@ and sort problems from easiest to hardest.
 import pandas as pd
 import argparse
 import os
+import json
+from glob import glob
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 # Import formula extraction functions
 from srbench_formulas import (
@@ -15,8 +18,8 @@ from srbench_formulas import (
 
 # Default path relative to this script's location
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_RESULTS_DIR = os.path.join(SCRIPT_DIR, 'srbench', 'results')
-PMLB_DATASETS_DIR = os.path.join(SCRIPT_DIR, 'pmlb', 'datasets')
+DEFAULT_RESULTS_DIR = os.path.join(SCRIPT_DIR, '..', 'srbench', 'results')
+PMLB_DATASETS_DIR = os.path.join(SCRIPT_DIR, '..', 'pmlb', 'datasets')
 
 
 def load_data(results_dir=None):
@@ -26,6 +29,291 @@ def load_data(results_dir=None):
     filepath = os.path.join(results_dir, 'ground-truth_results.feather')
     df = pd.read_feather(filepath)
     return df
+
+
+def load_pysr_results_dir(results_dir):
+    """Load PySR results from a directory of JSON files."""
+    records = []
+    for json_path in glob(os.path.join(results_dir, "*.json")):
+        try:
+            with open(json_path, "r") as f:
+                data = json.load(f)
+        except Exception:
+            continue
+
+        if not isinstance(data, dict):
+            continue
+        if "dataset" not in data or "test_r2" not in data:
+            continue
+
+        records.append({
+            "dataset": data["dataset"],
+            "test_r2": float(data["test_r2"]),
+        })
+
+    if not records:
+        return pd.DataFrame(columns=["dataset", "test_r2"])
+
+    return pd.DataFrame.from_records(records)
+
+
+def load_pysr_results(
+    results_base_dir="results",
+    eval_counts=(1_000_000, 10_000_000, 100_000_000),
+    noise_levels=(0.0, 0.001, 0.01, 0.1),
+):
+    """
+    Load PySR SRBench-style results across eval counts and noise levels.
+
+    Directory naming conventions:
+      - noise=0.0: results_pysr_1e6, results_pysr_1e7, results_pysr_1e8
+      - noise>0.0: results_pysr_{noise}_{max_evals}
+    """
+    eval_label_map = {
+        1_000_000: "1e6",
+        10_000_000: "1e7",
+        100_000_000: "1e8",
+    }
+
+    frames = []
+    missing_dirs = []
+
+    for eval_count in eval_counts:
+        for noise in noise_levels:
+            if noise == 0.0:
+                label = eval_label_map.get(eval_count, str(eval_count))
+                dir_name = f"results_pysr_{label}"
+            else:
+                dir_name = f"results_pysr_{noise:g}_{int(eval_count)}"
+
+            dir_path = Path(results_base_dir) / dir_name
+            if not dir_path.exists():
+                missing_dirs.append(str(dir_path))
+                continue
+
+            df_dir = load_pysr_results_dir(str(dir_path))
+            if df_dir.empty:
+                continue
+
+            df_dir = df_dir.copy()
+            df_dir["max_evals"] = int(eval_count)
+            df_dir["target_noise"] = float(noise)
+            df_dir["results_dir"] = str(dir_path)
+            frames.append(df_dir)
+
+    if not frames:
+        return pd.DataFrame(columns=["dataset", "test_r2", "max_evals", "target_noise"]), missing_dirs
+
+    combined = pd.concat(frames, ignore_index=True)
+    return combined, missing_dirs
+
+
+def compute_pysr_difficulty(
+    results_base_dir="results",
+    eval_counts=(1_000_000, 10_000_000, 100_000_000),
+    noise_levels=(0.0, 0.001, 0.01, 0.1),
+):
+    """
+    Compute PySR difficulty by averaging R^2 across eval counts and noise levels.
+    """
+    pysr_df, missing_dirs = load_pysr_results(
+        results_base_dir=results_base_dir,
+        eval_counts=eval_counts,
+        noise_levels=noise_levels,
+    )
+
+    if pysr_df.empty:
+        return pd.DataFrame(columns=["dataset", "pysr_avg_r2", "pysr_n_results"]), missing_dirs
+
+    agg = pysr_df.groupby("dataset").agg(
+        pysr_avg_r2=("test_r2", "mean"),
+        pysr_n_results=("test_r2", "count"),
+    ).reset_index()
+
+    # Rank: hardest = lowest avg R^2
+    agg = agg.sort_values("pysr_avg_r2", ascending=True).reset_index(drop=True)
+    agg["pysr_difficulty_rank"] = range(1, len(agg) + 1)
+
+    return agg, missing_dirs
+
+
+def compare_srbench_vs_pysr_difficulty(
+    srbench_difficulty,
+    pysr_difficulty,
+    out_dir="plots/pysr_srbench_difficulty",
+    top_k=20,
+):
+    """
+    Compare SRBench difficulty ranking with PySR difficulty ranking and plot agreement.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Merge on dataset
+    merged = srbench_difficulty.merge(
+        pysr_difficulty,
+        on="dataset",
+        how="inner",
+    )
+
+    if merged.empty:
+        print("No overlapping datasets between SRBench and PySR results.")
+        return merged
+
+    merged = merged.copy()
+
+    # Re-rank PySR within the merged set to align with SRBench coverage
+    merged = merged.sort_values("pysr_avg_r2", ascending=True).reset_index(drop=True)
+    merged["pysr_difficulty_rank"] = range(1, len(merged) + 1)
+
+    # Compute agreement metrics
+    rank_corr = merged[["difficulty_rank", "pysr_difficulty_rank"]].corr(method="spearman").iloc[0, 1]
+
+    # Hardest sets
+    top_k = int(top_k)
+    pysr_hard = set(merged.nsmallest(top_k, "pysr_avg_r2")["dataset"])
+    srbench_hard = set(merged.nsmallest(top_k, "difficulty_rank")["dataset"])
+    overlap = pysr_hard & srbench_hard
+
+    print("\n" + "=" * 80)
+    print("PySR vs SRBench difficulty comparison")
+    print("=" * 80)
+    print(f"Overlapping datasets: {len(merged)}")
+    print(f"Spearman rank correlation (overall): {rank_corr:.3f}")
+    print(f"Top-{top_k} overlap: {len(overlap)} / {top_k}")
+    if overlap:
+        overlap_list = sorted(
+            overlap,
+            key=lambda d: merged.loc[merged["dataset"] == d, "pysr_difficulty_rank"].iloc[0],
+        )
+        print(f"Overlap datasets (sorted by PySR hardness): {overlap_list}")
+
+    # Plot 1: Rank vs Rank scatter
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.scatter(
+        merged["difficulty_rank"],
+        merged["pysr_difficulty_rank"],
+        s=18,
+        alpha=0.4,
+        color="#8c8c8c",
+        label="All datasets",
+    )
+
+    # Overlay hard sets
+    hard_mask_pysr = merged["dataset"].isin(pysr_hard)
+    hard_mask_srbench = merged["dataset"].isin(srbench_hard)
+
+    ax.scatter(
+        merged.loc[hard_mask_srbench, "difficulty_rank"],
+        merged.loc[hard_mask_srbench, "pysr_difficulty_rank"],
+        s=28,
+        color="#1f77b4",
+        label=f"SRBench top-{top_k}",
+    )
+    ax.scatter(
+        merged.loc[hard_mask_pysr, "difficulty_rank"],
+        merged.loc[hard_mask_pysr, "pysr_difficulty_rank"],
+        s=28,
+        color="#d62728",
+        label=f"PySR top-{top_k}",
+    )
+
+    # Highlight overlap
+    overlap_mask = merged["dataset"].isin(overlap)
+    ax.scatter(
+        merged.loc[overlap_mask, "difficulty_rank"],
+        merged.loc[overlap_mask, "pysr_difficulty_rank"],
+        s=45,
+        color="#000000",
+        label="Overlap",
+    )
+
+    max_rank = max(merged["difficulty_rank"].max(), merged["pysr_difficulty_rank"].max())
+    ax.plot([1, max_rank], [1, max_rank], linestyle="--", color="#666666", linewidth=1)
+    ax.set_xlabel("SRBench difficulty rank (1 = hardest)")
+    ax.set_ylabel("PySR difficulty rank (1 = hardest)")
+    ax.set_title("Difficulty rank agreement: SRBench vs PySR")
+    ax.legend(frameon=False, fontsize=9)
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, "rank_agreement_scatter.png"), dpi=200)
+    plt.close(fig)
+
+    # Plot 2: Hard-end comparison for PySR top-K
+    hard_df = merged[merged["dataset"].isin(pysr_hard)].copy()
+    hard_df = hard_df.sort_values("pysr_avg_r2", ascending=True).reset_index(drop=True)
+    hard_df["pysr_hard_rank"] = range(1, len(hard_df) + 1)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.scatter(
+        hard_df["pysr_hard_rank"],
+        hard_df["difficulty_rank"],
+        s=30,
+        color="#d62728",
+    )
+    ax.plot(
+        [1, len(hard_df)],
+        [1, len(hard_df)],
+        linestyle="--",
+        color="#666666",
+        linewidth=1,
+    )
+    for _, row in hard_df.iterrows():
+        ax.text(
+            row["pysr_hard_rank"] + 0.1,
+            row["difficulty_rank"],
+            row["dataset"],
+            fontsize=7,
+            alpha=0.8,
+        )
+    ax.set_xlabel(f"PySR hard-rank within top-{top_k}")
+    ax.set_ylabel("SRBench difficulty rank (1 = hardest)")
+    ax.set_title(f"Hard-end agreement (PySR top-{top_k})")
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, "hard_end_agreement.png"), dpi=200)
+    plt.close(fig)
+
+    # Plot 3: Overlap vs K (top-K taken from SRBench rankings)
+    max_k = min(len(merged), 50)
+    ks = list(range(1, max_k + 1))
+    overlaps = []
+    for k in ks:
+        pysr_top = set(merged.nsmallest(k, "pysr_avg_r2")["dataset"])
+        sr_top = set(merged.nsmallest(k, "difficulty_rank")["dataset"])
+        overlaps.append(len(pysr_top & sr_top))
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.plot(ks, overlaps, color="#2ca02c", linewidth=2)
+    ax.set_xlabel("K (top-K from SRBench)")
+    ax.set_ylabel("# overlapping datasets")
+    ax.set_title("Top-K overlap: SRBench vs PySR")
+    ax.grid(True, alpha=0.2)
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, "topk_overlap_curve.png"), dpi=200)
+    plt.close(fig)
+
+    # Save merged data
+    merged.to_csv(os.path.join(out_dir, "pysr_srbench_difficulty_comparison.csv"), index=False)
+
+    return merged
+
+
+def parse_eval_list(eval_str):
+    values = []
+    for part in eval_str.split(','):
+        part = part.strip()
+        if not part:
+            continue
+        values.append(int(float(part)))
+    return tuple(values)
+
+
+def parse_noise_list(noise_str):
+    values = []
+    for part in noise_str.split(','):
+        part = part.strip()
+        if not part:
+            continue
+        values.append(float(part))
+    return tuple(values)
 
 
 def compute_symbolic_solution(df):
@@ -378,6 +666,148 @@ def generate_train_val_test_split(difficulty_df, train_size=20, val_size=20, tes
     return df
 
 
+def generate_hard_splits(
+    difficulty_df,
+    n_hard_total=45,
+    n_tail_per_split=5,
+    splits=("train_hard", "val_hard", "test_hard"),
+):
+    """
+    Generate hard splits:
+      - Top n_hard_total hardest problems split evenly across splits (serpentine draft).
+      - Add n_tail_per_split from remaining difficulty distribution to train/val.
+
+    Returns:
+    --------
+    difficulty_df with 'split_hard' column added.
+    """
+    df = difficulty_df.copy()
+    df["split_hard"] = ""
+
+    # Mark excluded datasets
+    df.loc[df["dataset"].isin(EXCLUDED_DATASETS), "split_hard"] = "excluded"
+
+    includable = df[df["split_hard"] != "excluded"].copy()
+
+    # Hard pool
+    hard_pool = includable.head(n_hard_total).copy()
+    rest_pool = includable.iloc[n_hard_total:].copy()
+
+    # Serpentine assignment for hard pool
+    order = []
+    direction = 1
+    idx = 0
+    for _ in range(len(hard_pool)):
+        order.append(splits[idx])
+        idx += direction
+        if idx == len(splits):
+            idx = len(splits) - 1
+            direction = -1
+        elif idx < 0:
+            idx = 0
+            direction = 1
+
+    hard_pool["split_hard"] = order
+
+    # Tail: stratified sampling across remaining distribution for train/val
+    tail_assignments = {s: [] for s in splits}
+    if n_tail_per_split > 0 and len(rest_pool) > 0:
+        strata_size = len(rest_pool) / n_tail_per_split
+        strata = []
+        for i in range(n_tail_per_split):
+            start = int(i * strata_size)
+            end = int((i + 1) * strata_size) if i < n_tail_per_split - 1 else len(rest_pool)
+            strata.append(rest_pool.iloc[start:end])
+
+        train_picks = []
+        val_picks = []
+        for stratum in strata:
+            if len(stratum) == 0:
+                continue
+            datasets = stratum["dataset"].tolist()
+            train_pick = datasets[0]
+            # Prefer a different dataset for val to avoid overwriting train
+            if len(datasets) > 1:
+                val_pick = datasets[-1] if datasets[-1] != train_pick else datasets[1]
+            else:
+                val_pick = None
+
+            train_picks.append(train_pick)
+            if val_pick is not None:
+                val_picks.append(val_pick)
+
+        tail_assignments["train_hard"] = train_picks
+        tail_assignments["val_hard"] = val_picks
+
+    # Apply assignments
+    for _, row in hard_pool.iterrows():
+        df.loc[df["dataset"] == row["dataset"], "split_hard"] = row["split_hard"]
+
+    for s in ["train_hard", "val_hard"]:
+        for d in tail_assignments[s]:
+            df.loc[df["dataset"] == d, "split_hard"] = s
+
+    # Assign all remaining includable datasets to test_hard
+    remaining_mask = (df["split_hard"] == "") & (~df["dataset"].isin(EXCLUDED_DATASETS))
+    df.loc[remaining_mask, "split_hard"] = "test_hard"
+
+    return df
+
+
+def plot_split_coverage_vs_pysr_topk(
+    split_df,
+    pysr_difficulty,
+    out_dir,
+    split_col="split_hard",
+    split_names=("train_hard", "val_hard", "test_hard"),
+):
+    """
+    Plot number of datasets from each split in the PySR top-K hardest.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+
+    merged = split_df.merge(
+        pysr_difficulty[["dataset", "pysr_avg_r2"]],
+        on="dataset",
+        how="inner",
+    )
+
+    if merged.empty:
+        print("No overlapping datasets between PySR difficulty and splits.")
+        return
+
+    merged = merged.sort_values("pysr_avg_r2", ascending=True).reset_index(drop=True)
+    merged["pysr_difficulty_rank"] = range(1, len(merged) + 1)
+
+    max_k = len(merged)
+    ks = list(range(1, max_k + 1))
+
+    counts = {s: [] for s in split_names}
+    for k in ks:
+        topk = set(merged.nsmallest(k, "pysr_avg_r2")["dataset"])
+        for s in split_names:
+            in_split = set(merged[merged[split_col] == s]["dataset"])
+            counts[s].append(len(topk & in_split))
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    colors = {
+        "train_hard": "#1f77b4",
+        "val_hard": "#ff7f0e",
+        "test_hard": "#2ca02c",
+    }
+    for s in split_names:
+        ax.plot(ks, counts[s], label=s, linewidth=2, color=colors.get(s))
+
+    ax.set_xlabel("K (top-K by PySR difficulty)")
+    ax.set_ylabel("# tasks from split in PySR top-K")
+    ax.set_title("Split coverage in PySR hardest tasks")
+    ax.grid(True, alpha=0.2)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, "pysr_topk_split_coverage.png"), dpi=200)
+    plt.close(fig)
+
+
 def generate_subset_split(full_split_df, subset_train_size=4, subset_val_size=4):
     """
     Generate a smaller subset split that is contained within a larger split.
@@ -484,6 +914,24 @@ def main():
                         help='Number of training problems (default: 20)')
     parser.add_argument('--val-size', type=int, default=20,
                         help='Number of validation problems (default: 20)')
+    parser.add_argument('--compare-pysr', action='store_true',
+                        help='Compare SRBench difficulty with PySR difficulty and generate plots')
+    parser.add_argument('--pysr-results-base', default='results',
+                        help='Base directory containing PySR results_* folders (default: results)')
+    parser.add_argument('--pysr-evals', default='1e6,1e7,1e8',
+                        help='Comma-separated eval counts for PySR (default: 1e6,1e7,1e8)')
+    parser.add_argument('--pysr-noise-levels', default='0,0.001,0.01,0.1',
+                        help='Comma-separated target noise levels (default: 0,0.001,0.01,0.1)')
+    parser.add_argument('--pysr-top-k', type=int, default=20,
+                        help='Top-K hardest problems to emphasize in plots (default: 20)')
+    parser.add_argument('--pysr-outdir', default='plots/pysr_srbench_difficulty',
+                        help='Output directory for PySR vs SRBench plots (default: plots/pysr_srbench_difficulty)')
+    parser.add_argument('--hard-split', action='store_true',
+                        help='Generate hard splits train_hard/val_hard/test_hard')
+    parser.add_argument('--hard-total', type=int, default=45,
+                        help='Total number of hardest problems to distribute across hard splits (default: 45)')
+    parser.add_argument('--hard-tail', type=int, default=5,
+                        help='Number of non-hard problems to add to train/val from remaining distribution (default: 5)')
 
     args = parser.parse_args()
 
@@ -496,6 +944,57 @@ def main():
 
     print("Computing problem difficulty by number of solves...")
     difficulty = compute_problem_difficulty(df, noise_level=args.noise_level)
+
+    if args.compare_pysr:
+        eval_counts = parse_eval_list(args.pysr_evals)
+        noise_levels = parse_noise_list(args.pysr_noise_levels)
+
+        pysr_difficulty, missing_dirs = compute_pysr_difficulty(
+            results_base_dir=args.pysr_results_base,
+            eval_counts=eval_counts,
+            noise_levels=noise_levels,
+        )
+
+        if missing_dirs:
+            print("\nMissing PySR result directories (skipped):")
+            for d in missing_dirs:
+                print(f"  {d}")
+
+        compare_srbench_vs_pysr_difficulty(
+            srbench_difficulty=difficulty,
+            pysr_difficulty=pysr_difficulty,
+            out_dir=args.pysr_outdir,
+            top_k=args.pysr_top_k,
+        )
+
+    if args.hard_split:
+        print(f"Generating hard splits (hard_total={args.hard_total}, hard_tail={args.hard_tail})...")
+        hard_df = generate_hard_splits(
+            difficulty,
+            n_hard_total=args.hard_total,
+            n_tail_per_split=args.hard_tail,
+        )
+
+        splits_dir = Path("splits")
+        splits_dir.mkdir(exist_ok=True)
+        for split_name in ["train_hard", "val_hard", "test_hard"]:
+            problems = hard_df[hard_df["split_hard"] == split_name]["dataset"].tolist()
+            filename = splits_dir / f"{split_name}.txt"
+            with open(filename, "w") as f:
+                f.write("\n".join(problems) + "\n")
+            print(f"  {filename}: {len(problems)} datasets")
+
+        # Plot PySR top-K coverage for hard splits
+        pysr_difficulty, _ = compute_pysr_difficulty(
+            results_base_dir=args.pysr_results_base,
+            eval_counts=parse_eval_list(args.pysr_evals),
+            noise_levels=parse_noise_list(args.pysr_noise_levels),
+        )
+        plot_split_coverage_vs_pysr_topk(
+            split_df=hard_df,
+            pysr_difficulty=pysr_difficulty,
+            out_dir=args.pysr_outdir,
+        )
 
     if args.split_mode == 'ab':
         print("Generating balanced A/B split...")
@@ -543,19 +1042,19 @@ def main():
         split_a = difficulty[difficulty['split'] == 'A']['dataset'].tolist()
         split_b = difficulty[difficulty['split'] == 'B']['dataset'].tolist()
 
-        with open('split_A.txt', 'w') as f:
+        with open('A.txt', 'w') as f:
             f.write('\n'.join(split_a) + '\n')
-        with open('split_B.txt', 'w') as f:
+        with open('B.txt', 'w') as f:
             f.write('\n'.join(split_b) + '\n')
 
         print(f"\nSplit files saved:")
-        print(f"  split_A.txt: {len(split_a)} datasets")
-        print(f"  split_B.txt: {len(split_b)} datasets")
+        print(f"  A.txt: {len(split_a)} datasets")
+        print(f"  B.txt: {len(split_b)} datasets")
     else:
         # Save train/val/test splits
         for split_name in ['train', 'val', 'test']:
             problems = difficulty[difficulty['split'] == split_name]['dataset'].tolist()
-            filename = f'split_{split_name}.txt'
+            filename = f'{split_name}.txt'
             with open(filename, 'w') as f:
                 f.write('\n'.join(problems) + '\n')
             print(f"  {filename}: {len(problems)} datasets")
@@ -566,13 +1065,13 @@ def main():
         print('='*60)
         subset = generate_subset_split(difficulty, subset_train_size=4, subset_val_size=4)
 
-        with open('split_train_small.txt', 'w') as f:
+        with open('train_small.txt', 'w') as f:
             f.write('\n'.join(subset['train']) + '\n')
-        with open('split_val_small.txt', 'w') as f:
+        with open('val_small.txt', 'w') as f:
             f.write('\n'.join(subset['val']) + '\n')
 
-        print(f"  split_train_small.txt: {len(subset['train'])} datasets")
-        print(f"  split_val_small.txt: {len(subset['val'])} datasets")
+        print(f"  train_small.txt: {len(subset['train'])} datasets")
+        print(f"  val_small.txt: {len(subset['val'])} datasets")
         print(f"\nSmall train subset: {subset['train']}")
         print(f"Small val subset: {subset['val']}")
 
