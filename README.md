@@ -33,7 +33,18 @@ rsync -avh --progress /share/ellis/sca63/srbench_pmlb/datasets/ pmlb/datasets/
 
 This project expects SRBench datasets under `pmlb/datasets/<dataset_name>/...`.
 
-Alternatively, the datasets can be retrieved directly from the PMLB repository: https://github.com/EpistasisLab/pmlb
+Alternatively (outside the Ellis cluster), install PMLB and export the datasets:
+
+```bash
+pip install pmlb
+python -c "
+import pmlb, os, pandas as pd
+for name in pmlb.regression_dataset_names:
+    os.makedirs(f'pmlb/datasets/{name}', exist_ok=True)
+    pmlb.fetch_data(name).to_csv(f'pmlb/datasets/{name}/{name}.tsv.gz', sep='\t', index=False, compression='gzip')
+print(f'Exported {len(pmlb.regression_dataset_names)} datasets')
+"
+```
 
 ### 3. Create conda environment
 
@@ -45,20 +56,16 @@ conda activate meta_sr
 uv pip install -r requirements.txt
 ```
 
-### 4. Initialize PySR (installs Julia automatically)
+### 4. Install PySR and custom SymbolicRegression.jl fork
 
-PySR's first import installs Julia and its dependencies into the conda env. This can take several minutes.
+PySR's first import installs Julia and its dependencies into the conda env. This can take several minutes. After that, dev-install the custom SymbolicRegression.jl fork (which adds dynamic mutation loading) into PySR's Julia environment.
 
 ```bash
+# Initialize PySR / Julia (takes a few minutes the first time)
 python -c "from pysr import PySRRegressor; print('PySR OK')"
-```
 
-### 5. Install SymbolicRegression.jl (custom fork)
-
-The submodule `SymbolicRegression.jl/` is a custom fork that adds dynamic mutation loading (no Julia recompilation needed). It must be dev-installed into PySR's Julia environment, not the global one.
-
-```bash
-JULIA_PROJECT=~/.conda/envs/meta_sr/julia_env julia -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'
+# Dev-install custom fork (must use PySR's Julia env, not the global one)
+JULIA_PROJECT="$CONDA_PREFIX/julia_env" julia -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'
 ```
 
 The fork adds `src/CustomMutations.jl` which provides:
@@ -66,7 +73,7 @@ The fork adds `src/CustomMutations.jl` which provides:
 - `load_mutation_from_file!(name, filepath)` -- load from a .jl file
 - `clear_dynamic_mutations!()` -- reset between runs
 
-### 6. Set up OpenRouter API key
+### 5. Set up OpenRouter API key
 
 LLM calls go through [OpenRouter](https://openrouter.ai/). Set your API key:
 
