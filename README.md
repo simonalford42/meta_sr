@@ -99,6 +99,24 @@ export OPENROUTER_API_KEY="your-key-here"
 
 **Do not commit your API key to the repo.** Use environment variables or a `.env` file (already in `.gitignore`).
 
+### 7. Installation final check (PySR + SRBench + SLURM)
+
+Run a small SLURM-backed PySR check on the first 20 datasets from `splits/train_hard.txt`:
+
+```bash
+python scripts/test_pysr_srbench_slurm.py
+```
+
+This test:
+- runs 20 SRBench tasks via the `PySRSlurmEvaluator` SLURM interface
+- uses `max_evals=1e6` per task
+- verifies every task produced a successful result
+- prints the average `R^2` across tasks
+
+Expected result:
+- `Final check status: PASS`
+- average `R^2` is typically around `0.99` (exact value may vary by cluster/load)
+
 ## Project Structure
 
 ```
