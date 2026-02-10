@@ -46,30 +46,26 @@ print(f'Exported {len(pmlb.regression_dataset_names)} datasets')
 "
 ```
 
-### 3. Create conda environment
+### 3. Create conda environment and install Python deps
 
 Prerequisites: [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
 ```bash
+source "$(conda info --base)/etc/profile.d/conda.sh"
 conda create -n meta_sr python=3.10 -y
 conda activate meta_sr
 uv pip install -r requirements.txt
-conda install -c conda-forge julia=1.11 -y
 ```
 
-### 4. Install PySR and custom SymbolicRegression.jl fork
-
-Use Julia 1.11.x from the active conda environment for deterministic setup. This avoids conflicts from global Julia installations.
+### 4. Initialize PySR and install custom SymbolicRegression.jl fork
 
 ```bash
-# Force PySR/juliapkg to use conda Julia
-export PYTHON_JULIAPKG_EXE="$CONDA_PREFIX/bin/julia"
-
 # Initialize PySR / Julia environment (takes a few minutes the first time)
 python -c "from pysr import PySRRegressor; print('PySR OK')"
 
-# Dev-install custom fork into PySR's Julia project
-JULIA_PROJECT="$CONDA_PREFIX/julia_env" "$CONDA_PREFIX/bin/julia" -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'
+# Dev-install custom fork into the same Julia project PySR uses
+JULIA_EXE="$CONDA_PREFIX/julia_env/pyjuliapkg/install/bin/julia"
+JULIA_PROJECT="$CONDA_PREFIX/julia_env" "$JULIA_EXE" -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'
 ```
 
 The fork adds `src/CustomMutations.jl` which provides:
@@ -80,13 +76,13 @@ The fork adds `src/CustomMutations.jl` which provides:
 ### 5. Verify local SymbolicRegression.jl is loaded
 
 ```bash
-python scripts/verify_local_symbolicregression.py
+env -u JULIA_PROJECT python scripts/verify_local_symbolicregression.py
 ```
 
 Expected output ends with:
 
 ```text
-PASS: using local SymbolicRegression.jl fork
+PASS: Local SymbolicRegression.jl was loaded (marker/path/modules confirmed).
 ```
 
 ### 6. Set up OpenRouter API key
