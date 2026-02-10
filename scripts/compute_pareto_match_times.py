@@ -1,23 +1,30 @@
 #!/usr/bin/env python3
 """
-Compute symbolic match times for full Pareto frontiers across all tasks.
+Benchmark symbolic-check time for the PySR "best" expression.
 
-Maps run directories to datasets via checkpoint feature names and
-evaluates with per-expression timeouts to avoid stalling.
+This script samples 10 runs from:
+  results/results_pysr_0.01_100000000
 
-Uses two quick filters before expensive symbolic simplification:
-1. R² filter: skip expressions with R² < threshold (default 0.99)
-2. Operator filter: skip if ground truth uses function families absent from candidate
+For each sampled run, it:
+1) Maps the run to a dataset.
+2) Loads the ground-truth formula.
+3) Checks only PySR's best expression for an exact symbolic match
+   (`error_is_zero`).
+4) Records per-run check time.
+
+It prints per-run match results and summary timing stats
+(mean/min/max).
 """
 
 import sys
-import re
 import time
 import pickle
 import json
-import numpy as np
+import random
 from pathlib import Path
 from collections import defaultdict
+
+import numpy as np
 from tqdm import tqdm
 
 # Add parent dir to path
@@ -27,56 +34,23 @@ from utils import load_srbench_dataset, PMLB_PATH
 from evaluation import check_pysr_symbolic_match
 
 
-# Operator families for quick filtering.
-# If ground truth uses any operator in a family and candidate uses none from
-# that family, it's very unlikely to be a symbolic match.
-# Conservative grouping: trig grouped together since sin²+cos²=1 etc.
-OPERATOR_FAMILIES = {
-    'trig': {'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'arcsin', 'arccos', 'arctan'},
-    'exp_log': {'exp', 'log', 'ln'},
-}
-
-
-def extract_functions(expr_str):
-    """Extract function names from an expression string."""
-    # Match word followed by '(' — captures function calls
-    return set(re.findall(r'([a-zA-Z_]\w*)\s*\(', expr_str))
-
-
-def quick_operator_check(candidate_expr, ground_truth_formula):
-    """
-    Return True if the candidate *could* match the ground truth based on operators.
-    Return False if it definitely cannot (ground truth uses a function family
-    that the candidate completely lacks).
-    """
-    gt_funcs = extract_functions(ground_truth_formula)
-    cand_funcs = extract_functions(candidate_expr)
-
-    for family_name, family_ops in OPERATOR_FAMILIES.items():
-        gt_uses_family = bool(gt_funcs & family_ops)
-        cand_uses_family = bool(cand_funcs & family_ops)
-        if gt_uses_family and not cand_uses_family:
-            return False
-
-    return True
-
-
 def get_dataset_feature_names(dataset_name):
-    """Get feature names (column names excluding 'target') for a dataset."""
+    """Get feature names (all columns excluding target) for a dataset."""
     import pandas as pd
+
     dataset_path = PMLB_PATH / dataset_name / f"{dataset_name}.tsv.gz"
     if not dataset_path.exists():
         return None
-    df = pd.read_csv(dataset_path, sep='\t', compression='gzip', nrows=0)
-    return [c for c in df.columns if c != 'target']
+    df = pd.read_csv(dataset_path, sep="\t", compression="gzip", nrows=0)
+    return [c for c in df.columns if c != "target"]
 
 
 def build_feature_to_dataset_map():
-    """Build mapping from feature name tuples to dataset names."""
+    """Build mapping from feature-name tuples to dataset names."""
     feature_map = defaultdict(list)
 
     for d in sorted(PMLB_PATH.iterdir()):
-        if d.is_dir() and ('feynman' in d.name or 'strogatz' in d.name):
+        if d.is_dir() and ("feynman" in d.name or "strogatz" in d.name):
             features = get_dataset_feature_names(d.name)
             if features:
                 feature_map[tuple(features)].append(d.name)
@@ -85,8 +59,8 @@ def build_feature_to_dataset_map():
 
 
 def load_checkpoint_info(checkpoint_path):
-    """Load checkpoint and extract feature names and equations."""
-    with open(checkpoint_path, 'rb') as f:
+    """Load checkpoint and extract model + metadata."""
+    with open(checkpoint_path, "rb") as f:
         model = pickle.load(f)
 
     equations = model.equations_
@@ -94,112 +68,97 @@ def load_checkpoint_info(checkpoint_path):
         return None
 
     return {
-        'feature_names': list(model.feature_names_in_),
-        'equations': equations,
+        "model": model,
+        "feature_names": list(model.feature_names_in_),
+        "equations": equations,
     }
 
 
-def evaluate_pareto_frontier(equations_df, var_names, ground_truth_formula,
-                             y_var, r2_threshold=0.99, timeout_per_expr=3600):
+def resolve_dataset_name(info, feature_map, json_summaries):
     """
-    Evaluate all Pareto frontier expressions for symbolic match.
+    Resolve dataset name for a checkpoint.
 
-    Applies quick filters first:
-    1. R² >= r2_threshold
-    2. Operator family check
+    Primary key is feature-name tuple. If ambiguous, disambiguate by matching
+    the checkpoint best equation to JSON summary `best_equation`.
+    """
+    feature_tuple = tuple(info["feature_names"])
+    candidate_datasets = feature_map.get(feature_tuple, [])
 
-    Only expressions passing both filters get the full symbolic check.
+    if len(candidate_datasets) == 0:
+        return None
+    if len(candidate_datasets) == 1:
+        return candidate_datasets[0]
+
+    best_eq = str(info["model"].get_best()["equation"])
+    for ds in candidate_datasets:
+        if ds in json_summaries:
+            if best_eq == json_summaries[ds].get("best_equation", ""):
+                return ds
+
+    return candidate_datasets[0]
+
+
+def evaluate_best_expression(model, ground_truth_formula, var_names, timeout_seconds=120):
+    """
+    Check only model.get_best()['equation'] against ground truth.
 
     Returns:
-        dict with timing and match info
+        dict with exact match status and timing.
     """
-    start_time = time.time()
-    num_total = len(equations_df)
-    num_r2_filtered = 0
-    num_op_filtered = 0
-    num_checked = 0
-    num_matches = 0
-    num_timeouts = 0
+    best_expr = str(model.get_best()["equation"])
 
-    for _, row in equations_df.iterrows():
-        expr_str = row['sympy_format'] if 'sympy_format' in row else row['equation']
-        expr_str = str(expr_str)
-        loss = float(row['loss'])
-
-        # Quick filter 1: R²
-        r2 = 1.0 - loss / y_var if y_var > 0 else 0.0
-        if r2 < r2_threshold:
-            num_r2_filtered += 1
-            continue
-
-        # Quick filter 2: operator families
-        if not quick_operator_check(expr_str, ground_truth_formula):
-            num_op_filtered += 1
-            continue
-
-        # Full symbolic check
-        num_checked += 1
-        result = check_pysr_symbolic_match(
-            expr_str,
-            ground_truth_formula,
-            var_names,
-            timeout_seconds=timeout_per_expr
-        )
-
-        if result.get('error') == 'timeout':
-            num_timeouts += 1
-        elif result.get('match'):
-            num_matches += 1
-
-    elapsed_time = time.time() - start_time
+    start = time.perf_counter()
+    result = check_pysr_symbolic_match(
+        best_expr,
+        ground_truth_formula,
+        var_names=var_names,
+        timeout_seconds=timeout_seconds,
+    )
+    elapsed = time.perf_counter() - start
 
     return {
-        'elapsed_time': elapsed_time,
-        'any_match': num_matches > 0,
-        'num_expressions': num_total,
-        'num_r2_filtered': num_r2_filtered,
-        'num_op_filtered': num_op_filtered,
-        'num_checked': num_checked,
-        'num_matches': num_matches,
-        'num_timeouts': num_timeouts,
+        "best_expression": best_expr,
+        "exact_match": bool(result.get("error_is_zero")),
+        "error": result.get("error"),
+        "elapsed_time": elapsed,
     }
 
 
 def main():
-    results_dir = Path("results/results_pysr_0.01_10000000")
+    results_dir = Path("results/results_pysr_0.01_100000000")
 
     if not results_dir.exists():
         print(f"Results directory not found: {results_dir}")
         return
 
-    # Build feature to dataset mapping
     print("Building feature-to-dataset mapping...")
     feature_map = build_feature_to_dataset_map()
 
-    # Load all JSON summary files to get best_equation for disambiguation
     print("Loading JSON summaries...")
     json_summaries = {}
     for json_file in results_dir.glob("*.json"):
         with open(json_file) as f:
             data = json.load(f)
-        json_summaries[data['dataset']] = data
+        json_summaries[data["dataset"]] = data
 
-    # Find all run directories
-    run_dirs = [d for d in results_dir.iterdir() if d.is_dir() and (d / 'checkpoint.pkl').exists()]
+    run_dirs = [d for d in results_dir.iterdir() if d.is_dir() and (d / "checkpoint.pkl").exists()]
     print(f"Found {len(run_dirs)} run directories")
 
-    # Sample 10 for timing analysis
-    import random
     random.seed(42)
-    run_dirs = random.sample(run_dirs, min(10, len(run_dirs)))
-    print(f"Sampling {len(run_dirs)} for timing analysis (no timeout)")
+    random.shuffle(run_dirs)
+    target_runs = min(50, len(run_dirs))
+    print(f"Target valid runs to evaluate: {target_runs}")
 
-    # Process each run directory
-    dataset_times = []
+    run_results = []
     unmatched_dirs = []
+    attempted = 0
 
-    for run_dir in tqdm(sorted(run_dirs), desc="Processing runs"):
-        checkpoint_path = run_dir / 'checkpoint.pkl'
+    pbar = tqdm(total=target_runs, desc="Processing runs")
+    for run_dir in run_dirs:
+        if len(run_results) >= target_runs:
+            break
+        attempted += 1
+        checkpoint_path = run_dir / "checkpoint.pkl"
 
         try:
             info = load_checkpoint_info(checkpoint_path)
@@ -209,34 +168,13 @@ def main():
             print(f"Error loading {checkpoint_path}: {e}")
             continue
 
-        feature_tuple = tuple(info['feature_names'])
-        candidate_datasets = feature_map.get(feature_tuple, [])
-
-        if len(candidate_datasets) == 0:
+        dataset_name = resolve_dataset_name(info, feature_map, json_summaries)
+        if dataset_name is None:
             unmatched_dirs.append(run_dir.name)
             continue
-        elif len(candidate_datasets) == 1:
-            dataset_name = candidate_datasets[0]
-        else:
-            # Disambiguation: match best_equation from checkpoint to JSON summaries
-            best_eq = info['equations'].iloc[info['equations']['score'].idxmax()]['equation']
 
-            matched = None
-            for ds in candidate_datasets:
-                if ds in json_summaries:
-                    json_best = json_summaries[ds].get('best_equation', '')
-                    if best_eq == json_best:
-                        matched = ds
-                        break
-
-            if matched:
-                dataset_name = matched
-            else:
-                dataset_name = candidate_datasets[0]
-
-        # Load ground truth and y values
         try:
-            _, y, ground_truth_formula = load_srbench_dataset(dataset_name)
+            _, _, ground_truth_formula = load_srbench_dataset(dataset_name)
         except Exception as e:
             print(f"Error loading dataset {dataset_name}: {e}")
             continue
@@ -245,66 +183,52 @@ def main():
             print(f"No ground truth formula for {dataset_name}")
             continue
 
-        y_var = float(np.var(y))
-
-        # Evaluate Pareto frontier with quick filters
-        result = evaluate_pareto_frontier(
-            info['equations'],
-            info['feature_names'],
+        best_result = evaluate_best_expression(
+            info["model"],
             ground_truth_formula,
-            y_var=y_var,
-            r2_threshold=0.99,
-            timeout_per_expr=3600,  # effectively no timeout
+            info["feature_names"],
+            timeout_seconds=120,
         )
 
-        dataset_times.append({
-            'dataset': dataset_name,
-            'run_dir': run_dir.name,
-            **result
-        })
+        run_results.append(
+            {
+                "dataset": dataset_name,
+                "run_dir": run_dir.name,
+                **best_result,
+            }
+        )
+        pbar.update(1)
+    pbar.close()
 
-    # Per-dataset results
-    print("\n" + "="*80)
-    print("PER-DATASET RESULTS")
-    print("="*80)
-    for d in dataset_times:
-        print(f"  {d['dataset']:40s}  time={d['elapsed_time']:7.3f}s  "
-              f"exprs={d['num_expressions']:2d}  "
-              f"R2_skip={d['num_r2_filtered']:2d}  "
-              f"op_skip={d['num_op_filtered']:2d}  "
-              f"checked={d['num_checked']:2d}  "
-              f"matches={d['num_matches']:2d}  "
-              f"timeouts={d['num_timeouts']}")
+    print("\n" + "=" * 80)
+    print("PER-RUN BEST-EXPRESSION RESULTS")
+    print("=" * 80)
+    for r in run_results:
+        status = "MATCH" if r["exact_match"] else "NO_MATCH"
+        if r["error"] == "timeout":
+            status = "TIMEOUT"
+        elif r["error"] not in (None, ""):
+            status = f"ERROR:{r['error']}"
+        print(
+            f"  {r['dataset']:40s}  {status:12s}  "
+            f"time={r['elapsed_time']:.4f}s  run={r['run_dir']}"
+        )
 
-    # Summary statistics
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("SUMMARY")
-    print("="*80)
+    print("=" * 80)
+    if run_results:
+        times = [r["elapsed_time"] for r in run_results]
+        n_exact = sum(1 for r in run_results if r["exact_match"])
+        n_timeout = sum(1 for r in run_results if r["error"] == "timeout")
 
-    if dataset_times:
-        times = [d['elapsed_time'] for d in dataset_times]
-        print(f"Datasets processed: {len(dataset_times)}")
-        print(f"Total time: {sum(times):.2f}s")
-        print(f"Min time: {min(times):.3f}s")
-        print(f"Max time: {max(times):.3f}s")
-        print(f"Mean time: {np.mean(times):.3f}s")
-        print(f"Std time: {np.std(times):.3f}s")
-        print(f"Median time: {np.median(times):.3f}s")
-
-        total_exprs = sum(d['num_expressions'] for d in dataset_times)
-        total_r2_skip = sum(d['num_r2_filtered'] for d in dataset_times)
-        total_op_skip = sum(d['num_op_filtered'] for d in dataset_times)
-        total_checked = sum(d['num_checked'] for d in dataset_times)
-        print(f"\nTotal expressions: {total_exprs}")
-        print(f"  Skipped by R² < 0.99: {total_r2_skip} ({100*total_r2_skip/total_exprs:.1f}%)")
-        print(f"  Skipped by operator filter: {total_op_skip} ({100*total_op_skip/total_exprs:.1f}%)")
-        print(f"  Full symbolic check: {total_checked} ({100*total_checked/total_exprs:.1f}%)")
-
-        matches = sum(1 for d in dataset_times if d['any_match'])
-        print(f"\nDatasets with any match: {matches}/{len(dataset_times)} ({100*matches/len(dataset_times):.1f}%)")
-
-        total_timeouts = sum(d['num_timeouts'] for d in dataset_times)
-        print(f"Total timeouts: {total_timeouts}")
+        print(f"Runs evaluated: {len(run_results)}")
+        print(f"Run dirs attempted: {attempted}")
+        print(f"Exact matches: {n_exact}/{len(run_results)} ({100*n_exact/len(run_results):.1f}%)")
+        print(f"Timeouts: {n_timeout}")
+        print(f"Average time: {np.mean(times):.4f}s")
+        print(f"Min time: {min(times):.4f}s")
+        print(f"Max time: {max(times):.4f}s")
 
     if unmatched_dirs:
         print(f"\nUnmatched directories: {len(unmatched_dirs)}")

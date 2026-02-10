@@ -210,6 +210,7 @@ def chat_completion(
     max_retries: int = 5,
     initial_retry_delay: float = 1.0,
     use_cache: bool = True,
+    include_default_reasoning: bool = True,
     **kwargs
 ) -> Dict[str, Any]:
     """
@@ -240,6 +241,7 @@ def chat_completion(
 
     # Filter out non-deterministic kwargs that shouldn't be part of cache key
     cache_kwargs = {k: v for k, v in kwargs.items() if k not in ['api_key']}
+    cache_kwargs['include_default_reasoning'] = include_default_reasoning
 
     # For n>1 or when sample_index is provided, check cache per-sample
     if use_cache and (n_samples > 1 or sample_index_offset > 0):
@@ -295,9 +297,16 @@ def chat_completion(
         "model": model,
         "messages": messages,
         "usage": {"include": True},  # Request usage/cost info
-        "reasoning": {"effort": "high"},  # Enable extended reasoning for better code generation
         **kwargs
     }
+
+    # Keep prior behavior by default, but allow callers to disable default reasoning.
+    if include_default_reasoning and "reasoning" not in payload:
+        payload["reasoning"] = {"effort": "high"}
+
+    # If explicitly set to None, omit the field from payload.
+    if payload.get("reasoning", "MISSING") is None:
+        del payload["reasoning"]
 
     if n_to_fetch > 1:
         payload["n"] = n_to_fetch
@@ -394,6 +403,7 @@ def chat_completion(
                                 max_retries=max_retries,
                                 initial_retry_delay=initial_retry_delay,
                                 use_cache=use_cache,
+                                include_default_reasoning=include_default_reasoning,
                                 sample_index=sample_idx,
                                 n=1,
                                 **kwargs
@@ -406,6 +416,15 @@ def chat_completion(
                         }
                 except:
                     pass  # Fall through to normal retry logic
+
+            # Fail fast on hard client errors (except 429), since retries won't help.
+            if e.response is not None and 400 <= e.response.status_code < 500 and e.response.status_code != 429:
+                try:
+                    err_body = e.response.text
+                except Exception:
+                    err_body = "<no response body>"
+                print(f"  Non-retryable HTTP {e.response.status_code}. Response body: {err_body}")
+                raise
 
             last_exception = e
             if attempt < max_retries:

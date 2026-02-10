@@ -8,6 +8,7 @@ Provides functions for:
 """
 
 import os
+import json
 import numpy as np
 import sympy
 from sympy import Symbol, simplify, Float, Integer, preorder_traversal
@@ -278,7 +279,8 @@ def parse_pysr_expression(expr_str, var_names=None):
     for i in range(20):
         local_dict[f'x{i}'] = Symbol(f'x{i}')
 
-    # Add common constants/functions that sympy understands
+    # Add common constants/functions that sympy understands, plus common
+    # PySR operator aliases (e.g., square) so equivalent forms simplify.
     local_dict['pi'] = sympy.pi
     local_dict['e'] = sympy.E
     local_dict['sqrt'] = sympy.sqrt
@@ -288,6 +290,30 @@ def parse_pysr_expression(expr_str, var_names=None):
     local_dict['exp'] = sympy.exp
     local_dict['log'] = sympy.log
     local_dict['abs'] = sympy.Abs
+    local_dict['square'] = lambda x: x**2
+
+    # Extra aliases/common custom ops for robustness across runs.
+    local_dict['inv'] = lambda x: 1 / x
+    local_dict['pow2'] = lambda x: x**2
+    local_dict['pow3'] = lambda x: x**3
+    local_dict['cube'] = lambda x: x**3
+    local_dict['neg'] = lambda x: -x
+    local_dict['sign'] = sympy.sign
+    local_dict['relu'] = lambda x: sympy.Max(0, x)
+    local_dict['max'] = sympy.Max
+    local_dict['min'] = sympy.Min
+    local_dict['sinh'] = sympy.sinh
+    local_dict['cosh'] = sympy.cosh
+    local_dict['tanh'] = sympy.tanh
+    local_dict['asin'] = sympy.asin
+    local_dict['acos'] = sympy.acos
+    local_dict['atan'] = sympy.atan
+    local_dict['floor'] = sympy.floor
+    local_dict['ceil'] = sympy.ceiling
+    local_dict['heaviside'] = sympy.Heaviside
+    local_dict['step'] = sympy.Heaviside
+    local_dict['sigmoid'] = lambda x: 1 / (1 + sympy.exp(-x))
+    local_dict['logistic'] = lambda x: 1 / (1 + sympy.exp(-x))
 
     return parse_expr(expr_str, local_dict=local_dict)
 
@@ -436,6 +462,192 @@ def check_pysr_symbolic_match(expr_str, ground_truth_str, var_names=None, timeou
             'simplified_predicted': expr_str,
             'symbolic_error': None,
         }
+
+
+def check_sympy_equivalence_with_llm(
+    predicted_expr,
+    ground_truth_expr,
+    model: str = "openai/gpt-5.2",
+    thinking_level: str = "high",
+    max_tokens: int = 300,
+    use_cache: bool = True,
+):
+    """
+    Ask an LLM whether two sympy expressions are equivalent.
+
+    The decision criterion mirrors SRBench-style symbolic matching:
+    expressions are considered equivalent if they are:
+      1) exactly equal,
+      2) equal up to additive constant, or
+      3) equal up to multiplicative constant.
+
+    Args:
+        predicted_expr: sympy expression (or string)
+        ground_truth_expr: sympy expression (or string)
+        model: LLM model identifier
+        thinking_level: reasoning effort level passed to API
+        max_tokens: max output tokens
+        use_cache: whether to use completion cache
+
+    Returns:
+        dict with:
+            - llm_match: bool
+            - raw_response: str
+            - reasoning: str
+            - model: str
+            - error: Optional[str]
+    """
+    from completions import chat_completion, get_content
+
+    predicted_str = str(predicted_expr)
+    ground_truth_str = str(ground_truth_expr)
+
+    system_prompt = (
+        "You are a rigorous symbolic math equivalence checker. "
+        "Given two expressions, decide if they are equivalent under ANY of: "
+        "(a) exact algebraic equality, "
+        "(b) differ by an additive constant only, "
+        "(c) differ by a multiplicative constant only. "
+        "Return strict JSON only."
+    )
+
+    user_prompt = (
+        "Determine equivalence under the criteria above.\n"
+        f"Expression A: {predicted_str}\n"
+        f"Expression B: {ground_truth_str}\n\n"
+        "Output JSON with keys:\n"
+        "  equivalent: true/false\n"
+        "  rationale: short string"
+    )
+
+    try:
+        response = chat_completion(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.0,
+            use_cache=use_cache,
+            include_default_reasoning=False,
+            reasoning={"effort": thinking_level},
+        )
+        content = get_content(response).strip()
+
+        llm_match = None
+        rationale = ""
+
+        # Parse strict JSON first.
+        try:
+            parsed = json.loads(content)
+            llm_match = bool(parsed.get("equivalent", False))
+            rationale = str(parsed.get("rationale", ""))
+        except Exception:
+            # Fallback: minimal robust parse.
+            low = content.lower()
+            if '"equivalent": true' in low or "equivalent: true" in low:
+                llm_match = True
+            elif '"equivalent": false' in low or "equivalent: false" in low:
+                llm_match = False
+            elif low.startswith("true"):
+                llm_match = True
+            elif low.startswith("false"):
+                llm_match = False
+            else:
+                return {
+                    "llm_match": False,
+                    "raw_response": content,
+                    "reasoning": "",
+                    "model": model,
+                    "error": "Could not parse LLM equivalence response",
+                }
+
+        return {
+            "llm_match": bool(llm_match),
+            "raw_response": content,
+            "reasoning": rationale,
+            "model": model,
+            "effort": thinking_level,
+            "error": None,
+        }
+    except Exception as e:
+        return {
+            "llm_match": False,
+            "raw_response": "",
+            "reasoning": "",
+            "model": model,
+            "effort": thinking_level,
+            "error": str(e),
+        }
+
+
+def check_pysr_symbolic_match_with_llm(
+    expr_str,
+    ground_truth_str,
+    var_names=None,
+    timeout_seconds: int = 10,
+    llm_model: str = "openai/gpt-5.2",
+    llm_thinking_level: str = "high",
+    llm_max_tokens: int = 300,
+    raise_on_sympy_llm_disagreement: bool = True,
+    llm_use_cache: bool = True,
+):
+    """
+    Combined symbolic match check:
+      1) Sympy check (with timeout),
+      2) LLM equivalence check,
+      3) return match = sympy_match OR llm_match.
+
+    Safety guard:
+      If sympy_match is True but llm_match is False, raise RuntimeError
+      (unless raise_on_sympy_llm_disagreement=False).
+
+    Returns:
+        dict with:
+            - match: bool  (sympy OR llm)
+            - sympy_match: bool
+            - llm_match: bool
+            - sympy_result: dict
+            - llm_result: dict
+    """
+    # 1) Sympy check first.
+    sympy_result = check_pysr_symbolic_match(
+        expr_str,
+        ground_truth_str,
+        var_names=var_names,
+        timeout_seconds=timeout_seconds,
+    )
+    sympy_match = bool(sympy_result.get("match", False))
+
+    # 2) LLM check.
+    predicted = parse_pysr_expression(expr_str, var_names)
+    ground_truth = parse_ground_truth_formula(ground_truth_str, var_names)
+    llm_result = check_sympy_equivalence_with_llm(
+        predicted_expr=predicted,
+        ground_truth_expr=ground_truth,
+        model=llm_model,
+        thinking_level=llm_thinking_level,
+        max_tokens=llm_max_tokens,
+        use_cache=llm_use_cache,
+    )
+    llm_match = bool(llm_result.get("llm_match", False))
+
+    # 3) Guard unexpected disagreement.
+    if sympy_match and not llm_match and raise_on_sympy_llm_disagreement:
+        raise RuntimeError(
+            "Unexpected disagreement: sympy_match=True but llm_match=False "
+            f"for expr='{expr_str}' vs ground_truth='{ground_truth_str}'. "
+            f"sympy_result={sympy_result}, llm_result={llm_result}"
+        )
+
+    return {
+        "match": bool(sympy_match or llm_match),
+        "sympy_match": sympy_match,
+        "llm_match": llm_match,
+        "sympy_result": sympy_result,
+        "llm_result": llm_result,
+    }
 
 
 def evaluate_pysr_results(results_path, dataset_name=None, ground_truth_str=None, verbose=True):

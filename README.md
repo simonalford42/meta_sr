@@ -64,9 +64,14 @@ PySR's first import installs Julia and its dependencies into the conda env. This
 # Initialize PySR / Julia (takes a few minutes the first time)
 python -c "from pysr import PySRRegressor; print('PySR OK')"
 
-# Dev-install custom fork (must use PySR's Julia env, not the global one)
-JULIA_PROJECT="$CONDA_PREFIX/julia_env" julia -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'
+# Dev-install custom fork into the conda Julia env (must use this Julia, not global julia)
+JULIA_EXE="$CONDA_PREFIX/julia_env/pyjuliapkg/install/bin/julia"
+JULIA_PROJECT="$CONDA_PREFIX/julia_env" "$JULIA_EXE" -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'
 ```
+
+This `Pkg.develop(...)` step is usually one-time per conda environment.
+You do not need to run it every time you `conda activate meta_sr`.
+Run it again only if you recreate/reset the env, or want to repoint to a different local path.
 
 The fork adds `src/CustomMutations.jl` which provides:
 - `load_mutation_from_string!(name, code)` -- load Julia mutation code at runtime
