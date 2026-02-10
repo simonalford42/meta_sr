@@ -20,6 +20,58 @@ from pathlib import Path
 from slurm_eval import BaseSlurmEvaluator, init_worker
 
 
+def _load_dynamic_selection(custom_selection_code: str) -> None:
+    """
+    Load custom selection code into Julia at runtime.
+
+    Args:
+        custom_selection_code: Julia code string defining a selection function.
+    """
+    from juliacall import Main as jl
+
+    jl.seval("using SymbolicRegression")
+    jl.seval("using SymbolicRegression.CustomSelectionModule")
+
+    # Clear any previously loaded dynamic selections
+    jl.seval("clear_dynamic_selections!()")
+
+    # Extract function name from code
+    import re
+    match = re.search(r'function\s+(\w+)\s*\(', custom_selection_code)
+    if not match:
+        raise ValueError("Could not extract function name from selection code")
+    name = match.group(1)
+
+    escaped_code = custom_selection_code.replace('"""', '\\"\\"\\"')
+    jl.seval(f'load_selection_from_string!(:{name}, raw"""{escaped_code}""")')
+
+
+def _load_dynamic_survival(custom_survival_code: str) -> None:
+    """
+    Load custom survival code into Julia at runtime.
+
+    Args:
+        custom_survival_code: Julia code string defining a survival function.
+    """
+    from juliacall import Main as jl
+
+    jl.seval("using SymbolicRegression")
+    jl.seval("using SymbolicRegression.CustomSurvivalModule")
+
+    # Clear any previously loaded dynamic survivals
+    jl.seval("clear_dynamic_survivals!()")
+
+    # Extract function name from code
+    import re
+    match = re.search(r'function\s+(\w+)\s*\(', custom_survival_code)
+    if not match:
+        raise ValueError("Could not extract function name from survival code")
+    name = match.group(1)
+
+    escaped_code = custom_survival_code.replace('"""', '\\"\\"\\"')
+    jl.seval(f'load_survival_from_string!(:{name}, raw"""{escaped_code}""")')
+
+
 def _load_dynamic_mutations(custom_mutation_code: Dict[str, str]) -> None:
     """
     Load custom mutation code into Julia at runtime.
@@ -103,6 +155,8 @@ class PySRTaskSpec:
     custom_mutation_code: Optional[Dict[str, str]] = None  # Julia code for custom mutations
     allow_custom_mutations: bool = False  # Pass custom mutation weights to PySR
     target_noise: float = 0.0  # Gaussian noise level for target (SRBench standard: 0.0, 0.001, 0.01, 0.1)
+    custom_selection_code: Optional[str] = None  # Julia code for custom selection operator
+    custom_survival_code: Optional[str] = None  # Julia code for custom survival operator
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -193,6 +247,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     allow_custom_mutations=spec.allow_custom_mutations,
                     pysr_model_kwargs=model_kwargs,
                     target_noise=spec.target_noise,
+                    custom_selection_code=spec.custom_selection_code,
+                    custom_survival_code=spec.custom_survival_code,
                 )
                 if cached is not None:
                     return PySRTaskResult(
@@ -251,6 +307,20 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             print(f"[{spec.dataset_name}] Loading {len(spec.custom_mutation_code)} custom mutation(s)", flush=True)
             _load_dynamic_mutations(spec.custom_mutation_code)
             print(f"[{spec.dataset_name}] Custom mutations loaded in {_time.time() - t2:.1f}s", flush=True)
+
+        # Load dynamic selection if provided
+        if spec.custom_selection_code:
+            t2 = _time.time()
+            print(f"[{spec.dataset_name}] Loading custom selection operator", flush=True)
+            _load_dynamic_selection(spec.custom_selection_code)
+            print(f"[{spec.dataset_name}] Custom selection loaded in {_time.time() - t2:.1f}s", flush=True)
+
+        # Load dynamic survival if provided
+        if spec.custom_survival_code:
+            t2 = _time.time()
+            print(f"[{spec.dataset_name}] Loading custom survival operator", flush=True)
+            _load_dynamic_survival(spec.custom_survival_code)
+            print(f"[{spec.dataset_name}] Custom survival loaded in {_time.time() - t2:.1f}s", flush=True)
 
         # Create and fit model
         model = PySRRegressor(**model_kwargs)
@@ -318,6 +388,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                         error=result.error,
                         timed_out=result.timed_out,
                         runtime_seconds=result.runtime_seconds,
+                        custom_selection_code=spec.custom_selection_code,
+                        custom_survival_code=spec.custom_survival_code,
                     )
             except Exception:
                 pass
@@ -361,6 +433,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                         error=result.error,
                         timed_out=result.timed_out,
                         runtime_seconds=result.runtime_seconds,
+                        custom_selection_code=spec.custom_selection_code,
+                        custom_survival_code=spec.custom_survival_code,
                     )
             except Exception:
                 pass
@@ -443,6 +517,8 @@ class PySRConfig:
     pysr_kwargs: Dict[str, Any] = field(default_factory=dict)
     custom_mutation_code: Optional[Dict[str, str]] = None
     allow_custom_mutations: bool = False
+    custom_selection_code: Optional[str] = None
+    custom_survival_code: Optional[str] = None
     name: str = ""  # Optional name for logging
 
     def to_json_dict(self) -> Dict:
@@ -539,6 +615,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         custom_mutation_code=config.custom_mutation_code,
                         allow_custom_mutations=config.allow_custom_mutations,
                         target_noise=noise,
+                        custom_selection_code=config.custom_selection_code,
+                        custom_survival_code=config.custom_survival_code,
                     ))
 
         n_tasks = len(tasks)
@@ -575,6 +653,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             allow_custom_mutations=task.allow_custom_mutations,
                             pysr_model_kwargs=model_kwargs,
                             target_noise=task.target_noise,
+                            custom_selection_code=task.custom_selection_code,
+                            custom_survival_code=task.custom_survival_code,
                         )
                         if cached is not None:
                             # Pre-write cached result to results directory
