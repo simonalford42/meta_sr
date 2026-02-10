@@ -33,7 +33,7 @@ rsync -avh --progress /share/ellis/sca63/srbench_pmlb/datasets/ pmlb/datasets/
 
 This project expects SRBench datasets under `pmlb/datasets/<dataset_name>/...`.
 
-Alternatively (outside the Ellis cluster), install PMLB and export the datasets:
+Alternatively (outside the Ellis cluster), install PMLB and export the datasets (note: this workflow is not tested):
 
 ```bash
 pip install pmlb
@@ -54,31 +54,42 @@ Prerequisites: [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf
 conda create -n meta_sr python=3.10 -y
 conda activate meta_sr
 uv pip install -r requirements.txt
+conda install -c conda-forge julia=1.11 -y
 ```
 
 ### 4. Install PySR and custom SymbolicRegression.jl fork
 
-PySR's first import installs Julia and its dependencies into the conda env. This can take several minutes. After that, dev-install the custom SymbolicRegression.jl fork (which adds dynamic mutation loading) into PySR's Julia environment.
+Use Julia 1.11.x from the active conda environment for deterministic setup. This avoids conflicts from global Julia installations.
 
 ```bash
-# Initialize PySR / Julia (takes a few minutes the first time)
+# Force PySR/juliapkg to use conda Julia
+export PYTHON_JULIAPKG_EXE="$CONDA_PREFIX/bin/julia"
+
+# Initialize PySR / Julia environment (takes a few minutes the first time)
 python -c "from pysr import PySRRegressor; print('PySR OK')"
 
-# Dev-install custom fork into the conda Julia env (must use this Julia, not global julia)
-JULIA_EXE="$CONDA_PREFIX/julia_env/pyjuliapkg/install/bin/julia"
-JULIA_PROJECT="$CONDA_PREFIX/julia_env" "$JULIA_EXE" -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'
+# Dev-install custom fork into PySR's Julia project
+JULIA_PROJECT="$CONDA_PREFIX/julia_env" "$CONDA_PREFIX/bin/julia" -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'
 ```
-
-This `Pkg.develop(...)` step is usually one-time per conda environment.
-You do not need to run it every time you `conda activate meta_sr`.
-Run it again only if you recreate/reset the env, or want to repoint to a different local path.
 
 The fork adds `src/CustomMutations.jl` which provides:
 - `load_mutation_from_string!(name, code)` -- load Julia mutation code at runtime
 - `load_mutation_from_file!(name, filepath)` -- load from a .jl file
 - `clear_dynamic_mutations!()` -- reset between runs
 
-### 5. Set up OpenRouter API key
+### 5. Verify local SymbolicRegression.jl is loaded
+
+```bash
+python scripts/verify_local_symbolicregression.py
+```
+
+Expected output ends with:
+
+```text
+PASS: using local SymbolicRegression.jl fork
+```
+
+### 6. Set up OpenRouter API key
 
 LLM calls go through [OpenRouter](https://openrouter.ai/). Set your API key:
 
