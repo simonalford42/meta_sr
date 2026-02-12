@@ -57,15 +57,19 @@ conda activate meta_sr
 uv pip install -r requirements.txt
 ```
 
-### 4. Initialize PySR and install custom SymbolicRegression.jl fork
+### 4. Julia 1.12 setup (tested path)
+
+Install Julia `1.12.x` (for example via `juliaup`) and ensure `julia --version` works.
+This repository is tested with Julia `1.12.2`.
+
+### 5. Initialize PySR and install local SymbolicRegression.jl fork
 
 ```bash
-# Initialize PySR / Julia environment (takes a few minutes the first time)
+# Initialize PySR + juliacall environment (creates $CONDA_PREFIX/julia_env)
 python -c "from pysr import PySRRegressor; print('PySR OK')"
 
-# Dev-install custom fork into the same Julia project PySR uses
-JULIA_EXE="$CONDA_PREFIX/julia_env/pyjuliapkg/install/bin/julia"
-JULIA_PROJECT="$CONDA_PREFIX/julia_env" "$JULIA_EXE" -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'
+# Use the same Julia project PySR uses, and point SymbolicRegression to this checkout
+JULIA_PROJECT="$CONDA_PREFIX/julia_env" julia -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl"); Pkg.resolve(); Pkg.instantiate(); Pkg.precompile()'
 ```
 
 The fork adds `src/CustomMutations.jl` which provides:
@@ -73,10 +77,16 @@ The fork adds `src/CustomMutations.jl` which provides:
 - `load_mutation_from_file!(name, filepath)` -- load from a .jl file
 - `clear_dynamic_mutations!()` -- reset between runs
 
-### 5. Verify local SymbolicRegression.jl is loaded
+### 6. Verify local SymbolicRegression.jl is loaded
 
 ```bash
 env -u JULIA_PROJECT python scripts/verify_local_symbolicregression.py
+```
+
+If your shell setup causes `conda activate` not to switch Python correctly, use:
+
+```bash
+conda run -n meta_sr env -u JULIA_PROJECT python scripts/verify_local_symbolicregression.py
 ```
 
 Expected output ends with:
@@ -85,7 +95,7 @@ Expected output ends with:
 PASS: Local SymbolicRegression.jl was loaded (marker/path/modules confirmed).
 ```
 
-### 6. Set up OpenRouter API key
+### 7. Set up OpenRouter API key
 
 LLM calls go through [OpenRouter](https://openrouter.ai/). Set your API key:
 
@@ -95,7 +105,7 @@ export OPENROUTER_API_KEY="your-key-here"
 
 **Do not commit your API key to the repo.** Use environment variables or a `.env` file (already in `.gitignore`).
 
-### 7. Installation final check (PySR + SRBench + SLURM)
+### 8. Installation final check (PySR + SRBench + SLURM)
 
 Run a small SLURM-backed PySR check on the first 20 datasets from `splits/train_hard.txt`:
 
