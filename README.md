@@ -10,11 +10,29 @@ Evaluation is parallelized via SLURM job arrays across SRBench regression datase
 
 ## Setup
 
-### 1. Clone repo and required submodules
+### 1. Clone repo
 
 ```bash
 git clone https://github.com/simonalford42/meta_sr.git
 cd meta_sr
+```
+
+### 2. Create conda environment, install Python deps, and initialize git-lfs
+
+Prerequisites: [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+
+```bash
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda create -n meta_sr python=3.10 -y
+conda activate meta_sr
+uv pip install -r requirements.txt
+conda install -c conda-forge git-lfs -y
+git lfs install
+```
+
+### 3. Initialize required submodules
+
+```bash
 git submodule update --init --recursive srbench SymbolicRegression.jl
 ```
 
@@ -22,7 +40,7 @@ Required submodules:
 - **srbench/** -- SRBench benchmark framework
 - **SymbolicRegression.jl/** -- Custom fork of SymbolicRegression.jl with dynamic mutation loading
 
-### 2. Get SRBench datasets
+### 4. Get SRBench datasets
 
 Preferred on the Ellis cluster: copy datasets from shared storage instead of relying on PMLB git-lfs.
 
@@ -46,23 +64,12 @@ print(f'Exported {len(pmlb.regression_dataset_names)} datasets')
 "
 ```
 
-### 3. Create conda environment and install Python deps
-
-Prerequisites: [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
-
-```bash
-source "$(conda info --base)/etc/profile.d/conda.sh"
-conda create -n meta_sr python=3.10 -y
-conda activate meta_sr
-uv pip install -r requirements.txt
-```
-
-### 4. Julia 1.12 setup (tested path)
+### 5. Julia 1.12 setup (tested path)
 
 Install Julia `1.12.x` (for example via `juliaup`) and ensure `julia --version` works.
 This repository is tested with Julia `1.12.2`.
 
-### 5. Initialize PySR and install local SymbolicRegression.jl fork
+### 6. Initialize PySR and install local SymbolicRegression.jl fork
 
 ```bash
 # Initialize PySR + juliacall environment (creates $CONDA_PREFIX/julia_env)
@@ -77,7 +84,7 @@ The fork adds `src/CustomMutations.jl` which provides:
 - `load_mutation_from_file!(name, filepath)` -- load from a .jl file
 - `clear_dynamic_mutations!()` -- reset between runs
 
-### 6. Verify local SymbolicRegression.jl is loaded
+### 7. Verify local SymbolicRegression.jl is loaded
 
 ```bash
 env -u JULIA_PROJECT python scripts/verify_local_symbolicregression.py
@@ -115,7 +122,7 @@ Expected output ends with:
 PASS: Local SymbolicRegression.jl was loaded (marker/path/modules confirmed).
 ```
 
-### 7. Set up OpenRouter API key
+### 8. Set up OpenRouter API key
 
 LLM calls go through [OpenRouter](https://openrouter.ai/). Set your API key:
 
@@ -125,7 +132,7 @@ export OPENROUTER_API_KEY="your-key-here"
 
 **Do not commit your API key to the repo.** Use environment variables or a `.env` file (already in `.gitignore`).
 
-### 8. Installation final check (PySR + SRBench + SLURM)
+### 9. Installation final check (PySR + SRBench + SLURM)
 
 Run a small SLURM-backed PySR check on the first 20 datasets from `splits/train_hard.txt`:
 
