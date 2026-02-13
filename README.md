@@ -26,7 +26,7 @@ Note: follow this order of commands. git-lfs needs to be installed before settin
 ```bash
 conda create -n meta_sr python=3.10 -y
 conda activate meta_sr
-conda install -c conda-forge git-lfs -y
+conda install -c conda-forge git-lfs julia=1.12 -y
 git lfs install
 git submodule update --init --recursive srbench SymbolicRegression.jl PySR
 uv pip install -r requirements.txt
@@ -37,7 +37,7 @@ Required submodules:
 - **SymbolicRegression.jl/** -- Custom fork of SymbolicRegression.jl with dynamic mutation loading
 - **PySR/** -- Custom PySR fork with mutation weight support (its `juliapkg.json` points to the sibling `SymbolicRegression.jl/`)
 
-### 4. Get SRBench datasets
+### 3. Get SRBench datasets
 
 Preferred on the Ellis cluster: copy datasets from shared storage instead of relying on PMLB git-lfs.
 
@@ -61,12 +61,7 @@ print(f'Exported {len(pmlb.regression_dataset_names)} datasets')
 "
 ```
 
-### 5. Julia 1.12 setup (tested path)
-
-Install Julia `1.12.x` (for example via `juliaup`) and ensure `julia --version` works.
-This repository is tested with Julia `1.12.2`.
-
-### 6. Initialize PySR Julia environment
+### 4. Initialize PySR Julia environment
 
 ```bash
 python -c "from pysr import PySRRegressor; print('PySR OK')"
@@ -79,7 +74,7 @@ The SR.jl fork adds `src/CustomMutations.jl` which provides:
 - `load_mutation_from_file!(name, filepath)` -- load from a .jl file
 - `clear_dynamic_mutations!()` -- reset between runs
 
-### 7. Verify local SymbolicRegression.jl is loaded
+### 5. Verify local SymbolicRegression.jl is loaded
 
 ```bash
 env -u JULIA_PROJECT python scripts/verify_local_symbolicregression.py
@@ -117,7 +112,7 @@ Expected output ends with:
 PASS: Local SymbolicRegression.jl was loaded (marker/path/modules confirmed).
 ```
 
-### 8. Set up OpenRouter API key
+### 6. Set up OpenRouter API key
 
 LLM calls go through [OpenRouter](https://openrouter.ai/). Set your API key:
 
@@ -127,7 +122,7 @@ export OPENROUTER_API_KEY="your-key-here"
 
 **Do not commit your API key to the repo.** Use environment variables or a `.env` file (already in `.gitignore`).
 
-### 9. Installation final check (PySR + SRBench + SLURM)
+### 7. Installation final check (PySR + SRBench + SLURM)
 
 Run a small SLURM-backed PySR check on the first 20 datasets from `splits/train_hard.txt`:
 
