@@ -6,7 +6,7 @@ scikit-learn==1.4.1.post1
 sympy==1.12
 
 # Symbolic regression
-pysr==2.0.0a1
+-e ./PySR
 
 # LLM / API interaction (uses OpenRouter via requests)
 requests==2.32.4

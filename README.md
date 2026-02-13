@@ -17,7 +17,20 @@ git clone https://github.com/simonalford42/meta_sr.git
 cd meta_sr
 ```
 
-### 2. Create conda environment, install Python deps, and initialize git-lfs
+### 2. Install git-lfs and initialize submodules
+
+```bash
+conda install -c conda-forge git-lfs -y
+git lfs install
+git submodule update --init --recursive srbench SymbolicRegression.jl PySR
+```
+
+Required submodules:
+- **srbench/** -- SRBench benchmark framework
+- **SymbolicRegression.jl/** -- Custom fork of SymbolicRegression.jl with dynamic mutation loading
+- **PySR/** -- Custom PySR fork with mutation weight support (its `juliapkg.json` points to the sibling `SymbolicRegression.jl/`)
+
+### 3. Create conda environment and install Python deps
 
 Prerequisites: [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
@@ -26,19 +39,7 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda create -n meta_sr python=3.10 -y
 conda activate meta_sr
 uv pip install -r requirements.txt
-conda install -c conda-forge git-lfs -y
-git lfs install
 ```
-
-### 3. Initialize required submodules
-
-```bash
-git submodule update --init --recursive srbench SymbolicRegression.jl
-```
-
-Required submodules:
-- **srbench/** -- SRBench benchmark framework
-- **SymbolicRegression.jl/** -- Custom fork of SymbolicRegression.jl with dynamic mutation loading
 
 ### 4. Get SRBench datasets
 
@@ -69,17 +70,15 @@ print(f'Exported {len(pmlb.regression_dataset_names)} datasets')
 Install Julia `1.12.x` (for example via `juliaup`) and ensure `julia --version` works.
 This repository is tested with Julia `1.12.2`.
 
-### 6. Initialize PySR and install local SymbolicRegression.jl fork
+### 6. Initialize PySR Julia environment
 
 ```bash
-# Initialize PySR + juliacall environment (creates $CONDA_PREFIX/julia_env)
 python -c "from pysr import PySRRegressor; print('PySR OK')"
-
-# Use the same Julia project PySR uses, and point SymbolicRegression to this checkout
-JULIA_PROJECT="$CONDA_PREFIX/julia_env" julia -e 'using Pkg; Pkg.develop(path="SymbolicRegression.jl"); Pkg.resolve(); Pkg.instantiate(); Pkg.precompile()'
 ```
 
-The fork adds `src/CustomMutations.jl` which provides:
+This creates `$CONDA_PREFIX/julia_env` and automatically installs the local `SymbolicRegression.jl` fork (via the relative path in `PySR/pysr/juliapkg.json`).
+
+The SR.jl fork adds `src/CustomMutations.jl` which provides:
 - `load_mutation_from_string!(name, code)` -- load Julia mutation code at runtime
 - `load_mutation_from_file!(name, filepath)` -- load from a .jl file
 - `clear_dynamic_mutations!()` -- reset between runs
@@ -185,6 +184,7 @@ meta_sr/
 ├── outputs/                 # Evolution run outputs (timestamped)
 ├── scripts/                 # Analysis and plotting scripts
 │
+├── PySR/                    # [submodule] Custom PySR fork with mutation weight support
 ├── SymbolicRegression.jl/   # [submodule] Custom fork with dynamic mutation loading
 ├── pmlb/datasets/           # SRBench datasets (copied from shared storage; not a required submodule)
 └── srbench/                 # [submodule] SRBench framework
