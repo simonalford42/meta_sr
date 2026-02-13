@@ -83,11 +83,31 @@ The fork adds `src/CustomMutations.jl` which provides:
 env -u JULIA_PROJECT python scripts/verify_local_symbolicregression.py
 ```
 
-If your shell setup causes `conda activate` not to switch Python correctly, use:
+If your shell setup causes `conda activate` not to switch Python correctly:
+
+- For normal interactive usage (human shell), re-source conda and reactivate:
+
+```bash
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate meta_sr
+env -u JULIA_PROJECT python scripts/verify_local_symbolicregression.py
+```
+
+- For automation/agent runners where activation may not propagate between commands, use:
 
 ```bash
 conda run -n meta_sr env -u JULIA_PROJECT python scripts/verify_local_symbolicregression.py
 ```
+
+If `scripts/verify_local_symbolicregression.py` fails because
+`$CONDA_PREFIX/julia_env/pyjuliapkg/install/bin/julia` is missing, create it as a symlink:
+
+```bash
+mkdir -p "$CONDA_PREFIX/julia_env/pyjuliapkg/install/bin"
+ln -sf "$(which julia)" "$CONDA_PREFIX/julia_env/pyjuliapkg/install/bin/julia"
+```
+
+Then rerun the verify command.
 
 Expected output ends with:
 
