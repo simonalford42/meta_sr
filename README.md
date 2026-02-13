@@ -17,29 +17,25 @@ git clone https://github.com/simonalford42/meta_sr.git
 cd meta_sr
 ```
 
-### 2. Install git-lfs and initialize submodules
+### 2. Create conda environment and install dependencies
+
+Prerequisites: [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+
+Note: follow this order of commands. git-lfs needs to be installed before setting up the submodules, and the submodules need to be set up before installing requirements.txt.
 
 ```bash
+conda create -n meta_sr python=3.10 -y
+conda activate meta_sr
 conda install -c conda-forge git-lfs -y
 git lfs install
 git submodule update --init --recursive srbench SymbolicRegression.jl PySR
+uv pip install -r requirements.txt
 ```
 
 Required submodules:
 - **srbench/** -- SRBench benchmark framework
 - **SymbolicRegression.jl/** -- Custom fork of SymbolicRegression.jl with dynamic mutation loading
 - **PySR/** -- Custom PySR fork with mutation weight support (its `juliapkg.json` points to the sibling `SymbolicRegression.jl/`)
-
-### 3. Create conda environment and install Python deps
-
-Prerequisites: [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
-
-```bash
-source "$(conda info --base)/etc/profile.d/conda.sh"
-conda create -n meta_sr python=3.10 -y
-conda activate meta_sr
-uv pip install -r requirements.txt
-```
 
 ### 4. Get SRBench datasets
 
