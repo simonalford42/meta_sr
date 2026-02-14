@@ -21,19 +21,25 @@ def main() -> int:
 
     conda_prefix = os.environ.get("CONDA_PREFIX")
     conda_julia_env = Path(conda_prefix).resolve() / "julia_env" if conda_prefix else None
-    conda_julia_exe = (
+
+    # Prefer PYTHON_JULIAPKG_EXE (set when using juliaup), then the legacy
+    # pyjuliapkg path, then fall back to the system julia.
+    juliapkg_exe = os.environ.get("PYTHON_JULIAPKG_EXE")
+    legacy_conda_exe = (
         conda_julia_env / "pyjuliapkg" / "install" / "bin" / "julia"
         if conda_julia_env
         else None
     )
-    use_conda_julia = bool(conda_julia_env and conda_julia_exe and conda_julia_exe.exists())
 
-    if use_conda_julia:
-        julia_exe = str(conda_julia_exe)
+    if juliapkg_exe and Path(juliapkg_exe).exists():
+        julia_exe = juliapkg_exe
+        julia_project = str(conda_julia_env) if conda_julia_env else str(local_project)
+    elif legacy_conda_exe and legacy_conda_exe.exists():
+        julia_exe = str(legacy_conda_exe)
         julia_project = str(conda_julia_env)
     else:
         julia_exe = "julia"
-        julia_project = str(local_project)
+        julia_project = str(conda_julia_env) if (conda_julia_env and conda_julia_env.exists()) else str(local_project)
 
     env = os.environ.copy()
     env.setdefault("JULIA_PROJECT", julia_project)
