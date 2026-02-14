@@ -42,24 +42,13 @@ Install Julia 1.10 via juliaup (do **not** use conda's Julia — it has library 
 juliaup add 1.10
 ```
 
-Then pin juliapkg to use it (otherwise it auto-picks the newest version, which may be incompatible):
-
-```bash
-export PYTHON_JULIAPKG_EXE="$HOME/.julia/juliaup/julia-1.10.10+0.x64.linux.gnu/bin/julia"
-```
-
-Make this persistent for the conda env:
+Then pin juliapkg to use it (otherwise it auto-picks the newest version, which may be incompatible).
+The `julia +1.10` syntax is a juliaup feature that resolves to whatever 1.10.x is installed:
 
 ```bash
 mkdir -p "$CONDA_PREFIX/etc/conda/activate.d"
-echo 'export PYTHON_JULIAPKG_EXE="$HOME/.julia/juliaup/julia-1.10.10+0.x64.linux.gnu/bin/julia"' \
-  > "$CONDA_PREFIX/etc/conda/activate.d/julia.sh"
-```
-
-Verify:
-```bash
+echo 'export PYTHON_JULIAPKG_EXE="julia +1.10"' > "$CONDA_PREFIX/etc/conda/activate.d/julia.sh"
 conda deactivate && conda activate meta_sr
-echo $PYTHON_JULIAPKG_EXE  # should print the juliaup 1.10 path
 ```
 
 Required submodules:
