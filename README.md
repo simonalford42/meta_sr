@@ -43,7 +43,7 @@ Install Julia 1.10 via juliaup (do **not** use conda's Julia — it has library 
 juliaup add 1.10
 ```
 
-Then pin juliapkg to use it (otherwise it auto-picks the newest version, which may be incompatible):
+Then pin juliapkg to use Julia 1.10 (otherwise it auto-picks the newest version, which may be incompatible). The commands below create an activation script that sets `PYTHON_JULIAPKG_EXE` to the Julia 1.10 binary path each time the conda env is activated:
 
 ```bash
 mkdir -p "$CONDA_PREFIX/etc/conda/activate.d"
