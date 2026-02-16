@@ -119,6 +119,16 @@ class BaseSlurmEvaluator(ABC):
         self.use_cache = use_cache
         self.bad_nodes_file = Path(bad_nodes_file).resolve() if bad_nodes_file else None
 
+        # Detect conda environment at init time so SLURM scripts activate the right env
+        self.conda_env_name = os.environ.get("CONDA_DEFAULT_ENV", "base")
+        conda_exe = os.environ.get("CONDA_EXE", "")
+        if conda_exe:
+            # CONDA_EXE is e.g. /home/user/mambaforge/bin/conda
+            # conda.sh is at       /home/user/mambaforge/etc/profile.d/conda.sh
+            self.conda_sh_path = str(Path(conda_exe).resolve().parent.parent / "etc" / "profile.d" / "conda.sh")
+        else:
+            self.conda_sh_path = "$(conda info --base)/etc/profile.d/conda.sh"
+
         self._batch_counter = 0
 
     def _get_exclude_nodes(self) -> Optional[str]:

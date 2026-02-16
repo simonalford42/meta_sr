@@ -598,8 +598,8 @@ class SlurmEvaluator(BaseSlurmEvaluator):
 #SBATCH --partition={self.partition}
 {optional_directives}
 # Environment setup
-source /home/sca63/mambaforge/etc/profile.d/conda.sh
-conda activate meta_sr
+source {self.conda_sh_path}
+conda activate {self.conda_env_name}
 
 # Avoid thread oversubscription
 export OMP_NUM_THREADS=1
@@ -649,8 +649,8 @@ python -m parallel_eval --worker \\
 #SBATCH --partition={self.partition}
 {optional_directives}
 # Environment setup
-source /home/sca63/mambaforge/etc/profile.d/conda.sh
-conda activate meta_sr
+source {self.conda_sh_path}
+conda activate {self.conda_env_name}
 
 # Avoid thread oversubscription
 export OMP_NUM_THREADS=1
