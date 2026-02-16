@@ -113,7 +113,7 @@ This test:
 
 Expected result:
 - `Final check status: PASS`
-- average `R^2` is typically around `0.99` (exact value may vary by cluster/load)
+- average `R^2` should be around `0.98-0.99`
 
 ## Project Structure
 
