@@ -7,6 +7,7 @@ outputs
 __pycache__
 caches
 CLAUDE.md
+AGENTS.md
 .claude
 .env
 pmlb
