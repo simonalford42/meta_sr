@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from evaluation import check_pysr_symbolic_match, check_sympy_equivalence_with_llm
 from utils import load_srbench_dataset, PMLB_PATH
+from completions import get_usage, reset_usage
 
 
 def get_var_names(dataset_name: str):
@@ -92,6 +93,29 @@ def load_topk_rows(results_dir: Path, k: int):
     return rows[: min(k, len(rows))]
 
 
+def load_llm_false_datasets(jsonl_path: Path):
+    """Load unique datasets where llm_match is False from a prior JSONL run."""
+    out = []
+    seen = set()
+    if not jsonl_path.exists():
+        raise FileNotFoundError(f"JSONL not found: {jsonl_path}")
+    with open(jsonl_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            ds = rec.get("dataset")
+            llm_match = rec.get("llm_match")
+            if ds and llm_match is False and ds not in seen:
+                seen.add(ds)
+                out.append(ds)
+    return out
+
+
 def write_llm_parse_debug_dump(
     debug_dir: Path,
     case_index: int,
@@ -128,6 +152,42 @@ def write_llm_parse_debug_dump(
     return out_path
 
 
+def write_llm_disagreement_debug_dump(
+    debug_dir: Path,
+    case_index: int,
+    dataset: str,
+    r2: float,
+    best_equation: str,
+    ground_truth: str,
+    var_names,
+    sympy_result,
+    llm_result,
+    llm_model: str,
+    llm_thinking_level: str,
+):
+    """Write a debug dump JSON for hard disagreements (sympy True, llm False with no llm error)."""
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    out_path = debug_dir / f"{case_index:03d}_{dataset}_llm_disagreement.json"
+    payload = {
+        "case_index": case_index,
+        "dataset": dataset,
+        "r2": r2,
+        "best_equation": best_equation,
+        "ground_truth": ground_truth,
+        "var_names": var_names,
+        "llm_model": llm_model,
+        "llm_thinking_level": llm_thinking_level,
+        "sympy_result": sympy_result,
+        "llm_result": llm_result,
+        "notes": (
+            "SymPy and LLM disagreed: sympy_match=True but llm_match=False "
+            "with no LLM parse/API error."
+        ),
+    }
+    out_path.write_text(json.dumps(payload, indent=2))
+    return out_path
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Check top-K high-R^2 PySR results with SymPy+LLM symbolic matching."
@@ -142,7 +202,7 @@ def main():
         "-k",
         "--top-k",
         type=int,
-        default=50,
+        default=130,
         help="Number of top-R^2 tasks to process.",
     )
     parser.add_argument(
@@ -166,13 +226,13 @@ def main():
     parser.add_argument(
         "--llm-max-tokens",
         type=int,
-        default=300,
-        help="Max output tokens for LLM equivalence response.",
+        default=0,
+        help="Max output tokens for LLM equivalence response. Use 0 for uncapped.",
     )
     parser.add_argument(
-        "--no-raise-disagreement",
+        "--raise-disagreement",
         action="store_true",
-        help="Do not raise when sympy_match=True but llm_match=False.",
+        help="Raise when sympy_match=True but llm_match=False with no LLM error.",
     )
     parser.add_argument(
         "--no-cache",
@@ -191,12 +251,34 @@ def main():
         default=Path("results/symbolic_checks_pysr_1e8/llm_parse_debug"),
         help="Directory to save debug dumps when LLM response parsing fails.",
     )
+    parser.add_argument(
+        "--rerun-llm-false-jsonl",
+        type=Path,
+        default=None,
+        help="If set, ignore top-K and rerun only datasets where llm_match=False in this JSONL.",
+    )
+    parser.add_argument(
+        "--rerun-report-txt",
+        type=Path,
+        default=Path("results/symbolic_checks_pysr_1e8/llm_false_rerun_report.txt"),
+        help="Text report path for rerun mode.",
+    )
     args = parser.parse_args()
 
     if not args.results_dir.exists():
         raise FileNotFoundError(f"Results dir not found: {args.results_dir}")
 
     rows = load_topk_rows(args.results_dir, args.top_k)
+    if args.rerun_llm_false_jsonl is not None:
+        llm_false_ds = set(load_llm_false_datasets(args.rerun_llm_false_jsonl))
+        rows = [r for r in rows if r["dataset"] in llm_false_ds]
+        if not rows:
+            all_rows = load_topk_rows(args.results_dir, 10_000)
+            rows = [r for r in all_rows if r["dataset"] in llm_false_ds]
+        print(
+            f"Rerun mode: loaded {len(llm_false_ds)} llm-false datasets from "
+            f"{args.rerun_llm_false_jsonl}; {len(rows)} found in results dir."
+        )
     if not rows:
         print("No valid result rows found.")
         return
@@ -208,13 +290,18 @@ def main():
     sympy_times = []
     llm_times = []
     total_times = []
+    llm_costs = []
     n_match = 0
     n_sympy_match = 0
     n_llm_match = 0
+    rerun_report_lines = []
+    reset_usage()
 
-    print(f"Processing top {len(rows)} by R^2 from {args.results_dir}")
+    print(f"Processing {len(rows)} tasks from {args.results_dir}")
     print(f"SymPy timeout: {args.sympy_timeout_seconds}s")
-    print(f"LLM model: {args.llm_model} (thinking={args.llm_thinking_level})")
+    llm_max_tokens = None if args.llm_max_tokens <= 0 else args.llm_max_tokens
+    token_label = "uncapped" if llm_max_tokens is None else str(llm_max_tokens)
+    print(f"LLM model: {args.llm_model} (thinking={args.llm_thinking_level}, max_tokens={token_label})")
     print("-" * 100)
 
     for i, row in enumerate(rows, 1):
@@ -249,15 +336,19 @@ def main():
         sympy_elapsed = time.perf_counter() - sympy_start
 
         llm_start = time.perf_counter()
+        usage_before = get_usage()
         llm_result = check_sympy_equivalence_with_llm(
             predicted_expr=best_equation,
             ground_truth_expr=ground_truth,
             model=args.llm_model,
             thinking_level=args.llm_thinking_level,
-            max_tokens=args.llm_max_tokens,
+            max_tokens=llm_max_tokens,
             use_cache=not args.no_cache,
         )
+        usage_after = get_usage()
         llm_elapsed = time.perf_counter() - llm_start
+        llm_cost = max(0.0, float(usage_after.get("total_cost", 0.0)) - float(usage_before.get("total_cost", 0.0)))
+        llm_costs.append(llm_cost)
 
         sympy_match = bool(sympy_result.get("match", False))
         llm_match = bool(llm_result.get("llm_match", False))
@@ -265,6 +356,7 @@ def main():
         llm_error = str(llm_result.get("error") or "")
         llm_parse_error = "parse" in llm_error.lower()
         llm_debug_dump_path = None
+        disagreement_debug_dump_path = None
         if llm_parse_error:
             llm_debug_dump_path = write_llm_parse_debug_dump(
                 debug_dir=args.llm_debug_dir,
@@ -284,12 +376,31 @@ def main():
                 f"dump={llm_debug_dump_path}"
             )
 
-        if sympy_match and not llm_match and not args.no_raise_disagreement:
-            raise RuntimeError(
-                "Unexpected disagreement: sympy_match=True but llm_match=False "
-                f"for dataset={dataset}, equation={best_equation}, ground_truth={ground_truth}. "
-                f"sympy_result={sympy_result}, llm_result={llm_result}"
+        llm_hard_no = (llm_result.get("error") in (None, "")) and (not llm_match)
+        if sympy_match and llm_hard_no:
+            disagreement_debug_dump_path = write_llm_disagreement_debug_dump(
+                debug_dir=args.llm_debug_dir,
+                case_index=i,
+                dataset=dataset,
+                r2=r2,
+                best_equation=best_equation,
+                ground_truth=ground_truth,
+                var_names=var_names,
+                sympy_result=sympy_result,
+                llm_result=llm_result,
+                llm_model=args.llm_model,
+                llm_thinking_level=args.llm_thinking_level,
             )
+            print(
+                f"  [LLM DISAGREEMENT] dataset={dataset} case={i} "
+                f"dump={disagreement_debug_dump_path}"
+            )
+            if args.raise_disagreement:
+                raise RuntimeError(
+                    "Unexpected disagreement: sympy_match=True but llm_match=False "
+                    f"for dataset={dataset}, equation={best_equation}, ground_truth={ground_truth}. "
+                    f"sympy_result={sympy_result}, llm_result={llm_result}"
+                )
 
         combined_match = bool(sympy_match or llm_match)
         case_elapsed = time.perf_counter() - case_start
@@ -317,18 +428,36 @@ def main():
             "total_elapsed_seconds": case_elapsed,
             "sympy_result": sympy_result,
             "llm_result": llm_result,
+            "llm_explanation": llm_result.get("reasoning", ""),
+            "llm_cost_usd": llm_cost,
             "llm_parse_error": llm_parse_error,
             "llm_debug_dump_path": str(llm_debug_dump_path) if llm_debug_dump_path else None,
+            "llm_disagreement": bool(sympy_match and llm_hard_no),
+            "llm_disagreement_debug_dump_path": (
+                str(disagreement_debug_dump_path) if disagreement_debug_dump_path else None
+            ),
         }
         with open(args.save_jsonl, "a") as f:
             f.write(json.dumps(result) + "\n")
+
+        if args.rerun_llm_false_jsonl is not None:
+            rerun_report_lines.append("=" * 120)
+            rerun_report_lines.append(f"dataset: {dataset} | R2={r2:.8f}")
+            rerun_report_lines.append(f"sympy_match={sympy_match} | llm_match={llm_match} | combined={combined_match}")
+            rerun_report_lines.append(f"llm_cost_usd={llm_cost:.6f}")
+            rerun_report_lines.append(f"ground_truth: {ground_truth}")
+            rerun_report_lines.append(f"best_equation: {best_equation}")
+            rerun_report_lines.append(f"llm_explanation: {llm_result.get('reasoning', '')}")
+            rerun_report_lines.append(f"llm_raw_response: {llm_result.get('raw_response', '')}")
+            rerun_report_lines.append(f"sympy_result: {json.dumps(sympy_result, ensure_ascii=True)}")
 
         print(
             f"[{i:02d}/{len(rows)}] {dataset:30s} R2={r2:.8f} "
             f"sympy={sympy_match} llm={llm_match} combined={combined_match} | "
             f"{fmt_stats('sympy', sympy_times)} | "
             f"{fmt_stats('llm', llm_times)} | "
-            f"{fmt_stats('total', total_times)}"
+            f"{fmt_stats('total', total_times)} | "
+            f"cost_this_query=${llm_cost:.6f}"
         )
 
     print("-" * 100)
@@ -339,7 +468,20 @@ def main():
     print(fmt_stats("sympy", sympy_times))
     print(fmt_stats("llm", llm_times))
     print(fmt_stats("total", total_times))
+    usage = get_usage()
+    total_cost = float(usage.get("total_cost", 0.0))
+    total_queries = int(usage.get("num_calls", 0))
+    avg_cost_per_query = (total_cost / total_queries) if total_queries > 0 else 0.0
+    avg_cost_per_case = (total_cost / len(total_times)) if total_times else 0.0
+    print(
+        f"LLM cost stats: total=${total_cost:.6f} across {total_queries} API queries; "
+        f"avg/query=${avg_cost_per_query:.6f}; avg/case=${avg_cost_per_case:.6f}"
+    )
     print(f"Saved JSONL: {args.save_jsonl}")
+    if args.rerun_llm_false_jsonl is not None:
+        args.rerun_report_txt.parent.mkdir(parents=True, exist_ok=True)
+        args.rerun_report_txt.write_text("\n".join(rerun_report_lines) + "\n")
+        print(f"Saved rerun report: {args.rerun_report_txt}")
 
 
 if __name__ == "__main__":

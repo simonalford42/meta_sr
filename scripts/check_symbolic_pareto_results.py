@@ -74,14 +74,36 @@ def list_run_dirs(results_dir: Path) -> list[Path]:
     )
 
 
-def write_manifest(results_dir: Path, manifest_path: Path) -> int:
+def has_nonempty_equations(checkpoint_path: Path) -> bool:
+    """Return True iff checkpoint loads and contains at least one equation."""
+    try:
+        with open(checkpoint_path, "rb") as f:
+            model = pickle.load(f)
+        equations = getattr(model, "equations_", None)
+        return equations is not None and len(equations) > 0
+    except Exception:
+        return False
+
+
+def write_manifest(
+    results_dir: Path,
+    manifest_path: Path,
+    skip_empty_equations: bool = False,
+) -> int:
     """Write run-dir names to manifest (one per line)."""
     run_dirs = list_run_dirs(results_dir)
+    if skip_empty_equations:
+        run_dirs = [
+            run_dir
+            for run_dir in run_dirs
+            if has_nonempty_equations(run_dir / "checkpoint.pkl")
+        ]
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     with open(manifest_path, "w") as f:
         for run_dir in run_dirs:
             f.write(f"{run_dir.name}\n")
-    print(f"Wrote manifest: {manifest_path} ({len(run_dirs)} runs)")
+    extra = " (skipping empty/invalid checkpoints)" if skip_empty_equations else ""
+    print(f"Wrote manifest: {manifest_path} ({len(run_dirs)} runs){extra}")
     return len(run_dirs)
 
 
@@ -133,7 +155,72 @@ def load_checkpoint_info(checkpoint_path: Path) -> dict[str, Any]:
         "best_idx": best_row.name,
         "best_equation_raw": best_equation_raw,
         "best_equation_sympy": best_equation_sympy,
+        "source": "checkpoint",
+        "checkpoint_error": None,
     }
+
+
+def load_hall_of_fame_info(run_dir: Path) -> dict[str, Any]:
+    """Load Pareto equations from hall_of_fame.csv as fallback."""
+    import pandas as pd
+
+    hof_path = run_dir / "hall_of_fame.csv"
+    if not hof_path.exists():
+        raise FileNotFoundError(f"Missing hall_of_fame.csv fallback: {hof_path}")
+
+    df = pd.read_csv(hof_path)
+    col_map = {c.lower(): c for c in df.columns}
+    if "equation" not in col_map or "loss" not in col_map:
+        raise ValueError(f"hall_of_fame.csv missing required columns in {hof_path}")
+
+    eq_col = col_map["equation"]
+    loss_col = col_map["loss"]
+    complexity_col = col_map.get("complexity")
+
+    out = pd.DataFrame(
+        {
+            "equation": df[eq_col].astype(str),
+            "loss": pd.to_numeric(df[loss_col], errors="coerce"),
+        }
+    )
+    if complexity_col is not None:
+        out["complexity"] = pd.to_numeric(df[complexity_col], errors="coerce").fillna(-1).astype(int)
+    else:
+        out["complexity"] = -1
+    out["score"] = np.nan
+    out = out.dropna(subset=["loss"]).reset_index(drop=True)
+    if out.empty:
+        raise ValueError(f"hall_of_fame.csv had no valid rows: {hof_path}")
+
+    best_idx = int(out["loss"].idxmin())
+    best_equation_raw = str(out.loc[best_idx, "equation"])
+
+    return {
+        "model": None,
+        "equations": out,
+        "feature_names": None,
+        "best_idx": best_idx,
+        "best_equation_raw": best_equation_raw,
+        "best_equation_sympy": None,
+        "source": "hall_of_fame",
+        "checkpoint_error": None,
+    }
+
+
+def resolve_dataset_from_best_equation(
+    best_equation: str,
+    json_summaries: dict[str, dict[str, Any]],
+) -> tuple[str | None, str | None]:
+    """Resolve dataset by exact best-equation string match in top-level JSON summaries."""
+    matches = [
+        ds for ds, rec in json_summaries.items()
+        if str(rec.get("best_equation", "")) == str(best_equation)
+    ]
+    if len(matches) == 1:
+        return matches[0], None
+    if not matches:
+        return None, "No dataset matched fallback best_equation in top-level JSON summaries"
+    return None, f"Ambiguous fallback best_equation match across datasets: {matches}"
 
 
 def resolve_dataset_name(
@@ -199,10 +286,29 @@ def evaluate_run_dir(
     started = time.perf_counter()
 
     try:
-        ckpt = load_checkpoint_info(checkpoint_path)
-        dataset_name, resolve_error = resolve_dataset_name(ckpt, feature_map, json_summaries)
+        checkpoint_error = None
+        try:
+            ckpt = load_checkpoint_info(checkpoint_path)
+        except Exception as e:
+            checkpoint_error = str(e)
+            ckpt = load_hall_of_fame_info(run_dir)
+            ckpt["checkpoint_error"] = checkpoint_error
+
+        if ckpt["feature_names"] is not None:
+            dataset_name, resolve_error = resolve_dataset_name(ckpt, feature_map, json_summaries)
+        else:
+            dataset_name, resolve_error = resolve_dataset_from_best_equation(
+                ckpt["best_equation_raw"], json_summaries
+            )
+
         if dataset_name is None:
             raise ValueError(resolve_error or "Failed to resolve dataset name")
+
+        if ckpt["feature_names"] is None:
+            feature_names = get_dataset_feature_names(dataset_name)
+            if not feature_names:
+                raise ValueError(f"Failed to load feature names for dataset {dataset_name}")
+            ckpt["feature_names"] = feature_names
 
         _, _, ground_truth_formula = load_srbench_dataset(dataset_name)
         if not ground_truth_formula:
@@ -258,6 +364,8 @@ def evaluate_run_dir(
             "best_df_index": safe_float(best_idx),
             "best_equation_raw": ckpt.get("best_equation_raw"),
             "best_equation_sympy": ckpt.get("best_equation_sympy"),
+            "equation_source": ckpt.get("source"),
+            "checkpoint_error": ckpt.get("checkpoint_error"),
             "best_symbolic_match": best_symbolic,
             "best_exact_match": best_exact,
             "any_symbolic_match": any_symbolic,
@@ -366,8 +474,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--timeout-seconds",
         type=int,
-        default=1800,
+        default=5,
         help="Timeout per symbolic check.",
+    )
+    parser.add_argument(
+        "--skip-empty-equations",
+        action="store_true",
+        help="When writing manifest, skip run dirs whose checkpoint has no equations.",
     )
 
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -399,7 +512,11 @@ def main() -> int:
         if not results_dir.exists():
             print(f"Results directory not found: {results_dir}")
             return 1
-        write_manifest(results_dir, manifest_path)
+        write_manifest(
+            results_dir,
+            manifest_path,
+            skip_empty_equations=args.skip_empty_equations,
+        )
         return 0
 
     if args.aggregate:

@@ -9,6 +9,7 @@ Provides functions for:
 
 import os
 import json
+import math
 import numpy as np
 import sympy
 from sympy import Symbol, simplify, Float, Integer, preorder_traversal
@@ -155,12 +156,20 @@ def check_symbolic_match(predicted_expr, ground_truth_expr, n_vars=None):
 
     result['symbolic_error'] = str(sym_diff)
 
+    def _safe_is_constant(expr):
+        """Robust constant check; SymPy can occasionally throw internal errors."""
+        if expr is None:
+            return False
+        try:
+            v = expr.is_constant()
+            return bool(v) if v is not None else False
+        except Exception:
+            return False
+
     # Check match conditions
     result['error_is_zero'] = bool(sym_diff.equals(0))
-    result['error_is_constant'] = bool(sym_diff.is_constant()) if sym_diff.is_constant() is not None else False
-    result['fraction_is_constant'] = (
-        bool(sym_frac.is_constant()) if sym_frac is not None and sym_frac.is_constant() is not None else False
-    )
+    result['error_is_constant'] = _safe_is_constant(sym_diff)
+    result['fraction_is_constant'] = _safe_is_constant(sym_frac)
 
     # A match is any of the three conditions
     result['match'] = (
@@ -462,6 +471,104 @@ def check_pysr_symbolic_match(expr_str, ground_truth_str, var_names=None, timeou
             'simplified_predicted': expr_str,
             'symbolic_error': None,
         }
+    except Exception as e:
+        return {
+            'match': False,
+            'error': f'sympy_exception: {type(e).__name__}: {e}',
+            'simplified_predicted': expr_str,
+            'symbolic_error': None,
+        }
+
+
+def get_pareto_df_indices_in_best_complexity_order(equations_df, best_df_index):
+    """
+    Order Pareto expressions by complexity distance from best.
+
+    Ordering:
+      1) Best expression first.
+      2) Increasing |complexity - best_complexity|.
+      3) Ties prefer higher complexity than best.
+      4) Then deterministic by df index.
+    """
+    if equations_df is None or len(equations_df) == 0:
+        return []
+
+    if best_df_index not in equations_df.index:
+        # Fallback: preserve dataframe order if best index is unavailable.
+        return list(equations_df.index)
+
+    best_complexity = int(equations_df.loc[best_df_index]["complexity"])
+
+    def _sort_key(df_index):
+        row = equations_df.loc[df_index]
+        complexity = int(row["complexity"])
+        delta = complexity - best_complexity
+        abs_delta = abs(delta)
+        # For same abs distance, prefer +delta over -delta.
+        # For delta==0 (non-best rows), place after best via primary key.
+        tie_pref = 0 if delta > 0 else (1 if delta == 0 else 2)
+        return (abs_delta, tie_pref, complexity, str(df_index))
+
+    ordered = sorted(equations_df.index, key=_sort_key)
+    # Ensure best is strictly first even when other keys tie.
+    ordered = [best_df_index] + [i for i in ordered if i != best_df_index]
+    return ordered
+
+
+def check_pysr_frontier_symbolic_match(
+    equations_df,
+    best_df_index,
+    ground_truth_str,
+    var_names=None,
+    timeout_seconds_per_expression=3,
+):
+    """
+    Check symbolic match across entire Pareto frontier.
+
+    Returns True if any expression is symbolic match.
+    Timeout on an expression is treated as non-match for that expression.
+    """
+    ordered_indices = get_pareto_df_indices_in_best_complexity_order(
+        equations_df, best_df_index
+    )
+
+    if not ordered_indices:
+        return {
+            "match": False,
+            "matched_df_index": None,
+            "checked_count": 0,
+            "timeouts": 0,
+            "order": [],
+        }
+
+    n_timeouts = 0
+    for pos, idx in enumerate(ordered_indices, start=1):
+        row = equations_df.loc[idx]
+        expr = str(row["equation"])
+        res = check_pysr_symbolic_match(
+            expr,
+            ground_truth_str,
+            var_names=var_names,
+            timeout_seconds=timeout_seconds_per_expression,
+        )
+        if res.get("error") == "timeout":
+            n_timeouts += 1
+        if bool(res.get("match", False)):
+            return {
+                "match": True,
+                "matched_df_index": idx,
+                "checked_count": pos,
+                "timeouts": n_timeouts,
+                "order": ordered_indices,
+            }
+
+    return {
+        "match": False,
+        "matched_df_index": None,
+        "checked_count": len(ordered_indices),
+        "timeouts": n_timeouts,
+        "order": ordered_indices,
+    }
 
 
 def check_sympy_equivalence_with_llm(
@@ -469,7 +576,7 @@ def check_sympy_equivalence_with_llm(
     ground_truth_expr,
     model: str = "openai/gpt-5.2",
     thinking_level: str = "high",
-    max_tokens: int = 300,
+    max_tokens=None,
     use_cache: bool = True,
 ):
     """
@@ -486,7 +593,7 @@ def check_sympy_equivalence_with_llm(
         ground_truth_expr: sympy expression (or string)
         model: LLM model identifier
         thinking_level: reasoning effort level passed to API
-        max_tokens: max output tokens
+        max_tokens: max output tokens (None means do not set a cap in request)
         use_cache: whether to use completion cache
 
     Returns:
@@ -499,87 +606,116 @@ def check_sympy_equivalence_with_llm(
     """
     from completions import chat_completion, get_content
 
-    predicted_str = str(predicted_expr)
-    ground_truth_str = str(ground_truth_expr)
+    def _rhs_only(expr_like) -> str:
+        s = str(expr_like).strip()
+        if "=" in s:
+            # Compare algebraic expressions only (ignore assignment LHS like "k = ...").
+            s = s.split("=", 1)[1].strip()
+        return s
+
+    predicted_str = _rhs_only(predicted_expr)
+    ground_truth_str = _rhs_only(ground_truth_expr)
 
     system_prompt = (
         "You are a rigorous symbolic math equivalence checker. "
-        "Given two expressions, decide if they are equivalent under ANY of: "
+        "Decide if two expressions are equivalent under ANY of: "
         "(a) exact algebraic equality, "
         "(b) differ by an additive constant only, "
         "(c) differ by a multiplicative constant only. "
-        "Return strict JSON only."
+        "Respond with STRICT JSON only. "
+        "The JSON must contain exactly two keys: "
+        "{\"explanation\": \"...\", \"equivalent\": true/false}. "
+        "Explanation must be 1-3 sentences and must come before the final verdict logically. "
+        "No markdown, no extra keys."
     )
 
     user_prompt = (
         "Determine equivalence under the criteria above.\n"
         f"Expression A: {predicted_str}\n"
         f"Expression B: {ground_truth_str}\n\n"
-        "Output JSON with keys:\n"
-        "  equivalent: true/false\n"
-        "  rationale: short string"
+        "Output exactly one JSON object with keys:\n"
+        "  explanation: short 1-3 sentence reason\n"
+        "  equivalent: true/false"
     )
 
-    try:
-        response = chat_completion(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=max_tokens,
-            temperature=0.0,
-            use_cache=use_cache,
-            include_default_reasoning=False,
-            reasoning={"effort": thinking_level},
-        )
-        content = get_content(response).strip()
+    token_budgets = [max_tokens]
+    if max_tokens is not None and max_tokens < 1000:
+        token_budgets.append(1000)
 
-        llm_match = None
-        rationale = ""
+    last_content = ""
+    last_error = None
 
-        # Parse strict JSON first.
+    for token_budget in token_budgets:
         try:
-            parsed = json.loads(content)
-            llm_match = bool(parsed.get("equivalent", False))
-            rationale = str(parsed.get("rationale", ""))
-        except Exception:
-            # Fallback: minimal robust parse.
-            low = content.lower()
-            if '"equivalent": true' in low or "equivalent: true" in low:
-                llm_match = True
-            elif '"equivalent": false' in low or "equivalent: false" in low:
-                llm_match = False
-            elif low.startswith("true"):
-                llm_match = True
-            elif low.startswith("false"):
-                llm_match = False
-            else:
-                return {
-                    "llm_match": False,
-                    "raw_response": content,
-                    "reasoning": "",
-                    "model": model,
-                    "error": "Could not parse LLM equivalence response",
-                }
+            response = chat_completion(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=token_budget,
+                temperature=0.0,
+                use_cache=use_cache,
+                include_default_reasoning=False,
+                reasoning={"effort": thinking_level},
+            )
+            content = get_content(response).strip()
+            last_content = content
 
-        return {
-            "llm_match": bool(llm_match),
-            "raw_response": content,
-            "reasoning": rationale,
-            "model": model,
-            "effort": thinking_level,
-            "error": None,
-        }
-    except Exception as e:
-        return {
-            "llm_match": False,
-            "raw_response": "",
-            "reasoning": "",
-            "model": model,
-            "effort": thinking_level,
-            "error": str(e),
-        }
+            llm_match = None
+
+            explanation = ""
+            # Parse strict JSON first.
+            try:
+                # Tolerate accidental fenced JSON.
+                if content.startswith("```"):
+                    stripped = content.strip("` \n")
+                    if stripped.startswith("json\n"):
+                        content = stripped[5:].strip()
+                    else:
+                        content = stripped.strip()
+                parsed = json.loads(content)
+                llm_match = bool(parsed.get("equivalent", False))
+                explanation = str(parsed.get("explanation", "")).strip()
+            except Exception:
+                # Fallback: minimal robust parse.
+                low = content.lower()
+                if '"equivalent": true' in low or "equivalent: true" in low:
+                    llm_match = True
+                elif '"equivalent": false' in low or "equivalent: false" in low:
+                    llm_match = False
+                elif low.startswith("true"):
+                    llm_match = True
+                elif low.startswith("false"):
+                    llm_match = False
+                else:
+                    last_error = (
+                        "Could not parse LLM equivalence response "
+                        f"(max_tokens={token_budget})"
+                    )
+                    continue
+
+            return {
+                "llm_match": bool(llm_match),
+                "raw_response": content,
+                "reasoning": explanation,
+                "model": model,
+                "effort": thinking_level,
+                "max_tokens_used": token_budget,
+                "error": None,
+            }
+        except Exception as e:
+            last_error = str(e)
+
+    return {
+        "llm_match": False,
+        "raw_response": last_content,
+        "reasoning": "",
+        "model": model,
+        "effort": thinking_level,
+        "max_tokens_used": token_budgets[-1],
+        "error": last_error or "Could not parse LLM equivalence response",
+    }
 
 
 def check_pysr_symbolic_match_with_llm(
@@ -589,7 +725,7 @@ def check_pysr_symbolic_match_with_llm(
     timeout_seconds: int = 10,
     llm_model: str = "openai/gpt-5.2",
     llm_thinking_level: str = "high",
-    llm_max_tokens: int = 300,
+    llm_max_tokens=None,
     raise_on_sympy_llm_disagreement: bool = True,
     llm_use_cache: bool = True,
 ):
