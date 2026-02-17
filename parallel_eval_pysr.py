@@ -11,6 +11,7 @@ and custom mutations on SRBench datasets.
 import os
 import sys
 import json
+import re
 import traceback
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
@@ -18,6 +19,48 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
 from slurm_eval import BaseSlurmEvaluator, init_worker
+
+
+def _remap_formula_variables(
+    formula_str: str,
+    source_names: List[str],
+    target_names: List[str],
+) -> str:
+    """
+    Remap variable names in a ground-truth formula.
+
+    Example: remap ['omega', 'd'] -> ['x0', 'x1'] in
+    'k = sqrt(omega**2 - d**2)' -> 'k = sqrt(x0**2 - x1**2)'.
+    """
+    if not formula_str or not source_names or not target_names:
+        return formula_str
+    if len(source_names) != len(target_names):
+        return formula_str
+
+    lhs = None
+    rhs = formula_str
+    if "=" in formula_str:
+        lhs, rhs = formula_str.split("=", 1)
+        rhs = rhs.strip()
+
+    try:
+        import sympy
+        from sympy import Symbol
+        from sympy.parsing.sympy_parser import parse_expr
+
+        local_dict = {name: Symbol(name) for name in source_names}
+        local_dict.update({name: Symbol(name) for name in target_names})
+        expr = parse_expr(rhs, local_dict=local_dict)
+        subs = {Symbol(src): Symbol(dst) for src, dst in zip(source_names, target_names)}
+        mapped_expr = expr.subs(subs)
+        mapped_rhs = str(mapped_expr)
+        return f"{lhs.strip()} = {mapped_rhs}" if lhs is not None else mapped_rhs
+    except Exception:
+        # Fallback: conservative token replacement with word boundaries.
+        mapped_rhs = rhs
+        for src, dst in sorted(zip(source_names, target_names), key=lambda x: -len(x[0])):
+            mapped_rhs = re.sub(rf"\b{re.escape(src)}\b", dst, mapped_rhs)
+        return f"{lhs.strip()} = {mapped_rhs}" if lhs is not None else mapped_rhs
 
 
 def _load_dynamic_selection(custom_selection_code: str) -> None:
@@ -157,6 +200,7 @@ class PySRTaskSpec:
     target_noise: float = 0.0  # Gaussian noise level for target (SRBench standard: 0.0, 0.001, 0.01, 0.1)
     custom_selection_code: Optional[str] = None  # Julia code for custom selection operator
     custom_survival_code: Optional[str] = None  # Julia code for custom survival operator
+    fitness_metric: str = "r2"  # 'r2' or 'gt'
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -176,6 +220,7 @@ class PySRTaskResult:
     r2_score: float  # R^2 score on validation set
     best_equation: Optional[str]  # Best equation found
     best_loss: float  # Loss of best equation
+    gt_match_score: Optional[float] = None  # 1.0 if any frontier expression matches GT else 0.0
     error: Optional[str] = None
     run_index: int = 0
     timed_out: bool = False
@@ -271,7 +316,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         print(f"[{spec.dataset_name}] Loading dataset...", flush=True)
         np.random.seed(spec.data_seed)
         _rnd.seed(spec.data_seed)
-        X, y, _ = load_srbench_dataset(spec.dataset_name, max_samples=spec.max_samples)
+        X, y, ground_truth_formula = load_srbench_dataset(spec.dataset_name, max_samples=spec.max_samples)
         t_load_data = _time.time() - t0
         print(f"[{spec.dataset_name}] Dataset loaded in {t_load_data:.1f}s", flush=True)
 
@@ -325,9 +370,22 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         # Create and fit model
         model = PySRRegressor(**model_kwargs)
 
-        # Generate variable names based on number of features
+        # Always use safe x{i} variable names for PySR to avoid collisions
+        # with reserved names (e.g., I, beta). Remap GT formula accordingly.
         n_features = X_train.shape[1]
         variable_names = [f"x{i}" for i in range(n_features)]
+        ground_truth_for_match = ground_truth_formula
+        try:
+            from evaluation import get_dataset_var_names
+            dataset_var_names = get_dataset_var_names(spec.dataset_name)
+            if len(dataset_var_names) == n_features:
+                ground_truth_for_match = _remap_formula_variables(
+                    ground_truth_formula,
+                    dataset_var_names,
+                    variable_names,
+                )
+        except Exception:
+            ground_truth_for_match = ground_truth_formula
 
         t3 = _time.time()
         print(f"[{spec.dataset_name}] Starting PySR search: {X_train.shape[0]} train samples, {n_features} features", flush=True)
@@ -339,6 +397,21 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         best = model.get_best()
         best_equation = str(best["equation"]) if best is not None else None
         best_loss = float(best["loss"]) if best is not None else float("inf")
+        gt_match_score = None
+
+        if spec.fitness_metric == "gt":
+            from evaluation import check_pysr_frontier_symbolic_match
+            try:
+                gt_match_result = check_pysr_frontier_symbolic_match(
+                    equations_df=model.equations_,
+                    best_df_index=best.name if best is not None else None,
+                    ground_truth_str=ground_truth_for_match,
+                    var_names=variable_names,
+                    timeout_seconds_per_expression=3,
+                )
+                gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
+            except Exception:
+                gt_match_score = 0.0
 
         # Evaluate on validation set
         y_pred = model.predict(X_val)
@@ -359,6 +432,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             r2_score=float(r2),
             best_equation=best_equation,
             best_loss=best_loss,
+            gt_match_score=gt_match_score,
             error=None,
             run_index=spec.run_index,
             runtime_seconds=runtime,
@@ -404,6 +478,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             r2_score=-1.0,
             best_equation=None,
             best_loss=float("inf"),
+            gt_match_score=0.0 if spec.fitness_metric == "gt" else None,
             error=f"Error: {str(e)}",
             run_index=spec.run_index,
             runtime_seconds=runtime,
@@ -446,6 +521,7 @@ def _aggregate_pysr_results(
     results: List[PySRTaskResult],
     dataset_names: List[str],
     num_configs: int,
+    fitness_metric: str = "r2",
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """
     Aggregate task results per configuration, averaging across runs.
@@ -479,27 +555,33 @@ def _aggregate_pysr_results(
             if key in results_by_config_dataset:
                 run_results = results_by_config_dataset[key]
                 # Handle potential None values defensively
-                run_scores = [r.r2_score if r.r2_score is not None else -1.0 for r in run_results]
-                avg_r2 = float(np.mean(run_scores))
+                run_r2_scores = [r.r2_score if r.r2_score is not None else -1.0 for r in run_results]
+                run_gt_scores = [r.gt_match_score if r.gt_match_score is not None else 0.0 for r in run_results]
+                run_scores = run_gt_scores if fitness_metric == "gt" else run_r2_scores
+                avg_score = float(np.mean(run_scores))
 
                 # Combine results from all runs
                 all_equations = [r.best_equation for r in run_results if r.best_equation]
                 errors = [r.error for r in run_results if r.error]
 
-                r2_vector.append(avg_r2)
+                r2_vector.append(avg_score)
                 result_details.append({
                     "dataset": dataset_name,
-                    "avg_r2": avg_r2,
-                    "run_r2_scores": run_scores,
+                    "avg_r2": float(np.mean(run_r2_scores)),
+                    "avg_gt": float(np.mean(run_gt_scores)),
+                    "run_r2_scores": run_r2_scores,
+                    "run_gt_scores": run_gt_scores,
                     "best_equations": all_equations,
                     "errors": errors if errors else None,
                 })
             else:
-                r2_vector.append(-1.0)
+                r2_vector.append(0.0 if fitness_metric == "gt" else -1.0)
                 result_details.append({
                     "dataset": dataset_name,
                     "avg_r2": -1.0,
+                    "avg_gt": 0.0,
                     "run_r2_scores": [],
+                    "run_gt_scores": [],
                     "best_equations": [],
                     "errors": ["No results found"],
                 })
@@ -578,6 +660,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         seed: int = 42,
         n_runs: int = 1,
         target_noise_map: Optional[Dict[str, float]] = None,
+        fitness_metric: str = "r2",
     ) -> List[Tuple[float, List[float], List[Dict]]]:
         """
         Evaluate PySR configurations via SLURM job array.
@@ -617,6 +700,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         target_noise=noise,
                         custom_selection_code=config.custom_selection_code,
                         custom_survival_code=config.custom_survival_code,
+                        fitness_metric=fitness_metric,
                     ))
 
         n_tasks = len(tasks)
@@ -624,7 +708,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # Pre-filter cached tasks
         uncached_indices = []
         n_cached = 0
-        if self.use_cache:
+        use_cache_for_run = self.use_cache and fitness_metric == "r2"
+        if use_cache_for_run:
             try:
                 from evaluation_cache import get_pysr_cache
                 cache = get_pysr_cache()
@@ -707,10 +792,13 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             results, failed_indices = self._collect_results(results_subdir, n_tasks, timed_out=False)
         else:
             # Submit SLURM job array for uncached tasks only
+            original_use_cache = self.use_cache
+            self.use_cache = use_cache_for_run
             if len(uncached_indices) < n_tasks:
                 job_script = self._create_retry_job_script(batch_dir, uncached_indices, 0)
             else:
                 job_script = self._create_job_script(batch_dir, n_tasks)
+            self.use_cache = original_use_cache
             job_id = self._submit_job(job_script)
             print(f"  Submitted SLURM job array: {job_id} ({len(uncached_indices)} tasks)")
             print(f"    Script: {job_script}")
@@ -740,9 +828,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 print(f"  Retrying {len(failed_indices)} failed tasks "
                       f"(attempt {retry_count}/{self.max_retries})...")
 
+                original_use_cache = self.use_cache
+                self.use_cache = use_cache_for_run
                 retry_job_script = self._create_retry_job_script(
                     batch_dir, failed_indices, retry_count
                 )
+                self.use_cache = original_use_cache
                 retry_job_id = self._submit_job(retry_job_script)
                 print(f"    Submitted retry job: {retry_job_id}")
 
@@ -772,7 +863,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         with open(combined_file, 'w') as f:
             json.dump([r.to_json_dict() for r in results], f, indent=2)
 
-        return _aggregate_pysr_results(results, dataset_names, num_configs=len(configs))
+        return _aggregate_pysr_results(
+            results,
+            dataset_names,
+            num_configs=len(configs),
+            fitness_metric=fitness_metric,
+        )
 
     def _create_job_script(self, batch_dir: Path, n_tasks: int) -> Path:
         """Create SLURM job array submission script for PySR."""

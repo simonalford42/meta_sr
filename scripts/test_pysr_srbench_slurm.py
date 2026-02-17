@@ -3,7 +3,7 @@
 Installation/final-check script for running PySR on SRBench via the SLURM interface.
 
 This submits a SLURM array through PySRSlurmEvaluator for a small subset of datasets,
-verifies each task succeeded, and reports the average R^2.
+verifies each task succeeded, and reports average R^2 and GT solve rate.
 """
 
 from __future__ import annotations
@@ -87,8 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--time-limit",
         type=str,
-        default="04:00:00",
-        help="SLURM time limit per task (default: 04:00:00)",
+        default="00:10:00",
+        help="SLURM time limit per task (default: 00:10:00)",
     )
     parser.add_argument(
         "--mem-per-cpu",
@@ -105,8 +105,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--timeout",
         type=int,
-        default=3000,
-        help="PySR timeout in seconds per task (default: 3000)",
+        default=400,
+        help="PySR timeout in seconds per task (default: 400)",
     )
     parser.add_argument(
         "--max-concurrent-jobs",
@@ -131,6 +131,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Directory for SLURM/eval outputs (default: outputs/install_check_YYYYMMDD_HHMMSS)",
+    )
+    parser.add_argument(
+        "--fitness-metric",
+        type=str,
+        choices=["r2", "gt"],
+        default="gt",
+        help="Evaluation fitness metric (default: gt)",
     )
     return parser
 
@@ -157,6 +164,7 @@ def main() -> int:
     print(f"Job timeout:     {args.job_timeout}s")
     print(f"Results dir:     {results_dir}")
     print("Use cache:       False")
+    print(f"Fitness metric:  {args.fitness_metric}")
 
     max_samples = None if args.max_samples is not None and args.max_samples <= 0 else args.max_samples
 
@@ -187,6 +195,7 @@ def main() -> int:
         dataset_names=datasets,
         seed=args.seed,
         n_runs=1,
+        fitness_metric=args.fitness_metric,
     )
 
     avg_r2, r2_vector, result_details = run_results[0]
@@ -213,11 +222,23 @@ def main() -> int:
     successful = len(datasets) - len(failed_datasets)
     print(f"Successful tasks: {successful}/{len(datasets)}")
 
+    successful_details = [
+        d for d in result_details
+        if not d.get("errors") and len(d.get("best_equations") or []) > 0
+    ]
+    if successful_details:
+        avg_r2_success = float(sum(d.get("avg_r2", 0.0) for d in successful_details) / len(successful_details))
+        avg_gt_success = float(sum(d.get("avg_gt", 0.0) for d in successful_details) / len(successful_details))
+        print(f"Average R^2 across successful tasks ({len(successful_details)}): {avg_r2_success:.4f}")
+        print(f"Ground truth solve rate across successful tasks: {100.0 * avg_gt_success:.1f}%")
+    else:
+        print("Average R^2 across successful tasks: n/a")
+        print("Ground truth solve rate across successful tasks: n/a")
+
     if failed_tasks or no_equation_tasks:
         print("Final check status: FAIL")
         return 1
 
-    print(f"Average R^2 across {len(r2_vector)} tasks: {float(avg_r2):.4f}")
     print("Final check status: PASS")
     return 0
 

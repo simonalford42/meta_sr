@@ -22,6 +22,6 @@
 # sbatch run.sh hpo_pysr.py --n-trials 500
 # sbatch run.sh evolve_pysr.py
 
-sbatch run.sh evolve_pysr.py
-sbatch run.sh evolve_basic_sr.py
+sbatch run.sh evolve_pysr.py --fitness_metric gt
+# sbatch run.sh evolve_basic_sr.py
 

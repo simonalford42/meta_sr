@@ -54,6 +54,7 @@ def _evaluate_configs_with_noise_map(
     seed: int,
     n_runs: int,
     target_noise_map: Optional[Dict[str, float]] = None,
+    fitness_metric: str = "r2",
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """Evaluate configs with optional per-dataset target noise mapping.
 
@@ -61,7 +62,12 @@ def _evaluate_configs_with_noise_map(
     per-task noise levels so all datasets are evaluated in a single batch.
     """
     return evaluator.evaluate_configs(
-        configs, dataset_names, seed=seed, n_runs=n_runs, target_noise_map=target_noise_map
+        configs,
+        dataset_names,
+        seed=seed,
+        n_runs=n_runs,
+        target_noise_map=target_noise_map,
+        fitness_metric=fitness_metric,
     )
 
 
@@ -75,8 +81,8 @@ class JuliaMutation:
     name: str                           # e.g., "gradient_guided_gen3_1"
     code: str                           # Julia code string
     weight: float = 0.5                 # Mutation probability weight
-    score: Optional[float] = None       # Average R² across datasets
-    score_vector: Optional[List[float]] = None  # Per-dataset R² scores
+    score: Optional[float] = None       # Average fitness across datasets
+    score_vector: Optional[List[float]] = None  # Per-dataset fitness scores
     generation: int = 0                 # Which generation this was created
     parent_name: Optional[str] = None   # Parent mutation (if refined/crossed)
     mode: str = "explore"               # How it was created: explore/refine/crossover
@@ -423,6 +429,7 @@ def evaluate_baseline(
     seed: int = 42,
     n_runs: int = 1,
     target_noise_map: Optional[Dict[str, float]] = None,
+    fitness_metric: str = "r2",
 ) -> Tuple[float, List[float], List[Dict]]:
     """Evaluate PySR without any custom mutations (baseline)."""
     mutation_weights = get_default_mutation_weights()
@@ -445,6 +452,7 @@ def evaluate_baseline(
         seed=seed,
         n_runs=n_runs,
         target_noise_map=target_noise_map,
+        fitness_metric=fitness_metric,
     )
     avg_r2, r2_vector, result_details = results[0]
     return avg_r2, r2_vector, result_details
@@ -458,6 +466,7 @@ def evaluate_mutation(
     seed: int = 42,
     n_runs: int = 1,
     target_noise_map: Optional[Dict[str, float]] = None,
+    fitness_metric: str = "r2",
 ) -> Tuple[float, List[float]]:
     """Evaluate a single mutation via SLURM."""
     config = mutation.to_pysr_config(pysr_kwargs)
@@ -468,6 +477,7 @@ def evaluate_mutation(
         seed=seed,
         n_runs=n_runs,
         target_noise_map=target_noise_map,
+        fitness_metric=fitness_metric,
     )
     avg_r2, r2_vector, _ = results[0]
     return avg_r2, r2_vector
@@ -481,6 +491,7 @@ def evaluate_mutations(
     seed: int = 42,
     n_runs: int = 1,
     target_noise_map: Optional[Dict[str, float]] = None,
+    fitness_metric: str = "r2",
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """
     Evaluate multiple mutations in parallel via a single SLURM job array.
@@ -511,9 +522,30 @@ def evaluate_mutations(
         seed=seed,
         n_runs=n_runs,
         target_noise_map=target_noise_map,
+        fitness_metric=fitness_metric,
     )
 
     return results
+
+
+def compute_per_run_avgs(
+    result_details: List[Dict],
+    n_runs: int,
+    fitness_metric: str,
+) -> List[float]:
+    """Compute per-run averages using the same missing-score policy as aggregate scoring."""
+    score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
+    missing_fill = 0.0 if fitness_metric == "gt" else -1.0
+    per_run_avgs: List[float] = []
+
+    for run_idx in range(n_runs):
+        run_scores: List[float] = []
+        for detail in result_details:
+            run_values = detail.get(score_key, [])
+            run_scores.append(run_values[run_idx] if len(run_values) > run_idx else missing_fill)
+        per_run_avgs.append(float(np.mean(run_scores)) if run_scores else missing_fill)
+
+    return per_run_avgs
 
 
 def select_parent(population: List[JuliaMutation], rng: random.Random) -> JuliaMutation:
@@ -639,6 +671,7 @@ def run_evolution(
     n_runs: int = 1,
     target_noise: float = 0.0,
     random_target_noise: bool = False,
+    fitness_metric: str = "r2",
 ) -> JuliaMutation:
     """
     Run the evolution loop.
@@ -689,7 +722,9 @@ def run_evolution(
         "random_target_noise": random_target_noise,
         "target_noise_levels": TARGET_NOISE_LEVELS if random_target_noise else None,
         "target_noise_map": target_noise_map,
+        "fitness_metric": fitness_metric,
     })
+    metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
 
     # Set up evaluator
     evaluator = PySRSlurmEvaluator(
@@ -717,19 +752,19 @@ def run_evolution(
         seed,
         n_runs=n_runs,
         target_noise_map=target_noise_map,
+        fitness_metric=fitness_metric,
     )
     # Show per-run averages across all datasets when n_runs > 1
     if n_runs > 1 and baseline_details:
-        per_run_avgs = []
-        for run_idx in range(n_runs):
-            run_scores = [d["run_r2_scores"][run_idx] for d in baseline_details
-                          if len(d.get("run_r2_scores", [])) > run_idx]
-            if run_scores:
-                per_run_avgs.append(np.mean(run_scores))
-        runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
-        print(f"Baseline avg R²: {baseline_r2:.4f} [{runs_str}]")
+        per_run_avgs = compute_per_run_avgs(
+            baseline_details,
+            n_runs=n_runs,
+            fitness_metric=fitness_metric,
+        )
+        runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
+        print(f"Baseline avg {metric_label}: {baseline_r2:.4f} [{runs_str}]")
     else:
-        print(f"Baseline avg R²: {baseline_r2:.4f}")
+        print(f"Baseline avg {metric_label}: {baseline_r2:.4f}")
     logger.log_baseline(baseline_r2, baseline_vector)
 
     # Generate initial population
@@ -798,20 +833,19 @@ def run_evolution(
             seed,
             n_runs=n_runs,
             target_noise_map=target_noise_map,
+            fitness_metric=fitness_metric,
         )
         for mutation, (avg_r2, r2_vector, result_details) in zip(population, results):
             mutation.score = avg_r2
             mutation.score_vector = r2_vector
             # Show per-run averages across all datasets when n_runs > 1
             if n_runs > 1 and result_details:
-                # Compute average across datasets for each run
-                per_run_avgs = []
-                for run_idx in range(n_runs):
-                    run_scores = [d["run_r2_scores"][run_idx] for d in result_details
-                                  if len(d.get("run_r2_scores", [])) > run_idx]
-                    if run_scores:
-                        per_run_avgs.append(np.mean(run_scores))
-                runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
+                per_run_avgs = compute_per_run_avgs(
+                    result_details,
+                    n_runs=n_runs,
+                    fitness_metric=fitness_metric,
+                )
+                runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
                 print(f"  {mutation.name}: Avg {avg_r2:.4f} [{runs_str}]")
             else:
                 print(f"  {mutation.name}: {avg_r2:.4f}")
@@ -903,20 +937,19 @@ def run_evolution(
                 seed,
                 n_runs=n_runs,
                 target_noise_map=target_noise_map,
+                fitness_metric=fitness_metric,
             )
             for mutation, (avg_r2, r2_vector, result_details) in zip(offspring, results):
                 mutation.score = avg_r2
                 mutation.score_vector = r2_vector
                 # Show per-run averages across all datasets when n_runs > 1
                 if n_runs > 1 and result_details:
-                    # Compute average across datasets for each run
-                    per_run_avgs = []
-                    for run_idx in range(n_runs):
-                        run_scores = [d["run_r2_scores"][run_idx] for d in result_details
-                                      if len(d.get("run_r2_scores", [])) > run_idx]
-                        if run_scores:
-                            per_run_avgs.append(np.mean(run_scores))
-                    runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
+                    per_run_avgs = compute_per_run_avgs(
+                        result_details,
+                        n_runs=n_runs,
+                        fitness_metric=fitness_metric,
+                    )
+                    runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
                     print(f"  {mutation.name}: Avg {avg_r2:.4f} [{runs_str}]")
                 else:
                     print(f"  {mutation.name}: {avg_r2:.4f}")
@@ -932,7 +965,7 @@ def run_evolution(
 
         print(f"\nGeneration {gen} complete:")
         print(f"  Best: {best.name} (score: {best.score:.4f})")
-        print(f"  Baseline: {baseline_r2:.4f}")
+        print(f"  Baseline ({metric_label}): {baseline_r2:.4f}")
         print(f"  Improvement: {best.score - baseline_r2:+.4f}")
 
         logger.log_generation(gen, population, offspring, best)
@@ -945,7 +978,7 @@ def run_evolution(
     print("=" * 60)
     print(f"Best mutation: {best.name}")
     print(f"Best score: {best.score:.4f}")
-    print(f"Baseline: {baseline_r2:.4f}")
+    print(f"Baseline ({metric_label}): {baseline_r2:.4f}")
     print(f"Improvement: {best.score - baseline_r2:+.4f}")
 
     return best
@@ -972,6 +1005,8 @@ def main():
                         help="Random seed")
     parser.add_argument("--n-runs", type=int, default=3,
                         help="Number of evaluation runs per mutation per dataset (scores are averaged)")
+    parser.add_argument("--fitness_metric", type=str, default="gt", choices=["r2", "gt"],
+                        help="Meta-evolution fitness metric: r2 or gt (whole-frontier symbolic match rate)")
 
     # Dataset settings
     parser.add_argument("--split", type=str, default="splits/train_hard.txt",
@@ -988,7 +1023,7 @@ def main():
     parser.set_defaults(random_target_noise=True)
 
     # PySR settings
-    parser.add_argument("--max_evals", type=int, default=100000,
+    parser.add_argument("--max_evals", type=int, default=1e6,
                         help="Maximum evaluations per PySR run")
     parser.add_argument("--timeout", type=int, default=3000,
                         help="PySR timeout in seconds")
@@ -1051,6 +1086,7 @@ def main():
         n_runs=args.n_runs,
         target_noise=args.target_noise,
         random_target_noise=args.random_target_noise,
+        fitness_metric=args.fitness_metric,
     )
 
     print(f"\nResults saved to: {args.output_dir}")
