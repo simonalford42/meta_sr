@@ -348,7 +348,7 @@ def main():
     # group = parser.add_mutually_exclusive_group(required=True)
     # group.add_argument('--niterations', type=int, default=None,
                     #    help='Maximum iterations')
-    parser.add_argument('--max_evals', type=int, default=None,
+    parser.add_argument('--max_evals', type=int, default=1e6,
                        help='Maximum evaluations')
 
     # Output settings

@@ -29,6 +29,7 @@ from evolve_pysr import (
     pre_validate_julia_syntax,
     select_parent,
     select_survivors,
+    compute_per_run_avgs,
     EvolutionLogger,
     TARGET_NOISE_LEVELS,
     _build_target_noise_map,
@@ -299,6 +300,7 @@ def evaluate_survivals(
     seed: int = 42,
     n_runs: int = 1,
     target_noise_map: Optional[Dict[str, float]] = None,
+    fitness_metric: str = "r2",
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """Evaluate multiple survival operators in parallel via SLURM."""
     if not survivals:
@@ -313,6 +315,7 @@ def evaluate_survivals(
         seed=seed,
         n_runs=n_runs,
         target_noise_map=target_noise_map,
+        fitness_metric=fitness_metric,
     )
 
 
@@ -323,6 +326,7 @@ def evaluate_baseline(
     seed: int = 42,
     n_runs: int = 1,
     target_noise_map: Optional[Dict[str, float]] = None,
+    fitness_metric: str = "r2",
 ) -> Tuple[float, List[float], List[Dict]]:
     """Evaluate PySR with default survival (baseline)."""
     mutation_weights = get_default_mutation_weights()
@@ -340,6 +344,7 @@ def evaluate_baseline(
         seed=seed,
         n_runs=n_runs,
         target_noise_map=target_noise_map,
+        fitness_metric=fitness_metric,
     )
     avg_r2, r2_vector, result_details = results[0]
     return avg_r2, r2_vector, result_details
@@ -368,6 +373,7 @@ def run_evolution(
     n_runs: int = 1,
     target_noise: float = 0.0,
     random_target_noise: bool = False,
+    fitness_metric: str = "gt",
 ) -> JuliaSurvival:
     """Run the evolution loop for survival operators."""
     rng = random.Random(seed)
@@ -393,7 +399,9 @@ def run_evolution(
         "n_runs": n_runs,
         "target_noise": target_noise,
         "random_target_noise": random_target_noise,
+        "fitness_metric": fitness_metric,
     })
+    metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
 
     evaluator = PySRSlurmEvaluator(
         results_dir=output_dir,
@@ -415,8 +423,18 @@ def run_evolution(
     baseline_r2, baseline_vector, baseline_details = evaluate_baseline(
         evaluator, dataset_names, pysr_kwargs, seed,
         n_runs=n_runs, target_noise_map=target_noise_map,
+        fitness_metric=fitness_metric,
     )
-    print(f"Baseline avg R²: {baseline_r2:.4f}")
+    if n_runs > 1 and baseline_details:
+        per_run_avgs = compute_per_run_avgs(
+            baseline_details,
+            n_runs=n_runs,
+            fitness_metric=fitness_metric,
+        )
+        runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
+        print(f"Baseline avg {metric_label}: {baseline_r2:.4f} [{runs_str}]")
+    else:
+        print(f"Baseline avg {metric_label}: {baseline_r2:.4f}")
     logger.log_baseline(baseline_r2, baseline_vector)
 
     # Generate initial population
@@ -477,11 +495,21 @@ def run_evolution(
         results = evaluate_survivals(
             population, evaluator, dataset_names, pysr_kwargs, seed,
             n_runs=n_runs, target_noise_map=target_noise_map,
+            fitness_metric=fitness_metric,
         )
-        for survival, (avg_r2, r2_vector, _) in zip(population, results):
+        for survival, (avg_r2, r2_vector, result_details) in zip(population, results):
             survival.score = avg_r2
             survival.score_vector = r2_vector
-            print(f"  {survival.name}: {avg_r2:.4f}")
+            if n_runs > 1 and result_details:
+                per_run_avgs = compute_per_run_avgs(
+                    result_details,
+                    n_runs=n_runs,
+                    fitness_metric=fitness_metric,
+                )
+                runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
+                print(f"  {survival.name}: Avg {avg_r2:.4f} [{runs_str}]")
+            else:
+                print(f"  {survival.name}: {avg_r2:.4f}")
     except Exception as e:
         print(f"  Batch evaluation failed: {e}")
         for survival in population:
@@ -557,11 +585,21 @@ def run_evolution(
             results = evaluate_survivals(
                 offspring, evaluator, dataset_names, pysr_kwargs, seed,
                 n_runs=n_runs, target_noise_map=target_noise_map,
+                fitness_metric=fitness_metric,
             )
-            for survival, (avg_r2, r2_vector, _) in zip(offspring, results):
+            for survival, (avg_r2, r2_vector, result_details) in zip(offspring, results):
                 survival.score = avg_r2
                 survival.score_vector = r2_vector
-                print(f"  {survival.name}: {avg_r2:.4f}")
+                if n_runs > 1 and result_details:
+                    per_run_avgs = compute_per_run_avgs(
+                        result_details,
+                        n_runs=n_runs,
+                        fitness_metric=fitness_metric,
+                    )
+                    runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
+                    print(f"  {survival.name}: Avg {avg_r2:.4f} [{runs_str}]")
+                else:
+                    print(f"  {survival.name}: {avg_r2:.4f}")
         except Exception as e:
             print(f"  Batch evaluation failed: {e}")
             for survival in offspring:
@@ -573,7 +611,7 @@ def run_evolution(
 
         print(f"\nGeneration {gen} complete:")
         print(f"  Best: {best.name} (score: {best.score:.4f})")
-        print(f"  Baseline: {baseline_r2:.4f}")
+        print(f"  Baseline ({metric_label}): {baseline_r2:.4f}")
         print(f"  Improvement: {best.score - baseline_r2:+.4f}")
 
         logger.log_generation(gen, population, offspring, best)
@@ -585,7 +623,7 @@ def run_evolution(
     print("=" * 60)
     print(f"Best survival: {best.name}")
     print(f"Best score: {best.score:.4f}")
-    print(f"Baseline: {baseline_r2:.4f}")
+    print(f"Baseline ({metric_label}): {baseline_r2:.4f}")
     print(f"Improvement: {best.score - baseline_r2:+.4f}")
 
     return best
@@ -606,6 +644,8 @@ def main():
     parser.add_argument("--offspring", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=3)
+    parser.add_argument("--fitness_metric", type=str, default="gt", choices=["r2", "gt"],
+                        help="Meta-evolution fitness metric: r2 or gt (whole-frontier symbolic match rate)")
 
     parser.add_argument("--split", type=str, default="splits/train_hard.txt")
     parser.add_argument("--max_samples", type=int, default=1000)
@@ -661,6 +701,7 @@ def main():
         n_runs=args.n_runs,
         target_noise=args.target_noise,
         random_target_noise=args.random_target_noise,
+        fitness_metric=args.fitness_metric,
     )
 
     print(f"\nResults saved to: {args.output_dir}")
