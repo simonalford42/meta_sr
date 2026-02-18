@@ -11,6 +11,7 @@ and custom mutations on SRBench datasets.
 import os
 import sys
 import json
+import importlib
 import re
 import tempfile
 import traceback
@@ -177,6 +178,44 @@ def _build_pysr_cache_entry(
         "runtime_seconds": result.runtime_seconds,
         "execution_trace_json": execution_trace_json,
     }
+
+
+def _import_pysr_regressor():
+    """Import PySR from the repo checkout when available."""
+    pysr_repo = Path(__file__).resolve().parent / "PySR"
+    if pysr_repo.exists() and str(pysr_repo) not in sys.path:
+        sys.path.insert(0, str(pysr_repo))
+
+    stale = [k for k in sys.modules if k == "pysr" or k.startswith("pysr.")]
+    for k in stale:
+        sys.modules.pop(k, None)
+    importlib.invalidate_caches()
+
+    try:
+        import juliapkg.deps as _jdeps
+
+        local_pysr_deps = (pysr_repo / "pysr" / "juliapkg.json").resolve()
+        original_deps_files = _jdeps.deps_files
+
+        def _filtered_deps_files():
+            files = original_deps_files()
+            out = []
+            for fn in files:
+                p = Path(fn).resolve()
+                if p.name == "juliapkg.json" and p.parent.name == "pysr" and p != local_pysr_deps:
+                    continue
+                out.append(str(p))
+            if local_pysr_deps.exists() and str(local_pysr_deps) not in out:
+                out.append(str(local_pysr_deps))
+            return out
+
+        _jdeps.deps_files = _filtered_deps_files
+    except Exception:
+        pass
+
+    from pysr import PySRRegressor
+
+    return PySRRegressor
 
 
 def _remap_formula_variables(
@@ -574,7 +613,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         # Build PySR model with specified mutation weights
         t1 = _time.time()
         print(f"[{spec.dataset_name}] Loading PySR...", flush=True)
-        from pysr import PySRRegressor
+        PySRRegressor = _import_pysr_regressor()
         t_load_pysr = _time.time() - t1
         print(f"[{spec.dataset_name}] PySR loaded in {t_load_pysr:.1f}s", flush=True)
 
@@ -1683,6 +1722,7 @@ def get_default_pysr_kwargs() -> Dict[str, Any]:
         # Execution settings (single-core for SLURM task parallelism)
         "procs": 0,
         "parallelism": "serial",
+        "deterministic": True,
         "batching": False,
         # Output settings
         "verbosity": 1,
