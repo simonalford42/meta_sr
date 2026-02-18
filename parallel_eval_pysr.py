@@ -554,9 +554,15 @@ def _aggregate_pysr_results(
             key = (config_id, dataset_name)
             if key in results_by_config_dataset:
                 run_results = results_by_config_dataset[key]
-                # Handle potential None values defensively
-                run_r2_scores = [r.r2_score if r.r2_score is not None else -1.0 for r in run_results]
-                run_gt_scores = [r.gt_match_score if r.gt_match_score is not None else 0.0 for r in run_results]
+                # Handle potential None/NaN values defensively
+                run_r2_scores = [
+                    r.r2_score if (r.r2_score is not None and not np.isnan(r.r2_score)) else -1.0
+                    for r in run_results
+                ]
+                run_gt_scores = [
+                    r.gt_match_score if (r.gt_match_score is not None and not np.isnan(r.gt_match_score)) else 0.0
+                    for r in run_results
+                ]
                 run_scores = run_gt_scores if fitness_metric == "gt" else run_r2_scores
                 avg_score = float(np.mean(run_scores))
 
