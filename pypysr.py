@@ -1411,7 +1411,9 @@ class PyPySRRegressor:
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             pred = tree.evaluate(X)
         pred = np.asarray(pred, dtype=float)
-        pred[~np.isfinite(pred)] = np.nan
+        if pred.shape[0] != X.shape[0] or not np.all(np.isfinite(pred)):
+            # Match PySR prediction fallback behavior when evaluation fails.
+            return np.zeros(X.shape[0], dtype=float)
         return pred
 
     def score(self, X: np.ndarray, y: np.ndarray) -> float:

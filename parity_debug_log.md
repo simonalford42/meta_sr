@@ -40,3 +40,38 @@
   - `feynman_test_20`: `+0.023922`
   - `feynman_test_9`: `-0.013233`
   - `feynman_III_9_52`: `+0.026487`
+
+### Additional ablations (same date)
+- Experiment: strict all-finite loss + raw operators (`/`, `exp`, `log`, `sqrt`) without protections.
+- Command: `python -u scripts/test_pypysr_vs_pysr_srbench_slurm.py --split splits/parity_outliers.txt --n-tasks 4 --max-evals 1000000 --partition ellis --time-limit 01:30:00 --mem-per-cpu 8G --total-max-concurrent 4 --results-dir outputs/pypysr_vs_pysr_slurm_outliers4_1e6_afterfix6`
+- Summary:
+  - `pypysr_mean_r2=0.8826933977`
+  - `pysr_mean_r2=0.9731983833`
+  - mean gap `+0.0905049856` (major regression)
+- Conclusion: rejected.
+
+- Experiment: strict all-finite loss with protected operators restored.
+- Command (single-task ablation): `python -u scripts/test_pypysr_vs_pysr_srbench_slurm.py --split splits/tmp_single_feynman_test_20.txt --n-tasks 1 --max-evals 1000000 --partition ellis --time-limit 01:30:00 --mem-per-cpu 8G --total-max-concurrent 2 --results-dir outputs/pypysr_vs_pysr_slurm_single_test20_1e6_strict`
+- Result (`feynman_test_20`): `pypysr_r2=0.9692811297`, `pysr_r2=0.9865291908` (slight improvement vs prior PyPySR on this one dataset).
+- Command (4-task confirmation): `python -u scripts/test_pypysr_vs_pysr_srbench_slurm.py --split splits/parity_outliers.txt --n-tasks 4 --max-evals 1000000 --partition ellis --time-limit 01:30:00 --mem-per-cpu 8G --total-max-concurrent 4 --results-dir outputs/pypysr_vs_pysr_slurm_outliers4_1e6_afterfix7`
+- Summary:
+  - `pypysr_mean_r2=0.9597037081`
+  - `pysr_mean_r2=0.9731983833`
+  - mean gap `+0.0134946752` (worse than afterfix5 baseline)
+- Conclusion: rejected.
+
+- Experiment: keep baseline operators/loss but add PySR-like predict fallback to zeros on invalid evaluation.
+- Command: `python -u scripts/test_pypysr_vs_pysr_srbench_slurm.py --split splits/parity_outliers.txt --n-tasks 4 --max-evals 1000000 --partition ellis --time-limit 01:30:00 --mem-per-cpu 8G --total-max-concurrent 4 --results-dir outputs/pypysr_vs_pysr_slurm_outliers4_1e6_afterfix8`
+- Summary:
+  - `pypysr_mean_r2=0.9641158040`
+  - `pysr_mean_r2=0.9731983833`
+  - mean gap `+0.0090825793` (same as afterfix5 baseline)
+- Conclusion: neutral but semantically aligned with PySR prediction fallback.
+
+- Experiment: reevaluate simplified members + preserve age during tune step.
+- Command: `python -u scripts/test_pypysr_vs_pysr_srbench_slurm.py --split splits/parity_outliers.txt --n-tasks 4 --max-evals 1000000 --partition ellis --time-limit 01:30:00 --mem-per-cpu 8G --total-max-concurrent 4 --results-dir outputs/pypysr_vs_pysr_slurm_outliers4_1e6_afterfix9`
+- Summary:
+  - `pypysr_mean_r2=0.9527933156`
+  - `pysr_mean_r2=0.9731983833`
+  - mean gap `+0.0204050677` (regression)
+- Conclusion: rejected and reverted.

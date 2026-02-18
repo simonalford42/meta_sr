@@ -104,6 +104,17 @@ class TestPythonPySRAPI(unittest.TestCase):
         self.assertEqual(str(m1.get_best()["equation"]), str(m2.get_best()["equation"]))
         np.testing.assert_allclose(m1.predict(X), m2.predict(X), atol=1e-12, rtol=1e-12)
 
+    def test_predict_falls_back_to_zeros_on_invalid_evaluation(self):
+        X, y = quadratic(seed=0)
+        model = _default_model(max_evals=500, seed=0)
+        model.fit(X, y, variable_names=["x0"])
+
+        model._equation_trees[0] = Node("x99")
+        pred = model.predict(X, index=0)
+
+        self.assertEqual(pred.shape, y.shape)
+        self.assertTrue(np.allclose(pred, 0.0))
+
     def test_max_evals_budget_is_respected(self):
         rng = np.random.RandomState(0)
         X = rng.uniform(-2, 2, size=(80, 2))
@@ -194,6 +205,8 @@ class TestRegularizedEvolutionParitySemantics(unittest.TestCase):
         crossover_probability,
         constraints=None,
         nested_constraints=None,
+        binary_operators=None,
+        unary_operators=None,
     ):
         X, y = quadratic(seed=0)
         cfg = EngineConfig(
@@ -227,8 +240,8 @@ class TestRegularizedEvolutionParitySemantics(unittest.TestCase):
             optimizer_nrestarts=1,
             optimizer_f_calls_limit=10,
             should_simplify=False,
-            binary_operators=["+", "-", "*", "/"],
-            unary_operators=["square"],
+            binary_operators=list(binary_operators or ["+", "-", "*", "/"]),
+            unary_operators=list(unary_operators or ["square"]),
             constants=[-1.0, 0.0, 1.0],
             mutation_weights={"do_nothing": 1.0},
             constraints=dict(constraints or {}),
@@ -368,6 +381,41 @@ class TestRegularizedEvolutionParitySemantics(unittest.TestCase):
         start = Node("+", Node("+", Node("x0"), Node("x1")), Node("x2"))
         rotated = _default_mutation(engine, start.copy(), np.random.RandomState(0))
         self.assertNotEqual(str(rotated), str(start))
+
+    def test_evaluate_tree_rejects_partial_nonfinite_outputs(self):
+        def passthrough_mutation(engine, tree, rng):
+            return tree.copy()
+
+        def passthrough_crossover(engine, t1, t2, rng):
+            return t1.copy(), t2.copy()
+
+        engine = self._engine_with_custom_ops(
+            mutation_op=passthrough_mutation,
+            crossover_op=passthrough_crossover,
+            crossover_probability=0.0,
+        )
+
+        # Invalid variable index yields NaNs from Node.evaluate.
+        loss, cost, _ = engine.evaluate_tree(Node("x99"))
+        self.assertTrue(np.isinf(loss))
+        self.assertTrue(np.isinf(cost))
+
+    def test_evaluate_tree_rejects_overly_large_outputs(self):
+        def passthrough_mutation(engine, tree, rng):
+            return tree.copy()
+
+        def passthrough_crossover(engine, t1, t2, rng):
+            return t1.copy(), t2.copy()
+
+        engine = self._engine_with_custom_ops(
+            mutation_op=passthrough_mutation,
+            crossover_op=passthrough_crossover,
+            crossover_probability=0.0,
+        )
+
+        loss, cost, _ = engine.evaluate_tree(Node(1.0e13))
+        self.assertTrue(np.isinf(loss))
+        self.assertTrue(np.isinf(cost))
 
 
 @unittest.skipUnless(
