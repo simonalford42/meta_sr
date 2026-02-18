@@ -63,18 +63,7 @@ rsync -avh --progress /share/ellis/sca63/srbench_pmlb/datasets/ pmlb/datasets/
 
 This project expects SRBench datasets under `pmlb/datasets/<dataset_name>/...`.
 
-Alternatively (outside the Ellis cluster), install PMLB and export the datasets (note: this workflow is not tested):
-
-```bash
-pip install pmlb
-python -c "
-import pmlb, os, pandas as pd
-for name in pmlb.regression_dataset_names:
-    os.makedirs(f'pmlb/datasets/{name}', exist_ok=True)
-    pmlb.fetch_data(name).to_csv(f'pmlb/datasets/{name}/{name}.tsv.gz', sep='\t', index=False, compression='gzip')
-print(f'Exported {len(pmlb.regression_dataset_names)} datasets')
-"
-```
+Alternatively (outside the Ellis cluster), the datasets are available here: https://cornell.box.com/s/ednvnki1qv5igrx7t8sbushrt1erzfdi. Download the folder and copy all of the dataset folders inside it into `pmlb/datasets`: `mkdir -p pmlb/datasets && mv srbench/* pmlb/datasets/`
 
 ### 5. Initialize PySR and verify
 
