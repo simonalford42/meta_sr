@@ -90,14 +90,28 @@ class RunningSearchStatistics:
             self.frequencies[size - 1] += 1.0
 
     def move_window(self) -> None:
+        smallest_frequency_allowed = 1.0
+        max_loops = 1000
+
         total = float(self.frequencies.sum())
         if total <= self.window_size:
             return
-        if total <= 0:
-            return
-        factor = self.window_size / total
-        self.frequencies *= factor
-        self.frequencies = np.maximum(self.frequencies, 1e-9)
+
+        difference = total - float(self.window_size)
+        num_loops = 0
+        while difference > 0:
+            indices = np.where(self.frequencies > smallest_frequency_allowed)[0]
+            if indices.size == 0:
+                break
+            num_remaining = int(indices.size)
+            max_subtract = float(np.min(self.frequencies[indices]) - smallest_frequency_allowed)
+            amount = min(float(difference / num_remaining), max_subtract)
+            self.frequencies[indices] -= amount
+            total_subtracted = amount * num_remaining
+            difference -= total_subtracted
+            num_loops += 1
+            if num_loops > max_loops or total_subtracted < 1e-6:
+                break
 
     def normalize(self) -> None:
         total = float(self.frequencies.sum())
@@ -219,11 +233,10 @@ def _oldest_survival(
     return int(min(candidates, key=lambda i: population[i].birth))
 
 
-def _default_mutation(
-    engine: "RegularizedEvolutionEngine", tree: Node, rng: np.random.RandomState
-) -> Node:
-    """Default weighted mutation operator with PySR-like weight conditioning."""
-    tree = tree.copy()
+def _conditioned_mutation_weights(
+    engine: "RegularizedEvolutionEngine",
+    tree: Node,
+) -> tuple[list[str], dict[str, float]]:
     nodes = _nodes_with_parent(tree)
     leaves = _leaf_nodes(tree)
     constants = [n for n in leaves if isinstance(n.value, (int, float))]
@@ -265,12 +278,36 @@ def _default_mutation(
     if not engine.cfg.should_simplify and "simplify" in weight_map:
         weight_map["simplify"] = 0.0
 
+    return names, weight_map
+
+
+def _sample_mutation_choice(
+    engine: "RegularizedEvolutionEngine",
+    tree: Node,
+    rng: np.random.RandomState,
+) -> str:
+    names, weight_map = _conditioned_mutation_weights(engine, tree)
     weights = np.array([weight_map[n] for n in names], dtype=float)
     if weights.sum() <= 0:
-        mutation = "do_nothing"
+        return "do_nothing"
+    weights /= weights.sum()
+    return str(rng.choice(names, p=weights))
+
+
+def _default_mutation(
+    engine: "RegularizedEvolutionEngine", tree: Node, rng: np.random.RandomState
+) -> Node:
+    """Default weighted mutation operator with PySR-like weight conditioning."""
+    tree = tree.copy()
+    nodes = _nodes_with_parent(tree)
+    leaves = _leaf_nodes(tree)
+    constants = [n for n in leaves if isinstance(n.value, (int, float))]
+
+    forced_mutation = getattr(engine, "_forced_mutation_name", None)
+    if forced_mutation is None:
+        mutation = _sample_mutation_choice(engine, tree, rng)
     else:
-        weights /= weights.sum()
-        mutation = str(rng.choice(names, p=weights))
+        mutation = str(forced_mutation)
 
     if mutation == "do_nothing":
         return tree
@@ -495,6 +532,7 @@ class RegularizedEvolutionEngine:
             baseline_loss = 1.0
         self.loss_normalization = baseline_loss if baseline_loss >= 0.01 else 0.01
         self._current_temperature = 1.0
+        self._forced_mutation_name: str | None = None
 
     def next_birth(self) -> int:
         self._birth_counter += 1
@@ -914,11 +952,19 @@ class RegularizedEvolutionEngine:
                 pidx = int(self.selection_operator(population, stats, self.cfg, self.rng))
                 parent = population[pidx]
                 child_tree: Node | None = None
-                for _attempt in range(10):
-                    proposal = self.mutation_operator(self, parent.tree.copy(), self.rng)
-                    if self._valid_tree(proposal):
-                        child_tree = proposal
-                        break
+                fixed_mutation_name = None
+                if self.mutation_operator == _default_mutation:
+                    fixed_mutation_name = _sample_mutation_choice(self, parent.tree, self.rng)
+                try:
+                    if fixed_mutation_name is not None:
+                        self._forced_mutation_name = fixed_mutation_name
+                    for _attempt in range(10):
+                        proposal = self.mutation_operator(self, parent.tree.copy(), self.rng)
+                        if self._valid_tree(proposal):
+                            child_tree = proposal
+                            break
+                finally:
+                    self._forced_mutation_name = None
                 if child_tree is None:
                     if self.cfg.skip_mutation_failures:
                         continue

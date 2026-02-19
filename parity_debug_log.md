@@ -75,3 +75,53 @@
   - `pysr_mean_r2=0.9731983833`
   - mean gap `+0.0204050677` (regression)
 - Conclusion: rejected and reverted.
+
+## 2026-02-19
+
+### GT parity metric integration
+- Updated parity stack so GT discovery is explicitly measured in SLURM parity outputs:
+  - `parallel_eval_pysr.py`: always compute `gt_match_score` using `check_pysr_frontier_symbolic_match`.
+  - `parallel_eval_pypysr.py`: always compute `gt_match_score` using `check_pysr_frontier_symbolic_match`.
+  - `scripts/test_pypysr_vs_pysr_srbench_slurm.py`:
+    - `comparison.csv` now includes `pypysr_avg_gt`, `pysr_avg_gt`, `gt_gap_pysr_minus_pypysr`.
+    - `summary.json` now includes GT discovery rates and GT-gap stats.
+- Added test coverage: `tests/test_slurm_parity_summary.py`.
+
+### Surgical debugging pass
+- Strategy: isolate algorithm mismatch in a minimal fixed-seed/fixed-budget case, then patch only that behavior.
+- Identified mismatch from `SymbolicRegression.jl/src/Mutate.jl`:
+  - Julia samples mutation choice once per next-generation call and retries constraints with the same mutation type.
+  - PyPySR retried by re-sampling mutation type each attempt.
+- Patch:
+  - Added conditioned mutation-choice sampler helpers in `pypysr.py`.
+  - `_regularized_cycle` now samples a fixed mutation choice once for default mutation path and reuses it across retry attempts.
+  - `_default_mutation` now respects engine-level forced mutation for retries.
+- Minimal-case results (same seed=42, same `max_evals=100000`):
+  - Dataset: `feynman_III_9_52`
+    - Before: `R2=0.1812348861` (`outputs/debug_minimal_before_windowpatch_III_9_52_100k`)
+    - After:  `R2=0.5813597261` (`outputs/debug_minimal_after_mutretrypatch_III_9_52_100k`)
+  - Control dataset: `feynman_I_50_26`
+    - Before: `R2=0.6027025004` (`outputs/debug_minimal_before_windowpatch_I_50_26_100k`)
+    - After:  `R2=0.7279838165` (`outputs/debug_control_after_mutretrypatch_I_50_26_100k`)
+
+### Notes
+- Also aligned `RunningSearchStatistics.move_window` to Julia-style window mechanics; minimal-case signal was dominated by mutation-retry fix.
+- Current environment could not run fresh SLURM submissions (`Unable to contact slurm controller`) and local Julia registry/network is restricted, so this pass used deterministic local PyPySR fixed-case comparisons for surgical validation.
+
+### Follow-up parity instrumentation/debugging (same date)
+- Added GT discovery metric to local parity script too:
+  - `scripts/test_pypysr_vs_pysr_srbench.py` now records
+    - per-task: `pypysr_gt_match_score`, `pysr_gt_match_score`, `gt_gap_pysr_minus_pypysr`
+    - summary: `pypysr_discovery_rate_gt`, `pysr_discovery_rate_gt`, GT gap mean/median
+- One-task verification command:
+  - `python scripts/test_pypysr_vs_pysr_srbench.py --split splits/tmp_debug_I_50_26.txt --max-evals 20000 --seed 42 --results-dir outputs/debug_gt_metric_probe_v3 --force`
+  - Confirmed GT fields present in `comparison.csv` and `summary.json`.
+
+- Surgical mismatch experiment attempted:
+  - Hypothesis: match Julia crossover semantics by allowing same-parent crossover selection and using 11 crossover retry pairs.
+  - Observation on fixed minimal case (`feynman_III_9_52`, seed=42, `max_evals=100000`):
+    - With this change: `R2=0.2952579035` (`outputs/debug_minimal_after_crossoverpatch_III_9_52_100k`)
+    - Baseline with mutation-retry fix: `R2=0.5813597261`
+  - Conclusion: regression; reverted this crossover change.
+  - Post-revert confirmation:
+    - `R2=0.5813597261` (`outputs/debug_minimal_after_rollback_crossoverpatch_III_9_52_100k`)

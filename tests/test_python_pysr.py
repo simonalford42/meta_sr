@@ -57,6 +57,16 @@ def _default_model(max_evals=5000, seed=0, **kwargs):
     return PyPySRRegressor(**base)
 
 
+class TestRunningSearchStatistics(unittest.TestCase):
+    def test_move_window_matches_julia_style_flooring(self):
+        stats = RunningSearchStatistics.create(maxsize=4, window_size=10)
+        stats.frequencies = np.array([6.0, 5.0, 4.0, 3.0], dtype=float)  # sum=18
+        stats.move_window()
+
+        self.assertLessEqual(float(stats.frequencies.sum()), 10.0001)
+        self.assertTrue(np.all(stats.frequencies >= 1.0))
+
+
 class TestPythonPySRAPI(unittest.TestCase):
     def test_default_annealing_matches_pysr(self):
         model = PyPySRRegressor()
@@ -381,6 +391,22 @@ class TestRegularizedEvolutionParitySemantics(unittest.TestCase):
         start = Node("+", Node("+", Node("x0"), Node("x1")), Node("x2"))
         rotated = _default_mutation(engine, start.copy(), np.random.RandomState(0))
         self.assertNotEqual(str(rotated), str(start))
+
+    def test_default_mutation_respects_forced_mutation_choice(self):
+        def passthrough_crossover(engine, t1, t2, rng):
+            return t1.copy(), t2.copy()
+
+        engine = self._engine_with_custom_ops(
+            mutation_op=_default_mutation,
+            crossover_op=passthrough_crossover,
+            crossover_probability=0.0,
+        )
+        engine.cfg.mutation_weights = {"do_nothing": 1.0, "add_node": 0.0}
+        engine._forced_mutation_name = "add_node"
+
+        start = Node("x0")
+        mutated = _default_mutation(engine, start.copy(), np.random.RandomState(0))
+        self.assertGreater(mutated.size(), start.size())
 
     def test_evaluate_tree_rejects_partial_nonfinite_outputs(self):
         def passthrough_mutation(engine, tree, rng):
