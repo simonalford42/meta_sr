@@ -31,6 +31,8 @@ from evaluation import check_pysr_frontier_symbolic_match, check_pysr_symbolic_m
 from pypysr import PyPySRRegressor
 from utils import load_dataset_names_from_split, load_srbench_dataset
 
+_REAL_PYSR_REGRESSOR = None
+
 
 def _add_noise(data: np.ndarray, noise_level: float, seed: int | None = None) -> np.ndarray:
     if noise_level <= 0:
@@ -166,12 +168,17 @@ def _evaluate_pypysr(
 
 
 def _import_real_pysr():
+    global _REAL_PYSR_REGRESSOR
+    if _REAL_PYSR_REGRESSOR is not None:
+        return _REAL_PYSR_REGRESSOR
+
     local_juliapkg_project = REPO_ROOT / ".juliapkg_env"
     local_julia_depot = REPO_ROOT / ".julia_depot"
     local_juliapkg_project.mkdir(parents=True, exist_ok=True)
     local_julia_depot.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", str(local_juliapkg_project))
     os.environ.setdefault("JULIA_DEPOT_PATH", str(local_julia_depot))
+    os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
 
     pysr_repo = REPO_ROOT / "PySR"
     if pysr_repo.exists() and str(pysr_repo) not in sys.path:
@@ -208,7 +215,9 @@ def _import_real_pysr():
         pass
 
     from pysr import PySRRegressor  # type: ignore
-    return PySRRegressor
+
+    _REAL_PYSR_REGRESSOR = PySRRegressor
+    return _REAL_PYSR_REGRESSOR
 
 
 def _evaluate_real_pysr(

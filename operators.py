@@ -15,22 +15,21 @@ import numpy as np
 # =============================================================================
 
 def _safe_div(x, y):
-    """Protected division: avoid divide-by-zero"""
-    y = np.where(np.abs(y) < 1e-10, 1e-10, y)
+    """PySR-like division: allow inf/nan on invalid denominators."""
     return x / y
 
 def _safe_exp(x):
-    """Clamped exponential to avoid overflow"""
-    x = np.clip(x, -14.0, 14.0)
-    return np.exp(x)
+    """PySR-like exp: propagate overflow to nan for rejection."""
+    out = np.exp(x)
+    return np.where(np.isfinite(out), out, np.nan)
 
 def _safe_log(x):
-    """Protected log: use abs and clamp to avoid domain errors"""
-    return np.log(np.clip(np.abs(x), 1e-12, None))
+    """PySR-like safe_log: undefined for x <= 0."""
+    return np.where(x > 0, np.log(x), np.nan)
 
 def _safe_sqrt(x):
-    """Protected sqrt: use abs to handle negative inputs"""
-    return np.sqrt(np.abs(x))
+    """PySR-like safe_sqrt: undefined for x < 0."""
+    return np.where(x >= 0, np.sqrt(x), np.nan)
 
 
 FUNCTION_SET = {
@@ -118,6 +117,5 @@ class Node:
         left_height = self.left.height() if self.left is not None else 0
         right_height = self.right.height() if self.right is not None else 0
         return 1 + max(left_height, right_height)
-
 
 

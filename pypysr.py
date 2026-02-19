@@ -745,12 +745,9 @@ class RegularizedEvolutionEngine:
             return (float("inf"), float("inf"), tree.size())
         finite = np.isfinite(pred)
         finite &= np.abs(pred) < 1e12
-        valid = int(finite.sum())
-        if valid <= max(3, int(0.1 * len(pred))):
+        if not bool(np.all(finite)):
             return (float("inf"), float("inf"), tree.size())
-        mse = float(np.mean((self.y[finite] - pred[finite]) ** 2))
-        if valid < len(pred):
-            mse *= len(pred) / max(valid, 1)
+        mse = float(np.mean((self.y - pred) ** 2))
         complexity = int(tree.size())
         cost = float((mse / self.loss_normalization) + self.cfg.parsimony * complexity)
         if not np.isfinite(cost):

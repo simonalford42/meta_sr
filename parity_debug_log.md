@@ -125,3 +125,56 @@
   - Conclusion: regression; reverted this crossover change.
   - Post-revert confirmation:
     - `R2=0.5813597261` (`outputs/debug_minimal_after_rollback_crossoverpatch_III_9_52_100k`)
+
+### PySR runtime unblocking + strict-domain pass
+- Environment fix for real PySR:
+  - Instantiated local Julia project/depot:
+    - `JULIA_PROJECT=.juliapkg_env`
+    - `JULIA_DEPOT_PATH=.julia_depot`
+    - `Pkg.instantiate(); Pkg.precompile()`
+  - Verified `using PythonCall` succeeds in local project.
+  - Real PySR local parity script now runs end-to-end again.
+
+- Surgical diagnosis on `feynman_test_9` (`max_evals=100000`, seed=42):
+  - Failure mode: PyPySR selected extremely unstable expressions with protected `log(abs(x))`/`sqrt(abs(x))` behavior and partial-valid loss masking, yielding catastrophic test R².
+  - Minimal diagnostic run showed selected equation with huge train-score jump but extreme test blow-up.
+
+- Patch applied:
+  - `operators.py`:
+    - `/` no longer denominator-clamped.
+    - `log` now domain-checked (`x > 0` else `NaN`).
+    - `sqrt` now domain-checked (`x >= 0` else `NaN`).
+    - `exp` now propagates overflow to `NaN`.
+  - `pypysr.py`:
+    - `evaluate_tree` now rejects any candidate with any non-finite or overlarge prediction sample (`abs(pred) >= 1e12`) instead of partial-valid masking.
+  - `tests/test_python_pysr.py`:
+    - Added coverage that domain-invalid `log(x0)` candidates are rejected.
+  - `scripts/test_pypysr_vs_pysr_srbench.py`:
+    - Added cached real-PySR import (`_REAL_PYSR_REGRESSOR`) and `PYTHON_JULIACALL_HANDLE_SIGNALS=yes` env default.
+
+- Results after patch:
+  - Single dataset `feynman_test_9`, `max_evals=100000`:
+    - Before strict-domain patch: `R2=-3053029024422.429`
+    - After strict-domain patch: `R2=0.8108060699713817`
+  - 4 outliers, `max_evals=100000` (`outputs/pypysr_vs_pysr_local_outliers4_100k_strictdomain`):
+    - `mean_pypysr_r2=0.5427778044`
+    - `mean_pysr_r2=0.5850838694`
+    - mean gap (`PySR - PyPySR`) `+0.0423060650`
+  - 8 train_hard tasks, `max_evals=100000`, run in 4-way local parallel:
+    - Combined CSV: `outputs/pypysr_vs_pysr_parallel_trainhard8_100k_combined.csv`
+    - `mean_pypysr_r2=0.7758307231`
+    - `mean_pysr_r2=0.8077838020`
+    - mean gap `+0.0319530788`
+    - median gap `-0.0306200611` (PyPySR better on median task)
+  - 4 outliers, `max_evals=1000000`, run in 4-way local parallel:
+    - Combined CSV: `outputs/pypysr_vs_pysr_parallel_outliers4_1e6_combined.csv`
+    - Per-task gaps (`PySR - PyPySR`):
+      - `feynman_III_9_52`: `+0.024521`
+      - `feynman_I_50_26`: `+0.000388`
+      - `feynman_test_20`: `-0.013622`
+      - `feynman_test_9`: `-0.022872`
+    - Aggregate:
+      - `mean_pypysr_r2=0.9741336033`
+      - `mean_pysr_r2=0.9712373591`
+      - mean gap `-0.0028962442` (slight PyPySR advantage)
+      - median gap `-0.0066169563`

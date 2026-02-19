@@ -426,6 +426,24 @@ class TestRegularizedEvolutionParitySemantics(unittest.TestCase):
         self.assertTrue(np.isinf(loss))
         self.assertTrue(np.isinf(cost))
 
+    def test_evaluate_tree_rejects_domain_invalid_outputs(self):
+        def passthrough_mutation(engine, tree, rng):
+            return tree.copy()
+
+        def passthrough_crossover(engine, t1, t2, rng):
+            return t1.copy(), t2.copy()
+
+        engine = self._engine_with_custom_ops(
+            mutation_op=passthrough_mutation,
+            crossover_op=passthrough_crossover,
+            crossover_probability=0.0,
+        )
+
+        # log(x0) is undefined on negative samples and should be rejected.
+        loss, cost, _ = engine.evaluate_tree(Node("log", Node("x0"), None))
+        self.assertTrue(np.isinf(loss))
+        self.assertTrue(np.isinf(cost))
+
     def test_evaluate_tree_rejects_overly_large_outputs(self):
         def passthrough_mutation(engine, tree, rng):
             return tree.copy()
