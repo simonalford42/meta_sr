@@ -115,12 +115,19 @@ def load_srbench_dataset(dataset_name: str, max_samples: Optional[int] = None) -
                     if '=' in line and not line.startswith('#'):
                         # Skip lines that are variable ranges like "x1 in [1.0,5.0]"
                         if ' in [' not in line and ' in (' not in line:
-                            formula = line
+                            formula = rhs_only(line)
                             break
         except Exception:
             pass
 
     return X, y, formula
+
+def rhs_only(expr_like) -> str:
+    s = str(expr_like).strip()
+    if "=" in s:
+        # Compare algebraic expressions only (ignore assignment LHS like "k = ...").
+        s = s.split("=", 1)[1].strip()
+    return s
 
 
 def load_dataset_names_from_split(split_file: str) -> List[str]:

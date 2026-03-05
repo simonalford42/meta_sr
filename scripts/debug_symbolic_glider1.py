@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from evaluation import (
     check_symbolic_match,
     parse_ground_truth_formula,
-    parse_pysr_expression,
+    parse_expr_str_to_sympy,
     round_floats,
 )
 
@@ -74,7 +74,7 @@ def main():
     ground_truth = parse_ground_truth_formula(ground_truth_str, var_names)
 
     # Behavior used in production checker.
-    predicted_default = parse_pysr_expression(expr, var_names)
+    predicted_default = parse_expr_str_to_sympy(expr, var_names)
     summarize(predicted_default, ground_truth, "Current Parser (no explicit square mapping)")
 
     # Debug comparison with square mapped to x**2.

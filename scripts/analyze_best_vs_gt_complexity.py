@@ -21,7 +21,7 @@ from evaluation import (
     complexity,
     get_dataset_var_names,
     parse_ground_truth_formula,
-    parse_pysr_expression,
+    parse_expr_str_to_sympy,
 )
 from utils import load_srbench_dataset
 
@@ -81,7 +81,7 @@ def compute_row(
     _, _, ground_truth = load_srbench_dataset(dataset)
 
     gt_expr = parse_ground_truth_formula(ground_truth, var_names)
-    best_expr = parse_pysr_expression(best_eq, var_names)
+    best_expr = parse_expr_str_to_sympy(best_eq, var_names)
 
     gt_complexity = int(complexity(gt_expr))
     best_complexity = int(complexity(best_expr))

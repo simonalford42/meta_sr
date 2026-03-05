@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from evaluation import (
     check_symbolic_match,
     parse_ground_truth_formula,
-    parse_pysr_expression,
+    parse_expr_str_to_sympy,
     round_floats,
 )
 
@@ -35,7 +35,7 @@ def main():
     print(f"Variable names: {var_names}")
     print()
 
-    predicted = parse_pysr_expression(expr_str, var_names=var_names)
+    predicted = parse_expr_str_to_sympy(expr_str, var_names=var_names)
     ground_truth = parse_ground_truth_formula(ground_truth_str, var_names=var_names)
 
     print("Parsed:")

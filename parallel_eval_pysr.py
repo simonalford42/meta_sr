@@ -295,13 +295,14 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     custom_selection_code=spec.custom_selection_code,
                     custom_survival_code=spec.custom_survival_code,
                 )
-                if cached is not None:
+                if cached is not None and cached.get("gt_match_score") is not None:
                     return PySRTaskResult(
                         config_id=spec.config_id,
                         dataset_name=spec.dataset_name,
                         r2_score=cached["r2_score"],
                         best_equation=cached["best_equation"],
                         best_loss=cached["best_loss"],
+                        gt_match_score=cached.get("gt_match_score"),
                         error=cached["error"],
                         run_index=spec.run_index,
                         timed_out=cached.get("timed_out", False),
@@ -399,7 +400,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         best_loss = float(best["loss"]) if best is not None else float("inf")
         gt_match_score = None
 
-        if spec.fitness_metric == "gt":
+        # Always attempt GT matching when a ground truth formula is available
+        if ground_truth_for_match is not None:
             from evaluation import check_pysr_frontier_symbolic_match
             try:
                 gt_match_result = check_pysr_frontier_symbolic_match(
@@ -464,6 +466,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                         runtime_seconds=result.runtime_seconds,
                         custom_selection_code=spec.custom_selection_code,
                         custom_survival_code=spec.custom_survival_code,
+                        gt_match_score=result.gt_match_score,
                     )
             except Exception:
                 pass
@@ -484,35 +487,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             runtime_seconds=runtime,
         )
 
-        # Store error in cache too
-        if use_cache:
-            try:
-                from evaluation_cache import get_pysr_cache
-                cache = get_pysr_cache()
-                if cache is not None:
-                    cache.store(
-                        mutation_weights=pysr_mutation_kwargs,
-                        pysr_kwargs=spec.pysr_kwargs,
-                        dataset_name=spec.dataset_name,
-                        seed=spec.seed,
-                        data_seed=spec.data_seed,
-                        max_samples=spec.max_samples,
-                        run_index=spec.run_index,
-                        custom_mutation_code=spec.custom_mutation_code,
-                        allow_custom_mutations=spec.allow_custom_mutations,
-                        pysr_model_kwargs=model_kwargs,
-                        target_noise=spec.target_noise,
-                        r2_score=result.r2_score,
-                        best_equation=result.best_equation,
-                        best_loss=result.best_loss,
-                        error=result.error,
-                        timed_out=result.timed_out,
-                        runtime_seconds=result.runtime_seconds,
-                        custom_selection_code=spec.custom_selection_code,
-                        custom_survival_code=spec.custom_survival_code,
-                    )
-            except Exception:
-                pass
+        # Don't cache errors — they may be transient (node issues, Julia crashes)
+        # and caching them poisons future runs.
 
         return result
 
@@ -714,7 +690,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # Pre-filter cached tasks
         uncached_indices = []
         n_cached = 0
-        use_cache_for_run = self.use_cache and fitness_metric == "r2"
+        use_cache_for_run = self.use_cache
         if use_cache_for_run:
             try:
                 from evaluation_cache import get_pysr_cache
@@ -747,7 +723,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             custom_selection_code=task.custom_selection_code,
                             custom_survival_code=task.custom_survival_code,
                         )
-                        if cached is not None:
+                        if cached is not None and cached.get("gt_match_score") is not None:
                             # Pre-write cached result to results directory
                             # Handle potential None values from cache
                             r2_score = cached["r2_score"]
@@ -762,6 +738,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                                 r2_score=r2_score,
                                 best_equation=cached["best_equation"],
                                 best_loss=best_loss,
+                                gt_match_score=cached.get("gt_match_score"),
                                 error=cached["error"],
                                 run_index=task.run_index,
                                 timed_out=cached.get("timed_out", False),

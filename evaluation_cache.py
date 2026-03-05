@@ -52,6 +52,7 @@ class PySRCacheEntry(Base):
     dataset_name = Column(String, index=True)
     # Result data
     r2_score = Column(Float)
+    gt_match_score = Column(Float, nullable=True)
     best_equation = Column(Text, nullable=True)
     best_loss = Column(Float)
     error = Column(Text, nullable=True)
@@ -262,6 +263,19 @@ class PySRCacheDB:
             os.makedirs(db_dir, exist_ok=True)
         self.engine = create_engine(f"sqlite:///{database_path}")
         Base.metadata.create_all(self.engine)
+        self._migrate()
+
+    def _migrate(self):
+        """Add columns that may be missing from older databases."""
+        from sqlalchemy import inspect as sa_inspect, text
+        inspector = sa_inspect(self.engine)
+        columns = {c["name"] for c in inspector.get_columns("pysr_evaluations")}
+        if "gt_match_score" not in columns:
+            with self.engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE pysr_evaluations ADD COLUMN gt_match_score FLOAT"
+                ))
+                conn.commit()
 
     def _make_config_hash(
         self,
@@ -348,6 +362,7 @@ class PySRCacheDB:
             PySRCacheEntry.error,
             PySRCacheEntry.timed_out,
             PySRCacheEntry.runtime_seconds,
+            PySRCacheEntry.gt_match_score,
         ).where(PySRCacheEntry.request_hash == request_hash)
 
         with Session(self.engine) as session:
@@ -360,6 +375,7 @@ class PySRCacheDB:
                     "error": result[3],
                     "timed_out": result[4],
                     "runtime_seconds": result[5],
+                    "gt_match_score": result[6],
                 }
         return None
 
@@ -384,6 +400,7 @@ class PySRCacheDB:
         runtime_seconds: float = 0.0,
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
+        gt_match_score: Optional[float] = None,
     ) -> None:
         """Store a PySR evaluation result in the cache."""
         config_hash = self._make_config_hash(
@@ -401,6 +418,7 @@ class PySRCacheDB:
             config_hash=config_hash,
             dataset_name=dataset_name,
             r2_score=r2_score,
+            gt_match_score=gt_match_score,
             best_equation=best_equation,
             best_loss=best_loss,
             error=error,

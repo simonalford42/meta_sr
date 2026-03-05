@@ -220,6 +220,7 @@ def run_pysr_on_dataset(
         # ncycles_per_iteration=10,
         parallelism='multithreading',
         procs=n_cpus,
+        # model-selection='score',
         populations=3*n_cpus,
         niterations=1000000000000,
         # population_size=100,
@@ -279,6 +280,9 @@ def run_pysr_on_dataset(
 
     # Get best equation
     best_eq = model.get_best()
+
+    import pdb; pdb.set_trace()
+
     if hasattr(best_eq, 'sympy_format'):
         best_equation_str = str(best_eq.sympy_format)
     else:
