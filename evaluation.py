@@ -292,25 +292,6 @@ def parse_expr_str_to_sympy(expr_str, var_names=None):
     return parse_expr(expr_str, local_dict=local_dict)
 
 
-def parse_ground_truth_formula(formula_str, var_names=None):
-    """
-    Parse a ground truth formula string (e.g., 'k = 2*pi*alpha/(n*d)') to sympy.
-
-    Args:
-        formula_str: Formula string, may include '=' for assignment
-        var_names: List of variable names
-
-    Returns:
-        sympy expression (RHS of equation if '=' present)
-    """
-    # Extract RHS if formula has '='
-    if '=' in formula_str:
-        formula_str = formula_str.split('=', 1)[1].strip()
-
-    return parse_expr_str_to_sympy(formula_str, var_names)
-
-
-
 def load_pysr_hall_of_fame(csv_path):
     """
     Load PySR hall of fame CSV file.

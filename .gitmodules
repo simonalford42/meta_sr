@@ -7,3 +7,6 @@
 [submodule "PySR"]
 	path = PySR
 	url = https://github.com/simonalford42/PySR.git
+[submodule "openevolve"]
+	path = openevolve
+	url = https://github.com/simonalford42/openevolve.git

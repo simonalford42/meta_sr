@@ -1009,7 +1009,7 @@ def main():
                         help="Meta-evolution fitness metric: r2 or gt (whole-frontier symbolic match rate)")
 
     # Dataset settings
-    parser.add_argument("--split", type=str, default="splits/train_hard.txt",
+    parser.add_argument("--split", type=str, default="splits/train.txt",
                         help="Path to dataset split file")
     parser.add_argument("--max_samples", type=int, default=1000,
                         help="Maximum samples per dataset")

@@ -25,7 +25,9 @@ sbatch --time=10:00:00 run_pysr.sh --results_dir results_pysr_1e6 --max_evals 10
 # sbatch run.sh evolve_pysr.py
 
 sbatch run.sh evolve_pysr.py --fitness_metric gt --split splits/train.txt
+sbatch run.sh evolve_basic_sr.py --split splits/train.txt
 # sbatch run.sh evolve_basic_sr.py
 sbatch run.sh evolve_selection.py --fitness_metric gt --split splits/train.txt
 sbatch run.sh evolve_survival.py --fitness_metric gt --split splits/train.txt
+sbatch run.sh hpo_pysr.py --n-trials 500
 

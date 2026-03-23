@@ -543,6 +543,42 @@ def main() -> None:
                 "val": asdict(val_result),
             })
 
+        # If both survival and selection are provided, also evaluate the combined config
+        survival_er = next((er for er in evolve_results if er.operator_type == "survival"), None)
+        selection_er = next((er for er in evolve_results if er.operator_type == "selection"), None)
+        if survival_er is not None and selection_er is not None:
+            combined_extra = {
+                "custom_survival_code": survival_er.code,
+                "custom_selection_code": selection_er.code,
+            }
+
+            print("=" * 60)
+            print("Evaluating combined survival+selection on train split...")
+            print("=" * 60)
+            train_combined = evaluate_config(
+                evaluator, train_datasets, pysr_kwargs, baseline_weights,
+                args.seed, args.n_runs, "train_combined_surv_sel",
+                **combined_extra,
+            )
+
+            print("=" * 60)
+            print("Evaluating combined survival+selection on validation split...")
+            print("=" * 60)
+            val_combined = evaluate_config(
+                evaluator, val_datasets, pysr_kwargs, baseline_weights,
+                args.seed, args.n_runs, "val_combined_surv_sel",
+                **combined_extra,
+            )
+
+            all_configs["surv+sel"] = {"train": train_combined, "val": val_combined}
+
+            summary["operators"].append({
+                "operator_type": "combined_survival_selection",
+                "name": f"{survival_er.name} + {selection_er.name}",
+                "train": asdict(train_combined),
+                "val": asdict(val_combined),
+            })
+
         # Print comparison table
         print_comparison_table(all_configs, args.n_runs)
 

@@ -1123,6 +1123,7 @@ def get_default_pysr_kwargs() -> Dict[str, Any]:
         "progress": True,
         "temp_equation_file": False,
         "delete_tempfiles": True,
+        "output_directory": "pysr_outputs"
     }
 
 

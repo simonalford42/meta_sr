@@ -24,6 +24,7 @@ import json
 import time
 from pathlib import Path
 from pysr import PySRRegressor
+from evaluation import check_symbolic_match
 
 
 def add_noise(data, noise_level, seed=None):
@@ -180,7 +181,7 @@ def run_pysr_on_dataset(
         print(f"Data shape: X={X.shape}, y range=[{y.min():.3e}, {y.max():.3e}]")
         print(f"Features: {feature_names}")
         if 'description' in metadata:
-            print(f"Description: {metadata.get('description', 'N/A')[:200]}...")
+            print(f"Description: {metadata.get('description', 'N/A')}...")
 
     # Split into train/test (75/25)
     n_samples = len(y)
@@ -399,6 +400,8 @@ def main():
                 verbose=verbose,
                 target_noise=args.target_noise,
             )
+
+            result = check_symbolic_match(results['best_equation'], )
 
             if verbose:
                 print(f"\nCompleted: {dataset_name}")
