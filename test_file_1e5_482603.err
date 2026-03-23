@@ -1,0 +1,44 @@
+Traceback (most recent call last):
+  File "/home/mdo57/meta_sr/run_sr_all_srbench.py", line 94, in <module>
+    check_result = evaluation.check_symbolic_match(predicted_expression_str, evaluation.parse_ground_truth(truth))
+  File "/home/mdo57/meta_sr/evaluation.py", line 152, in check_symbolic_match
+    ground_truth_is_zero = ground_truth_clean.equals(0)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/expr.py", line 757, in equals
+    constant = diff.is_constant(simplify=False, failing_number=True)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/expr.py", line 677, in is_constant
+    if b is not None and b is not S.NaN and b.equals(a) is False:
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/expr.py", line 741, in equals
+    diff = factor_terms(simplify(self - other), radical=True)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/simplify/simplify.py", line 644, in simplify
+    _e = cancel(expr)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/polys/polytools.py", line 6832, in cancel
+    f = signsimp(f)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/simplify/simplify.py", line 406, in signsimp
+    e = sub_post(sub_pre(e))
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/simplify/cse_opts.py", line 14, in sub_pre
+    adds = [a for a in e.atoms(Add) if a.could_extract_minus_sign()]
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/simplify/cse_opts.py", line 14, in <listcomp>
+    adds = [a for a in e.atoms(Add) if a.could_extract_minus_sign()]
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/add.py", line 415, in could_extract_minus_sign
+    return _could_extract_minus_sign(self)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/add.py", line 33, in _could_extract_minus_sign
+    return bool(expr.sort_key() < (-expr).sort_key())
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/cache.py", line 72, in wrapper
+    retval = cfunc(*args, **kwargs)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/expr.py", line 135, in sort_key
+    args = expr.as_ordered_terms(order=order)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/expr.py", line 1146, in as_ordered_terms
+    terms, gens = self.as_terms()
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/expr.py", line 1202, in as_terms
+    gens = sorted(gens, key=default_sort_key)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/numbers.py", line 2269, in __lt__
+    return Rational.__lt__(self, other)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/numbers.py", line 1965, in __lt__
+    return Expr.__lt__(*rv)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/decorators.py", line 236, in _func
+    return func(self, other)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/expr.py", line 376, in __lt__
+    return StrictLessThan(self, other)
+  File "/home/mdo57/conda/envs/meta_sr/lib/python3.10/site-packages/sympy/core/relational.py", line 824, in __new__
+    raise TypeError("Invalid NaN comparison")
+TypeError: Invalid NaN comparison

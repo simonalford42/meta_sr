@@ -175,6 +175,27 @@ def check_symbolic_match(predicted_expr, ground_truth_expr, n_vars=None):
     return result
 
 
+def parse_ground_truth(ground_truth_str, n_vars=10):
+    """
+    Parse a ground truth expression string to sympy.
+
+    Args:
+        ground_truth_str: String like 'x0**2 + x1'
+        n_vars: Maximum number of variables to create symbols for
+
+    Returns:
+        sympy expression
+    """
+    local_dict = {f'x{i}': Symbol(f'x{i}') for i in range(n_vars)}
+
+    local_dict['gamma'] = local_dict.get('x0', Symbol('x0'))
+    local_dict['beta'] = local_dict.get('x1', Symbol('x1'))
+    local_dict['E'] = local_dict.get('x2', Symbol('x2'))
+    local_dict['I'] = local_dict.get('x3', Symbol('x3'))
+
+    return parse_expr(ground_truth_str, local_dict=local_dict)
+
+
 def evaluate_model(predicted_node, X, y, ground_truth_str=None):
     """
     Comprehensive evaluation of a predicted model.

@@ -1,0 +1,1046 @@
+exp(-(theta/sigma)**2/2)/(sqrt(2*pi)*sigma)
+Begin 100000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           1.935e-03  0.000e+00  y = 0.1119
+3           5.489e-04  6.299e-01  y = 0.20219 / theta
+5           5.142e-04  3.259e-02  y = 0.29408 / sqrt(exp(theta))
+7           4.848e-04  2.942e-02  y = (0.34066 / sqrt(exp(theta))) + -0.019473
+8           4.847e-04  3.427e-04  y = 0.9318 / (exp(theta) + sqrt(square(sigma)))
+9           4.822e-04  5.119e-03  y = exp((sigma * (-0.48612 / square(theta))) - theta)
+11          3.633e-04  1.415e-01  y = square(-0.49513) / ((sigma - cos(theta)) / (sigma / 1....
+                                      9667))
+13          3.587e-04  6.335e-03  y = sin(square(-0.49513)) / ((sigma - cos(theta)) / (sigma...
+                                       / square(1.3897)))
+23          3.273e-04  9.161e-03  y = cos(cos(sin(log(theta)) - cos(log(theta) - (sigma * 0....
+                                      44703)))) * ((cos(log(theta) - 0.76725) / theta) * 0.36426...
+                                      )
+24          3.046e-04  7.199e-02  y = cos(cos(sin(log(sqrt(theta))) - cos(log(theta) - (sigm...
+                                      a * 0.43976)))) * ((cos(log(theta) - 0.55039) / theta) * 0...
+                                      .31061)
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_6_2_pysr_state/20260323_153001_tWo6jb/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_6_2 --max_evals=100000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_6_2_pysr_state
+============================================================
+Running PySR on: feynman_I_6_2
+============================================================
+Data shape: X=(1000, 2), y range=[4.815e-03, 2.363e-01]
+Features: ['sigma', 'theta']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+f = exp(-(theta/sigma)**2/2)/...
+Train samples: 750, Test samples: 250
+[CHECKPOINT NOT FOUND]: Starting fresh.
+
+Starting PySR fit...
+
+Fit completed in 37.3 seconds
+
+Results:
+  Test MSE: 3.6194e-04
+  Test R²:  0.7863
+  Best equation: 0.245153162354714/(((sigma - cos(theta))/((sigma/1.9666728))))
+
+Results saved to: results_pysr/feynman_I_6_2_n1000_seed42.json
+
+Completed: feynman_I_6_2
+R² = 0.7863
+
+100000 complete
+--- Current Best at 100000: 0.245153162354714/(((sigma - cos(theta))/((sigma/1.9666728))))
+--- Current MSE: 3.6194e-04
+Begin 1000000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           1.935e-03  0.000e+00  y = 0.11189
+3           5.489e-04  6.299e-01  y = 0.20219 / theta
+4           5.477e-04  2.134e-03  y = sin(0.2029 / theta)
+5           4.866e-04  1.182e-01  y = (theta * -0.065055) + 0.24139
+7           4.812e-04  5.612e-03  y = cos(log(theta + 0.82767)) * 0.21663
+8           4.520e-04  6.248e-02  y = (0.23085 * sin(sigma / theta)) / theta
+9           1.318e-04  1.233e+00  y = cos(log(sigma / theta)) * (0.22994 / theta)
+11          6.936e-05  3.209e-01  y = (0.23085 / theta) * cos(log(theta / (sigma + -0.22392)...
+                                      ))
+12          4.845e-05  3.586e-01  y = cos(log(sigma / theta) * sqrt(theta)) * (0.23085 / the...
+                                      ta)
+14          2.927e-05  2.520e-01  y = (cos(log(theta / sigma) * sqrt(theta - 0.16469)) / the...
+                                      ta) * 0.23085
+23          2.431e-05  2.063e-02  y = ((cos((cos(sigma) * (theta * -0.69498)) - (theta * (si...
+                                      n(sqrt(theta)) - exp(cos(theta))))) * 0.098666) + 0.14352)...
+                                       / theta
+32          1.297e-05  6.984e-02  y = (square(((sqrt(0.64322 / exp(sigma)) * 0.3243) * theta...
+                                      ) + -0.70329) / sigma) * cos(exp(0.5471 / cos(cos(sqrt(squ...
+                                      are(sigma))))) / ((sigma * (-2.0009 - sigma)) / theta))
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_6_2_pysr_state/20260323_153001_tWo6jb/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_6_2 --max_evals=1000000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_6_2_pysr_state
+============================================================
+Running PySR on: feynman_I_6_2
+============================================================
+Data shape: X=(1000, 2), y range=[4.815e-03, 2.363e-01]
+Features: ['sigma', 'theta']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+f = exp(-(theta/sigma)**2/2)/...
+Train samples: 750, Test samples: 250
+[CHECKPOINT FOUND]: Resuming from /home/mdo57/meta_sr/results_pysr/feynman_I_6_2_pysr_state/20260323_153001_tWo6jb/checkpoint.pkl
+
+Starting PySR fit...
+
+Fit completed in 66.8 seconds
+
+Results:
+  Test MSE: 1.2911e-05
+  Test R²:  0.9924
+  Best equation: 0.4946222535137*(0.369818618932424*theta*sqrt(exp(-sigma)) - 1)**2*cos(theta*exp(0.54709595/cos(cos(sqrt(sigma**2))))/(sigma*(-sigma - 2.0009327)))/sigma
+
+Results saved to: results_pysr/feynman_I_6_2_n1000_seed42.json
+
+Completed: feynman_I_6_2
+R² = 0.9924
+
+1000000 complete
+--- Current Best at 1000000: 0.4946222535137*(0.369818618932424*theta*sqrt(exp(-sigma)) - 1)**2*cos(theta*exp(0.54709595/cos(cos(sqrt(sigma**2))))/(sigma*(-sigma - 2.0009327)))/sigma
+--- Current MSE: 1.2911e-05
+Begin 10000000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           1.935e-03  0.000e+00  y = 0.11189
+3           5.489e-04  6.299e-01  y = 0.20219 / theta
+4           5.477e-04  2.134e-03  y = sin(0.2029 / theta)
+5           4.866e-04  1.182e-01  y = (theta * -0.065055) + 0.24139
+6           4.792e-04  1.528e-02  y = square((theta * -0.098793) + 0.52609)
+7           4.791e-04  3.887e-04  y = square(sin((theta * -0.10519) + 0.54565))
+8           1.397e-04  1.233e+00  y = ((cos(theta) * 0.14532) / sigma) - -0.1399
+9           1.318e-04  5.824e-02  y = cos(log(sigma / theta)) * (0.22994 / theta)
+10          1.423e-05  2.225e+00  y = square(((theta * -0.24148) / sigma) + 0.72632) / sigma
+12          1.351e-05  2.629e-02  y = (square(((theta / sigma) * -0.24067) + 0.73173) / sigm...
+                                      a) - 0.003221
+16          5.981e-06  2.036e-01  y = cos((theta / 1.7543) / sigma) * ((((theta / sigma) * -...
+                                      0.16427) + 0.45051) / sigma)
+17          2.173e-06  1.012e+00  y = square(cos(theta / (sigma * 2.0208))) * (((theta * (-0...
+                                      .13446 / sigma)) + 0.44502) / sigma)
+19          2.173e-06  5.960e-08  y = ((0.44502 / sigma) + (-0.13446 / ((sigma * sigma) / th...
+                                      eta))) * square(cos(theta / (sigma * 2.0208)))
+21          1.391e-06  2.233e-01  y = (((((theta / sigma) * -0.15449) + 0.51541) * (square(c...
+                                      os(theta / (-1.9527 * sigma))) * 0.85234)) + 0.0064065) / ...
+                                      sigma
+23          1.367e-06  8.692e-03  y = (((square(cos(theta / ((sigma - 0.0068422) * -1.9584))...
+                                      ) * (((theta * -0.1544) / sigma) + 0.515)) * 0.85208) + 0....
+                                      0068422) / sigma
+25          6.809e-07  3.484e-01  y = ((cos(sin((log(sigma / theta) * -1.4988) / sigma)) * c...
+                                      os(sqrt(theta) * (log(theta / sigma) / 1.1884))) / theta) ...
+                                      * 0.24229
+26          4.985e-07  3.117e-01  y = (cos(sqrt(theta) * (log(theta / sigma) / 1.2836)) * 0....
+                                      24186) * (cos((log(theta / sigma) / (-0.65638 - sigma)) * ...
+                                      2.2003) / theta)
+28          3.661e-07  1.544e-01  y = cos(log(theta / sigma) * (-2.2353 / (-0.72958 - sigma)...
+                                      )) * ((0.24157 * cos((log(theta * (1.0082 / sigma)) / 1.27...
+                                      27) * sqrt(theta))) / theta)
+30          3.598e-07  8.698e-03  y = ((cos((log(theta * (1.0082 / sigma)) / 1.2727) * sqrt(...
+                                      theta)) * 0.24157) / theta) * cos((0.0016653 + log(theta /...
+                                       sigma)) * (-2.2353 / (-0.72958 - sigma)))
+32          3.588e-07  1.345e-03  y = ((cos((log((theta / sigma) + 0.0022378) * -2.2352) / (...
+                                      sigma - -0.72973)) * cos((log((theta / sigma) * 1.0081) / ...
+                                      1.2731) * sqrt(theta * 1.0079))) / theta) * 0.24164
+33          3.586e-07  7.265e-04  y = cos((log(theta / sigma) * (cos(0.31012 / sigma) + 1.19...
+                                      82)) / (sigma - -0.68883)) * ((0.24166 / theta) * cos(sqrt...
+                                      (theta) * (log((sigma / theta) * 0.98965) / 1.2622)))
+34          3.008e-07  1.757e-01  y = (cos(((cos(0.12593 / sin(theta)) + 1.1986) * log(theta...
+                                       / sigma)) / (sigma - -0.69076)) * (cos((log(sigma * (0.98...
+                                      911 / theta)) * sqrt(theta)) / 1.2609) * 0.24165)) / theta
+35          2.330e-07  2.554e-01  y = (cos((cos(square(cos(theta) / sigma)) + 1.2189) * (log...
+                                      (theta / sigma) / (sigma - -0.69091))) / theta) * (cos((lo...
+                                      g((sigma * 0.98812) / theta) * sqrt(theta)) / 1.2629) * 0....
+                                      2419)
+36          2.007e-07  1.495e-01  y = (0.2419 * cos((log((sigma * 0.98889) / theta) / 1.2689...
+                                      ) * sqrt(theta))) * (cos((log(theta / sigma) / (-0.68264 -...
+                                       sigma)) * (cos(square(cos(theta) / square(sigma))) + 1.21...
+                                      69)) / theta)
+37          1.991e-07  7.781e-03  y = ((cos(log((0.99006 / theta) * sigma) * (sqrt(theta) / ...
+                                      1.2644)) / theta) * 0.24198) * cos((cos(square(cos(theta /...
+                                       sigma) / sigma)) + 1.2184) * (log(theta / sigma) / (sigma...
+                                       - -0.69131)))
+38          1.615e-07  2.091e-01  y = (cos((cos((-0.3447 / sin(theta)) / square(square(sigma...
+                                      ))) + 1.2185) * (log(theta / sigma) / (-0.69083 - sigma)))...
+                                       / theta) * (cos(sqrt(theta) * (log(sigma * (0.98823 / the...
+                                      ta)) / 1.2648)) * 0.24185)
+39          1.529e-07  5.489e-02  y = (cos((sqrt(theta) * log((sigma / theta) * 0.98989)) / ...
+                                      1.2571) * (0.24192 / theta)) * cos(((cos((cos(sigma) / (si...
+                                      gma - -0.68884)) / sin(theta)) + 1.2213) / (-0.68884 - sig...
+                                      ma)) * log(theta / sigma))
+40          1.474e-07  3.701e-02  y = (cos((log((sigma / theta) * 0.99082) * sqrt(theta)) / ...
+                                      1.2561) * (0.24189 / theta)) * cos(((cos((cos(sigma) / sin...
+                                      (theta)) / (sqrt(theta) * sigma)) + 1.2221) * log(sigma / ...
+                                      theta)) / (sigma - -0.68806))
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_6_2_pysr_state/20260323_153001_tWo6jb/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_6_2 --max_evals=10000000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_6_2_pysr_state
+============================================================
+Running PySR on: feynman_I_6_2
+============================================================
+Data shape: X=(1000, 2), y range=[4.815e-03, 2.363e-01]
+Features: ['sigma', 'theta']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+f = exp(-(theta/sigma)**2/2)/...
+Train samples: 750, Test samples: 250
+[CHECKPOINT FOUND]: Resuming from /home/mdo57/meta_sr/results_pysr/feynman_I_6_2_pysr_state/20260323_153001_tWo6jb/checkpoint.pkl
+
+Starting PySR fit...
+
+Fit completed in 288.4 seconds
+
+Results:
+  Test MSE: 1.4464e-07
+  Test R²:  0.9999
+  Best equation: 0.24184561*cos(0.790652651346928*sqrt(theta)*log(0.9882279*sigma/theta))*cos((cos(0.3446992/(sigma**4*sin(theta))) + 1.218524)*log(theta/sigma)/(-sigma - 0.6908256))/theta
+
+Results saved to: results_pysr/feynman_I_6_2_n1000_seed42.json
+
+Completed: feynman_I_6_2
+R² = 0.9999
+
+10000000 complete
+--- Current Best at 10000000: 0.24184561*cos(0.790652651346928*sqrt(theta)*log(0.9882279*sigma/theta))*cos((cos(0.3446992/(sigma**4*sin(theta))) + 1.218524)*log(theta/sigma)/(-sigma - 0.6908256))/theta
+--- Current MSE: 1.4464e-07
+dataset: feynman_I_6_2, prediction: 0.24184561*cos(0.790652651346928*sqrt(theta)*log(0.9882279*sigma/theta))*cos((cos(0.3446992/(sigma**4*sin(theta))) + 1.218524)*log(theta/sigma)/(-sigma - 0.6908256))/theta
+{'match': False, 'error_is_zero': False, 'error_is_constant': False, 'fraction_is_constant': False, 'simplified_predicted': '0.24184561*cos(0.790652651346928*sqrt(theta)*(log(sigma/theta) - 0.0118419398178513))*cos((cos(0.3446992/(sigma**4*sin(theta))) + 1.218524)*log(theta/sigma)/(sigma + 0.6908256))/theta', 'symbolic_error': '-0.242*cos(0.791*sqrt(theta)*(log(sigma/theta) - 0.012))*cos((cos(0.345/(sigma**4*sin(theta))) + 1.22)*log(theta/sigma)/(sigma + 0.691))/theta + sqrt(2)*exp(-theta**2/(2*sigma**2))/(2*sqrt(pi)*sigma)'}
+total_predictions=1
+accurate_predictions=0
+Accuracy=0.0
+Total time=288.40683937072754
+Average time per dataset=288.40683937072754
+Average MSE=1.4463747288018853e-07
+Average R^2=0.9999146170035059
+correct predictions after 1e5=0
+percentage of correct predictions after 1e5=0.0
+
+
+exp(-theta**2/2)/sqrt(2*pi)
+Begin 100000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           4.918e-03  0.000e+00  y = 0.08271
+3           1.760e-03  5.137e-01  y = 0.17041 / theta
+4           7.972e-05  3.095e+00  y = exp(theta * -1.4004)
+7           2.981e-05  3.279e-01  y = (0.31842 / (theta - 0.1633)) + -0.11542
+8           4.042e-06  1.998e+00  y = sin(square(sqrt(theta) + -1.7848) * 0.40835)
+13          3.463e-06  3.092e-02  y = square((((-1.3121 - cos(theta)) * theta) * (1.0269 / t...
+                                      heta)) * 0.25498)
+17          3.463e-06  2.533e-07  y = square((((log(0.26925) - cos(theta)) * (log(square(1.6...
+                                      71)) / theta)) * square(-0.50495)) * theta)
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_6_2a_pysr_state/20260323_154135_xnahUx/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_6_2a --max_evals=100000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_6_2a_pysr_state
+============================================================
+Running PySR on: feynman_I_6_2a
+============================================================
+Data shape: X=(1000, 1), y range=[4.494e-03, 2.414e-01]
+Features: ['theta']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+f = exp(-theta**2/2)/sqrt(2*p...
+Train samples: 750, Test samples: 250
+[CHECKPOINT NOT FOUND]: Starting fresh.
+
+Starting PySR fit...
+
+Fit completed in 36.5 seconds
+
+Results:
+  Test MSE: 4.4767e-06
+  Test R²:  0.9992
+  Best equation: sin(1.30075641098713*(0.560293961588711*sqrt(theta) - 1)**2)
+
+Results saved to: results_pysr/feynman_I_6_2a_n1000_seed42.json
+
+Completed: feynman_I_6_2a
+R² = 0.9992
+
+100000 complete
+--- Current Best at 100000: sin(1.30075641098713*(0.560293961588711*sqrt(theta) - 1)**2)
+--- Current MSE: 4.4767e-06
+Begin 1000000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           4.918e-03  0.000e+00  y = 0.08271
+3           1.760e-03  5.137e-01  y = 0.17041 / theta
+4           7.972e-05  3.095e+00  y = exp(theta * -1.4004)
+5           2.419e-05  1.193e+00  y = (0.3942 / theta) + -0.13776
+6           1.145e-05  7.478e-01  y = exp(theta * -1.2814) + -0.02121
+7           4.348e-06  9.684e-01  y = square(sqrt(theta) + -1.7876) * 0.40245
+8           3.562e-06  1.995e-01  y = sin(square(sqrt(theta) + -1.7728)) * 0.43571
+9           1.376e-06  9.510e-01  y = square((cos(theta) * 1.0321) - -1.3179) * 0.067767
+13          1.376e-06  9.984e-07  y = square((((cos(theta) / 0.71282) / 0.71282) * 0.53163) ...
+                                      - -1.3361) * 0.06593
+18          4.278e-07  2.336e-01  y = square((((theta / theta) - -0.27253) + cos(theta)) * 0...
+                                      .19911) * (sqrt(theta) + (0.87893 / theta))
+21          2.399e-07  1.928e-01  y = ((square((((theta / theta) - cos(theta)) * 0.16912) + ...
+                                      -0.3997) + -0.001071) / theta) * (theta + (theta + 0.36576...
+                                      ))
+27          1.430e-07  8.622e-02  y = (((theta + ((theta + 0.55152) + ((theta - 0.58414) * 0...
+                                      .070626))) * square((((theta / theta) - cos(theta)) * 0.15...
+                                      739) + -0.38276)) / theta) + -0.0052803
+28          1.340e-07  6.503e-02  y = ((((-0.019976 / (1.153 - cos(theta))) + ((theta + thet...
+                                      a) + 0.55192)) / theta) * square((((theta / theta) - cos(t...
+                                      heta)) * 0.15915) + -0.38724)) + -0.0054117
+30          1.308e-07  1.211e-02  y = ((((((theta - cos(theta)) / theta) * 0.086247) + ((the...
+                                      ta + theta) + 0.55145)) / theta) * square((((theta / theta...
+                                      ) - cos(theta)) * 0.15709) + -0.38177)) + -0.0051079
+34          1.017e-07  6.285e-02  y = ((((theta + theta) + 0.55145) + ((1.146 - ((cos(theta)...
+                                       / (theta - 0.76961)) * 0.31328)) * 0.061218)) * (square((...
+                                      ((theta / theta) - cos(theta)) * 0.15673) + -0.38201) / th...
+                                      eta)) + -0.0053399
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_6_2a_pysr_state/20260323_154135_xnahUx/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_6_2a --max_evals=1000000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_6_2a_pysr_state
+============================================================
+Running PySR on: feynman_I_6_2a
+============================================================
+Data shape: X=(1000, 1), y range=[4.494e-03, 2.414e-01]
+Features: ['theta']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+f = exp(-theta**2/2)/sqrt(2*p...
+Train samples: 750, Test samples: 250
+[CHECKPOINT FOUND]: Resuming from /home/mdo57/meta_sr/results_pysr/feynman_I_6_2a_pysr_state/20260323_154135_xnahUx/checkpoint.pkl
+
+Starting PySR fit...
+
+Fit completed in 60.7 seconds
+
+Results:
+  Test MSE: 1.5615e-07
+  Test R²:  1.0000
+  Best equation: -0.0052802567 + ((-cos(theta) + theta/theta)*0.15739188 - 0.38275933)**2*(theta + theta + (theta - 1*0.5841393)*0.070626386 + 0.55152345)/theta
+
+Results saved to: results_pysr/feynman_I_6_2a_n1000_seed42.json
+
+Completed: feynman_I_6_2a
+R² = 1.0000
+
+1000000 complete
+--- Current Best at 1000000: -0.0052802567 + ((-cos(theta) + theta/theta)*0.15739188 - 0.38275933)**2*(theta + theta + (theta - 1*0.5841393)*0.070626386 + 0.55152345)/theta
+--- Current MSE: 1.5615e-07
+Begin 10000000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           4.918e-03  0.000e+00  y = 0.082706
+3           1.760e-03  5.137e-01  y = 0.17041 / theta
+4           7.972e-05  3.095e+00  y = exp(theta * -1.4004)
+5           2.419e-05  1.193e+00  y = (0.3942 / theta) + -0.13776
+6           1.145e-05  7.478e-01  y = exp(theta * -1.2812) + -0.02124
+7           5.551e-07  3.027e+00  y = (exp(cos(theta)) - 0.35102) * 0.17845
+9           4.760e-07  7.686e-02  y = (exp(cos(theta / 0.99385)) * 0.17959) + -0.062325
+10          2.847e-07  5.140e-01  y = square((exp(cos(theta * 0.6746)) * 0.27731) + -0.11258...
+                                      )
+11          2.626e-07  8.074e-02  y = square((exp(cos(theta * 0.6746)) * 0.27731) + sin(-0.1...
+                                      1258))
+12          1.732e-07  4.163e-01  y = square(((sqrt(theta + -0.37906) - cos(theta)) * 0.1806...
+                                      8) + -0.5384)
+13          6.420e-08  9.925e-01  y = square((sin((sqrt(theta) - cos(theta)) * 0.15951) + -0...
+                                      .47921) / 0.82316)
+14          2.596e-08  9.055e-01  y = ((square(0.42434 - (cos(theta) * -0.2038)) / theta) * ...
+                                      sin(theta)) + 0.0014701
+16          2.593e-08  5.111e-04  y = (square((cos(theta) * -0.20386) - 0.42434) * (sin(sqrt...
+                                      (square(theta))) / theta)) + 0.0014794
+18          2.593e-08  3.278e-07  y = ((square((cos(theta) * -0.20386) - 0.42434) / sqrt(squ...
+                                      are(theta))) * sin(sqrt(square(theta)))) + 0.0014794
+20          2.308e-08  5.829e-02  y = ((sin(theta) * square((cos(theta) * -0.20341) - ((thet...
+                                      a / theta) + -0.57439))) / theta) + (theta * 0.00050479)
+21          1.906e-08  1.914e-01  y = ((sin(theta) * square(((theta / theta) - (cos(theta) *...
+                                       -0.20262)) + -0.57364)) / theta) + (square(theta) * 0.000...
+                                      16879)
+23          1.582e-08  9.299e-02  y = ((square(((theta / theta) - (cos(theta) * -0.20206)) +...
+                                       -0.57326) * sin(theta)) / theta) + ((theta * square(theta...
+                                      )) * 5.882e-05)
+24          1.254e-08  2.327e-01  y = ((square(((theta / theta) - (cos(theta) * -0.20142)) +...
+                                       -0.57292) * sin(theta)) / theta) + (square(square(theta) ...
+                                      + -0.52517) * 2.3212e-05)
+25          5.131e-09  8.934e-01  y = (square(theta) * -0.00064005) + ((((theta + 0.11655) +...
+                                       sin(theta)) / theta) * square(((theta / theta) + -0.7376)...
+                                       - (cos(theta) * -0.16623)))
+27          2.054e-09  4.577e-01  y = (square(theta) * -0.00076198) + (0.0012456 + ((0.11449...
+                                       + (sin(theta) + theta)) * (square((-0.1667 * cos(theta)) ...
+                                      - ((theta / theta) + -0.73854)) / theta)))
+30          1.717e-09  5.980e-02  y = ((square(theta + -0.26707) + cos(theta)) * -0.00089861...
+                                      ) + ((square((-0.73757 - (cos(theta) * -0.16689)) + (theta...
+                                       / theta)) * (theta + (sin(theta) + 0.1146))) / theta)
+32          1.716e-09  3.184e-04  y = ((square(theta + -0.26707) + (cos(theta) * 0.99961)) *...
+                                       -0.00089861) + ((((sin(theta) + 0.1146) + theta) * square...
+                                      ((theta / theta) + (-0.73757 - (cos(theta) * -0.16689)))) ...
+                                      / theta)
+34          1.702e-09  4.209e-03  y = ((((sin(theta) + 0.11449) + theta) * square(((theta / ...
+                                      theta) + -0.73759) - (cos(theta) * -0.16689))) / theta) + ...
+                                      ((cos(theta * -0.97567) + (square(theta + -0.26707) - 0.07...
+                                      3344)) * -0.00090587)
+37          1.235e-09  1.068e-01  y = ((square((-0.73759 - (cos(theta) * -0.16689)) + (theta...
+                                       / theta)) / theta) * ((theta + sin(theta)) + 0.11449)) + ...
+                                      ((square(theta + -0.26727) + (cos(theta) - (square(sin(squ...
+                                      are(theta))) * 0.071035))) * -0.00090524)
+38          1.154e-09  6.795e-02  y = ((cos(theta) + (square(theta + -0.26707) - square(squa...
+                                      re(sin(square(theta)) * -0.52041)))) * -0.00090363) + ((((...
+                                      theta + sin(theta)) + 0.11449) / theta) * square(((theta /...
+                                       theta) + -0.73759) - (cos(theta) * -0.16689)))
+39          1.079e-09  6.713e-02  y = ((square(((theta / theta) - (cos(theta) * -0.16689)) +...
+                                       -0.73758) * (theta + (0.11449 + sin(theta)))) / theta) + ...
+                                      (((square(theta + -0.26707) + cos(theta)) - square(square(...
+                                      square(sin(square(theta))) * -0.52041))) * -0.00090206)
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_6_2a_pysr_state/20260323_154135_xnahUx/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_6_2a --max_evals=10000000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_6_2a_pysr_state
+============================================================
+Running PySR on: feynman_I_6_2a
+============================================================
+Data shape: X=(1000, 1), y range=[4.494e-03, 2.414e-01]
+Features: ['theta']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+f = exp(-theta**2/2)/sqrt(2*p...
+Train samples: 750, Test samples: 250
+[CHECKPOINT FOUND]: Resuming from /home/mdo57/meta_sr/results_pysr/feynman_I_6_2a_pysr_state/20260323_154135_xnahUx/checkpoint.pkl
+
+Starting PySR fit...
+
+Fit completed in 302.9 seconds
+
+Results:
+  Test MSE: 1.4725e-09
+  Test R²:  1.0000
+  Best equation: ((theta - 0.26727164)**2 - 0.071034715*sin(theta**2)**2 + cos(theta))*(-0.00090524345) + (theta + sin(theta) + 0.114490874)*(-(-0.16689)*cos(theta) - 0.7375918 + theta/theta)**2/theta
+
+Results saved to: results_pysr/feynman_I_6_2a_n1000_seed42.json
+
+Completed: feynman_I_6_2a
+R² = 1.0000
+
+10000000 complete
+--- Current Best at 10000000: ((theta - 0.26727164)**2 - 0.071034715*sin(theta**2)**2 + cos(theta))*(-0.00090524345) + (theta + sin(theta) + 0.114490874)*(-(-0.16689)*cos(theta) - 0.7375918 + theta/theta)**2/theta
+--- Current MSE: 1.4725e-09
+dataset: feynman_I_6_2a, prediction: ((theta - 0.26727164)**2 - 0.071034715*sin(theta**2)**2 + cos(theta))*(-0.00090524345) + (theta + sin(theta) + 0.114490874)*(-(-0.16689)*cos(theta) - 0.7375918 + theta/theta)**2/theta
+{'match': False, 'error_is_zero': False, 'error_is_constant': False, 'fraction_is_constant': False, 'simplified_predicted': '-0.00090524345*(theta - 0.26727164)**2 + 6.43037104763667e-5*sin(theta**2)**2 - 0.00090524345*cos(theta) + 0.06885806342724*(0.635993844704548*cos(theta) + 1)**2*(theta + sin(theta) + 0.114490874)/theta', 'symbolic_error': '0.001*(theta - 0.267)**2 + 0.001*cos(theta) + sqrt(2)*exp(-theta**2/2)/(2*sqrt(pi)) - 0.069*(0.636*cos(theta) + 1)**2*(theta + sin(theta) + 0.114)/theta'}
+total_predictions=2
+accurate_predictions=0
+Accuracy=0.0
+Total time=591.3378720283508
+Average time per dataset=295.6689360141754
+Average MSE=7.30549895360704e-08
+Average R^2=0.9999571728794093
+correct predictions after 1e5=0
+percentage of correct predictions after 1e5=0.0
+
+
+exp(-((theta-theta1)/sigma)**2/2)/(sqrt(2*pi)*sigma)
+Begin 100000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           3.730e-03  0.000e+00  y = 0.19507
+3           1.441e-03  4.754e-01  y = 0.34824 / sigma
+4           1.412e-03  2.093e-02  y = sin(0.35211 / sigma)
+5           1.244e-03  1.265e-01  y = 0.45484 / (sigma - -0.47432)
+8           1.242e-03  4.775e-04  y = sqrt((-0.085126 / sigma) * -2.1604) + -0.11892
+10          1.238e-03  1.748e-03  y = square(exp(sqrt(sigma * 0.65505) * -0.73919) / 0.99549...
+                                      )
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_6_2b_pysr_state/20260323_154926_FcVouB/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_6_2b --max_evals=100000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_6_2b_pysr_state
+============================================================
+Running PySR on: feynman_I_6_2b
+============================================================
+Data shape: X=(1000, 3), y range=[8.071e-02, 3.963e-01]
+Features: ['sigma', 'theta', 'theta1']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+f = exp(-((theta-theta1)/sigm...
+Train samples: 750, Test samples: 250
+[CHECKPOINT NOT FOUND]: Starting fresh.
+
+Starting PySR fit...
+
+Fit completed in 36.4 seconds
+
+Results:
+  Test MSE: 1.3196e-03
+  Test R²:  0.5781
+  Best equation: 0.34823808/sigma
+
+Results saved to: results_pysr/feynman_I_6_2b_n1000_seed42.json
+
+Completed: feynman_I_6_2b
+R² = 0.5781
+
+100000 complete
+--- Current Best at 100000: 0.34823808/sigma
+--- Current MSE: 1.3196e-03
+Begin 1000000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           3.730e-03  0.000e+00  y = 0.19507
+3           1.441e-03  4.754e-01  y = 0.34824 / sigma
+4           1.412e-03  2.093e-02  y = sin(0.35211 / sigma)
+5           1.243e-03  1.268e-01  y = -0.4545 / (-0.46687 - sigma)
+6           1.234e-03  7.378e-03  y = sin(1.2583 / sigma) * 0.31482
+9           4.775e-04  3.166e-01  y = (cos(log(theta / theta1)) * 0.38446) / sigma
+10          4.615e-04  3.393e-02  y = (0.3844 - (square(theta1 - theta) * 0.077591)) / sigma
+11          3.808e-04  1.923e-01  y = ((cos(log(theta / theta1)) / sigma) + 0.08982) * 0.331...
+                                      33
+12          4.622e-05  2.109e+00  y = (0.38974 - square(((theta - theta1) * 0.35799) / sigma...
+                                      )) / sigma
+15          4.622e-05  1.391e-07  y = ((0.38974 - (square((theta1 - theta) / sigma) * 0.1281...
+                                      7)) / square(sigma)) * sigma
+16          4.622e-05  1.788e-07  y = (0.38974 - square(sigma * ((theta - theta1) * ((0.358 ...
+                                      / sigma) / sigma)))) / sigma
+17          4.431e-05  4.212e-02  y = (0.39083 - square(((theta1 + -0.023615) - theta) * (0....
+                                      35964 / sigma))) * (sigma / square(sigma))
+20          3.438e-05  8.456e-02  y = (sigma / square(sigma)) * (0.39177 - ((square((theta1 ...
+                                      - theta) * 0.30727) / sqrt(sigma)) / (sigma + -0.24283)))
+22          1.016e-05  6.093e-01  y = square((0.63057 - ((square((theta - theta1) * 0.36886)...
+                                       / sigma) / ((sqrt(theta) * 0.013197) + sigma))) / sigma) ...
+                                      * sigma
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_6_2b_pysr_state/20260323_154926_FcVouB/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_6_2b --max_evals=1000000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_6_2b_pysr_state
+============================================================
+Running PySR on: feynman_I_6_2b
+============================================================
+Data shape: X=(1000, 3), y range=[8.071e-02, 3.963e-01]
+Features: ['sigma', 'theta', 'theta1']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+f = exp(-((theta-theta1)/sigm...
+Train samples: 750, Test samples: 250
+[CHECKPOINT FOUND]: Resuming from /home/mdo57/meta_sr/results_pysr/feynman_I_6_2b_pysr_state/20260323_154926_FcVouB/checkpoint.pkl
+
+Starting PySR fit...
+
+Fit completed in 59.5 seconds
+
+Results:
+  Test MSE: 9.7194e-06
+  Test R²:  0.9969
+  Best equation: 0.39762041661225*(1 - 0.215766061545376*(theta - theta1)**2/(sigma*(sigma + 0.013197414*sqrt(theta))))**2/sigma
+
+Results saved to: results_pysr/feynman_I_6_2b_n1000_seed42.json
+
+Completed: feynman_I_6_2b
+R² = 0.9969
+
+1000000 complete
+--- Current Best at 1000000: 0.39762041661225*(1 - 0.215766061545376*(theta - theta1)**2/(sigma*(sigma + 0.013197414*sqrt(theta))))**2/sigma
+--- Current MSE: 9.7194e-06
+Begin 10000000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           3.730e-03  0.000e+00  y = 0.19507
+3           1.441e-03  4.754e-01  y = 0.34824 / sigma
+4           1.412e-03  2.093e-02  y = sin(0.35211 / sigma)
+5           1.243e-03  1.268e-01  y = 0.45446 / (sigma + 0.46652)
+6           1.234e-03  7.380e-03  y = sin(-1.2595 / sigma) * -0.31468
+8           5.382e-04  4.150e-01  y = 0.43916 / (sigma + square(theta - theta1))
+9           2.640e-04  7.122e-01  y = 0.42202 / (square(sin(theta1 - theta)) + sigma)
+10          5.336e-05  1.599e+00  y = 0.40475 / (square((theta - theta1) / sigma) + sigma)
+12          4.440e-05  9.194e-02  y = (0.42485 / (square((theta - theta1) / sigma) + sigma))...
+                                       + -0.010575
+13          9.035e-06  1.592e+00  y = square(square(((theta1 - theta) * 0.36156) / sigma) - ...
+                                      0.62862) / sigma
+14          2.044e-06  1.486e+00  y = square(square(0.79388 - square(((theta - theta1) / sig...
+                                      ma) * -0.30156))) / sigma
+15          1.595e-07  2.551e+00  y = ((1.2572 - square(sin(((theta1 - theta) * 0.7814) / si...
+                                      gma))) * 0.31701) / sigma
+16          6.785e-09  3.157e+00  y = (square(square(sin(0.58247 * ((theta1 - theta) / sigma...
+                                      ))) - 1.3668) / sigma) * 0.2135
+18          6.660e-09  9.270e-03  y = (square(1.3682 - square(sin((theta - theta1) * (0.5828...
+                                      4 / sigma)) + -5.9813e-05)) * 0.21308) / sigma
+20          6.593e-09  5.057e-03  y = (0.21308 / sigma) * square(square(sin(0.58285 * ((thet...
+                                      a - theta1) / sigma)) + (-0.00012892 / sigma)) - 1.3682)
+21          6.547e-09  7.068e-03  y = square(1.3682 - square(sin(((theta - theta1) * 0.58285...
+                                      ) / sigma) + (-0.00012892 / square(sigma)))) * (0.21308 / ...
+                                      sigma)
+22          6.537e-09  1.409e-03  y = square(1.3682 - square((-0.00012892 / square(square(si...
+                                      gma))) + sin(((theta - theta1) * 0.58285) / sigma))) * (0....
+                                      21308 / sigma)
+23          6.533e-09  6.052e-04  y = square(1.3682 - square(sin(((theta - theta1) * 0.58285...
+                                      ) / sigma) + (-0.00012892 / square(0.18671 - sigma)))) * (...
+                                      0.21308 / sigma)
+24          4.866e-09  2.947e-01  y = (0.21307 * (square(1.3682 - square(sin((theta1 - theta...
+                                      ) * (0.58277 / sigma)))) / sigma)) + (-2.8967e-05 / (1.940...
+                                      7 - (theta1 - sigma)))
+25          4.063e-09  1.802e-01  y = ((square(square(sin((theta1 - theta) * (0.58277 / sigm...
+                                      a))) - 1.3684) * 0.213) / sigma) + (-9.0042e-06 / (sigma -...
+                                       log(theta1 / sigma)))
+27          3.976e-09  1.091e-02  y = (((1.38e-05 / ((log(theta1) / sigma) - sigma)) / theta...
+                                      ) + (square(1.3684 - square(sin((0.58277 / sigma) * (theta...
+                                      1 - theta)))) * 0.213)) / sigma
+30          3.945e-09  2.601e-03  y = ((log(theta1) / ((log(theta1) / sigma) - sigma)) * (1....
+                                      38e-05 / theta)) + ((square(square(sin((0.58277 / sigma) *...
+                                       (theta1 - theta))) - 1.3684) * 0.213) / sigma)
+32          3.896e-09  6.214e-03  y = (square(square(sin((theta - theta1) * (0.58277 / sigma...
+                                      ))) - 1.3684) * (0.21299 / sigma)) + ((log((theta + sigma)...
+                                       - 2.0024) * 8.3245e-06) / (sigma - (log(theta1) / sigma))...
+                                      )
+34          3.607e-09  3.857e-02  y = ((((theta - square(-2.1563 / sigma)) / (sigma - log(th...
+                                      eta1 / sigma))) - sigma) * 3.9871e-06) + ((square(1.3828 -...
+                                       square(sin((theta - theta1) * (0.58646 / sigma)))) * 0.20...
+                                      861) / sigma)
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_6_2b_pysr_state/20260323_154926_FcVouB/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_6_2b --max_evals=10000000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_6_2b_pysr_state
+============================================================
+Running PySR on: feynman_I_6_2b
+============================================================
+Data shape: X=(1000, 3), y range=[8.071e-02, 3.963e-01]
+Features: ['sigma', 'theta', 'theta1']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+f = exp(-((theta-theta1)/sigm...
+Train samples: 750, Test samples: 250
+[CHECKPOINT FOUND]: Resuming from /home/mdo57/meta_sr/results_pysr/feynman_I_6_2b_pysr_state/20260323_154926_FcVouB/checkpoint.pkl
+
+Starting PySR fit...
+
+Fit completed in 235.8 seconds
+
+Results:
+  Test MSE: 1.1281e-06
+  Test R²:  0.9996
+  Best equation: -2.896735e-5/(1.9407343 - (-sigma + theta1)) + 0.21307118*(1.87208124489604*(1 - 0.730865823120823*sin((-theta + theta1)*0.58276725/sigma)**2)**2)/sigma
+
+Results saved to: results_pysr/feynman_I_6_2b_n1000_seed42.json
+
+Completed: feynman_I_6_2b
+R² = 0.9996
+
+10000000 complete
+--- Current Best at 10000000: -2.896735e-5/(1.9407343 - (-sigma + theta1)) + 0.21307118*(1.87208124489604*(1 - 0.730865823120823*sin((-theta + theta1)*0.58276725/sigma)**2)**2)/sigma
+--- Current MSE: 1.1281e-06
+dataset: feynman_I_6_2b, prediction: -2.896735e-5/(1.9407343 - (-sigma + theta1)) + 0.21307118*(1.87208124489604*(1 - 0.730865823120823*sin((-theta + theta1)*0.58276725/sigma)**2)**2)/sigma
+{'match': False, 'error_is_zero': False, 'error_is_constant': False, 'fraction_is_constant': False, 'simplified_predicted': '-2.896735e-5/(sigma - theta1 + 1.9407343) + 0.398886559905868*(0.730865823120823*sin((0.58276725*theta - 0.58276725*theta1)/sigma)**2 - 1)**2/sigma', 'symbolic_error': '-0.161*(0.576*cos(1.17*theta/sigma - 1.17*theta1/sigma) + 1)**2/sigma + sqrt(2)*exp(-(theta - theta1)**2/(2*sigma**2))/(2*sqrt(pi)*sigma)'}
+total_predictions=3
+accurate_predictions=0
+Accuracy=0.0
+Total time=827.1246073246002
+Average time per dataset=275.7082024415334
+Average MSE=4.247201535515051e-07
+Average R^2=0.9998512263761042
+correct predictions after 1e5=0
+percentage of correct predictions after 1e5=0.0
+
+
+sqrt((x2-x1)**2+(y2-y1)**2)
+Begin 100000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           1.023e+00  0.000e+00  y = 2.1228
+4           9.918e-01  1.036e-02  y = cos(x1) + 2.5385
+5           9.625e-01  3.002e-02  y = exp(cos(x1)) - -1.3981
+8           9.220e-01  1.432e-02  y = square((y2 + -2.5921) / y1) + 1.8283
+11          8.669e-01  2.055e-02  y = exp(square(sin((x2 / square(x1)) / 2.3823))) + 0.95227
+15          8.496e-01  5.025e-03  y = cos(cos(5.265 / ((y2 / ((y2 * 0.08741) + y1)) + 0.7950...
+                                      7))) + 1.3993
+16          8.360e-01  1.618e-02  y = (exp((-2.7217 / x1) / (y1 * -1.8678)) + square(log(x1)...
+                                       / x2)) - -0.5668
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_8_14_pysr_state/20260323_155636_1ibKgp/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_8_14 --max_evals=100000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_8_14_pysr_state
+============================================================
+Running PySR on: feynman_I_8_14
+============================================================
+Data shape: X=(1000, 4), y range=[8.952e-02, 5.052e+00]
+Features: ['x1', 'x2', 'y1', 'y2']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+d = sqrt((x2-x1)**2+(y2-y1)**...
+Train samples: 750, Test samples: 250
+[CHECKPOINT NOT FOUND]: Starting fresh.
+
+Starting PySR fit...
+
+Fit completed in 36.3 seconds
+
+Results:
+  Test MSE: 9.3379e-01
+  Test R²:  -0.0093
+  Best equation: exp(cos(x1)) - 1*(-1.3981212)
+
+Results saved to: results_pysr/feynman_I_8_14_n1000_seed42.json
+
+Completed: feynman_I_8_14
+R² = -0.0093
+
+100000 complete
+--- Current Best at 100000: exp(cos(x1)) - 1*(-1.3981212)
+--- Current MSE: 9.3379e-01
+Begin 1000000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           1.023e+00  0.000e+00  y = 2.1229
+4           9.918e-01  1.036e-02  y = cos(x1) + 2.5385
+5           9.625e-01  3.002e-02  y = exp(cos(x1)) - -1.3981
+6           6.337e-01  4.179e-01  y = 2.5385 - cos(y2 - y1)
+7           5.136e-01  2.102e-01  y = sqrt(square(x1 - x2) - -1.2217)
+8           4.927e-01  4.139e-02  y = (square(x2 - x1) * 0.2166) - -1.473
+9           4.666e-01  5.445e-02  y = sqrt(square((x1 - x2) * -0.76044)) - -1.0373
+12          4.613e-01  3.830e-03  y = sqrt(square(x2 - x1) - -1.1122) - (sin(-0.66714) / y1)
+15          4.211e-01  3.037e-02  y = sqrt(square(x2 - x1) - -1.1122) - (-0.54595 * (0.43477...
+                                       / (y1 / y2)))
+17          4.208e-01  3.315e-04  y = (sqrt(square(x2 - x1) - -1.1122) - (-0.54595 * (0.4347...
+                                      7 / (y1 / y2)))) - 0.089663
+33          3.373e-01  1.382e-02  y = (sqrt(square(((y2 + 0.052778) + -0.63678) - y1)) - -1....
+                                      8128) - (sin(x2 - (x1 + (exp(1.2737) * 1.343))) + ((log(sq...
+                                      uare((y1 + 9.3406) - x2)) - 1.1232) - 2.4919))
+35          2.977e-01  6.255e-02  y = ((3.2794 - (log(square(sqrt(x2)) - -10.581) - square(s...
+                                      qrt(x2)))) - ((y1 - y2) * ((3.5769 - y1) * 0.20278))) - (s...
+                                      qrt(log(y1) + square(x2)) - sqrt(square(x1 - x2)))
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_8_14_pysr_state/20260323_155636_1ibKgp/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_8_14 --max_evals=1000000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_8_14_pysr_state
+============================================================
+Running PySR on: feynman_I_8_14
+============================================================
+Data shape: X=(1000, 4), y range=[8.952e-02, 5.052e+00]
+Features: ['x1', 'x2', 'y1', 'y2']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+d = sqrt((x2-x1)**2+(y2-y1)**...
+Train samples: 750, Test samples: 250
+[CHECKPOINT FOUND]: Resuming from /home/mdo57/meta_sr/results_pysr/feynman_I_8_14_pysr_state/20260323_155636_1ibKgp/checkpoint.pkl
+
+Starting PySR fit...
+
+Fit completed in 63.4 seconds
+
+Results:
+  Test MSE: 3.4333e-01
+  Test R²:  0.6289
+  Best equation: x2 - (0.725334135312 - 0.202784*y1)*(y1 - y2) - sqrt(x2**2 + log(y1)) + sqrt((x1 - x2)**2) - log(x2 + 10.581161) + 3.2794242
+
+Results saved to: results_pysr/feynman_I_8_14_n1000_seed42.json
+
+Completed: feynman_I_8_14
+R² = 0.6289
+
+1000000 complete
+--- Current Best at 1000000: x2 - (0.725334135312 - 0.202784*y1)*(y1 - y2) - sqrt(x2**2 + log(y1)) + sqrt((x1 - x2)**2) - log(x2 + 10.581161) + 3.2794242
+--- Current MSE: 3.4333e-01
+Begin 10000000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           1.023e+00  0.000e+00  y = 2.1229
+4           9.918e-01  1.036e-02  y = cos(x1) + 2.5385
+5           9.623e-01  3.017e-02  y = exp(cos(x1)) + 1.3864
+6           4.983e-01  6.581e-01  y = 2.2601 - cos(x2 - x1)
+7           4.746e-01  4.887e-02  y = sqrt(square(x2 - x1) - -1.9061)
+9           4.666e-01  8.446e-03  y = sqrt(square(x2 - x1) / 1.7292) + 1.0373
+10          2.588e-14  3.052e+01  y = sqrt(square(y2 - y1) + square(x2 - x1))
+12          2.579e-14  1.765e-03  y = sqrt(square(y2 - y1) + square(x1 - x2)) + -2.9802e-08
+14          2.572e-14  1.375e-03  y = (sqrt(square(y2 - y1) + square(x2 - x1)) + -0.26527) -...
+                                       -0.26527
+17          2.558e-14  1.834e-03  y = sqrt(square(y1 - y2) + square(x1 - x2)) + (-3.7147e-11...
+                                       / cos(y1 - 0.50531))
+19          2.558e-14  1.738e-05  y = ((x1 * -3.7147e-11) / cos(y1 - 0.50531)) + sqrt(square...
+                                      (y1 - y2) + square(x1 - x2))
+21          2.558e-14  5.782e-06  y = sqrt(square(x1 - x2) + square(y1 - y2)) + (((y1 * x1) ...
+                                      * -2.338e-11) / cos(0.50531 - y1))
+26          2.549e-14  7.328e-04  y = square((square(cos(y1)) + cos(y2)) / square(exp((y1 + ...
+                                      y1) + x2))) + sqrt(square(x1 - x2) + square(y2 - y1))
+27          2.543e-14  2.233e-03  y = square(cos(square(cos(sqrt(y2))) + y2) / square(exp((y...
+                                      1 + y1) + x2))) + sqrt(square(x1 - x2) + square(y2 - y1))
+28          2.541e-14  7.455e-04  y = square((square(cos(y1)) + cos(y2)) / square(x1 - exp(y...
+                                      1 + (x2 + y1)))) + sqrt(square(x1 - x2) + square(y2 - y1))
+29          2.541e-14  4.661e-05  y = sqrt(square(x2 - x1) + square(y1 - y2)) + square((squa...
+                                      re(cos(square(y1))) + cos(y2)) / square(exp((y1 + x2) + y1...
+                                      ) - y2))
+30          2.541e-14  1.194e-04  y = (sqrt(square(x1 - x2) + square(y1 - y2)) + -8.3416e-09...
+                                      ) + square((cos(y2) + square(cos(y1))) / square(y2 - exp((...
+                                      y1 + y1) + x2)))
+31          2.540e-14  4.661e-05  y = (sqrt(square(x2 - x1) + square(y1 - y2)) + -8.3416e-09...
+                                      ) + square((square(cos(square(y1))) + cos(y2)) / square(ex...
+                                      p((y1 + y1) + x2) - y2))
+33          2.528e-14  2.510e-03  y = sqrt(square(y2 - y1) + square(x2 - x1)) + square(squar...
+                                      e(((square(y2) - exp(1.3777)) + square(x2 - x1)) * 0.00783...
+                                      74) / exp(y1 + (sqrt(y2) + y1)))
+35          2.524e-14  6.358e-04  y = sqrt(square(y1 - y2) + square(x2 - x1)) + (((1.9819e-1...
+                                      0 / (0.2012 + y1)) * (y2 * (log(x2 - -0.035938) - 0.36553)...
+                                      )) * sqrt(square(square((square(y2) - y1) - x2))))
+36          2.519e-14  2.004e-03  y = sqrt(square(y1 - y2) + square(x2 - x1)) + (((1.9819e-1...
+                                      0 / (0.2012 + y1)) * sqrt(square(square((square(y2) - y1) ...
+                                      - x2)))) * (y2 * (log(x2 - cos(-1.7918)) - 0.36553)))
+38          2.503e-14  3.353e-03  y = sqrt(square(y1 - y2) + square(x2 - x1)) + (square(sqrt...
+                                      (square((square(y2) - x2) - y1))) * ((((log(x2) - (y2 * 0....
+                                      36553)) * 1.9819e-10) / (0.2012 + y1)) * (x2 - square(x2))...
+                                      ))
+40          2.502e-14  2.366e-05  y = sqrt(square(y1 - y2) + square(x2 - x1)) + (((log(x2) -...
+                                       ((y2 - -0.035938) * 0.36553)) * (1.9819e-10 / (0.2012 + y...
+                                      1))) * (square(sqrt(square((square(y2) - x2) - y1))) * (x2...
+                                       - square(x2))))
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_8_14_pysr_state/20260323_155636_1ibKgp/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_8_14 --max_evals=10000000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_8_14_pysr_state
+============================================================
+Running PySR on: feynman_I_8_14
+============================================================
+Data shape: X=(1000, 4), y range=[8.952e-02, 5.052e+00]
+Features: ['x1', 'x2', 'y1', 'y2']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+d = sqrt((x2-x1)**2+(y2-y1)**...
+Train samples: 750, Test samples: 250
+[CHECKPOINT FOUND]: Resuming from /home/mdo57/meta_sr/results_pysr/feynman_I_8_14_pysr_state/20260323_155636_1ibKgp/checkpoint.pkl
+
+Starting PySR fit...
+
+Fit completed in 245.9 seconds
+
+Results:
+  Test MSE: 3.3836e-31
+  Test R²:  1.0000
+  Best equation: sqrt((-x1 + x2)**2 + (-y1 + y2)**2)
+
+Results saved to: results_pysr/feynman_I_8_14_n1000_seed42.json
+
+Completed: feynman_I_8_14
+R² = 1.0000
+
+10000000 complete
+--- Current Best at 10000000: sqrt((-x1 + x2)**2 + (-y1 + y2)**2)
+--- Current MSE: 3.3836e-31
+MATCH FOUND AFTER 1E5
+dataset: feynman_I_8_14, prediction: sqrt((-x1 + x2)**2 + (-y1 + y2)**2)
+{'match': True, 'error_is_zero': True, 'error_is_constant': True, 'fraction_is_constant': True, 'simplified_predicted': 'sqrt((x1 - x2)**2 + (y1 - y2)**2)', 'symbolic_error': '0'}
+total_predictions=4
+accurate_predictions=1
+Accuracy=0.25
+Total time=1073.0544259548187
+Average time per dataset=268.2636064887047
+Average MSE=3.185401151636288e-07
+Average R^2=0.9998884197820782
+correct predictions after 1e5=1
+percentage of correct predictions after 1e5=0.25
+
+
+G*m1*m2/((x2-x1)**2+(y2-y1)**2+(z2-z1)**2)
+Begin 100000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           1.468e-02  0.000e+00  y = 0.28551
+3           1.137e-02  1.278e-01  y = m2 * 0.19136
+5           8.752e-03  1.306e-01  y = m2 * (m1 * 0.12689)
+6           8.742e-03  1.197e-03  y = sin(m2 * (m1 * 0.12944))
+11          8.621e-03  2.795e-03  y = m1 * (cos(cos(log(m2 * sqrt(y2)))) * 0.28354)
+14          6.804e-03  7.887e-02  y = (log(m2) + (square(m1) / z1)) * exp((0.80581 / -0.3883...
+                                      1) / G)
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_9_18_pysr_state/20260323_160302_ehssZD/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_9_18 --max_evals=100000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_9_18_pysr_state
+============================================================
+Running PySR on: feynman_I_9_18
+============================================================
+Data shape: X=(1000, 9), y range=[7.291e-02, 9.579e-01]
+Features: ['m1', 'm2', 'G', 'x1', 'x2', 'y1', 'y2', 'z1', 'z2']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+F = G*m1*m2/((x2-x1)**2+(y2-y...
+Train samples: 750, Test samples: 250
+[CHECKPOINT NOT FOUND]: Starting fresh.
+
+Starting PySR fit...
+
+Fit completed in 37.3 seconds
+
+Results:
+  Test MSE: 9.8154e-03
+  Test R²:  0.4007
+  Best equation: m2*m1*0.126891
+
+Results saved to: results_pysr/feynman_I_9_18_n1000_seed42.json
+
+Completed: feynman_I_9_18
+R² = 0.4007
+
+100000 complete
+--- Current Best at 100000: m2*m1*0.126891
+--- Current MSE: 9.8154e-03
+Begin 1000000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           1.468e-02  0.000e+00  y = 0.28551
+3           1.137e-02  1.278e-01  y = m2 * 0.19136
+5           8.752e-03  1.306e-01  y = m2 * (m1 * 0.12689)
+6           8.742e-03  1.197e-03  y = sin((m1 * 0.12943) * m2)
+7           6.392e-03  3.130e-01  y = (m2 * G) * (m1 * 0.083183)
+8           6.383e-03  1.359e-03  y = m1 * sin(m2 * (G * 0.083183))
+9           5.541e-03  1.415e-01  y = m2 * ((G / (x1 - m1)) * 0.23775)
+10          5.472e-03  1.263e-02  y = sin(m2 * (G * (0.24003 / (x1 - m1))))
+13          4.413e-03  7.168e-02  y = ((sqrt(z2) / x1) + -0.10727) * log(m1 * (G * m2))
+15          4.338e-03  8.574e-03  y = (log(m1 * (m2 * G)) + -0.09693) * ((sqrt(z2) / x1) - 0...
+                                      .087028)
+20          3.105e-03  6.685e-02  y = (((((G * (x2 / y1)) * (sin(0.22425) + 0.085489)) * m1)...
+                                       / z1) * m2) / (x1 * 0.13505)
+22          2.770e-03  5.720e-02  y = ((((G - 0.24732) * x2) * (sin(0.22425) / y1)) + 0.0854...
+                                      89) * (((m1 * m2) / z1) / (0.13505 * x1))
+26          2.580e-03  1.769e-02  y = (((G * 0.37419) / (x1 * 0.15607)) * (((x2 / y1) / z1) ...
+                                      * m1)) * (m2 + (sin(z2 + (0.015693 - m1)) / x1))
+28          2.537e-03  8.545e-03  y = (((((G - 0.24732) / y1) * (x2 * 0.22425)) + 0.085489) ...
+                                      * ((square(y2 / x2) / x1) + (m1 * (m2 / (x1 * 0.13505)))))...
+                                       / z1
+29          1.993e-03  2.414e-01  y = ((m1 * (sqrt(y2) - 1.0936)) + (m1 / (x1 * 0.13505))) *...
+                                       (((((x2 / y1) * sin(0.22425)) * (G - 0.24732)) + 0.085489...
+                                      ) * (m2 / z1))
+31          1.742e-03  6.730e-02  y = (((((x2 * 0.24998) / y1) * (G - 0.25072)) + 0.05703) *...
+                                       m1) * (((m2 + (sin(sqrt(y2) - (m1 / z2)) / y2)) / z1) / (...
+                                      x1 * 0.12922))
+33          1.661e-03  2.357e-02  y = (((G - 0.24732) * (sin(x2 * 0.22425) / y1)) + 0.085489...
+                                      ) * ((m1 * (((sin(sqrt(y2) - (m1 / z2)) / exp(0.76708)) + ...
+                                      m2) / (0.13505 * x1))) / z1)
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_9_18_pysr_state/20260323_160302_ehssZD/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_9_18 --max_evals=1000000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_9_18_pysr_state
+============================================================
+Running PySR on: feynman_I_9_18
+============================================================
+Data shape: X=(1000, 9), y range=[7.291e-02, 9.579e-01]
+Features: ['m1', 'm2', 'G', 'x1', 'x2', 'y1', 'y2', 'z1', 'z2']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+F = G*m1*m2/((x2-x1)**2+(y2-y...
+Train samples: 750, Test samples: 250
+[CHECKPOINT FOUND]: Resuming from /home/mdo57/meta_sr/results_pysr/feynman_I_9_18_pysr_state/20260323_160302_ehssZD/checkpoint.pkl
+
+Starting PySR fit...
+
+Fit completed in 63.0 seconds
+
+Results:
+  Test MSE: 2.0846e-03
+  Test R²:  0.8727
+  Best equation: m2*(m1*(sqrt(y2) - 1.0936177) + 7.40441657158779*m1/x1)*(0.222370923789676*x2*(G - 0.24732347)/y1 + 0.085488975)/z1
+
+Results saved to: results_pysr/feynman_I_9_18_n1000_seed42.json
+
+Completed: feynman_I_9_18
+R² = 0.8727
+
+1000000 complete
+--- Current Best at 1000000: m2*(m1*(sqrt(y2) - 1.0936177) + 7.40441657158779*m1/x1)*(0.222370923789676*x2*(G - 0.24732347)/y1 + 0.085488975)/z1
+--- Current MSE: 2.0846e-03
+Begin 10000000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           1.468e-02  0.000e+00  y = 0.28551
+3           1.137e-02  1.278e-01  y = m2 * 0.19136
+5           8.752e-03  1.306e-01  y = (m1 * 0.12689) * m2
+6           8.742e-03  1.197e-03  y = sin((m1 * 0.12943) * m2)
+7           6.392e-03  3.130e-01  y = (m1 * (m2 * 0.083183)) * G
+8           5.437e-03  1.618e-01  y = m2 * (G / (square(x1) / m1))
+9           4.358e-03  2.213e-01  y = (m1 / z1) * (G * (m2 / x1))
+11          3.917e-03  5.329e-02  y = ((x2 + y2) * (G * (m1 * m2))) * 0.028469
+12          3.382e-03  1.469e-01  y = (G / (cos(x2) + z1)) * ((m2 * m1) / x1)
+13          3.055e-03  1.016e-01  y = (x2 + y2) * (((m2 * 0.098596) * m1) * (G / x1))
+15          2.144e-03  1.772e-01  y = (m1 * (((m2 * 0.34324) * ((y2 + x2) / z1)) * G)) / x1
+17          5.743e-04  6.586e-01  y = (z2 + (y2 * x2)) * (((((m2 / y1) / z1) * m1) * G) / x1...
+                                      )
+18          3.659e-04  4.508e-01  y = (sqrt(x2) * ((z2 + y2) / z1)) * ((G * (m1 * (m2 / x1))...
+                                      ) / y1)
+19          3.443e-04  6.086e-02  y = G * (((x2 * (0.92221 * y2)) + z2) * (((m1 / z1) / y1) ...
+                                      * (m2 / x1)))
+20          2.993e-04  1.399e-01  y = ((((z2 + y2) / z1) * sqrt(x2)) * ((G * (m1 * (m2 / x1)...
+                                      )) / y1)) - 0.0081574
+21          2.973e-04  6.716e-03  y = ((x2 * 0.44972) + 0.51798) * ((y2 + z2) * (((G / x1) *...
+                                       m2) * ((m1 / y1) / z1)))
+22          2.550e-04  1.537e-01  y = ((G * ((m1 * sqrt(z2)) * ((((y2 + x2) / x1) / y1) - 0....
+                                      030887))) * m2) / (z1 + -0.35268)
+23          2.516e-04  1.315e-02  y = (((G * (m1 / (cos(y2) + z1))) * m2) * (-0.058192 + (((...
+                                      x2 + 2.1636) / x1) / y1))) * sqrt(z2)
+24          2.469e-04  1.905e-02  y = (0.61416 * ((m1 / (x1 - 0.79007)) * ((G * (sqrt(z2) / ...
+                                      (-0.62352 + z1))) * m2))) * ((y2 + x2) / y1)
+25          1.992e-04  2.144e-01  y = (G * ((((x2 + 2.1018) / y1) * ((m1 / (cos(y2) + z1)) /...
+                                       x1)) + (m1 * -0.015205))) * (m2 * sqrt(z2))
+30          1.891e-04  1.049e-02  y = (m1 / (cos(y2) + z1)) * (((sqrt(z2) * m2) * G) * ((((x...
+                                      2 * cos(y2)) + z1) * -0.013574) + (((x2 + 2.0366) / y1) / ...
+                                      x1)))
+32          1.846e-04  1.208e-02  y = ((m1 / (z1 + cos(y2))) * G) * (sqrt(z2) * (m2 * ((((x2...
+                                       + 2.1339) / y1) / x1) + ((((x2 + -0.50663) * cos(y2)) + z...
+                                      1) * -0.015978))))
+33          1.737e-04  6.057e-02  y = ((((z1 + (cos(y2) * (x2 + sin(x1)))) * -0.015707) + ((...
+                                      (x2 + 2.123) / y1) / x1)) * (G / (z1 + cos(y2)))) * (sqrt(...
+                                      z2) * (m1 * m2))
+34          1.663e-04  4.346e-02  y = ((sqrt(z2) * (m1 * G)) / (z1 + cos(y2))) * (((((x2 + 2...
+                                      .1683) / y1) / x1) + ((z1 + (((x2 * z2) - 1.4467) * cos(y2...
+                                      ))) * -0.016816)) * m2)
+35          1.633e-04  1.859e-02  y = m2 * (((((x2 + 2.1655) / x1) / y1) + (((cos(y2) * ((x2...
+                                       * z2) - log(x1))) + z1) * -0.016749)) * (((m1 * sqrt(z2))...
+                                       / (cos(y2) + z1)) * G))
+36          1.531e-04  6.404e-02  y = (sqrt(z2) * ((G * m2) / (cos(y2) + z1))) * (((((x2 + 2...
+                                      .1058) / y1) / x1) + ((z1 + ((square(x2) + (sin(x1) * z1))...
+                                       * cos(y2))) * -0.015325)) * m1)
+37          1.472e-04  3.953e-02  y = ((sqrt(z2) * (G / (cos(y2) + z1))) * ((((x2 + 2.1058) ...
+                                      / y1) / x1) + ((z1 + (((x2 * z2) + (sin(x1) * z1)) * cos(y...
+                                      2))) * -0.015325))) * (m2 * m1)
+39          1.453e-04  6.405e-03  y = (((((x2 + 2.1466) / x1) / y1) + ((((((z2 * x2) + -0.28...
+                                      962) + (sin(x1) * z1)) * cos(y2)) + z1) * -0.016362)) * ((...
+                                      m1 * sqrt(z2)) * (G * m2))) / (cos(y2) + z1)
+40          1.445e-04  5.788e-03  y = (((((x2 + 2.1149) / y1) / x1) + ((z1 + (cos(y2) * (((x...
+                                      2 * z2) + cos(G)) + (sin(x1) * z1)))) * -0.015555)) * (((s...
+                                      qrt(z2) * m1) / (cos(y2) + z1)) * G)) * m2
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_9_18_pysr_state/20260323_160302_ehssZD/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_9_18 --max_evals=10000000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_9_18_pysr_state
+============================================================
+Running PySR on: feynman_I_9_18
+============================================================
+Data shape: X=(1000, 9), y range=[7.291e-02, 9.579e-01]
+Features: ['m1', 'm2', 'G', 'x1', 'x2', 'y1', 'y2', 'z1', 'z2']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+F = G*m1*m2/((x2-x1)**2+(y2-y...
+Train samples: 750, Test samples: 250
+[CHECKPOINT FOUND]: Resuming from /home/mdo57/meta_sr/results_pysr/feynman_I_9_18_pysr_state/20260323_160302_ehssZD/checkpoint.pkl
+
+Starting PySR fit...
+
+Fit completed in 227.0 seconds
+
+Results:
+  Test MSE: 1.7027e-04
+  Test R²:  0.9896
+  Best equation: G*m2*sqrt(z2)*(-0.015205023*m1 + m1*(x2 + 2.101827)/(x1*y1*(z1 + cos(y2))))
+
+Results saved to: results_pysr/feynman_I_9_18_n1000_seed42.json
+
+Completed: feynman_I_9_18
+R² = 0.9896
+
+10000000 complete
+--- Current Best at 10000000: G*m2*sqrt(z2)*(-0.015205023*m1 + m1*(x2 + 2.101827)/(x1*y1*(z1 + cos(y2))))
+--- Current MSE: 1.7027e-04

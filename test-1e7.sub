@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH -J test_file_1e7                         # Job name
+#SBATCH -o test_file_1e7_%j.out                  # output file (%j expands to jobID)
+#SBATCH -e test_file_1e7_%j.err                  # error log file (%j expands to jobID)
+#SBATCH -N 8                                 # Total number of nodes requested
+#SBATCH -n 8                                 # Total number of cores requested
+#SBATCH --cpus-per-task=8                   # Total number of cores requested per task
+#SBATCH --mem=8000                           # server memory requested in MB (per node)
+#SBATCH --get-user-env                       # retrieve the users login environment
+#SBATCH -t 20:00:00                           # Time limit (hh:mm:ss)
+#SBATCH --partition=default_partition        # Request partition
+
+python -u run_sr_all_srbench_1e7.py

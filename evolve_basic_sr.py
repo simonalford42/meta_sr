@@ -349,6 +349,8 @@ def evaluate_bundle_population(
 
     if not bundles:
         return
+    
+    sr_kwargs.pop('verbose', None)
 
     all_dataset_names = list(datasets.keys())
 

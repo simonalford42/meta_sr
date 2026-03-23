@@ -24,7 +24,6 @@ import json
 import time
 from pathlib import Path
 from pysr import PySRRegressor
-from evaluation import check_symbolic_match
 
 
 def add_noise(data, noise_level, seed=None):
@@ -136,6 +135,23 @@ def get_cpu_count():
     # Fall back to os.cpu_count()
     return os.cpu_count() or 4
 
+def find_latest_checkpoint(output_dir):
+    """Find the most recent PySR run subdirectory containing a checkpoint."""
+    if not os.path.exists(output_dir):
+        return None
+    subdirs = [
+        os.path.join(output_dir, d) for d in os.listdir(output_dir)
+        if os.path.isdir(os.path.join(output_dir, d))
+    ]
+    if not subdirs:
+        return None
+    subdirs.sort(key=os.path.getmtime, reverse=True)
+    for subdir in subdirs:
+        pkl = os.path.join(subdir, "checkpoint.pkl")
+        if os.path.exists(pkl):
+            return pkl
+    return None
+
 
 def run_pysr_on_dataset(
     dataset_name,
@@ -149,6 +165,7 @@ def run_pysr_on_dataset(
     verbose=True,
     max_evals=None,
     target_noise=0.0,
+    output_dir=None,
 ):
     """
     Run PySR on a single dataset.
@@ -193,7 +210,7 @@ def run_pysr_on_dataset(
         print(f"Data shape: X={X.shape}, y range=[{y.min():.3e}, {y.max():.3e}]")
         print(f"Features: {feature_names}")
         if 'description' in metadata:
-            print(f"Description: {metadata.get('description', 'N/A')}...")
+            print(f"Description: {metadata.get('description', 'N/A')[:200]}...")
 
     # Split into train/test (75/25)
     n_samples = len(y)
@@ -222,54 +239,73 @@ def run_pysr_on_dataset(
     except (TypeError, ValueError):
         n_cpus = 1
 
-    # Configure PySR
-    model = PySRRegressor(
-        # timeout_in_seconds=int(time_minutes * 60),
-        binary_operators=["+", "-", "*", "/"],
-        unary_operators=["sin", "cos", "exp", "log", "sqrt", "square"],
-        maxsize=max_size,
-        maxdepth=10,
-        batching=False,
-        # ncycles_per_iteration=10,
-        parallelism='multithreading',
-        procs=n_cpus,
-        # model-selection='score',
-        populations=3*n_cpus,
-        niterations=1000000000000,
-        # population_size=100,
-        max_evals=max_evals,
-        random_state=seed,
-        # verbosity=5,
-        output_directory=results_dir,
-        constraints={
-            **dict(
-                sin=9,
-                exp=9,
-                log=9,
-                sqrt=9,
+    if output_dir is None:
+        output_dir = os.path.join(results_dir, f"{dataset_name}_pysr_state")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # output_dir is a per-dataset directory where PySR writes checkpoint.pkl
+    pkl_path = find_latest_checkpoint(output_dir)
+
+    if pkl_path:
+        print(f"[CHECKPOINT FOUND]: Resuming from {pkl_path}")
+        run_dir = os.path.dirname(pkl_path)
+        model = PySRRegressor.from_file(run_directory=run_dir)
+        model.max_evals = max_evals
+        model.niterations = 1000000000000
+    else:
+        print(f"[CHECKPOINT NOT FOUND]: Starting fresh.")
+
+        # Configure PySR
+        model = PySRRegressor(
+            # timeout_in_seconds=int(time_minutes * 60),
+            binary_operators=["+", "-", "*", "/"],
+            unary_operators=["sin", "cos", "exp", "log", "sqrt", "square"],
+            maxsize=max_size,
+            maxdepth=10,
+            batching=False,
+            # ncycles_per_iteration=10,
+            parallelism='multithreading',
+            procs=n_cpus,
+            populations=3*n_cpus,
+            niterations=1000000000000,
+            # population_size=100,
+            max_evals=max_evals,
+            random_state=seed,
+            #verbosity=1,
+            delete_tempfiles=False, 
+            warm_start=True,
+            output_directory=output_dir,
+            constraints={
+                **dict(
+                    sin=9,
+                    exp=9,
+                    log=9,
+                    sqrt=9,
+                ),
+                **{"/": (-1, 9)}
+            },
+            nested_constraints=dict(
+                sin=dict(
+                    sin=0,
+                    exp=1,
+                    log=1,
+                    sqrt=1,
+                ),
+                exp=dict(
+                    exp=0,
+                    log=0,
+                ),
+                log=dict(
+                    exp=0,
+                    log=0,
+                ),
+                sqrt=dict(
+                    sqrt=0,
+                )
             ),
-            **{"/": (-1, 9)}
-        },
-        nested_constraints=dict(
-            sin=dict(
-                sin=0,
-                exp=1,
-                log=1,
-                sqrt=1,
-            ),
-            exp=dict(
-                exp=0,
-                log=0,
-            ),
-            log=dict(
-                exp=0,
-                log=0,
-            ),
-            sqrt=dict(
-                sqrt=0,
-            )
-        ),
-    )
+        )
+
+    # -------------------------------------
 
     if verbose:
         print(f"\nStarting PySR fit...")
@@ -293,9 +329,6 @@ def run_pysr_on_dataset(
 
     # Get best equation
     best_eq = model.get_best()
-
-    import pdb; pdb.set_trace()
-
     if hasattr(best_eq, 'sympy_format'):
         best_equation_str = str(best_eq.sympy_format)
     else:
@@ -374,6 +407,9 @@ def main():
     parser.add_argument('--quiet', action='store_true',
                        help='Suppress verbose output')
 
+    parser.add_argument('--output_dir', type=str, default=None,
+                   help='Directory for PySR checkpoint state')
+
     args = parser.parse_args()
 
     # print script execution command
@@ -411,9 +447,8 @@ def main():
                 max_evals=args.max_evals,
                 verbose=verbose,
                 target_noise=args.target_noise,
+                output_dir=args.output_dir,
             )
-
-            result = check_symbolic_match(results['best_equation'], )
 
             if verbose:
                 print(f"\nCompleted: {dataset_name}")
