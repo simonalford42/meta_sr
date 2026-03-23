@@ -1044,3 +1044,64 @@ R² = 0.9896
 10000000 complete
 --- Current Best at 10000000: G*m2*sqrt(z2)*(-0.015205023*m1 + m1*(x2 + 2.101827)/(x1*y1*(z1 + cos(y2))))
 --- Current MSE: 1.7027e-04
+dataset: feynman_I_9_18, prediction: G*m2*sqrt(z2)*(-0.015205023*m1 + m1*(x2 + 2.101827)/(x1*y1*(z1 + cos(y2))))
+{'match': False, 'error_is_zero': False, 'error_is_constant': False, 'fraction_is_constant': False, 'simplified_predicted': '-G*m2*sqrt(z2)*(0.015205023*m1 - m1*(x2 + 2.101827)/(x1*y1*(z1 + cos(y2))))', 'symbolic_error': 'G*m1*m2/((x1 - x2)**2 + (y1 - y2)**2 + (z1 - z2)**2) + G*m2*sqrt(z2)*(0.015*m1 - m1*(x2 + 2.1)/(x1*y1*(z1 + cos(y2))))'}
+total_predictions=5
+accurate_predictions=1
+Accuracy=0.2
+Total time=1300.0781927108765
+Average time per dataset=260.0156385421753
+Average MSE=3.43093601618698e-05
+Average R^2=0.9978314584068484
+correct predictions after 1e5=1
+percentage of correct predictions after 1e5=0.2
+
+
+m_0/sqrt(1-v**2/c**2)
+Begin 100000
+Output: ───────────────────────────────────────────────────────────────────────────────────────────────────
+Complexity  Loss       Score      Equation
+1           3.710e-02  0.000e+00  y = m_0
+3           1.779e-02  3.674e-01  y = m_0 * 1.0432
+5           1.212e-02  1.921e-01  y = m_0 - (-0.85261 / c)
+7           8.483e-03  1.783e-01  y = (0.48477 / (c - v)) + m_0
+12          6.581e-03  5.078e-02  y = m_0 + ((v * 0.28481) / ((c + cos(v)) - v))
+14          6.459e-03  9.352e-03  y = m_0 + ((v * 0.28481) / ((c * 0.99311) + (cos(v) - v)))
+16          6.186e-03  2.161e-02  y = (square(exp(0.14835 / ((c * 0.68912) / square(v)))) + ...
+                                      0.73319) + (m_0 - 1.7962)
+───────────────────────────────────────────────────────────────────────────────────────────────────
+  - /home/mdo57/meta_sr/results_pysr/feynman_I_10_7_pysr_state/20260323_161203_t7DRJB/hall_of_fame.csv
+Executing command: run_pysr_srbench_checkpoints.py --dataset=feynman_I_10_7 --max_evals=100000 --output_dir=/home/mdo57/meta_sr/results_pysr/feynman_I_10_7_pysr_state
+============================================================
+Running PySR on: feynman_I_10_7
+============================================================
+Data shape: X=(1000, 3), y range=[1.025e+00, 5.487e+00]
+Features: ['m_0', 'v', 'c']
+Description: A synthetic physics model from the Feynman Lectures on Physics.         
+This is the version of the model with units.
+Formula and simulated variable ranges given below. 
+
+m = m_0/sqrt(1-v**2/c**2)
+
+m_...
+Train samples: 750, Test samples: 250
+[CHECKPOINT NOT FOUND]: Starting fresh.
+
+Starting PySR fit...
+
+Fit completed in 35.9 seconds
+
+Results:
+  Test MSE: 7.4218e-03
+  Test R²:  0.9950
+  Best equation: m_0 + 0.48477432/(c - v)
+
+Results saved to: results_pysr/feynman_I_10_7_n1000_seed42.json
+
+Completed: feynman_I_10_7
+R² = 0.9950
+
+100000 complete
+--- Current Best at 100000: m_0 + 0.48477432/(c - v)
+--- Current MSE: 7.4218e-03
+Begin 1000000
