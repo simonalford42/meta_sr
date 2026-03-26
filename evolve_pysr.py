@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-Evolve Julia mutation operators for PySR using LLMs.
+Evolve Julia operators (mutation, survival, or selection) for PySR using LLMs.
 
-This script evolves custom mutation operators for SymbolicRegression.jl/PySR
-by generating Julia code with an LLM, validating it, and evaluating
-performance on SRBench datasets via SLURM.
+Unified evolution script that generates Julia code with an LLM, validates it,
+and evaluates performance on SRBench datasets via SLURM.
+
+Usage:
+    python evolve.py --operator_type mutation --split splits/train.txt --generations 20
+    python evolve.py --operator_type survival --split splits/train_hard.txt --generations 20
+    python evolve.py --operator_type selection --split splits/train_hard.txt --generations 20
 """
 
 import argparse
 import hashlib
 import json
 import random
+import re
 import sys
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +36,10 @@ from utils import load_dataset_names_from_split, TeeLogger
 
 TARGET_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
 
+
+# =============================================================================
+# Shared Utilities
+# =============================================================================
 
 def _stable_target_noise(dataset_name: str, seed: int, noise_levels: List[float]) -> float:
     """Deterministically assign a target noise level based on dataset name + seed."""
@@ -56,11 +66,7 @@ def _evaluate_configs_with_noise_map(
     target_noise_map: Optional[Dict[str, float]] = None,
     fitness_metric: str = "r2",
 ) -> List[Tuple[float, List[float], List[Dict]]]:
-    """Evaluate configs with optional per-dataset target noise mapping.
-
-    The noise map is passed directly to evaluate_configs, which sets
-    per-task noise levels so all datasets are evaluated in a single batch.
-    """
+    """Evaluate configs with optional per-dataset target noise mapping."""
     return evaluator.evaluate_configs(
         configs,
         dataset_names,
@@ -71,79 +77,45 @@ def _evaluate_configs_with_noise_map(
     )
 
 
-# =============================================================================
-# Data Classes
-# =============================================================================
+def extract_julia_code(response: str) -> str:
+    """Extract Julia function code from LLM response."""
+    text = response.strip()
 
-@dataclass
-class JuliaMutation:
-    """A Julia mutation operator for PySR."""
-    name: str                           # e.g., "gradient_guided_gen3_1"
-    code: str                           # Julia code string
-    weight: float = 0.5                 # Mutation probability weight
-    score: Optional[float] = None       # Average fitness across datasets
-    score_vector: Optional[List[float]] = None  # Per-dataset fitness scores
-    generation: int = 0                 # Which generation this was created
-    parent_name: Optional[str] = None   # Parent mutation (if refined/crossed)
-    mode: str = "explore"               # How it was created: explore/refine/crossover
+    if "```julia" in text:
+        start = text.find("```julia") + len("```julia")
+        end = text.find("```", start)
+        if end > start:
+            text = text[start:end].strip()
+    elif "```" in text:
+        start = text.find("```") + 3
+        end = text.find("```", start)
+        if end > start:
+            text = text[start:end].strip()
 
-    def to_pysr_config(self, pysr_kwargs: Dict = None) -> PySRConfig:
-        """Convert to PySRConfig for evaluation."""
-        if pysr_kwargs is None:
-            pysr_kwargs = get_default_pysr_kwargs()
+    if "function " not in text:
+        return ""
 
-        mutation_weights = get_default_mutation_weights()
-        mutation_weights["weight_custom_mutation_1"] = self.weight
-
-        return PySRConfig(
-            mutation_weights=mutation_weights,
-            pysr_kwargs=pysr_kwargs,
-            custom_mutation_code={self.name: self.code},
-            allow_custom_mutations=True,
-            name=self.name,
-        )
-
-    def to_dict(self) -> Dict:
-        """Convert to JSON-serializable dict."""
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, d: Dict) -> 'JuliaMutation':
-        """Create from dict."""
-        return cls(**d)
+    return text
 
 
-# =============================================================================
-# Julia Code Validation
-# =============================================================================
+def extract_function_name(code: str) -> str:
+    """Extract function name from Julia code."""
+    match = re.search(r'function\s+(\w+)\s*\(', code)
+    if match:
+        return match.group(1)
+    return ""
+
 
 def pre_validate_julia_syntax(code: str) -> Tuple[bool, str]:
-    """
-    Pre-validate Julia code for common LLM-generated syntax errors.
-
-    These checks run before the Julia parser to give better error messages
-    and avoid polluting the run logs with syntax errors.
-
-    Returns:
-        (is_valid, error_message) - error_message is empty if valid
-    """
-    import re
-
-    # Check for repeated field names in named tuples
-    # Pattern: (name=..., name=...) where name appears twice
+    """Pre-validate Julia code for common LLM-generated syntax errors."""
     named_tuple_pattern = r'\(\s*(\w+)\s*=\s*[^,)]+\s*,\s*\1\s*='
     if re.search(named_tuple_pattern, code):
         return False, "Repeated field name in named tuple (e.g., (left=x, left=y) should be (left=x, right=y))"
 
-    # Check for invalid try-catch syntax: "catch <value>" instead of "catch; <value>" or "catch e; <value>"
-    # Pattern: catch followed by a number or expression that's not a variable name followed by newline/end
     invalid_catch_pattern = r'\bcatch\s+(\d+[\d.eE+-]*|[^;\s\w])'
     if re.search(invalid_catch_pattern, code):
         return False, "Invalid try-catch syntax: use 'catch; ...' or 'catch e; ...' not 'catch <value>'"
 
-    # Check for const inside function (not at module level)
-    # This is tricky - we look for 'const' that appears after 'function' without an 'end' in between
-    # Simple heuristic: if 'const' appears indented (has leading whitespace)
     const_in_func_pattern = r'^[ \t]+const\s+'
     if re.search(const_in_func_pattern, code, re.MULTILINE):
         return False, "Cannot use 'const' inside function body (Julia syntax error)"
@@ -151,92 +123,150 @@ def pre_validate_julia_syntax(code: str) -> Tuple[bool, str]:
     return True, ""
 
 
-def validate_julia_code(name: str, code: str) -> Tuple[bool, str]:
-    """
-    Validate Julia mutation code by attempting to load it.
+def compute_per_run_avgs(
+    result_details: List[Dict],
+    n_runs: int,
+    fitness_metric: str,
+) -> List[float]:
+    """Compute per-run averages using the same missing-score policy as aggregate scoring."""
+    score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
+    missing_fill = 0.0 if fitness_metric == "gt" else -1.0
+    per_run_avgs: List[float] = []
 
-    Args:
-        name: Name for the mutation function
-        code: Julia code string
+    for run_idx in range(n_runs):
+        run_scores: List[float] = []
+        for detail in result_details:
+            run_values = detail.get(score_key, [])
+            run_scores.append(run_values[run_idx] if len(run_values) > run_idx else missing_fill)
+        per_run_avgs.append(float(np.mean(run_scores)) if run_scores else missing_fill)
 
-    Returns:
-        (is_valid, error_message) - error_message is empty if valid
-    """
-    # First, run pre-validation checks for common LLM errors
-    is_valid, error = pre_validate_julia_syntax(code)
-    if not is_valid:
-        return False, error
+    return per_run_avgs
 
-    try:
-        from juliacall import Main as jl
 
-        # Import the custom mutations module
-        jl.seval("using SymbolicRegression")
-        jl.seval("using SymbolicRegression.CustomMutationsModule")
+def select_parent(population: list, rng: random.Random):
+    """Select a parent using tournament selection (size 2)."""
+    candidates = rng.sample(population, min(2, len(population)))
+    return max(candidates, key=lambda m: m.score if m.score is not None else -1)
 
-        # Clear any previous dynamic mutations
-        jl.seval("clear_dynamic_mutations!()")
 
-        # Try to load the mutation
-        escaped_code = code.replace('"""', '\\"\\"\\"')
-        jl.seval(f'load_mutation_from_string!(:{name}, raw"""{escaped_code}""")')
-
-        # Check it's in the registry
-        available = list(jl.seval("list_available_mutations()"))
-        if name not in [str(m) for m in available]:
-            return False, f"Mutation '{name}' not found in registry after loading"
-
-        return True, ""
-
-    except Exception as e:
-        error_msg = str(e)
-        # Truncate very long error messages
-        if len(error_msg) > 500:
-            error_msg = error_msg[:500] + "..."
-        return False, error_msg
+def select_survivors(population: list, offspring: list, population_size: int) -> list:
+    """Select best individuals from population + offspring."""
+    combined = population + offspring
+    scored = [m for m in combined if m.score is not None]
+    scored.sort(key=lambda m: m.score, reverse=True)
+    return scored[:population_size]
 
 
 # =============================================================================
-# LLM Code Generation
+# Unified Operator Dataclass
 # =============================================================================
 
-def load_mutations_reference() -> str:
-    """Load the MUTATIONS_REFERENCE2.md file as context for LLM."""
-    base = Path(__file__).resolve().parent / "SymbolicRegression.jl/src/custom_mutations"
-    ref_path = base / "MUTATIONS_REFERENCE2.md"
-    if ref_path.exists():
-        return ref_path.read_text()
-    else:
-        # Fall back to original if v2 doesn't exist
+@dataclass
+class JuliaOperator:
+    """A Julia operator (mutation, survival, or selection) for PySR."""
+    name: str
+    code: str
+    score: Optional[float] = None
+    score_vector: Optional[List[float]] = None
+    generation: int = 0
+    parent_name: Optional[str] = None
+    mode: str = "explore"
+    weight: Optional[float] = None  # Only used for mutation operators
+
+    def to_dict(self) -> Dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> 'JuliaOperator':
+        return cls(**d)
+
+
+# =============================================================================
+# Operator Type Definitions
+# =============================================================================
+
+class OperatorType(ABC):
+    """Base class defining operator-type-specific behavior."""
+
+    name: str  # "mutation", "survival", "selection"
+
+    # Julia validation config
+    julia_module: str
+    load_func: str
+    clear_func: str
+    list_func: str
+
+    @abstractmethod
+    def load_reference(self) -> str:
+        """Load the reference documentation for this operator type."""
+
+    @abstractmethod
+    def build_explore_prompt(self, reference: str, variation_seed: int) -> str:
+        """Build LLM prompt for exploring new operator ideas."""
+
+    @abstractmethod
+    def build_refine_prompt(self, parent_code: str, reference: str, feedback: str) -> str:
+        """Build LLM prompt for refining an existing operator."""
+
+    @abstractmethod
+    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
+        """Build LLM prompt for crossing over two operators."""
+
+    @abstractmethod
+    def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
+        """Convert an operator to a PySRConfig for evaluation."""
+
+    @abstractmethod
+    def baseline_config(self, pysr_kwargs: Dict) -> PySRConfig:
+        """Create a baseline PySRConfig (no custom operator)."""
+
+    def create_operator(self, name: str, code: str, generation: int = 0,
+                        parent_name: Optional[str] = None, mode: str = "explore") -> JuliaOperator:
+        """Create a new JuliaOperator with type-specific defaults."""
+        return JuliaOperator(
+            name=name, code=code, generation=generation,
+            parent_name=parent_name, mode=mode,
+        )
+
+
+class MutationOperatorType(OperatorType):
+    name = "mutation"
+    julia_module = "CustomMutationsModule"
+    load_func = "load_mutation_from_string!"
+    clear_func = "clear_dynamic_mutations!"
+    list_func = "list_available_mutations"
+
+    def load_reference(self) -> str:
+        base = Path(__file__).resolve().parent / "SymbolicRegression.jl/src/custom_mutations"
+        ref_path = base / "MUTATIONS_REFERENCE2.md"
+        if ref_path.exists():
+            return ref_path.read_text()
         ref_path = base / "MUTATIONS_REFERENCE.md"
         if ref_path.exists():
             return ref_path.read_text()
         raise FileNotFoundError(f"Could not find MUTATIONS_REFERENCE.md or MUTATIONS_REFERENCE2.md")
 
-def _build_explore_prompt(mutation_reference: str, variation_seed: int = 0) -> str:
-    """Build prompt for exploring new mutation ideas."""
-    # Add variation to avoid cache hits
-    ideas = [
-        "Pattern-based: Insert common mathematical patterns (e.g., polynomial terms, trig identities)",
-        "Structure-aware: Target specific tree structures for modification",
-        "Simplification-focused: Identify and simplify redundant patterns",
-        "Feature-focused: Encourage using underutilized input variables",
-        "Constant-aware: Smart constant insertion or modification",
-        "Depth-balancing: Rebalance tree depth for better search",
-        "Symmetry-aware: Detect and exploit symmetric patterns",
-        "Gradient-guided: Use loss gradient information to guide changes",
-    ]
-    # Rotate ideas based on seed
-    selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
-    ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
+    def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
+        ideas = [
+            "Pattern-based: Insert common mathematical patterns (e.g., polynomial terms, trig identities)",
+            "Structure-aware: Target specific tree structures for modification",
+            "Simplification-focused: Identify and simplify redundant patterns",
+            "Feature-focused: Encourage using underutilized input variables",
+            "Constant-aware: Smart constant insertion or modification",
+            "Depth-balancing: Rebalance tree depth for better search",
+            "Symmetry-aware: Detect and exploit symmetric patterns",
+            "Gradient-guided: Use loss gradient information to guide changes",
+        ]
+        selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
+        ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
 
-    return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are an expert in symbolic regression and genetic programming.
 
 Your task is to create a NEW custom mutation operator for PySR/SymbolicRegression.jl.
 The mutation should help discover better symbolic expressions.
 
 ## Reference: Existing Mutations and API
-{mutation_reference}
+{reference}
 
 ## Requirements
 1. Create a NOVEL mutation that does something different from existing mutations
@@ -262,14 +292,12 @@ function my_mutation_name(
 end
 """
 
+    def build_refine_prompt(self, parent_code: str, reference: str, feedback: str = "") -> str:
+        feedback_section = ""
+        if feedback:
+            feedback_section = f"\n## Feedback on parent mutation:\n{feedback}\n"
 
-def _build_refine_prompt(parent_code: str, mutation_reference: str, feedback: str = "") -> str:
-    """Build prompt for refining an existing mutation."""
-    feedback_section = ""
-    if feedback:
-        feedback_section = f"\n## Feedback on parent mutation:\n{feedback}\n"
-
-    return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are an expert in symbolic regression and genetic programming.
 
 Your task is to IMPROVE an existing custom mutation operator for PySR/SymbolicRegression.jl.
 
@@ -279,7 +307,7 @@ Your task is to IMPROVE an existing custom mutation operator for PySR/SymbolicRe
 ```
 {feedback_section}
 ## Reference: Mutations API
-{mutation_reference}
+{reference}
 
 ## Requirements
 1. Keep the core idea but improve the implementation
@@ -293,25 +321,23 @@ Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
 Do not include markdown code blocks or explanations.
 """
 
-
-def _build_crossover_prompt(parent1_code: str, parent2_code: str, mutation_reference: str) -> str:
-    """Build prompt for crossing over two mutations."""
-    return f"""You are an expert in symbolic regression and genetic programming.
+    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
+        return f"""You are an expert in symbolic regression and genetic programming.
 
 Your task is to COMBINE ideas from two mutation operators into a new one.
 
 ## Parent Mutation 1
 ```julia
-{parent1_code}
+{p1_code}
 ```
 
 ## Parent Mutation 2
 ```julia
-{parent2_code}
+{p2_code}
 ```
 
 ## Reference: Mutations API
-{mutation_reference}
+{reference}
 
 ## Requirements
 1. Create a NEW mutation that combines the best ideas from both parents
@@ -325,81 +351,385 @@ Give it a new descriptive name.
 Do not include markdown code blocks or explanations.
 """
 
+    def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
+        mutation_weights = get_default_mutation_weights()
+        weight = operator.weight if operator.weight is not None else 0.5
+        mutation_weights["weight_custom_mutation_1"] = weight
+        return PySRConfig(
+            mutation_weights=mutation_weights,
+            pysr_kwargs=pysr_kwargs,
+            custom_mutation_code={operator.name: operator.code},
+            allow_custom_mutations=True,
+            name=operator.name,
+        )
 
-def extract_julia_code(response: str) -> str:
-    """Extract Julia function code from LLM response."""
-    text = response.strip()
+    def baseline_config(self, pysr_kwargs: Dict) -> PySRConfig:
+        mutation_weights = get_default_mutation_weights()
+        for i in range(1, 6):
+            mutation_weights[f"weight_custom_mutation_{i}"] = 0.0
+        return PySRConfig(
+            mutation_weights=mutation_weights,
+            pysr_kwargs=pysr_kwargs,
+            custom_mutation_code=None,
+            allow_custom_mutations=False,
+            name="baseline",
+        )
 
-    # Remove markdown code blocks if present
-    if "```julia" in text:
-        start = text.find("```julia") + len("```julia")
-        end = text.find("```", start)
-        if end > start:
-            text = text[start:end].strip()
-    elif "```" in text:
-        start = text.find("```") + 3
-        end = text.find("```", start)
-        if end > start:
-            text = text[start:end].strip()
-
-    # Ensure we have a function definition
-    if "function " not in text:
-        return ""
-
-    return text
+    def create_operator(self, name: str, code: str, generation: int = 0,
+                        parent_name: Optional[str] = None, mode: str = "explore") -> JuliaOperator:
+        return JuliaOperator(
+            name=name, code=code, generation=generation,
+            parent_name=parent_name, mode=mode, weight=0.5,
+        )
 
 
-def extract_function_name(code: str) -> str:
-    """Extract function name from Julia code."""
-    import re
-    match = re.search(r'function\s+(\w+)\s*\(', code)
-    if match:
-        return match.group(1)
-    return ""
+class SurvivalOperatorType(OperatorType):
+    name = "survival"
+    julia_module = "CustomSurvivalModule"
+    load_func = "load_survival_from_string!"
+    clear_func = "clear_dynamic_survivals!"
+    list_func = "list_available_survivals"
+
+    def load_reference(self) -> str:
+        ref_path = Path(__file__).resolve().parent / "SymbolicRegression.jl/src/custom_survival/SURVIVAL_REFERENCE.md"
+        if ref_path.exists():
+            return ref_path.read_text()
+        raise FileNotFoundError(f"Could not find SURVIVAL_REFERENCE.md at {ref_path}")
+
+    def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
+        ideas = [
+            "Worst-fitness: Replace the member with the highest cost/loss",
+            "Complexity-aware: Replace the most bloated member (highest complexity)",
+            "Combined age+fitness: Weight both age and fitness to find replacement",
+            "Diversity-preserving: Replace members from overcrowded fitness regions",
+            "Tournament-based: Run a mini-tournament and replace the worst",
+            "Similarity-based: Replace the member most similar to the incoming offspring",
+            "Stagnation-based: Replace members that haven't improved in a while",
+            "Random: Uniform random replacement for baseline comparison",
+        ]
+        selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
+        ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
+
+        return f"""You are an expert in symbolic regression and genetic programming.
+
+Your task is to create a NEW custom survival operator for PySR/SymbolicRegression.jl.
+The survival operator decides which population member gets REPLACED when a new offspring is created.
+
+## Reference: Survival API and Default Implementation
+{reference}
+
+## Requirements
+1. Create a NOVEL survival strategy that differs from the default (replace-oldest)
+2. The function should help symbolic regression search find better expressions
+3. Use proper Julia syntax and the available API
+4. MUST handle the `exclude_indices` keyword argument
+5. MUST return a valid index (1 to pop.n)
+
+## Ideas to consider (pick one or invent your own):
+{ideas_text}
+
+## Output Format
+Return ONLY the Julia function code, nothing else. The function should be named descriptively.
+Do not include markdown code blocks or explanations.
+
+Example format:
+function my_survival_name(
+    pop::Population{{T,L,N}},
+    options::AbstractOptions;
+    exclude_indices::Vector{{Int}}=Int[],
+)::Int where {{T,L,N}}
+    # Implementation
+    return idx
+end
+"""
+
+    def build_refine_prompt(self, parent_code: str, reference: str, feedback: str = "") -> str:
+        feedback_section = ""
+        if feedback:
+            feedback_section = f"\n## Feedback on parent survival:\n{feedback}\n"
+
+        return f"""You are an expert in symbolic regression and genetic programming.
+
+Your task is to IMPROVE an existing custom survival operator for PySR/SymbolicRegression.jl.
+
+## Parent Survival Code
+```julia
+{parent_code}
+```
+{feedback_section}
+## Reference: Survival API
+{reference}
+
+## Requirements
+1. Keep the core idea but improve the implementation
+2. Consider: better edge case handling, smarter heuristics, combining strategies
+3. MUST handle the `exclude_indices` keyword argument
+4. MUST return a valid index (1 to pop.n)
+5. Use proper Julia syntax
+
+## Output Format
+Return ONLY the improved Julia function code, nothing else.
+Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
+Do not include markdown code blocks or explanations.
+"""
+
+    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
+        return f"""You are an expert in symbolic regression and genetic programming.
+
+Your task is to COMBINE ideas from two survival operators into a new one.
+
+## Parent Survival 1
+```julia
+{p1_code}
+```
+
+## Parent Survival 2
+```julia
+{p2_code}
+```
+
+## Reference: Survival API
+{reference}
+
+## Requirements
+1. Create a NEW survival operator that combines the best ideas from both parents
+2. Don't just concatenate - synthesize a coherent new approach
+3. MUST handle the `exclude_indices` keyword argument
+4. MUST return a valid index (1 to pop.n)
+5. Use proper Julia syntax
+
+## Output Format
+Return ONLY the new Julia function code, nothing else.
+Give it a new descriptive name.
+Do not include markdown code blocks or explanations.
+"""
+
+    def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
+        mutation_weights = get_default_mutation_weights()
+        return PySRConfig(
+            mutation_weights=mutation_weights,
+            pysr_kwargs=pysr_kwargs,
+            custom_survival_code=operator.code,
+            name=operator.name,
+        )
+
+    def baseline_config(self, pysr_kwargs: Dict) -> PySRConfig:
+        mutation_weights = get_default_mutation_weights()
+        return PySRConfig(
+            mutation_weights=mutation_weights,
+            pysr_kwargs=pysr_kwargs,
+            name="baseline",
+        )
 
 
-def generate_mutation_code(
-    parent: Optional[JuliaMutation],
-    mutation_reference: str,
+class SelectionOperatorType(OperatorType):
+    name = "selection"
+    julia_module = "CustomSelectionModule"
+    load_func = "load_selection_from_string!"
+    clear_func = "clear_dynamic_selections!"
+    list_func = "list_available_selections"
+
+    def load_reference(self) -> str:
+        ref_path = Path(__file__).resolve().parent / "SymbolicRegression.jl/src/custom_selection/SELECTION_REFERENCE.md"
+        if ref_path.exists():
+            return ref_path.read_text()
+        raise FileNotFoundError(f"Could not find SELECTION_REFERENCE.md at {ref_path}")
+
+    def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
+        ideas = [
+            "Lexicase selection: Sequentially filter candidates on shuffled evaluation criteria",
+            "Epsilon-lexicase: Like lexicase but with tolerance threshold for near-best candidates",
+            "Fitness-proportionate: Select with probability proportional to fitness (roulette wheel)",
+            "Boltzmann/softmax: Use temperature-controlled selection pressure",
+            "Rank-based: Assign selection probability based on rank rather than raw fitness",
+            "Novelty-based: Prefer members whose expression structure is rare in the population",
+            "Multi-objective: Consider both fitness and complexity using Pareto dominance",
+            "Age-fitness Pareto: Combine age and fitness in multi-objective selection",
+        ]
+        selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
+        ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
+
+        return f"""You are an expert in symbolic regression and genetic programming.
+
+Your task is to create a NEW custom selection operator for PySR/SymbolicRegression.jl.
+The selection operator decides which population member is chosen as a PARENT for mutation or crossover.
+
+## Reference: Selection API and Default Implementation
+{reference}
+
+## Requirements
+1. Create a NOVEL selection strategy that differs from the default tournament selection
+2. The function should help symbolic regression search find better expressions
+3. Use proper Julia syntax and the available API
+4. MUST return a PopMember (the dispatch will copy it)
+5. Can use running_search_statistics for adaptive behavior
+
+## Ideas to consider (pick one or invent your own):
+{ideas_text}
+
+## Output Format
+Return ONLY the Julia function code, nothing else. The function should be named descriptively.
+Do not include markdown code blocks or explanations.
+
+Example format:
+function my_selection_name(
+    pop::Population{{T,L,N}},
+    running_search_statistics::RunningSearchStatistics,
+    options::AbstractOptions,
+)::PopMember{{T,L,N}} where {{T,L,N}}
+    # Implementation
+    return selected_member
+end
+"""
+
+    def build_refine_prompt(self, parent_code: str, reference: str, feedback: str = "") -> str:
+        feedback_section = ""
+        if feedback:
+            feedback_section = f"\n## Feedback on parent selection:\n{feedback}\n"
+
+        return f"""You are an expert in symbolic regression and genetic programming.
+
+Your task is to IMPROVE an existing custom selection operator for PySR/SymbolicRegression.jl.
+
+## Parent Selection Code
+```julia
+{parent_code}
+```
+{feedback_section}
+## Reference: Selection API
+{reference}
+
+## Requirements
+1. Keep the core idea but improve the implementation
+2. Consider: better edge case handling, smarter heuristics, combining strategies
+3. MUST return a PopMember
+4. Use proper Julia syntax
+
+## Output Format
+Return ONLY the improved Julia function code, nothing else.
+Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
+Do not include markdown code blocks or explanations.
+"""
+
+    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
+        return f"""You are an expert in symbolic regression and genetic programming.
+
+Your task is to COMBINE ideas from two selection operators into a new one.
+
+## Parent Selection 1
+```julia
+{p1_code}
+```
+
+## Parent Selection 2
+```julia
+{p2_code}
+```
+
+## Reference: Selection API
+{reference}
+
+## Requirements
+1. Create a NEW selection operator that combines the best ideas from both parents
+2. Don't just concatenate - synthesize a coherent new approach
+3. MUST return a PopMember
+4. Use proper Julia syntax
+
+## Output Format
+Return ONLY the new Julia function code, nothing else.
+Give it a new descriptive name.
+Do not include markdown code blocks or explanations.
+"""
+
+    def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
+        mutation_weights = get_default_mutation_weights()
+        return PySRConfig(
+            mutation_weights=mutation_weights,
+            pysr_kwargs=pysr_kwargs,
+            custom_selection_code=operator.code,
+            name=operator.name,
+        )
+
+    def baseline_config(self, pysr_kwargs: Dict) -> PySRConfig:
+        mutation_weights = get_default_mutation_weights()
+        return PySRConfig(
+            mutation_weights=mutation_weights,
+            pysr_kwargs=pysr_kwargs,
+            name="baseline",
+        )
+
+
+OPERATOR_TYPES: Dict[str, OperatorType] = {
+    "mutation": MutationOperatorType(),
+    "survival": SurvivalOperatorType(),
+    "selection": SelectionOperatorType(),
+}
+
+
+# =============================================================================
+# Julia Code Validation
+# =============================================================================
+
+def validate_julia_code(name: str, code: str, op_type: OperatorType) -> Tuple[bool, str]:
+    """Validate Julia operator code by attempting to load it."""
+    is_valid, error = pre_validate_julia_syntax(code)
+    if not is_valid:
+        return False, error
+
+    try:
+        from juliacall import Main as jl
+
+        jl.seval("using SymbolicRegression")
+        jl.seval(f"using SymbolicRegression.{op_type.julia_module}")
+
+        jl.seval(f"{op_type.clear_func}()")
+
+        escaped_code = code.replace('"""', '\\"\\"\\"')
+        jl.seval(f'{op_type.load_func}(:{name}, raw"""{escaped_code}""")')
+
+        available = list(jl.seval(f"{op_type.list_func}()"))
+        if name not in [str(m) for m in available]:
+            return False, f"{op_type.name.title()} '{name}' not found in registry after loading"
+
+        return True, ""
+
+    except Exception as e:
+        error_msg = str(e)
+        if len(error_msg) > 500:
+            error_msg = error_msg[:500] + "..."
+        return False, error_msg
+
+
+# =============================================================================
+# LLM Code Generation
+# =============================================================================
+
+def generate_operator_code(
+    op_type: OperatorType,
+    reference: str,
+    parent: Optional[JuliaOperator] = None,
+    parent2: Optional[JuliaOperator] = None,
     model: str = "openai/gpt-5-mini",
     mode: str = "explore",
-    parent2: Optional[JuliaMutation] = None,
     feedback: str = "",
     variation_seed: int = 0,
-    temperature: float = 0.0,  # Default to 0 for reproducibility
+    temperature: float = 0.0,
     use_cache: bool = True,
 ) -> Tuple[str, str]:
-    """
-    Generate new Julia mutation code using an LLM.
-
-    Args:
-        parent: Parent mutation to refine (None for explore mode)
-        mutation_reference: MUTATIONS_REFERENCE.md content
-        model: LLM model to use
-        mode: "explore" (new), "refine" (improve parent), or "crossover"
-        parent2: Second parent for crossover mode
-        feedback: Optional feedback about parent's performance
-        use_cache: Whether to use LLM response caching (default True)
-
-    Returns:
-        (code, function_name) tuple
-    """
+    """Generate new Julia operator code using an LLM."""
     if mode == "explore":
-        prompt = _build_explore_prompt(mutation_reference, variation_seed)
+        prompt = op_type.build_explore_prompt(reference, variation_seed)
     elif mode == "refine":
         if parent is None:
-            raise ValueError("refine mode requires a parent mutation")
-        prompt = _build_refine_prompt(parent.code, mutation_reference, feedback)
+            raise ValueError("refine mode requires a parent")
+        prompt = op_type.build_refine_prompt(parent.code, reference, feedback)
     elif mode == "crossover":
         if parent is None or parent2 is None:
-            raise ValueError("crossover mode requires two parent mutations")
-        prompt = _build_crossover_prompt(parent.code, parent2.code, mutation_reference)
+            raise ValueError("crossover mode requires two parents")
+        prompt = op_type.build_crossover_prompt(parent.code, parent2.code, reference)
     else:
         raise ValueError(f"Unknown mode: {mode}")
 
-    # Call LLM
-    # Use variation_seed as sample_index to vary cache key while maintaining determinism
-    # No max_tokens limit - let reasoning models use as many tokens as needed
     response = chat_completion(
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -408,7 +738,6 @@ def generate_mutation_code(
         use_cache=use_cache,
     )
 
-    # Extract code from response
     content = get_content(response)
     code = extract_julia_code(content)
     if not code:
@@ -419,10 +748,39 @@ def generate_mutation_code(
 
 
 # =============================================================================
-# Evolution Functions
+# Evaluation
 # =============================================================================
 
+def evaluate_operators(
+    operators: List[JuliaOperator],
+    op_type: OperatorType,
+    evaluator: PySRSlurmEvaluator,
+    dataset_names: List[str],
+    pysr_kwargs: Dict,
+    seed: int = 42,
+    n_runs: int = 1,
+    target_noise_map: Optional[Dict[str, float]] = None,
+    fitness_metric: str = "r2",
+) -> List[Tuple[float, List[float], List[Dict]]]:
+    """Evaluate multiple operators in parallel via SLURM."""
+    if not operators:
+        return []
+
+    configs = [op_type.to_pysr_config(op, pysr_kwargs) for op in operators]
+
+    return _evaluate_configs_with_noise_map(
+        evaluator=evaluator,
+        configs=configs,
+        dataset_names=dataset_names,
+        seed=seed,
+        n_runs=n_runs,
+        target_noise_map=target_noise_map,
+        fitness_metric=fitness_metric,
+    )
+
+
 def evaluate_baseline(
+    op_type: OperatorType,
     evaluator: PySRSlurmEvaluator,
     dataset_names: List[str],
     pysr_kwargs: Dict,
@@ -431,19 +789,8 @@ def evaluate_baseline(
     target_noise_map: Optional[Dict[str, float]] = None,
     fitness_metric: str = "r2",
 ) -> Tuple[float, List[float], List[Dict]]:
-    """Evaluate PySR without any custom mutations (baseline)."""
-    mutation_weights = get_default_mutation_weights()
-    # Ensure custom mutations are disabled
-    for i in range(1, 6):
-        mutation_weights[f"weight_custom_mutation_{i}"] = 0.0
-
-    config = PySRConfig(
-        mutation_weights=mutation_weights,
-        pysr_kwargs=pysr_kwargs,
-        custom_mutation_code=None,
-        allow_custom_mutations=False,
-        name="baseline",
-    )
+    """Evaluate PySR with default operator (baseline)."""
+    config = op_type.baseline_config(pysr_kwargs)
 
     results = _evaluate_configs_with_noise_map(
         evaluator=evaluator,
@@ -458,117 +805,6 @@ def evaluate_baseline(
     return avg_r2, r2_vector, result_details
 
 
-def evaluate_mutation(
-    mutation: JuliaMutation,
-    evaluator: PySRSlurmEvaluator,
-    dataset_names: List[str],
-    pysr_kwargs: Dict,
-    seed: int = 42,
-    n_runs: int = 1,
-    target_noise_map: Optional[Dict[str, float]] = None,
-    fitness_metric: str = "r2",
-) -> Tuple[float, List[float]]:
-    """Evaluate a single mutation via SLURM."""
-    config = mutation.to_pysr_config(pysr_kwargs)
-    results = _evaluate_configs_with_noise_map(
-        evaluator=evaluator,
-        configs=[config],
-        dataset_names=dataset_names,
-        seed=seed,
-        n_runs=n_runs,
-        target_noise_map=target_noise_map,
-        fitness_metric=fitness_metric,
-    )
-    avg_r2, r2_vector, _ = results[0]
-    return avg_r2, r2_vector
-
-
-def evaluate_mutations(
-    mutations: List[JuliaMutation],
-    evaluator: PySRSlurmEvaluator,
-    dataset_names: List[str],
-    pysr_kwargs: Dict,
-    seed: int = 42,
-    n_runs: int = 1,
-    target_noise_map: Optional[Dict[str, float]] = None,
-    fitness_metric: str = "r2",
-) -> List[Tuple[float, List[float], List[Dict]]]:
-    """
-    Evaluate multiple mutations in parallel via a single SLURM job array.
-
-    Args:
-        mutations: List of JuliaMutation objects to evaluate
-        evaluator: PySRSlurmEvaluator instance
-        dataset_names: List of dataset names to evaluate on
-        pysr_kwargs: PySR configuration
-        seed: Random seed
-        n_runs: Number of runs per mutation per dataset (scores are averaged)
-
-    Returns:
-        List of (avg_r2, r2_vector, result_details) tuples, one per mutation.
-        result_details is a list of dicts with keys: dataset, avg_r2, run_r2_scores, etc.
-    """
-    if not mutations:
-        return []
-
-    # Convert all mutations to configs
-    configs = [m.to_pysr_config(pysr_kwargs) for m in mutations]
-
-    # Evaluate all configs in a single SLURM batch
-    results = _evaluate_configs_with_noise_map(
-        evaluator=evaluator,
-        configs=configs,
-        dataset_names=dataset_names,
-        seed=seed,
-        n_runs=n_runs,
-        target_noise_map=target_noise_map,
-        fitness_metric=fitness_metric,
-    )
-
-    return results
-
-
-def compute_per_run_avgs(
-    result_details: List[Dict],
-    n_runs: int,
-    fitness_metric: str,
-) -> List[float]:
-    """Compute per-run averages using the same missing-score policy as aggregate scoring."""
-    score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
-    missing_fill = 0.0 if fitness_metric == "gt" else -1.0
-    per_run_avgs: List[float] = []
-
-    for run_idx in range(n_runs):
-        run_scores: List[float] = []
-        for detail in result_details:
-            run_values = detail.get(score_key, [])
-            run_scores.append(run_values[run_idx] if len(run_values) > run_idx else missing_fill)
-        per_run_avgs.append(float(np.mean(run_scores)) if run_scores else missing_fill)
-
-    return per_run_avgs
-
-
-def select_parent(population: List[JuliaMutation], rng: random.Random) -> JuliaMutation:
-    """Select a parent using tournament selection."""
-    # Tournament size 2
-    candidates = rng.sample(population, min(2, len(population)))
-    return max(candidates, key=lambda m: m.score if m.score is not None else -1)
-
-
-def select_survivors(
-    population: List[JuliaMutation],
-    offspring: List[JuliaMutation],
-    population_size: int,
-) -> List[JuliaMutation]:
-    """Select best individuals from population + offspring."""
-    combined = population + offspring
-    # Filter out those without scores
-    scored = [m for m in combined if m.score is not None]
-    # Sort by score descending
-    scored.sort(key=lambda m: m.score, reverse=True)
-    return scored[:population_size]
-
-
 # =============================================================================
 # Logging
 # =============================================================================
@@ -576,16 +812,15 @@ def select_survivors(
 class EvolutionLogger:
     """Tracks and saves evolution run data."""
 
-    def __init__(self, output_dir: str):
+    def __init__(self, output_dir: str, operator_type: str = "operator"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.operator_type = operator_type
 
-        # Set up tee logging
         self.log_file = self.output_dir / "run.log"
         self.tee = TeeLogger(str(self.log_file))
         sys.stdout = self.tee
 
-        # Initialize run data
         self.run_data = {
             "start_time": datetime.now().isoformat(),
             "config": {},
@@ -594,12 +829,10 @@ class EvolutionLogger:
         }
 
     def set_config(self, config: Dict):
-        """Save run configuration."""
         self.run_data["config"] = config
         self._save()
 
     def log_baseline(self, avg_r2: float, r2_vector: List[float]):
-        """Log baseline results."""
         self.run_data["baseline"] = {
             "avg_r2": avg_r2,
             "r2_vector": r2_vector,
@@ -609,11 +842,10 @@ class EvolutionLogger:
     def log_generation(
         self,
         generation: int,
-        population: List[JuliaMutation],
-        offspring: List[JuliaMutation],
-        best: JuliaMutation,
+        population: List[JuliaOperator],
+        offspring: List[JuliaOperator],
+        best: JuliaOperator,
     ):
-        """Log data for a generation."""
         gen_data = {
             "generation": generation,
             "population": [m.to_dict() for m in population],
@@ -624,28 +856,24 @@ class EvolutionLogger:
         self.run_data["generations"].append(gen_data)
         self._save()
 
-        # Also save best mutation code separately
-        best_file = self.output_dir / f"best_mutation_gen{generation}.jl"
-        best_file.write_text(f"# Best mutation from generation {generation}\n"
+        best_file = self.output_dir / f"best_{self.operator_type}_gen{generation}.jl"
+        best_file.write_text(f"# Best {self.operator_type} from generation {generation}\n"
                              f"# Score: {best.score}\n\n{best.code}")
 
     def _save(self):
-        """Save run data to JSON."""
         with open(self.output_dir / "run_data.json", "w") as f:
             json.dump(self.run_data, f, indent=2)
 
-    def finalize(self, best: JuliaMutation):
-        """Save final results."""
+    def finalize(self, best: JuliaOperator):
         self.run_data["end_time"] = datetime.now().isoformat()
-        self.run_data["best_mutation"] = best.to_dict()
+        self.run_data[f"best_{self.operator_type}"] = best.to_dict()
         self._save()
 
-        # Save best mutation as standalone file
-        final_file = self.output_dir / "best_mutation_final.jl"
-        final_file.write_text(f"# Best mutation from evolution run\n"
+        final_file = self.output_dir / f"best_{self.operator_type}_final.jl"
+        final_file.write_text(f"# Best {self.operator_type} from evolution run\n"
                               f"# Score: {best.score}\n"
                               f"# Generation: {best.generation}\n\n{best.code}")
-        print(f"\nFinal best mutation saved to: {final_file}")
+        print(f"\nFinal best {self.operator_type} saved to: {final_file}")
 
 
 # =============================================================================
@@ -653,6 +881,7 @@ class EvolutionLogger:
 # =============================================================================
 
 def run_evolution(
+    op_type: OperatorType,
     n_generations: int,
     population_size: int,
     n_offspring: int,
@@ -671,42 +900,19 @@ def run_evolution(
     n_runs: int = 1,
     target_noise: float = 0.0,
     random_target_noise: bool = False,
-    fitness_metric: str = "r2",
-) -> JuliaMutation:
-    """
-    Run the evolution loop.
-
-    Args:
-        n_generations: Number of generations to evolve
-        population_size: Number of mutations to maintain
-        n_offspring: Number of offspring per generation
-        dataset_names: List of dataset names to evaluate on
-        model: LLM model for code generation
-        temperature: LLM temperature (0=deterministic)
-        seed: Random seed
-        output_dir: Directory for outputs
-        pysr_kwargs: PySR configuration
-        slurm_*: SLURM job configuration
-        max_samples: Max samples per dataset
-        job_timeout: SLURM job timeout in seconds
-        use_cache: Whether to use LLM response caching (default True)
-        n_runs: Number of evaluation runs per mutation per dataset (default 1)
-        target_noise: Gaussian noise level for target (default 0.0)
-        random_target_noise: If True, use per-dataset noise drawn from TARGET_NOISE_LEVELS
-
-    Returns:
-        Best mutation found
-    """
+    fitness_metric: str = "gt",
+) -> JuliaOperator:
+    """Run the evolution loop for the specified operator type."""
     rng = random.Random(seed)
     np.random.seed(seed)
 
-    # Set up logging
-    logger = EvolutionLogger(output_dir)
+    logger = EvolutionLogger(output_dir, operator_type=op_type.name)
     target_noise_map = None
     if random_target_noise:
         target_noise_map = _build_target_noise_map(dataset_names, seed, TARGET_NOISE_LEVELS)
 
     logger.set_config({
+        "operator_type": op_type.name,
         "n_generations": n_generations,
         "population_size": population_size,
         "n_offspring": n_offspring,
@@ -720,13 +926,10 @@ def run_evolution(
         "n_runs": n_runs,
         "target_noise": target_noise,
         "random_target_noise": random_target_noise,
-        "target_noise_levels": TARGET_NOISE_LEVELS if random_target_noise else None,
-        "target_noise_map": target_noise_map,
         "fitness_metric": fitness_metric,
     })
     metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
 
-    # Set up evaluator
     evaluator = PySRSlurmEvaluator(
         results_dir=output_dir,
         partition=slurm_partition,
@@ -738,28 +941,20 @@ def run_evolution(
         target_noise=target_noise,
     )
 
-    # Load mutation reference
-    mutation_reference = load_mutations_reference()
+    reference = op_type.load_reference()
 
     # Evaluate baseline
     print("=" * 60)
-    print("Evaluating baseline (no custom mutations)...")
+    print(f"Evaluating baseline (default {op_type.name})...")
     print("=" * 60)
     baseline_r2, baseline_vector, baseline_details = evaluate_baseline(
-        evaluator,
-        dataset_names,
-        pysr_kwargs,
-        seed,
-        n_runs=n_runs,
-        target_noise_map=target_noise_map,
+        op_type, evaluator, dataset_names, pysr_kwargs, seed,
+        n_runs=n_runs, target_noise_map=target_noise_map,
         fitness_metric=fitness_metric,
     )
-    # Show per-run averages across all datasets when n_runs > 1
     if n_runs > 1 and baseline_details:
         per_run_avgs = compute_per_run_avgs(
-            baseline_details,
-            n_runs=n_runs,
-            fitness_metric=fitness_metric,
+            baseline_details, n_runs=n_runs, fitness_metric=fitness_metric,
         )
         runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
         print(f"Baseline avg {metric_label}: {baseline_r2:.4f} [{runs_str}]")
@@ -769,20 +964,20 @@ def run_evolution(
 
     # Generate initial population
     print("\n" + "=" * 60)
-    print(f"Generating initial population ({population_size} mutations)...")
+    print(f"Generating initial population ({population_size} {op_type.name} operators)...")
     print("=" * 60)
 
-    population: List[JuliaMutation] = []
+    population: List[JuliaOperator] = []
     attempts = 0
-    max_attempts = population_size * 3  # Allow some failures
+    max_attempts = population_size * 3
 
     while len(population) < population_size and attempts < max_attempts:
         attempts += 1
-        print(f"\nGenerating mutation {len(population) + 1}/{population_size} (attempt {attempts})...")
+        print(f"\nGenerating {op_type.name} {len(population) + 1}/{population_size} (attempt {attempts})...")
 
-        code, func_name = generate_mutation_code(
-            parent=None,
-            mutation_reference=mutation_reference,
+        code, func_name = generate_operator_code(
+            op_type=op_type,
+            reference=reference,
             model=model,
             mode="explore",
             variation_seed=attempts,
@@ -794,71 +989,56 @@ def run_evolution(
             print("  Failed to generate code")
             continue
 
-        # Make name unique for initial population
         unique_name = f"{func_name}_init_{len(population)}"
         code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
 
-        # Validate
-        is_valid, error = validate_julia_code(unique_name, code)
+        is_valid, error = validate_julia_code(unique_name, code, op_type)
         if not is_valid:
             print(f"  Validation failed: {error[:100]}...")
             continue
 
-        mutation = JuliaMutation(
-            name=unique_name,
-            code=code,
-            weight=0.5,
-            generation=0,
-            mode="explore",
+        operator = op_type.create_operator(
+            name=unique_name, code=code, generation=0, mode="explore",
         )
-        population.append(mutation)
+        population.append(operator)
         print(f"  Created: {unique_name}")
 
     if len(population) == 0:
-        raise RuntimeError("Failed to generate any valid mutations")
+        raise RuntimeError(f"Failed to generate any valid {op_type.name} operators")
 
-    print(f"\nGenerated {len(population)} valid mutations")
+    print(f"\nGenerated {len(population)} valid {op_type.name} operators")
 
-    # Evaluate initial population (all mutations in parallel via single SLURM job)
+    # Evaluate initial population
     print("\n" + "=" * 60)
-    print(f"Evaluating initial population ({len(population)} mutations in parallel)...")
+    print(f"Evaluating initial population ({len(population)} operators in parallel)...")
     print("=" * 60)
 
     try:
-        results = evaluate_mutations(
-            population,
-            evaluator,
-            dataset_names,
-            pysr_kwargs,
-            seed,
-            n_runs=n_runs,
-            target_noise_map=target_noise_map,
+        results = evaluate_operators(
+            population, op_type, evaluator, dataset_names, pysr_kwargs, seed,
+            n_runs=n_runs, target_noise_map=target_noise_map,
             fitness_metric=fitness_metric,
         )
-        for mutation, (avg_r2, r2_vector, result_details) in zip(population, results):
-            mutation.score = avg_r2
-            mutation.score_vector = r2_vector
-            # Show per-run averages across all datasets when n_runs > 1
+        for operator, (avg_r2, r2_vector, result_details) in zip(population, results):
+            operator.score = avg_r2
+            operator.score_vector = r2_vector
             if n_runs > 1 and result_details:
                 per_run_avgs = compute_per_run_avgs(
-                    result_details,
-                    n_runs=n_runs,
-                    fitness_metric=fitness_metric,
+                    result_details, n_runs=n_runs, fitness_metric=fitness_metric,
                 )
                 runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                print(f"  {mutation.name}: Avg {avg_r2:.4f} [{runs_str}]")
+                print(f"  {operator.name}: Avg {avg_r2:.4f} [{runs_str}]")
             else:
-                print(f"  {mutation.name}: {avg_r2:.4f}")
+                print(f"  {operator.name}: {avg_r2:.4f}")
     except Exception as e:
         print(f"  Batch evaluation failed: {e}")
-        for mutation in population:
-            mutation.score = -1.0
-            mutation.score_vector = []
+        for operator in population:
+            operator.score = -1.0
+            operator.score_vector = []
 
-    # Sort population by score
-    population.sort(key=lambda m: m.score if m.score else -1, reverse=True)
+    population.sort(key=lambda s: s.score if s.score else -1, reverse=True)
     best = population[0]
-    print(f"\nBest initial mutation: {best.name} (score: {best.score:.4f})")
+    print(f"\nBest initial {op_type.name}: {best.name} (score: {best.score:.4f})")
 
     # Evolution loop
     for gen in range(1, n_generations + 1):
@@ -866,14 +1046,13 @@ def run_evolution(
         print(f"Generation {gen}/{n_generations}")
         print("=" * 60)
 
-        offspring: List[JuliaMutation] = []
+        offspring: List[JuliaOperator] = []
         offspring_attempts = 0
         max_offspring_attempts = n_offspring * 3
 
         while len(offspring) < n_offspring and offspring_attempts < max_offspring_attempts:
             offspring_attempts += 1
 
-            # Choose mode (bias toward refine, occasionally explore or crossover)
             mode = rng.choice(["explore", "refine", "refine", "refine", "crossover"])
 
             if mode == "explore":
@@ -882,17 +1061,17 @@ def run_evolution(
             elif mode == "refine":
                 parent = select_parent(population, rng)
                 parent2 = None
-            else:  # crossover
+            else:
                 parent = select_parent(population, rng)
-                parent2 = select_parent([m for m in population if m != parent], rng)
+                parent2 = select_parent([s for s in population if s != parent], rng)
 
-            # Generate code
-            code, func_name = generate_mutation_code(
+            code, func_name = generate_operator_code(
+                op_type=op_type,
+                reference=reference,
                 parent=parent,
-                mutation_reference=mutation_reference,
+                parent2=parent2,
                 model=model,
                 mode=mode,
-                parent2=parent2,
                 variation_seed=gen * 100 + offspring_attempts,
                 temperature=temperature,
                 use_cache=use_cache,
@@ -901,65 +1080,48 @@ def run_evolution(
             if not code or not func_name:
                 continue
 
-            # Make name unique
             unique_name = f"{func_name}_gen{gen}_{len(offspring)}"
-
-            # Update function name in code
             code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
 
-            # Validate
-            is_valid, error = validate_julia_code(unique_name, code)
+            is_valid, error = validate_julia_code(unique_name, code, op_type)
             if not is_valid:
                 print(f"  Validation failed for {unique_name}: {error[:80]}...")
                 continue
 
-            mutation = JuliaMutation(
-                name=unique_name,
-                code=code,
-                weight=0.5,
-                generation=gen,
-                parent_name=parent.name if parent else None,
-                mode=mode,
+            operator = op_type.create_operator(
+                name=unique_name, code=code, generation=gen,
+                parent_name=parent.name if parent else None, mode=mode,
             )
-            offspring.append(mutation)
+            offspring.append(operator)
             print(f"  Created: {unique_name} (mode={mode})")
 
         print(f"\nGenerated {len(offspring)} offspring")
 
-        # Evaluate offspring (all mutations in parallel via single SLURM job)
+        # Evaluate offspring
         print(f"\nEvaluating {len(offspring)} offspring in parallel...")
         try:
-            results = evaluate_mutations(
-                offspring,
-                evaluator,
-                dataset_names,
-                pysr_kwargs,
-                seed,
-                n_runs=n_runs,
-                target_noise_map=target_noise_map,
+            results = evaluate_operators(
+                offspring, op_type, evaluator, dataset_names, pysr_kwargs, seed,
+                n_runs=n_runs, target_noise_map=target_noise_map,
                 fitness_metric=fitness_metric,
             )
-            for mutation, (avg_r2, r2_vector, result_details) in zip(offspring, results):
-                mutation.score = avg_r2
-                mutation.score_vector = r2_vector
-                # Show per-run averages across all datasets when n_runs > 1
+            for operator, (avg_r2, r2_vector, result_details) in zip(offspring, results):
+                operator.score = avg_r2
+                operator.score_vector = r2_vector
                 if n_runs > 1 and result_details:
                     per_run_avgs = compute_per_run_avgs(
-                        result_details,
-                        n_runs=n_runs,
-                        fitness_metric=fitness_metric,
+                        result_details, n_runs=n_runs, fitness_metric=fitness_metric,
                     )
                     runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                    print(f"  {mutation.name}: Avg {avg_r2:.4f} [{runs_str}]")
+                    print(f"  {operator.name}: Avg {avg_r2:.4f} [{runs_str}]")
                 else:
-                    print(f"  {mutation.name}: {avg_r2:.4f}")
+                    print(f"  {operator.name}: {avg_r2:.4f}")
         except Exception as e:
             print(f"  Batch evaluation failed: {e}")
-            for mutation in offspring:
-                mutation.score = -1.0
-                mutation.score_vector = []
+            for operator in offspring:
+                operator.score = -1.0
+                operator.score_vector = []
 
-        # Selection
         population = select_survivors(population, offspring, population_size)
         best = population[0]
 
@@ -970,13 +1132,12 @@ def run_evolution(
 
         logger.log_generation(gen, population, offspring, best)
 
-    # Finalize
     logger.finalize(best)
 
     print("\n" + "=" * 60)
     print("Evolution complete!")
     print("=" * 60)
-    print(f"Best mutation: {best.name}")
+    print(f"Best {op_type.name}: {best.name}")
     print(f"Best score: {best.score:.4f}")
     print(f"Baseline ({metric_label}): {baseline_r2:.4f}")
     print(f"Improvement: {best.score - baseline_r2:+.4f}")
@@ -990,84 +1151,70 @@ def run_evolution(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Evolve Julia mutation operators for PySR using LLMs",
+        description="Evolve Julia operators (mutation/survival/selection) for PySR using LLMs",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    # Evolution settings
-    parser.add_argument("--generations", type=int, default=20,
-                        help="Number of generations to evolve")
-    parser.add_argument("--population", type=int, default=4,
-                        help="Population size")
-    parser.add_argument("--offspring", type=int, default=4,
-                        help="Number of offspring per generation")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed")
-    parser.add_argument("--n-runs", type=int, default=3,
-                        help="Number of evaluation runs per mutation per dataset (scores are averaged)")
+    parser.add_argument("--operator_type", type=str, required=True,
+                        choices=["mutation", "survival", "selection"],
+                        help="Type of operator to evolve")
+
+    parser.add_argument("--generations", type=int, default=20)
+    parser.add_argument("--population", type=int, default=4)
+    parser.add_argument("--offspring", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--n-runs", type=int, default=3)
     parser.add_argument("--fitness_metric", type=str, default="gt", choices=["r2", "gt"],
                         help="Meta-evolution fitness metric: r2 or gt (whole-frontier symbolic match rate)")
 
-    # Dataset settings
-    parser.add_argument("--split", type=str, default="splits/train.txt",
-                        help="Path to dataset split file")
-    parser.add_argument("--max_samples", type=int, default=1000,
-                        help="Maximum samples per dataset")
-    parser.add_argument("--target_noise", type=float, default=0.0,
-                        help="Fixed Gaussian noise level for target (SRBench standard levels: 0.0, 0.001, 0.01, 0.1)")
+    parser.add_argument("--split", type=str, default=None,
+                        help="Path to dataset split file (default: train.txt for mutation, train_hard.txt for survival/selection)")
+    parser.add_argument("--max_samples", type=int, default=1000)
+    parser.add_argument("--target_noise", type=float, default=0.0)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--random_target_noise", action="store_true",
-                       help="Assign per-dataset target noise from {0.0, 0.001, 0.01, 0.1} using the seed")
-    group.add_argument("--no_random_target_noise", dest="random_target_noise", action="store_false",
-                       help="Disable per-dataset target noise and use --target_noise instead")
+    group.add_argument("--random_target_noise", action="store_true")
+    group.add_argument("--no_random_target_noise", dest="random_target_noise", action="store_false")
     parser.set_defaults(random_target_noise=True)
 
-    # PySR settings
-    parser.add_argument("--max_evals", type=int, default=1e6,
-                        help="Maximum evaluations per PySR run")
-    parser.add_argument("--timeout", type=int, default=3000,
-                        help="PySR timeout in seconds")
+    parser.add_argument("--max_evals", type=int, default=None,
+                        help="Maximum evaluations per PySR run (default: 1e6 for mutation, 100000 for survival/selection)")
+    parser.add_argument("--timeout", type=int, default=3000)
 
-    # LLM settings
-    parser.add_argument("--model", type=str, default="openai/gpt-5-mini",
-                        help="LLM model for code generation")
-    parser.add_argument("--temperature", type=float, default=0.0,
-                        help="LLM temperature (0=deterministic, higher=more random)")
+    parser.add_argument("--model", type=str, default="openai/gpt-5-mini")
+    parser.add_argument("--temperature", type=float, default=0.0)
 
-    # SLURM settings
-    parser.add_argument("--partition", type=str, default="default_partition",
-                        help="SLURM partition")
-    parser.add_argument("--time_limit", type=str, default="04:00:00",
-                        help="SLURM time limit per job")
-    parser.add_argument("--mem_per_cpu", type=str, default="8G",
-                        help="SLURM memory per CPU")
-    parser.add_argument("--job_timeout", type=float, default=3000.0,
-                        help="Max time to wait for SLURM job completion")
+    parser.add_argument("--partition", type=str, default="default_partition")
+    parser.add_argument("--time_limit", type=str, default="04:00:00")
+    parser.add_argument("--mem_per_cpu", type=str, default="8G")
+    parser.add_argument("--job_timeout", type=float, default=3000.0)
 
-    # Output settings
-    parser.add_argument("--output_dir", type=str, default=None,
-                        help="Output directory (default: outputs/evolve_pysr_TIMESTAMP)")
-    parser.add_argument("--no-cache", action="store_true",
-                        help="Disable LLM response caching (force fresh API calls)")
+    parser.add_argument("--output_dir", type=str, default=None)
+    parser.add_argument("--no-cache", action="store_true")
 
     args = parser.parse_args()
 
-    # Set up output directory
+    op_type = OPERATOR_TYPES[args.operator_type]
+
+    # Apply operator-type-specific defaults
+    if args.split is None:
+        args.split = "splits/train.txt" if args.operator_type == "mutation" else "splits/train_hard.txt"
+
+    if args.max_evals is None:
+        args.max_evals = int(1e6) if args.operator_type == "mutation" else 100000
+
     if args.output_dir is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.output_dir = f"outputs/evolve_pysr_{timestamp}"
+        args.output_dir = f"outputs/evolve_{args.operator_type}_{timestamp}"
 
-    # Load datasets
     dataset_names = load_dataset_names_from_split(args.split)
     print(f"Loaded {len(dataset_names)} datasets from {args.split}")
 
-    # Set up PySR kwargs
     pysr_kwargs = get_default_pysr_kwargs()
     pysr_kwargs["max_evals"] = args.max_evals
     pysr_kwargs["timeout_in_seconds"] = args.timeout
 
-    # Run evolution
     best = run_evolution(
+        op_type=op_type,
         n_generations=args.generations,
         population_size=args.population,
         n_offspring=args.offspring,

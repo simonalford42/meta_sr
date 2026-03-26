@@ -32,15 +32,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from evolve_pysr import (
-    JuliaMutation,
-    _build_explore_prompt,
-    _build_refine_prompt,
-    _build_crossover_prompt,
-    generate_mutation_code,
+    JuliaOperator,
+    OPERATOR_TYPES,
+    generate_operator_code,
     validate_julia_code,
-    load_mutations_reference,
     evaluate_baseline,
-    evaluate_mutation,
+    evaluate_operators,
 )
 from parallel_eval_pysr import (
     PySRSlurmEvaluator,
@@ -88,14 +85,15 @@ def clear_cache():
 
 def show_prompt(mode: str, variation_seed: int = 0, parent_code: str = None, parent2_code: str = None):
     """Display the prompt that would be sent to the LLM."""
-    mutation_reference = load_mutations_reference()
+    op_type = OPERATOR_TYPES["mutation"]
+    reference = op_type.load_reference()
 
     print("=" * 80)
     print(f"PROMPT FOR MODE: {mode.upper()}")
     print("=" * 80)
 
     if mode == "explore":
-        prompt = _build_explore_prompt(mutation_reference, variation_seed)
+        prompt = op_type.build_explore_prompt(reference, variation_seed)
     elif mode == "refine":
         if not parent_code:
             parent_code = """function example_mutation(
@@ -111,13 +109,13 @@ def show_prompt(mode: str, variation_seed: int = 0, parent_code: str = None, par
     end
     return tree
 end"""
-        prompt = _build_refine_prompt(parent_code, mutation_reference)
+        prompt = op_type.build_refine_prompt(parent_code, reference)
     elif mode == "crossover":
         if not parent_code:
             parent_code = "function parent1() return tree end"
         if not parent2_code:
             parent2_code = "function parent2() return tree end"
-        prompt = _build_crossover_prompt(parent_code, parent2_code, mutation_reference)
+        prompt = op_type.build_crossover_prompt(parent_code, parent2_code, reference)
     else:
         raise ValueError(f"Unknown mode: {mode}")
 
@@ -219,7 +217,8 @@ def generate_mutations(
     use_cache: bool = True,
 ) -> List[Dict]:
     """Generate N mutations and optionally validate them."""
-    mutation_reference = load_mutations_reference()
+    op_type = OPERATOR_TYPES["mutation"]
+    reference = op_type.load_reference()
     mutations = []
 
     for i in range(n):
@@ -228,15 +227,16 @@ def generate_mutations(
             print(f"GENERATING MUTATION {i+1}/{n} (mode={mode})")
             print("=" * 60)
 
-        # Create parent JuliaMutation if needed
+        # Create parent JuliaOperator if needed
         parent = None
         if mode == "refine" and parent_code:
-            parent = JuliaMutation(name="parent", code=parent_code, weight=0.5)
+            parent = JuliaOperator(name="parent", code=parent_code, weight=0.5)
 
         # Generate
-        code, func_name = generate_mutation_code(
+        code, func_name = generate_operator_code(
+            op_type=op_type,
+            reference=reference,
             parent=parent,
-            mutation_reference=mutation_reference,
             model=model,
             mode=mode,
             variation_seed=i,
@@ -265,7 +265,7 @@ def generate_mutations(
         is_valid = True
         error = ""
         if validate:
-            is_valid, error = validate_julia_code(unique_name, code)
+            is_valid, error = validate_julia_code(unique_name, code, op_type)
 
         if verbose:
             show_generated_mutation(unique_name, code, is_valid, error)
@@ -307,6 +307,8 @@ def evaluate_mutations_slurm(
         job_timeout=1800.0,
     )
 
+    op_type = OPERATOR_TYPES["mutation"]
+
     # Evaluate baseline if not cached
     if cache.get("baseline") is None:
         if verbose:
@@ -314,8 +316,8 @@ def evaluate_mutations_slurm(
             print("EVALUATING BASELINE")
             print("=" * 60)
 
-        avg_r2, r2_vector = evaluate_baseline(
-            evaluator, dataset_names, pysr_kwargs, seed
+        avg_r2, r2_vector, _ = evaluate_baseline(
+            op_type, evaluator, dataset_names, pysr_kwargs, seed
         )
         cache["baseline"] = {
             "avg_r2": avg_r2,
@@ -341,16 +343,17 @@ def evaluate_mutations_slurm(
             if verbose:
                 print(f"\nEvaluating {m['name']} ({i+1}/{len(to_evaluate)})...")
 
-            mutation = JuliaMutation(
+            operator = JuliaOperator(
                 name=m["name"],
                 code=m["code"],
                 weight=0.5,
             )
 
             try:
-                avg_r2, r2_vector = evaluate_mutation(
-                    mutation, evaluator, dataset_names, pysr_kwargs, seed
+                results = evaluate_operators(
+                    [operator], op_type, evaluator, dataset_names, pysr_kwargs, seed
                 )
+                avg_r2, r2_vector, _ = results[0]
                 m["score"] = avg_r2
                 m["r2_vector"] = r2_vector
 

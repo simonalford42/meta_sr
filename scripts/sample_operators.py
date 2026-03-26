@@ -17,26 +17,26 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from evolve_pysr import (
+    OPERATOR_TYPES,
+    generate_operator_code,
+    validate_julia_code,
+)
 
-def sample_mutations(model: str, n_samples: int, temperature: float, use_cache: bool):
-    from evolve_pysr import (
-        load_mutations_reference,
-        generate_mutation_code,
-        validate_julia_code,
-        extract_function_name,
-    )
 
-    reference = load_mutations_reference()
-    print(f"Generating {n_samples} mutation operators...\n")
+def sample_operators(operator_type: str, model: str, n_samples: int, temperature: float, use_cache: bool):
+    op_type = OPERATOR_TYPES[operator_type]
+    reference = op_type.load_reference()
+    print(f"Generating {n_samples} {operator_type} operators...\n")
 
     for i in range(n_samples):
         print(f"{'='*60}")
         print(f"Sample {i+1}/{n_samples}")
         print(f"{'='*60}")
 
-        code, func_name = generate_mutation_code(
-            parent=None,
-            mutation_reference=reference,
+        code, func_name = generate_operator_code(
+            op_type=op_type,
+            reference=reference,
             model=model,
             mode="explore",
             variation_seed=i + 1,
@@ -51,87 +51,7 @@ def sample_mutations(model: str, n_samples: int, temperature: float, use_cache: 
         print(f"Function: {func_name}")
         print(f"Code:\n{code}\n")
 
-        is_valid, error = validate_julia_code(func_name, code)
-        if is_valid:
-            print(f"Validation: PASS")
-        else:
-            print(f"Validation: FAIL - {error[:200]}")
-        print()
-
-
-def sample_survivals(model: str, n_samples: int, temperature: float, use_cache: bool):
-    from evolve_survival import (
-        load_survival_reference,
-        generate_survival_code,
-        validate_julia_survival_code,
-    )
-
-    reference = load_survival_reference()
-    print(f"Generating {n_samples} survival operators...\n")
-
-    for i in range(n_samples):
-        print(f"{'='*60}")
-        print(f"Sample {i+1}/{n_samples}")
-        print(f"{'='*60}")
-
-        code, func_name = generate_survival_code(
-            parent=None,
-            survival_reference=reference,
-            model=model,
-            mode="explore",
-            variation_seed=i + 1,
-            temperature=temperature,
-            use_cache=use_cache,
-        )
-
-        if not code or not func_name:
-            print("  FAILED: Could not generate code\n")
-            continue
-
-        print(f"Function: {func_name}")
-        print(f"Code:\n{code}\n")
-
-        is_valid, error = validate_julia_survival_code(func_name, code)
-        if is_valid:
-            print(f"Validation: PASS")
-        else:
-            print(f"Validation: FAIL - {error[:200]}")
-        print()
-
-
-def sample_selections(model: str, n_samples: int, temperature: float, use_cache: bool):
-    from evolve_selection import (
-        load_selection_reference,
-        generate_selection_code,
-        validate_julia_selection_code,
-    )
-
-    reference = load_selection_reference()
-    print(f"Generating {n_samples} selection operators...\n")
-
-    for i in range(n_samples):
-        print(f"{'='*60}")
-        print(f"Sample {i+1}/{n_samples}")
-        print(f"{'='*60}")
-
-        code, func_name = generate_selection_code(
-            parent=None,
-            selection_reference=reference,
-            model=model,
-            mode="explore",
-            variation_seed=i + 1,
-            temperature=temperature,
-            use_cache=use_cache,
-        )
-
-        if not code or not func_name:
-            print("  FAILED: Could not generate code\n")
-            continue
-
-        print(f"Function: {func_name}")
-        print(f"Code:\n{code}\n")
-
-        is_valid, error = validate_julia_selection_code(func_name, code)
+        is_valid, error = validate_julia_code(func_name, code, op_type)
         if is_valid:
             print(f"Validation: PASS")
         else:
@@ -156,13 +76,7 @@ def main():
                        help="Disable LLM response caching")
 
     args = parser.parse_args()
-
-    if args.type == "mutation":
-        sample_mutations(args.model, args.n_samples, args.temperature, not args.no_cache)
-    elif args.type == "survival":
-        sample_survivals(args.model, args.n_samples, args.temperature, not args.no_cache)
-    elif args.type == "selection":
-        sample_selections(args.model, args.n_samples, args.temperature, not args.no_cache)
+    sample_operators(args.type, args.model, args.n_samples, args.temperature, not args.no_cache)
 
 
 if __name__ == "__main__":

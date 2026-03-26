@@ -20,14 +20,14 @@ sbatch --time=10:00:00 run_pysr.sh --results_dir results_pysr_1e6 --max_evals 10
 # sbatch --time=01:00:00 run_pysr.sh --results_dir results_pysr_1e6 --max_evals 1000000
 # sbatch --time=04:00:00 run_pysr.sh --results_dir results_pysr_1e7 --max_evals 10000000
 # sbatch --time=08:00:00 run_pysr.sh --results_dir results_pysr_1e8 --max_evals 100000000
-# python evolve_pysr.py --generations 2 --n-runs 3
+# python evolve_pysr.py --operator_type mutation --generations 2 --n-runs 3
 # sbatch run.sh hpo_pysr.py --n-trials 500
-# sbatch run.sh evolve_pysr.py
+# sbatch run.sh evolve_pysr.py --operator_type mutation
 
-sbatch run.sh evolve_pysr.py --fitness_metric gt --split splits/train.txt
+sbatch run.sh evolve_pysr.py --operator_type mutation --fitness_metric gt --split splits/train_small.txt --n-runs 1 --max_evals 100000
 sbatch run.sh evolve_basic_sr.py --split splits/train.txt
 # sbatch run.sh evolve_basic_sr.py
-sbatch run.sh evolve_selection.py --fitness_metric gt --split splits/train.txt
-sbatch run.sh evolve_survival.py --fitness_metric gt --split splits/train.txt
+sbatch run.sh evolve_pysr.py --operator_type selection --fitness_metric gt --split splits/train_small.txt
+sbatch run.sh evolve_pysr.py --operator_type survival --fitness_metric gt --split splits/train.txt
 sbatch run.sh hpo_pysr.py --n-trials 500
 
