@@ -151,10 +151,10 @@ meta_sr/
 
 ```bash
 # Local (for testing)
-python evolve_pysr.py
+python evolve_pysr.py --operator_type mutation
 
 # Via SLURM
-sbatch run.sh evolve_pysr.py
+sbatch run.sh evolve_pysr.py --operator_type mutation
 ```
 
 This will:
@@ -163,7 +163,20 @@ This will:
 3. Evaluate each candidate on SRBench datasets via SLURM job arrays
 4. Select the best mutations and evolve the next generation
 
-Results are saved to `outputs/evolve_pysr_YYYYMMDD_HHMMSS/`.
+Results are saved to `outputs/evolve_mutation_YYYYMMDD_HHMMSS/`.
+
+### Evolve PySR mutations with OpenEvolve
+
+```bash
+python run_openevolve_pysr.py
+```
+
+This workflow uses OpenEvolve to mutate a Python EVOLVE-BLOCK that contains:
+- a Julia custom mutation string
+- its PySR mutation weight
+
+The OpenEvolve evaluator then validates the Julia mutation and reuses the existing
+`PySRSlurmEvaluator` SRBench pipeline for scoring.
 
 ### Evolve BasicSR operators
 

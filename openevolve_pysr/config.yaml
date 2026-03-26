@@ -1,0 +1,72 @@
+max_iterations: 50
+checkpoint_interval: 10
+random_seed: 42
+
+llm:
+  primary_model: "gpt-5-mini"
+  primary_model_weight: 0.8
+  secondary_model: "gpt-5-nano"
+  secondary_model_weight: 0.2
+  api_base: "https://api.openai.com/v1"
+  api_key: "${OPENAI_API_KEY}"
+  temperature: 0.4
+  max_tokens: 12000
+  timeout: 180
+
+prompt:
+  system_message: |
+    You are improving a PySR custom mutation implemented as Julia code stored inside a Python string.
+
+    Only modify the EVOLVE-BLOCK.
+    Keep the Python file valid.
+    Preserve the fixed contract outside the EVOLVE-BLOCK.
+
+    The EVOLVE-BLOCK must define:
+    - CUSTOM_MUTATION_WEIGHT: a float in [0, 1]
+    - CUSTOM_MUTATION_CODE: a Julia string defining exactly one custom mutation function
+
+    The evaluator will parse the Julia function name directly from CUSTOM_MUTATION_CODE.
+
+    Requirements for the Julia mutation:
+    - Use the signature:
+      function your_mutation_name(
+          tree::N,
+          options,
+          nfeatures::Int,
+          rng::AbstractRNG,
+      ) where {T,N<:AbstractExpressionNode{T}}
+    - Return a valid expression tree
+    - Prefer targeted, plausible symbolic-regression mutations over random noise
+    - Handle missing operators gracefully when possible
+    - Keep the code concise and syntactically correct
+
+    Good mutation ideas include:
+    - Wrapping a subtree with a useful operator
+    - Replacing constants or features intelligently
+    - Rebalancing local tree structure
+    - Injecting additive or multiplicative building blocks
+    - Making structure-aware edits rather than blind random changes
+
+    Avoid:
+    - Invalid Julia syntax
+    - Referencing helpers that are not present
+    - Returning non-tree values
+    - Extremely long or repetitive code
+
+evaluator:
+  timeout: 7200
+  max_retries: 0
+  cascade_evaluation: true
+  cascade_thresholds: [0.5, 0.1]
+  parallel_evaluations: 1
+
+database:
+  population_size: 40
+  archive_size: 20
+  num_islands: 3
+  elite_selection_ratio: 0.25
+  exploitation_ratio: 0.7
+  similarity_threshold: 0.99
+
+diff_based_evolution: true
+max_code_length: 30000

@@ -5,7 +5,7 @@ Analyze HPO or Evolve results and validate the best configuration against baseli
 This script:
 1) Loads results from:
    - HPO run: best-weights JSON (from hpo_pysr.py output)
-   - Evolve run: run_data.json (from evolve_pysr.py / evolve_survival.py / evolve_selection.py)
+   - Evolve run: run_data.json (from `evolve_pysr.py --operator_type ...`)
 2) Evaluates baseline vs best config(s) for n_runs seeds on:
    - train split
    - validation split
@@ -22,7 +22,7 @@ Usage:
 
     # Single evolve results (mutation)
     python analyze_hpo_pysr.py \
-        --evolve-results outputs/evolve_pysr_*/run_data.json \
+        --evolve-results outputs/evolve_mutation_*/run_data.json \
         --train-split splits/train.txt \
         --val-split splits/val.txt \
         --n-runs 5
@@ -152,6 +152,10 @@ def load_evolve_results(path: str, operator_type_override: Optional[str] = None)
     Supports mutation, survival, and selection runs. Auto-detects operator type
     from config.operator_type if present, or falls back to operator_type_override.
 
+    Supports both the legacy finalized key (`best_mutation`) and the unified
+    refactor's per-type finalized keys (`best_mutation`, `best_survival`,
+    `best_selection`).
+
     Handles incomplete runs (no finalize()) by extracting the best operator from
     the last generation's population.
     """
@@ -165,14 +169,22 @@ def load_evolve_results(path: str, operator_type_override: Optional[str] = None)
     op_type = operator_type_override or config.get("operator_type", "mutation")
 
     # Try to get best operator from finalized data first
-    if "best_mutation" in data:
-        best = data["best_mutation"]
-    else:
+    best = None
+    finalized_keys = [f"best_{op_type}", "best_mutation", "best_survival", "best_selection"]
+    for key in finalized_keys:
+        if key in data:
+            best = data[key]
+            break
+
+    if best is None:
         # Incomplete run: extract from last generation's population
         generations = data.get("generations", [])
         if not generations:
-            raise ValueError(f"File {path} has no 'best_mutation' key and no generations. "
-                             "Cannot extract best operator.")
+            finalized_keys_str = ", ".join(repr(k) for k in finalized_keys)
+            raise ValueError(
+                f"File {path} has no finalized best-operator key ({finalized_keys_str}) "
+                "and no generations. Cannot extract best operator."
+            )
         last_gen = generations[-1]
         population = last_gen.get("population", [])
         if not population:
