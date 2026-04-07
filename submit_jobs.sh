@@ -24,10 +24,10 @@ sbatch --time=10:00:00 run_pysr.sh --results_dir results_pysr_1e6 --max_evals 10
 # sbatch run.sh hpo_pysr.py --n-trials 500
 # sbatch run.sh evolve_pysr.py --operator_type mutation
 
-sbatch run.sh evolve_pysr.py --operator_type mutation --fitness_metric gt --split splits/train_small.txt --n-runs 1 --max_evals 100000
-sbatch run.sh evolve_basic_sr.py --split splits/train.txt
-# sbatch run.sh evolve_basic_sr.py
-sbatch run.sh evolve_pysr.py --operator_type selection --fitness_metric gt --split splits/train_small.txt
-sbatch run.sh evolve_pysr.py --operator_type survival --fitness_metric gt --split splits/train.txt
+# sbatch run.sh evolve_pysr.py --operator_type mutation --fitness_metric gt --split splits/train_small.txt --n-runs 1 --max_evals 100000
+# sbatch run.sh evolve_basic_sr.py --split splits/train.txt
+# # sbatch run.sh evolve_basic_sr.py
+# sbatch run.sh evolve_pysr.py --operator_type selection --fitness_metric gt --split splits/train_small.txt
+# sbatch run.sh evolve_pysr.py --operator_type survival --fitness_metric gt --split splits/train.txt
 sbatch run.sh hpo_pysr.py --n-trials 500
 

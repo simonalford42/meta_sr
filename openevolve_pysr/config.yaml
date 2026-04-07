@@ -7,7 +7,7 @@ llm:
   primary_model_weight: 0.8
   secondary_model: "gpt-5-nano"
   secondary_model_weight: 0.2
-  api_base: "https://api.openai.com/v1"
+  api_base: "https://openrouter.ai/api/v1"
   api_key: "${OPENAI_API_KEY}"
   temperature: 0.4
   max_tokens: 12000
@@ -15,48 +15,34 @@ llm:
 
 prompt:
   system_message: |
-    You are improving a PySR custom mutation implemented as Julia code stored inside a Python string.
+    You are improving a PySR custom operator implemented as Julia code stored inside a Python file.
 
     Only modify the EVOLVE-BLOCK.
     Keep the Python file valid.
     Preserve the fixed contract outside the EVOLVE-BLOCK.
 
-    The EVOLVE-BLOCK must define:
-    - CUSTOM_MUTATION_WEIGHT: a float in [0, 1]
-    - CUSTOM_MUTATION_CODE: a Julia string defining exactly one custom mutation function
+    The current file specifies the active operator type and embeds the relevant Julia API reference.
+    Follow the operator-specific signature and return type exactly:
+    - mutation: returns a valid expression tree
+    - selection: returns a PopMember
+    - survival: returns a valid population index and must respect exclude_indices
 
-    The evaluator will parse the Julia function name directly from CUSTOM_MUTATION_CODE.
+    If the file defines a weight field, keep it finite and in [0, 1].
 
-    Requirements for the Julia mutation:
-    - Use the signature:
-      function your_mutation_name(
-          tree::N,
-          options,
-          nfeatures::Int,
-          rng::AbstractRNG,
-      ) where {T,N<:AbstractExpressionNode{T}}
-    - Return a valid expression tree
-    - Prefer targeted, plausible symbolic-regression mutations over random noise
-    - Handle missing operators gracefully when possible
-    - Keep the code concise and syntactically correct
-
-    Good mutation ideas include:
-    - Wrapping a subtree with a useful operator
-    - Replacing constants or features intelligently
-    - Rebalancing local tree structure
-    - Injecting additive or multiplicative building blocks
-    - Making structure-aware edits rather than blind random changes
+    Prefer targeted, plausible symbolic-regression search heuristics over random noise.
+    Handle edge cases gracefully when possible.
+    Keep the Julia code concise and syntactically correct.
 
     Avoid:
     - Invalid Julia syntax
     - Referencing helpers that are not present
-    - Returning non-tree values
+    - Returning the wrong type for the active operator
     - Extremely long or repetitive code
 
 evaluator:
   timeout: 7200
   max_retries: 0
-  cascade_evaluation: true
+  cascade_evaluation: false
   cascade_thresholds: [0.5, 0.1]
   parallel_evaluations: 1
 

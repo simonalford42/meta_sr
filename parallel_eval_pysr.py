@@ -616,6 +616,10 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         job_timeout: Optional[float] = 600.0,
         use_cache: bool = True,
         target_noise: float = 0.0,
+        repo_root: Optional[str] = None,
+        julia_project: Optional[str] = None,
+        python_juliapkg_project: Optional[str] = None,
+        julia_depot_path: Optional[str] = None,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -634,6 +638,30 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             use_cache=use_cache,
         )
         self.target_noise = target_noise
+        self.repo_root = Path(repo_root).resolve() if repo_root else Path.cwd().resolve()
+        self.julia_project = str(Path(julia_project).resolve()) if julia_project else str((self.repo_root / "SymbolicRegression.jl").resolve())
+        self.python_juliapkg_project = (
+            str(Path(python_juliapkg_project).resolve())
+            if python_juliapkg_project
+            else None
+        )
+        self.julia_depot_path = julia_depot_path
+
+    def _build_worker_env_exports(self) -> str:
+        """Build shell exports for PySR worker environment isolation."""
+        lines = [
+            "# Ensure Python can import project modules",
+            f'cd "{self.repo_root}"',
+            f'export PYTHONPATH="{self.repo_root}:$PYTHONPATH"',
+            "",
+            "# Point Julia to the selected SymbolicRegression.jl environment",
+            f'export JULIA_PROJECT="{self.julia_project}"',
+        ]
+        if self.python_juliapkg_project:
+            lines.append(f'export PYTHON_JULIAPKG_PROJECT="{self.python_juliapkg_project}"')
+        if self.julia_depot_path:
+            lines.append(f'export JULIA_DEPOT_PATH="{self.julia_depot_path}"')
+        return "\n".join(lines)
 
     def evaluate_configs(
         self,
@@ -864,6 +892,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         optional_directives = self._get_optional_directives()
         no_cache_flag = ' --no-cache' if not self.use_cache else ''
 
+        worker_env_exports = self._build_worker_env_exports()
+
         script_content = f"""#!/bin/bash
 #SBATCH --job-name=pysr_eval
 #SBATCH --output={logs_dir}/task_%a.out
@@ -888,12 +918,7 @@ export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export JULIA_NUM_THREADS=1
 
-# Ensure Python can import project modules
-cd "$SLURM_SUBMIT_DIR"
-export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
-
-# Point to local SymbolicRegression.jl
-export JULIA_PROJECT="$SLURM_SUBMIT_DIR/SymbolicRegression.jl"
+{worker_env_exports}
 
 # Log which node this task is running on
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
@@ -924,6 +949,8 @@ python -u -m parallel_eval_pysr --worker \\
         optional_directives = self._get_optional_directives()
         no_cache_flag = ' --no-cache' if not self.use_cache else ''
 
+        worker_env_exports = self._build_worker_env_exports()
+
         script_content = f"""#!/bin/bash
 #SBATCH --job-name=pysr_retry_{retry_num}
 #SBATCH --output={logs_dir}/retry{retry_num}_task_%a.out
@@ -948,12 +975,7 @@ export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export JULIA_NUM_THREADS=1
 
-# Ensure Python can import project modules
-cd "$SLURM_SUBMIT_DIR"
-export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
-
-# Point to local SymbolicRegression.jl
-export JULIA_PROJECT="$SLURM_SUBMIT_DIR/SymbolicRegression.jl"
+{worker_env_exports}
 
 # Log which node this task is running on
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"

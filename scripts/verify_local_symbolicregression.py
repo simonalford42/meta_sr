@@ -11,12 +11,46 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import argparse
 from pathlib import Path
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Verify that Julia loads the expected SymbolicRegression.jl checkout.",
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=str,
+        default=None,
+        help="Repo root containing SymbolicRegression.jl (default: this repo root).",
+    )
+    parser.add_argument(
+        "--julia-project",
+        type=str,
+        default=None,
+        help="Explicit Julia project path to activate.",
+    )
+    parser.add_argument(
+        "--python-juliapkg-project",
+        type=str,
+        default=None,
+        help="Explicit PYTHON_JULIAPKG_PROJECT to use.",
+    )
+    parser.add_argument(
+        "--julia-depot-path",
+        type=str,
+        default=None,
+        help="Optional JULIA_DEPOT_PATH to use for this verification.",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
-    repo_root = Path(__file__).resolve().parent.parent
-    local_project = (repo_root / "SymbolicRegression.jl").resolve()
+    args = parse_args()
+
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else Path(__file__).resolve().parent.parent
+    local_project = Path(args.julia_project).resolve() if args.julia_project else (repo_root / "SymbolicRegression.jl").resolve()
     expected_source = (local_project / "src" / "SymbolicRegression.jl").resolve()
 
     conda_prefix = os.environ.get("CONDA_PREFIX")
@@ -42,13 +76,20 @@ def main() -> int:
         julia_project = str(conda_julia_env) if (conda_julia_env and conda_julia_env.exists()) else str(local_project)
 
     env = os.environ.copy()
-    env.setdefault("JULIA_PROJECT", julia_project)
-    env.setdefault("PYTHON_JULIAPKG_PROJECT", julia_project)
+    env["JULIA_PROJECT"] = args.julia_project if args.julia_project else julia_project
+    env["PYTHON_JULIAPKG_PROJECT"] = (
+        args.python_juliapkg_project
+        if args.python_juliapkg_project
+        else env.get("PYTHON_JULIAPKG_PROJECT", julia_project)
+    )
+    if args.julia_depot_path:
+        env["JULIA_DEPOT_PATH"] = args.julia_depot_path
     env["SYMBOLICREGRESSION_DEBUG_IMPORT"] = "1"
 
     julia_code = (
         "using SymbolicRegression; "
         'println("SR_PATH=" * pathof(SymbolicRegression)); '
+        'println("JULIA_PROJECT_ACTIVE=" * Base.active_project()); '
         'println("HAS_CUSTOM_SELECTION=" * string(isdefined(SymbolicRegression, :CustomSelectionModule))); '
         'println("HAS_CUSTOM_SURVIVAL=" * string(isdefined(SymbolicRegression, :CustomSurvivalModule)));'
     )

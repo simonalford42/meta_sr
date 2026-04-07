@@ -131,19 +131,41 @@ def _normalize_weight_name(name: str) -> str:
     return name if name.startswith("weight_") else f"weight_{name}"
 
 
-def load_best_weights(path: str) -> Dict[str, float]:
-    """Load best weights from JSON."""
+def load_hpo_config(path: str) -> tuple[Dict[str, Any], Dict[str, float]]:
+    """Load HPO output JSON and split it into PySR kwargs and mutation weights.
+
+    Supports:
+    - raw mutation-weight JSON
+    - {"weights": {...}}
+    - {"best_params": {...}}
+    - {"params": {...}} from hpo_pysr.py
+    """
     with open(path, "r") as f:
         data = json.load(f)
 
     if isinstance(data, dict) and "weights" in data:
-        weights = data["weights"]
+        raw_params = data["weights"]
     elif isinstance(data, dict) and "best_params" in data:
-        weights = data["best_params"]
+        raw_params = data["best_params"]
+    elif isinstance(data, dict) and "params" in data:
+        raw_params = data["params"]
     else:
-        weights = data
+        raw_params = data
 
-    return {_normalize_weight_name(k): float(v) for k, v in weights.items()}
+    default_weight_keys = set(get_default_mutation_weights().keys())
+    for i in range(1, 6):
+        default_weight_keys.add(f"weight_custom_mutation_{i}")
+    pysr_overrides: Dict[str, Any] = {}
+    mutation_weights: Dict[str, float] = {}
+
+    for key, value in raw_params.items():
+        normalized = _normalize_weight_name(key)
+        if key.startswith("weight_") or normalized in default_weight_keys:
+            mutation_weights[normalized] = float(value)
+        else:
+            pysr_overrides[key] = value
+
+    return pysr_overrides, mutation_weights
 
 
 def load_evolve_results(path: str, operator_type_override: Optional[str] = None) -> EvolveResult:
@@ -598,7 +620,8 @@ def main() -> None:
         # =====================================================================
         # HPO mode: validate best weights
         # =====================================================================
-        best_weights = load_best_weights(args.best_weights)
+        best_pysr_overrides, best_weights = load_hpo_config(args.best_weights)
+        best_pysr_kwargs = {**pysr_kwargs, **best_pysr_overrides}
 
         print("=" * 60)
         print("Evaluating baseline vs best weights on train split...")
@@ -608,7 +631,7 @@ def main() -> None:
             args.seed, args.n_runs, "train_baseline"
         )
         train_best = evaluate_config(
-            evaluator, train_datasets, pysr_kwargs, {**baseline_weights, **best_weights},
+            evaluator, train_datasets, best_pysr_kwargs, {**baseline_weights, **best_weights},
             args.seed, args.n_runs, "train_best"
         )
 
@@ -620,7 +643,7 @@ def main() -> None:
             args.seed, args.n_runs, "val_baseline"
         )
         val_best = evaluate_config(
-            evaluator, val_datasets, pysr_kwargs, {**baseline_weights, **best_weights},
+            evaluator, val_datasets, best_pysr_kwargs, {**baseline_weights, **best_weights},
             args.seed, args.n_runs, "val_best"
         )
 
@@ -637,6 +660,7 @@ def main() -> None:
         summary = {
             "mode": "hpo",
             "best_weights_path": args.best_weights,
+            "best_pysr_overrides": best_pysr_overrides,
             "best_weights": best_weights,
             "train_baseline": asdict(train_baseline),
             "train_best": asdict(train_best),

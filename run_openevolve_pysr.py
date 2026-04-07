@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Launch OpenEvolve for PySR custom mutation evolution.
+Launch OpenEvolve for PySR custom operator evolution.
 """
 
 from __future__ import annotations
@@ -18,8 +18,15 @@ REPO_ROOT = Path(__file__).resolve().parent
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run OpenEvolve to evolve PySR custom mutations",
+        description="Run OpenEvolve to evolve PySR custom operators",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--operator-type",
+        type=str,
+        default="mutation",
+        choices=["mutation", "selection", "survival"],
+        help="Which PySR custom operator type to evolve",
     )
     parser.add_argument("--iterations", type=int, default=50, help="OpenEvolve iterations")
     parser.add_argument("--split", type=str, default="splits/train.txt", help="Dataset split file")
@@ -50,10 +57,15 @@ def main() -> int:
     output_dir = args.output_dir
     if output_dir is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = f"outputs/openevolve_pysr_{timestamp}"
+        output_dir = f"outputs/openevolve_pysr_{args.operator_type}_{timestamp}"
 
     output_path = REPO_ROOT / output_dir
-    initial_program = REPO_ROOT / "openevolve_pysr" / "initial_program.py"
+    initial_program_map = {
+        "mutation": REPO_ROOT / "openevolve_pysr" / "initial_program.py",
+        "selection": REPO_ROOT / "openevolve_pysr" / "initial_program_selection.py",
+        "survival": REPO_ROOT / "openevolve_pysr" / "initial_program_survival.py",
+    }
+    initial_program = initial_program_map[args.operator_type]
     evaluator = REPO_ROOT / "openevolve_pysr" / "evaluator.py"
     runner = REPO_ROOT / "openevolve" / "openevolve-run.py"
 
@@ -63,6 +75,7 @@ def main() -> int:
             "OE_PYSR_SPLIT": args.split,
             "OE_PYSR_STAGE2_DATASETS": str(args.stage2_datasets),
             "OE_PYSR_FITNESS_METRIC": args.fitness_metric,
+            "OE_PYSR_OPERATOR_TYPE": args.operator_type,
             "OE_PYSR_N_RUNS": str(args.n_runs),
             "OE_PYSR_SEED": str(args.seed),
             "OE_PYSR_DATA_SEED": str(args.data_seed),
@@ -99,6 +112,7 @@ def main() -> int:
         cmd.extend(["--secondary-model", args.secondary_model])
 
     print("Running:", " ".join(cmd))
+    print(f"Operator type: {args.operator_type}")
     print(f"Output dir: {output_path}")
     return subprocess.call(cmd, cwd=str(REPO_ROOT), env=env)
 

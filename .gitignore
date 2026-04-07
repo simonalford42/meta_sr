@@ -11,3 +11,6 @@ AGENTS.md
 .claude
 .env
 pmlb
+pysr_outputs
+graphics
+.vscode

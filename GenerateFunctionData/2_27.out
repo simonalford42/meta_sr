@@ -1,0 +1,267 @@
+Loaded 0 existing results from GenerateFunctionData/results_pysr_function_sweep_1e6.jsonl. Current solve rate: 0/0 (0.00%).
+Total combinations available: 10000. Ordering: scale -> template -> factory (factory changes fastest).
+[1/10000] linear_2d_0_5_0_5_0_0_0 (factory=0, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=1/1 (100.00%) time=48.5s
+[2/10000] bilinear_0_5_0_0 (factory=1, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=2/2 (100.00%) time=35.3s
+[3/10000] sum_sq_0_5_0_0 (factory=2, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=3/3 (100.00%) time=29.6s
+[4/10000] diff_sq_0_5_0_0 (factory=3, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=4/4 (100.00%) time=33.4s
+[5/10000] sin_cos_0_5_0_0 (factory=4, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=5/5 (100.00%) time=73.3s
+[6/10000] distance_2d_0_5_0_0 (factory=5, template=0, scale=0)
+  r2=0.992148 solved=0 cumulative_solve_rate=5/6 (83.33%) time=43.9s
+[7/10000] exp_sum_0_5_0_0 (factory=6, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=6/7 (85.71%) time=37.3s
+[8/10000] tanh_sum_0_5_0_0 (factory=7, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=7/8 (87.50%) time=38.7s
+[9/10000] max_2d_0_5_0_0 (factory=8, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=8/9 (88.89%) time=69.2s
+[10/10000] min_2d_0_5_0_0 (factory=9, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=9/10 (90.00%) time=74.4s
+[11/10000] avg_2d_0_5_0_0 (factory=10, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=10/11 (90.91%) time=45.8s
+[12/10000] xy_plus_x_0_5_0_5_0_0 (factory=11, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=11/12 (91.67%) time=47.2s
+[13/10000] x_sq_y_0_5_0_0 (factory=12, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=12/13 (92.31%) time=47.9s
+[14/10000] sin_xy_0_5_0_0 (factory=13, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=13/14 (92.86%) time=57.1s
+[15/10000] cos_sum_0_5_0_0 (factory=14, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=14/15 (93.33%) time=65.8s
+[16/10000] log_sum_2d_0_5_0_5_0_0 (factory=15, template=0, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[17/10000] manhattan_2d_0_5_0_0 (factory=16, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=15/17 (88.24%) time=51.0s
+[18/10000] chebyshev_2d_0_5_0_0 (factory=17, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=16/18 (88.89%) time=73.8s
+[19/10000] weighted_sum_2d_0_5_1_0_0 (factory=18, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=17/19 (89.47%) time=43.8s
+[20/10000] quadratic_2d_0_5_0_5_0_0_0 (factory=19, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=18/20 (90.00%) time=42.5s
+[21/10000] atan2_scaled_0_5_0_0 (factory=20, template=0, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[22/10000] sigmoid_sum_0_5_0_0 (factory=21, template=0, scale=0)
+  r2=1.000000 solved=0 cumulative_solve_rate=18/22 (81.82%) time=94.1s
+[23/10000] exp_xy_0_5_0_0 (factory=22, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=19/23 (82.61%) time=45.7s
+[24/10000] pow_product_0_5_1_0_0 (factory=23, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=20/24 (83.33%) time=49.7s
+[25/10000] sqrt_sum_sq_0_5_0_0 (factory=24, template=0, scale=0)
+  r2=0.996077 solved=0 cumulative_solve_rate=20/25 (80.00%) time=66.6s
+[26/10000] reciprocal_sum_0_5_0_0 (factory=25, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=21/26 (80.77%) time=45.3s
+[27/10000] linear_frac_2d_0_5_0_5_0_25_0_0 (factory=26, template=0, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[28/10000] tanh_xy_0_5_0_0 (factory=27, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=22/28 (78.57%) time=55.7s
+[29/10000] abs_diff_0_5_0_0 (factory=28, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=23/29 (79.31%) time=45.6s
+[30/10000] product_plus_0_5_0_0_0 (factory=29, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=24/30 (80.00%) time=45.6s
+[31/10000] linear_3d_0_5_0_5_0_5_0_0_0 (factory=30, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=25/31 (80.65%) time=45.8s
+[32/10000] sum_sq_3d_0_5_0_0 (factory=31, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=26/32 (81.25%) time=54.8s
+[33/10000] distance_3d_0_5_0_0 (factory=32, template=0, scale=0)
+  r2=0.977374 solved=0 cumulative_solve_rate=26/33 (78.79%) time=70.8s
+[34/10000] product_3d_0_5_0_0 (factory=33, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=27/34 (79.41%) time=46.2s
+[35/10000] exp_sum_3d_0_5_0_0 (factory=34, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=28/35 (80.00%) time=49.1s
+[36/10000] max_3d_0_5_0_0 (factory=35, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=29/36 (80.56%) time=63.9s
+[37/10000] min_3d_0_5_0_0 (factory=36, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=30/37 (81.08%) time=64.2s
+[38/10000] avg_3d_0_5_0_0 (factory=37, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=31/38 (81.58%) time=37.7s
+[39/10000] manhattan_3d_0_5_0_0 (factory=38, template=0, scale=0)
+  r2=0.982840 solved=0 cumulative_solve_rate=31/39 (79.49%) time=87.3s
+[40/10000] weighted_sum_3d_0_5_1_1_5_0_0 (factory=39, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=32/40 (80.00%) time=51.3s
+[41/10000] sin_xyz_0_5_0_0 (factory=40, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=33/41 (80.49%) time=52.5s
+[42/10000] tanh_sum_3d_0_5_0_0 (factory=41, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=34/42 (80.95%) time=54.6s
+[43/10000] quadratic_3d_0_5_0_5_0_5_0_0 (factory=42, template=0, scale=0)
+  r2=1.000000 solved=0 cumulative_solve_rate=34/43 (79.07%) time=65.1s
+[44/10000] bilinear_3d_0_5_0_5_0_0 (factory=43, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=35/44 (79.55%) time=53.3s
+[45/10000] cos_sum_3d_0_5_0_0 (factory=44, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=36/45 (80.00%) time=56.7s
+[46/10000] chebyshev_3d_0_5_0_0 (factory=45, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=37/46 (80.43%) time=64.3s
+[47/10000] linear_2d_b_1_0_0_5_0_0 (factory=46, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=38/47 (80.85%) time=55.4s
+[48/10000] weighted_sum_2d_b_1_1_5_0_0 (factory=47, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=39/48 (81.25%) time=41.3s
+[49/10000] quadratic_2d_b_1_0_0_5_0_0 (factory=48, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=40/49 (81.63%) time=41.7s
+[50/10000] linear_3d_b_0_0_5_0_5_0_0_0 (factory=49, template=0, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=41/50 (82.00%) time=44.2s
+[51/10000] linear_2d_1_neg0_5_0_5_1_0 (factory=0, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=42/51 (82.35%) time=44.0s
+[52/10000] bilinear_1_1_0 (factory=1, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=43/52 (82.69%) time=36.8s
+[53/10000] sum_sq_1_1_0 (factory=2, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=44/53 (83.02%) time=33.7s
+[54/10000] diff_sq_1_1_0 (factory=3, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=45/54 (83.33%) time=34.2s
+[55/10000] sin_cos_1_1_0 (factory=4, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=46/55 (83.64%) time=74.2s
+[56/10000] distance_2d_1_1_0 (factory=5, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=47/56 (83.93%) time=36.1s
+[57/10000] exp_sum_1_1_0 (factory=6, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=48/57 (84.21%) time=47.9s
+[58/10000] tanh_sum_1_1_0 (factory=7, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=49/58 (84.48%) time=40.0s
+[59/10000] max_2d_1_1_0 (factory=8, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=50/59 (84.75%) time=40.1s
+[60/10000] min_2d_1_1_0 (factory=9, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=51/60 (85.00%) time=43.8s
+[61/10000] avg_2d_1_1_0 (factory=10, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=52/61 (85.25%) time=35.2s
+[62/10000] xy_plus_x_0_5_1_1_0 (factory=11, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=53/62 (85.48%) time=35.6s
+[63/10000] x_sq_y_1_1_0 (factory=12, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=54/63 (85.71%) time=30.6s
+[64/10000] sin_xy_1_1_0 (factory=13, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=55/64 (85.94%) time=38.0s
+[65/10000] cos_sum_1_1_0 (factory=14, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=56/65 (86.15%) time=46.6s
+[66/10000] log_sum_2d_0_5_1_1_0 (factory=15, template=1, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[67/10000] manhattan_2d_1_1_0 (factory=16, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=57/67 (85.07%) time=27.0s
+[68/10000] chebyshev_2d_1_1_0 (factory=17, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=58/68 (85.29%) time=56.3s
+[69/10000] weighted_sum_2d_1_0_5_1_0 (factory=18, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=59/69 (85.51%) time=42.9s
+[70/10000] quadratic_2d_1_neg0_5_0_5_1_0 (factory=19, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=60/70 (85.71%) time=42.8s
+[71/10000] atan2_scaled_1_1_0 (factory=20, template=1, scale=0)
+  r2=0.996920 solved=0 cumulative_solve_rate=60/71 (84.51%) time=55.2s
+[72/10000] sigmoid_sum_1_1_0 (factory=21, template=1, scale=0)
+  r2=0.999979 solved=0 cumulative_solve_rate=60/72 (83.33%) time=69.8s
+[73/10000] exp_xy_1_1_0 (factory=22, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=61/73 (83.56%) time=34.6s
+[74/10000] pow_product_0_5_1_5_1_0 (factory=23, template=1, scale=0)
+  r2=1.000000 solved=0 cumulative_solve_rate=61/74 (82.43%) time=38.4s
+[75/10000] sqrt_sum_sq_1_1_0 (factory=24, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=62/75 (82.67%) time=31.1s
+[76/10000] reciprocal_sum_1_1_0 (factory=25, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=63/76 (82.89%) time=32.8s
+[77/10000] linear_frac_2d_1_neg0_5_0_125_1_0 (factory=26, template=1, scale=0)
+  r2=0.999989 solved=0 cumulative_solve_rate=63/77 (81.82%) time=32.2s
+[78/10000] tanh_xy_1_1_0 (factory=27, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=64/78 (82.05%) time=40.3s
+[79/10000] abs_diff_1_1_0 (factory=28, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=65/79 (82.28%) time=26.1s
+[80/10000] product_plus_0_5_0_5_1_0 (factory=29, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=66/80 (82.50%) time=37.1s
+[81/10000] linear_3d_1_neg0_5_0_25_0_5_1_0 (factory=30, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=67/81 (82.72%) time=42.6s
+[82/10000] sum_sq_3d_1_1_0 (factory=31, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=68/82 (82.93%) time=29.4s
+[83/10000] distance_3d_1_1_0 (factory=32, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=69/83 (83.13%) time=29.5s
+[84/10000] product_3d_1_1_0 (factory=33, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=70/84 (83.33%) time=23.2s
+[85/10000] exp_sum_3d_1_1_0 (factory=34, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=71/85 (83.53%) time=33.9s
+[86/10000] max_3d_1_1_0 (factory=35, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=72/86 (83.72%) time=33.6s
+[87/10000] min_3d_1_1_0 (factory=36, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=73/87 (83.91%) time=37.3s
+[88/10000] avg_3d_1_1_0 (factory=37, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=74/88 (84.09%) time=31.4s
+[89/10000] manhattan_3d_1_1_0 (factory=38, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=75/89 (84.27%) time=25.5s
+[90/10000] weighted_sum_3d_1_0_5_0_5_1_0 (factory=39, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=76/90 (84.44%) time=33.2s
+[91/10000] sin_xyz_1_1_0 (factory=40, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=77/91 (84.62%) time=41.1s
+[92/10000] tanh_sum_3d_1_1_0 (factory=41, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=78/92 (84.78%) time=32.8s
+[93/10000] quadratic_3d_1_neg0_5_0_25_1_0 (factory=42, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=79/93 (84.95%) time=38.5s
+[94/10000] bilinear_3d_0_5_1_1_0 (factory=43, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=80/94 (85.11%) time=30.0s
+[95/10000] cos_sum_3d_1_1_0 (factory=44, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=81/95 (85.26%) time=36.8s
+[96/10000] chebyshev_3d_1_1_0 (factory=45, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=82/96 (85.42%) time=46.5s
+[97/10000] linear_2d_b_0_1_neg0_5_1_0 (factory=46, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=83/97 (85.57%) time=34.4s
+[98/10000] weighted_sum_2d_b_1_5_1_1_0 (factory=47, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=84/98 (85.71%) time=32.7s
+[99/10000] quadratic_2d_b_0_1_neg0_5_1_0 (factory=48, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=85/99 (85.86%) time=33.4s
+[100/10000] linear_3d_b_0_5_0_0_5_0_1_0 (factory=49, template=1, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=86/100 (86.00%) time=31.7s
+[101/10000] linear_2d_0_25_0_25_neg0_5_2_0 (factory=0, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=87/101 (86.14%) time=39.4s
+[102/10000] bilinear_0_25_2_0 (factory=1, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=88/102 (86.27%) time=30.6s
+[103/10000] sum_sq_0_25_2_0 (factory=2, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=89/103 (86.41%) time=31.1s
+[104/10000] diff_sq_0_25_2_0 (factory=3, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=90/104 (86.54%) time=28.1s
+[105/10000] sin_cos_0_25_2_0 (factory=4, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=91/105 (86.67%) time=65.6s
+[106/10000] distance_2d_0_25_2_0 (factory=5, template=2, scale=0)
+  r2=0.995785 solved=0 cumulative_solve_rate=91/106 (85.85%) time=37.4s
+[107/10000] exp_sum_0_25_2_0 (factory=6, template=2, scale=0)
+  r2=1.000000 solved=0 cumulative_solve_rate=91/107 (85.05%) time=60.0s
+[108/10000] tanh_sum_0_25_2_0 (factory=7, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=92/108 (85.19%) time=38.8s
+[109/10000] max_2d_0_25_2_0 (factory=8, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=93/109 (85.32%) time=58.9s
+[110/10000] min_2d_0_25_2_0 (factory=9, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=94/110 (85.45%) time=56.3s
+[111/10000] avg_2d_0_25_2_0 (factory=10, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=95/111 (85.59%) time=33.4s
+[112/10000] xy_plus_x_1_0_5_2_0 (factory=11, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=96/112 (85.71%) time=33.4s
+[113/10000] x_sq_y_0_25_2_0 (factory=12, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=97/113 (85.84%) time=30.2s
+[114/10000] sin_xy_0_25_2_0 (factory=13, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=98/114 (85.96%) time=40.4s
+[115/10000] cos_sum_0_25_2_0 (factory=14, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=99/115 (86.09%) time=47.1s
+[116/10000] log_sum_2d_1_0_5_2_0 (factory=15, template=2, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[117/10000] manhattan_2d_0_25_2_0 (factory=16, template=2, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[118/10000] chebyshev_2d_0_25_2_0 (factory=17, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=100/118 (84.75%) time=52.8s
+[119/10000] weighted_sum_2d_0_5_0_5_2_0 (factory=18, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=101/119 (84.87%) time=33.4s
+[120/10000] quadratic_2d_0_25_0_25_neg0_5_2_0 (factory=19, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=102/120 (85.00%) time=36.5s
+[121/10000] atan2_scaled_0_25_2_0 (factory=20, template=2, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[122/10000] sigmoid_sum_0_25_2_0 (factory=21, template=2, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[123/10000] exp_xy_0_25_2_0 (factory=22, template=2, scale=0)
+  r2=1.000000 solved=0 cumulative_solve_rate=102/123 (82.93%) time=67.1s
+[124/10000] pow_product_1_1_2_0 (factory=23, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=103/124 (83.06%) time=33.1s
+[125/10000] sqrt_sum_sq_0_25_2_0 (factory=24, template=2, scale=0)
+  r2=0.998025 solved=0 cumulative_solve_rate=103/125 (82.40%) time=39.5s
+[126/10000] reciprocal_sum_0_25_2_0 (factory=25, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=104/126 (82.54%) time=36.6s
+[127/10000] linear_frac_2d_0_25_0_25_0_05_2_0 (factory=26, template=2, scale=0)
+  r2=1.000000 solved=0 cumulative_solve_rate=104/127 (81.89%) time=47.7s
+[128/10000] tanh_xy_0_25_2_0 (factory=27, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=105/128 (82.03%) time=43.6s
+[129/10000] abs_diff_0_25_2_0 (factory=28, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=106/129 (82.17%) time=32.8s
+[130/10000] product_plus_1_0_2_0 (factory=29, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=107/130 (82.31%) time=42.9s
+[131/10000] linear_3d_0_25_0_25_0_25_neg0_5_2_0 (factory=30, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=108/131 (82.44%) time=31.5s
+[132/10000] sum_sq_3d_0_25_2_0 (factory=31, template=2, scale=0)
+  r2=1.000000 solved=1 cumulative_solve_rate=109/132 (82.58%) time=30.9s
+[133/10000] distance_3d_0_25_2_0 (factory=32, template=2, scale=0)

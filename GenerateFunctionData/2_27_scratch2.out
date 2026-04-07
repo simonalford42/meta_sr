@@ -1,0 +1,53 @@
+# bad evaluation
+
+
+[16/10000] log_sum_2d_0_5_0_5_0_0 (factory=15, template=0, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[21/10000] atan2_scaled_0_5_0_0 (factory=20, template=0, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[27/10000] linear_frac_2d_0_5_0_5_0_25_0_0 (factory=26, template=0, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+[66/10000] log_sum_2d_0_5_1_1_0 (factory=15, template=1, scale=0)
+  ERROR: ValueError: Failed to evaluate the expression. If you are using a custom operator, make sure to define it in `extra_sympy_mappings`, e.g., `model.set_params(extra_sympy_mappings={'inv': lambda x: 1/x})`, where `lambda x: 1/x` is a valid SymPy function defining the operator. You can then run `model.refresh()` to re-load the expressions.
+
+[6/10000] distance_2d_0_5_0_0 (factory=5, template=0, scale=0)
+  r2=0.992148 solved=0 cumulative_solve_rate=5/6 (83.33%) time=43.9s
+[22/10000] sigmoid_sum_0_5_0_0 (factory=21, template=0, scale=0)
+  r2=1.000000 solved=0 cumulative_solve_rate=18/22 (81.82%) time=94.1s
+[25/10000] sqrt_sum_sq_0_5_0_0 (factory=24, template=0, scale=0)
+  r2=0.996077 solved=0 cumulative_solve_rate=20/25 (80.00%) time=66.6s
+[33/10000] distance_3d_0_5_0_0 (factory=32, template=0, scale=0)
+  r2=0.977374 solved=0 cumulative_solve_rate=26/33 (78.79%) time=70.8s
+[39/10000] manhattan_3d_0_5_0_0 (factory=38, template=0, scale=0)
+  r2=0.982840 solved=0 cumulative_solve_rate=31/39 (79.49%) time=87.3s
+[43/10000] quadratic_3d_0_5_0_5_0_5_0_0 (factory=42, template=0, scale=0)
+  r2=1.000000 solved=0 cumulative_solve_rate=34/43 (79.07%) time=65.1s
+[71/10000] atan2_scaled_1_1_0 (factory=20, template=1, scale=0)
+  r2=0.996920 solved=0 cumulative_solve_rate=60/71 (84.51%) time=55.2s
+[72/10000] sigmoid_sum_1_1_0 (factory=21, template=1, scale=0)
+  r2=0.999979 solved=0 cumulative_solve_rate=60/72 (83.33%) time=69.8s
+[74/10000] pow_product_0_5_1_5_1_0 (factory=23, template=1, scale=0)
+  r2=1.000000 solved=0 cumulative_solve_rate=61/74 (82.43%) time=38.4s
+[77/10000] linear_frac_2d_1_neg0_5_0_125_1_0 (factory=26, template=1, scale=0)
+  r2=0.999989 solved=0 cumulative_solve_rate=63/77 (81.82%) time=32.2s
+
+  r2=[0.992148,1.000000,0.996077,0.977374,0.982840,1.000000,0.996920,0.999979,1.000000,0.999989]
+
+Problems failed: 5, 20, 21, 21, 23, 24, 26, 32, 38, 42
+
+Problem 21:
+
+def sigmoid_sum(a: float) -> Callable[[float, float], float]:
+    """f(x, y) = 1 / (1 + exp(-a*(x+y)))"""
+    return lambda x, y: 1.0 / (1.0 + math.exp(-a * (x + y)))
+
+1. distance_2d_0_5_0_0 (factory=5, template=0, scale=0)
+2. sigmoid_sum_0_5_0_0 (factory=21, template=0, scale=0) ***
+3. sqrt_sum_sq_0_5_0_0 (factory=24, template=0, scale=0)
+4. distance_3d_0_5_0_0 (factory=32, template=0, scale=0)
+5. manhattan_3d_0_5_0_0 (factory=38, template=0, scale=0)
+6. quadratic_3d_0_5_0_5_0_5_0_0 (factory=42, template=0, scale=0)
+7. atan2_scaled_1_1_0 (factory=20, template=1, scale=0)
+8. sigmoid_sum_1_1_0 (factory=21, template=1, scale=0) ***
+9. pow_product_0_5_1_5_1_0 (factory=23, template=1, scale=0)
+10. linear_frac_2d_1_neg0_5_0_125_1_0 (factory=26, template=1, scale=0)

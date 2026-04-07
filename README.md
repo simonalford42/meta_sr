@@ -19,6 +19,11 @@ cd meta_sr
 
 ### 2. Create conda environment and install dependencies
 
+Important: use a dedicated conda environment per clone of this repo.
+If you want to run two copies of `meta_sr` side-by-side (for example, one
+baseline repo and one sandbox repo for an agent-loop baseline), create two
+different conda envs so their Julia package environments are isolated.
+
 Prerequisites:
 - [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - [juliaup](https://github.com/JuliaLang/juliaup) (`curl -fsSL https://install.julialang.org | sh`)
@@ -35,6 +40,19 @@ uv pip install -r requirements.txt
 uv pip install -e ./PySR
 ```
 
+If you are setting up a second clone for isolation testing or an agent-loop
+baseline, use a second environment name, e.g.:
+
+```bash
+conda create -n meta_sr_agentloop python=3.10 -y
+conda activate meta_sr_agentloop
+conda install -c conda-forge git-lfs -y
+git lfs install
+git submodule update --init --recursive srbench SymbolicRegression.jl PySR
+uv pip install -r requirements.txt
+uv pip install -e ./PySR
+```
+
 ### 3. Set up Julia
 
 Install Julia 1.10 via juliaup (do **not** use conda's Julia — it has library conflicts):
@@ -43,14 +61,28 @@ Install Julia 1.10 via juliaup (do **not** use conda's Julia — it has library 
 juliaup add 1.10
 ```
 
-Then pin juliapkg to use Julia 1.10 (otherwise it auto-picks the newest version, which may be incompatible). The commands below create an activation script that sets `PYTHON_JULIAPKG_EXE` to the Julia 1.10 binary path each time the conda env is activated:
+Then pin juliapkg to use Julia 1.10 (otherwise it auto-picks the newest version,
+which may be incompatible), and set a Julia package environment for this specific
+conda env. The commands below create an activation script that:
+
+- sets `PYTHON_JULIAPKG_EXE` to the Julia 1.10 binary path each time the conda env is activated
+- sets `PYTHON_JULIAPKG_PROJECT` to `$CONDA_PREFIX/julia_env`, so each conda env gets its own Julia package environment
 
 ```bash
 mkdir -p "$CONDA_PREFIX/etc/conda/activate.d"
 echo 'export PYTHON_JULIAPKG_EXE="$(julia +1.10 -e "print(joinpath(Sys.BINDIR, \"julia\"))")"' \
   > "$CONDA_PREFIX/etc/conda/activate.d/julia.sh"
+echo 'export PYTHON_JULIAPKG_PROJECT="$CONDA_PREFIX/julia_env"' \
+  >> "$CONDA_PREFIX/etc/conda/activate.d/julia.sh"
 conda deactivate && conda activate meta_sr
 ```
+
+This setup is what makes multiple `meta_sr` clones isolate cleanly when each
+clone uses its own conda env. The Julia executable can be shared, but the Julia
+package environment should be separate.
+
+Do not use conda's Julia. Use the shared `juliaup` Julia binary via
+`PYTHON_JULIAPKG_EXE` as above.
 
 ### 4. Get SRBench datasets
 
@@ -75,6 +107,10 @@ python scripts/verify_local_symbolicregression.py
 ```
 
 The verify script should end with `PASS: Local SymbolicRegression.jl was loaded`.
+
+If you have multiple `meta_sr` clones, run this verify command once in each clone
+after activating that clone's conda env. Each clone should report its own local
+`SymbolicRegression.jl` path.
 
 ### 6. Set up OpenRouter API key
 
@@ -103,6 +139,38 @@ This test:
 Expected result:
 - `Final check status: PASS`
 - average `R^2` should be around `0.98-0.99`
+
+## Running Two Clones In Isolation
+
+If you want to run a baseline workflow and a sandbox workflow simultaneously
+(for example `evolve_pysr.py` in one clone and an agent-loop baseline in another),
+use:
+
+- one clone per workflow
+- one conda env per clone
+- one `PYTHON_JULIAPKG_PROJECT` per conda env
+
+Example layout:
+
+```text
+/path/to/meta_sr
+/path/to/meta_sr_agentloop
+```
+
+Recommended envs:
+
+```text
+meta_sr
+meta_sr_agentloop
+```
+
+The PySR/SLURM utilities in this repo can also be pointed at an explicit repo
+root / Julia project when needed. For example:
+
+```bash
+python evolve_pysr.py --operator_type mutation --repo-root /path/to/meta_sr_agentloop
+python scripts/test_pysr_srbench_slurm.py --repo-root /path/to/meta_sr_agentloop
+```
 
 ## Project Structure
 
@@ -177,6 +245,20 @@ This workflow uses OpenEvolve to mutate a Python EVOLVE-BLOCK that contains:
 
 The OpenEvolve evaluator then validates the Julia mutation and reuses the existing
 `PySRSlurmEvaluator` SRBench pipeline for scoring.
+
+For isolated sandbox runs, `evolve_pysr.py` and the PySR SLURM test script also accept:
+
+- `--repo-root`
+- `--julia-project`
+- `--python-juliapkg-project`
+- `--julia-depot-path`
+
+You can also target custom selection or survival operators:
+
+```bash
+python run_openevolve_pysr.py --operator-type selection
+python run_openevolve_pysr.py --operator-type survival
+```
 
 ### Evolve BasicSR operators
 
