@@ -638,6 +638,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             use_cache=use_cache,
         )
         self.target_noise = target_noise
+        self.total_sr_evals = 0
+        self.total_sr_cached = 0
         self.repo_root = Path(repo_root).resolve() if repo_root else Path.cwd().resolve()
         self.julia_project = str(Path(julia_project).resolve()) if julia_project else str((self.repo_root / "SymbolicRegression.jl").resolve())
         self.python_juliapkg_project = (
@@ -785,6 +787,9 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 uncached_indices = list(range(n_tasks))
         else:
             uncached_indices = list(range(n_tasks))
+
+        self.total_sr_evals += n_tasks
+        self.total_sr_cached += n_cached
 
         batch_id = batch_dir.name
         print(f"  PySR SLURM eval: {n_tasks} tasks in batch {batch_id} "

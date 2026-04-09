@@ -29,13 +29,14 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from completions import chat_completion, get_content
+from wandb_utils import init_wandb, log_wandb_summary, log_cpu_usage, finish_wandb
 from parallel_eval_pysr import (
     PySRConfig,
     PySRSlurmEvaluator,
     get_default_mutation_weights,
     get_default_pysr_kwargs,
 )
-from utils import load_dataset_names_from_split, TeeLogger
+from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log
 
 TARGET_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
 
@@ -78,6 +79,67 @@ def _evaluate_configs_with_noise_map(
         target_noise_map=target_noise_map,
         fitness_metric=fitness_metric,
     )
+
+
+class ModelEnsemble:
+    """Ensemble of LLM models with weighted random sampling.
+
+    Mirrors OpenEvolve's LLMEnsemble: each call to sample() picks a model
+    based on normalized weights, using a seeded RNG for reproducibility.
+    """
+
+    def __init__(self, models: List[Tuple[str, float]], seed: int = 42):
+        if not models:
+            raise ValueError("ModelEnsemble requires at least one model")
+        self.models = [(name, weight) for name, weight in models]
+        total = sum(w for _, w in self.models)
+        self.weights = [w / total for _, w in self.models]
+        self.rng = random.Random(seed)
+
+    def sample(self) -> str:
+        """Sample a model name based on weights."""
+        idx = self.rng.choices(range(len(self.models)), weights=self.weights, k=1)[0]
+        name = self.models[idx][0]
+        if len(self.models) > 1:
+            print(f"      [Ensemble] sampled model: {name}")
+        return name
+
+    @classmethod
+    def from_str(cls, spec: str, seed: int = 42) -> 'ModelEnsemble':
+        """Parse a spec like 'model1:0.8,model2:0.2' or just 'model1'.
+
+        Format per entry: model_name[:weight]  (weight defaults to 1.0)
+        """
+        models = []
+        for part in spec.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if ":" in part:
+                # Could be model:weight or scheme://host/model:weight
+                # Split on the *last* colon to handle URLs
+                last_colon = part.rfind(":")
+                weight_candidate = part[last_colon + 1:]
+                try:
+                    weight = float(weight_candidate)
+                    name = part[:last_colon]
+                except ValueError:
+                    # Last colon is part of the model name (e.g. no weight)
+                    name = part
+                    weight = 1.0
+            else:
+                name = part
+                weight = 1.0
+            models.append((name, weight))
+        return cls(models, seed=seed)
+
+    def to_config_dict(self) -> List[Dict[str, Any]]:
+        """Serialize for logging."""
+        return [{"model": name, "weight": weight} for name, weight in self.models]
+
+    def __repr__(self) -> str:
+        parts = [f"{name}:{w:.2f}" for name, w in self.models]
+        return f"ModelEnsemble([{', '.join(parts)}])"
 
 
 def extract_julia_code(response: str) -> str:
@@ -175,6 +237,7 @@ class JuliaOperator:
     parent_name: Optional[str] = None
     mode: str = "explore"
     weight: Optional[float] = None  # Only used for mutation operators
+    model: Optional[str] = None  # LLM model that generated this operator
     hp_specs: Optional[List[Dict]] = None  # Cached HyperparameterSpec dicts from LLM identification
 
     def to_dict(self) -> Dict:
@@ -314,6 +377,213 @@ class OperatorBundle:
             op = self.operators.get(t)
             parts.append(op.name if op else "default")
         return " | ".join(parts)
+
+
+# =============================================================================
+# Baseline Loading (from previous evolve_pysr, hpo_pysr, or openevolve runs)
+# =============================================================================
+
+def _load_baseline_from_run_data(path: Path, operator_type: Optional[str] = None) -> OperatorBundle:
+    """Load best bundle from an evolve_pysr or hpo_pysr run_data.json."""
+    with open(path) as f:
+        data = json.load(f)
+
+    # Detect HPO run_data.json (has 'trials' key, no 'generations')
+    if "trials" in data and "generations" not in data:
+        trials = data["trials"]
+        if not trials:
+            raise ValueError(f"No trials found in HPO run_data: {path}")
+        best_trial = max(trials, key=lambda t: t.get("avg_r2", -1))
+        params = best_trial.get("params", {})
+        if not params:
+            raise ValueError(f"Best trial has no params in {path}")
+        bundle = OperatorBundle(best_hparams=params)
+        bundle.score = best_trial.get("avg_r2")
+        return bundle
+
+    # Prefer finalized best_bundle, fall back to last generation's best
+    if "best_bundle" in data and data["best_bundle"]:
+        return OperatorBundle.from_dict(data["best_bundle"])
+
+    # Legacy single-operator format
+    for key in ["best_mutation", "best_survival", "best_selection"]:
+        if key in data and data[key]:
+            type_name = key.replace("best_", "")
+            op = JuliaOperator.from_dict(data[key])
+            bundle = OperatorBundle()
+            bundle.operators[type_name] = op
+            bundle.score = op.score
+            bundle.score_vector = op.score_vector
+            return bundle
+
+    # Fall back to best from last generation
+    gens = data.get("generations", [])
+    if not gens:
+        raise ValueError(f"No generations found in {path}")
+    last_gen = gens[-1]
+    pop = last_gen.get("population", [])
+    if not pop:
+        raise ValueError(f"Empty population in last generation of {path}")
+
+    # Population entries may be bundles or operators
+    best_entry = max(pop, key=lambda e: e.get("score") or -1)
+    if "operators" in best_entry:
+        return OperatorBundle.from_dict(best_entry)
+    else:
+        # Single operator format
+        type_name = operator_type or data.get("config", {}).get("operator_type", "mutation")
+        op = JuliaOperator.from_dict(best_entry)
+        bundle = OperatorBundle()
+        bundle.operators[type_name] = op
+        bundle.score = op.score
+        bundle.score_vector = op.score_vector
+        return bundle
+
+
+def _load_baseline_from_openevolve(path: Path) -> OperatorBundle:
+    """Load operator(s) from an openevolve best_program.py via get_candidate().
+
+    Handles both single-operator format (code/operator_type keys) and
+    bundle format (operators list with multiple operator dicts).
+    Also loads baseline_hparams.json from the same output directory if present.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_oe_program", str(path))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    candidate = mod.get_candidate()
+
+    bundle = OperatorBundle()
+
+    if "operators" in candidate:
+        # Bundle format: {"operators": [{"operator_type": ..., "code": ..., ...}, ...]}
+        for op_dict in candidate["operators"]:
+            op_type = op_dict["operator_type"]
+            code = op_dict["code"]
+            func_name = extract_function_name(code) or f"openevolve_{op_type}"
+            weight = op_dict.get("weight")
+            bundle.operators[op_type] = JuliaOperator(name=func_name, code=code, weight=weight)
+    else:
+        # Single operator format: {"operator_type": ..., "code": ..., ...}
+        op_type = candidate.get("operator_type", "mutation")
+        code = candidate["code"]
+        func_name = extract_function_name(code) or f"openevolve_{op_type}"
+        weight = candidate.get("weight")
+        bundle.operators[op_type] = JuliaOperator(name=func_name, code=code, weight=weight)
+
+    # Check for baseline_hparams.json in the OE output directory
+    # best_program.py lives at <oe_output>/best/best_program.py
+    # baseline_hparams.json lives at <oe_output>/baseline_hparams.json
+    oe_output_dir = path.parent.parent if path.parent.name == "best" else path.parent
+    hparams_file = oe_output_dir / "baseline_hparams.json"
+    if hparams_file.exists():
+        with open(hparams_file) as f:
+            bundle.best_hparams = json.load(f)
+
+    return bundle
+
+
+def _load_baseline_from_hpo(path: Path) -> OperatorBundle:
+    """Load best hyperparameters from an hpo_pysr best_params.json.
+
+    HPO results contain tuned PySR hyperparameters (no operator code),
+    so this returns a bundle with only best_hparams set.
+    """
+    with open(path) as f:
+        data = json.load(f)
+
+    params = data.get("params")
+    if not params:
+        raise ValueError(f"No 'params' key found in {path}")
+
+    bundle = OperatorBundle(best_hparams=params)
+    bundle.score = data.get("avg_r2")
+    return bundle
+
+
+def _load_baseline_from_julia(path: Path, operator_type: str = "mutation") -> OperatorBundle:
+    """Load operator from a raw .jl file containing Julia function code."""
+    code = path.read_text()
+    # Strip comment header lines (# Best mutation from...)
+    lines = code.split("\n")
+    code_lines = [l for l in lines if not l.startswith("# ")]
+    code = "\n".join(code_lines).strip()
+    if not code:
+        raise ValueError(f"No Julia code found in {path}")
+
+    func_name = extract_function_name(code) or f"baseline_{operator_type}"
+    weight = 0.5 if operator_type == "mutation" else None
+    op = JuliaOperator(name=func_name, code=code, weight=weight)
+    bundle = OperatorBundle()
+    bundle.operators[operator_type] = op
+    return bundle
+
+
+def load_baseline_bundle(
+    path: str,
+    operator_type: Optional[str] = None,
+) -> OperatorBundle:
+    """Load a baseline OperatorBundle from a previous run.
+
+    Supports:
+        - run_data.json from evolve_pysr
+        - best_params.json from hpo_pysr (hyperparameters only, no operator code)
+        - best_program.py from openevolve_pysr
+        - Raw .jl file with Julia function code
+
+    Args:
+        path: Path to the source file. Can also be an output directory
+              (auto-resolves to run_data.json, best_params.json, or best/best_program.py).
+        operator_type: Hint for which operator type when loading from
+                       ambiguous formats (.jl files, single-operator run_data).
+    """
+    p = Path(path)
+
+    # If path is a directory, try to auto-resolve
+    if p.is_dir():
+        candidates = [
+            p / "run_data.json",
+            p / "best" / "best_program.py",
+            p / "best_params.json",
+        ]
+        for c in candidates:
+            if c.exists():
+                p = c
+                break
+        else:
+            raise FileNotFoundError(
+                f"Could not find run_data.json, best_params.json, or best/best_program.py in {path}"
+            )
+
+    if not p.exists():
+        raise FileNotFoundError(f"Baseline file not found: {p}")
+
+    if p.name == "best_params.json":
+        bundle = _load_baseline_from_hpo(p)
+    elif p.name == "run_data.json" or p.suffix == ".json":
+        bundle = _load_baseline_from_run_data(p, operator_type)
+    elif p.suffix == ".py":
+        bundle = _load_baseline_from_openevolve(p)
+    elif p.suffix == ".jl":
+        bundle = _load_baseline_from_julia(p, operator_type or "mutation")
+    else:
+        raise ValueError(
+            f"Unsupported baseline file format: {p.suffix}. "
+            "Expected .json (run_data.json / best_params.json), "
+            ".py (openevolve best_program.py), or .jl (Julia code)"
+        )
+
+    # Report what was loaded
+    loaded_types = [t for t, op in bundle.operators.items() if op is not None]
+    print(f"Loaded baseline from {p}:")
+    for t in loaded_types:
+        op = bundle.operators[t]
+        score_str = f" (score: {op.score:.4f})" if op.score is not None else ""
+        print(f"  {t}: {op.name}{score_str}")
+    if bundle.best_hparams:
+        print(f"  hparams: {len(bundle.best_hparams)} parameters")
+
+    return bundle
 
 
 # =============================================================================
@@ -845,13 +1115,17 @@ def generate_operator_code(
     parent: Optional[JuliaOperator] = None,
     parent2: Optional[JuliaOperator] = None,
     model: str = "openai/gpt-5-mini",
+    model_ensemble: Optional[ModelEnsemble] = None,
     mode: str = "explore",
     feedback: str = "",
     variation_seed: int = 0,
     temperature: float = 0.0,
     use_cache: bool = True,
-) -> Tuple[str, str]:
-    """Generate new Julia operator code using an LLM."""
+) -> Tuple[str, str, str]:
+    """Generate new Julia operator code using an LLM.
+
+    Returns (code, func_name, selected_model).
+    """
     if mode == "explore":
         prompt = op_type.build_explore_prompt(reference, variation_seed)
     elif mode == "refine":
@@ -865,8 +1139,11 @@ def generate_operator_code(
     else:
         raise ValueError(f"Unknown mode: {mode}")
 
+    # Use ensemble to pick model if available, otherwise use single model
+    selected_model = model_ensemble.sample() if model_ensemble else model
+
     response = chat_completion(
-        model=model,
+        model=selected_model,
         messages=[{"role": "user", "content": prompt}],
         temperature=temperature,
         sample_index=variation_seed,
@@ -876,10 +1153,10 @@ def generate_operator_code(
     content = get_content(response)
     code = extract_julia_code(content)
     if not code:
-        return "", ""
+        return "", "", selected_model
 
     func_name = extract_function_name(code)
-    return code, func_name
+    return code, func_name, selected_model
 
 
 # =============================================================================
@@ -1191,7 +1468,7 @@ def run_evolution(
         attempts += 1
         print(f"\nGenerating {op_type.name} {len(population) + 1}/{population_size} (attempt {attempts})...")
 
-        code, func_name = generate_operator_code(
+        code, func_name, selected_model = generate_operator_code(
             op_type=op_type,
             reference=reference,
             model=model,
@@ -1216,6 +1493,7 @@ def run_evolution(
         operator = op_type.create_operator(
             name=unique_name, code=code, generation=0, mode="explore",
         )
+        operator.model = selected_model
         population.append(operator)
         print(f"  Created: {unique_name}")
 
@@ -1281,7 +1559,7 @@ def run_evolution(
                 parent = select_parent(population, rng)
                 parent2 = select_parent([s for s in population if s != parent], rng)
 
-            code, func_name = generate_operator_code(
+            code, func_name, selected_model = generate_operator_code(
                 op_type=op_type,
                 reference=reference,
                 parent=parent,
@@ -1308,8 +1586,9 @@ def run_evolution(
                 name=unique_name, code=code, generation=gen,
                 parent_name=parent.name if parent else None, mode=mode,
             )
+            operator.model = selected_model
             offspring.append(operator)
-            print(f"  Created: {unique_name} (mode={mode})")
+            print(f"  Created: {unique_name} (mode={mode}, model={selected_model})")
 
         print(f"\nGenerated {len(offspring)} offspring")
 
@@ -1381,6 +1660,7 @@ def run_bundle_evolution(
     slurm_mem_per_cpu: str,
     max_samples: int,
     job_timeout: float,
+    model_ensemble: Optional[ModelEnsemble] = None,
     use_cache: bool = True,
     n_runs: int = 1,
     target_noise: float = 0.0,
@@ -1391,12 +1671,18 @@ def run_bundle_evolution(
     julia_project: Optional[str] = None,
     python_juliapkg_project: Optional[str] = None,
     julia_depot_path: Optional[str] = None,
+    baseline_bundle: Optional[OperatorBundle] = None,
+    wandb_run: Optional[Any] = None,
 ) -> OperatorBundle:
     """Run round-robin bundle evolution across multiple operator types.
 
     Each generation evolves one operator type (cycling round-robin), while
     keeping the other operators in each bundle fixed. The full bundle is
     evaluated as a unit so operator interactions are captured.
+
+    If baseline_bundle is provided, it seeds the initial population: one copy
+    is kept as-is and the remaining slots are filled with LLM-generated
+    variations that start from the baseline operator code.
     """
     rng = random.Random(seed)
     np.random.seed(seed)
@@ -1417,6 +1703,7 @@ def run_bundle_evolution(
         "n_datasets": len(dataset_names),
         "dataset_names": dataset_names,
         "model": model,
+        "model_ensemble": model_ensemble.to_config_dict() if model_ensemble else None,
         "temperature": temperature,
         "seed": seed,
         "pysr_kwargs": pysr_kwargs,
@@ -1447,12 +1734,15 @@ def run_bundle_evolution(
         julia_depot_path=julia_depot_path,
     )
 
-    # Evaluate baseline (all defaults)
+    # Evaluate baseline (default operators, with HPO hparams if provided)
     print("=" * 60)
-    print("Evaluating baseline (all default operators)...")
+    print("Evaluating baseline (default operators)...")
     print("=" * 60)
-    baseline_bundle = OperatorBundle.create_default()
-    baseline_config = baseline_bundle.to_pysr_config(pysr_kwargs)
+    eval_baseline = OperatorBundle.create_default()
+    if baseline_bundle is not None and baseline_bundle.best_hparams:
+        eval_baseline.best_hparams = copy.deepcopy(baseline_bundle.best_hparams)
+        print(f"  Using {len(eval_baseline.best_hparams)} hparams from --baseline")
+    baseline_config = eval_baseline.to_pysr_config(pysr_kwargs)
     baseline_results = _evaluate_configs_with_noise_map(
         evaluator=evaluator,
         configs=[baseline_config],
@@ -1463,8 +1753,8 @@ def run_bundle_evolution(
         fitness_metric=fitness_metric,
     )
     baseline_score, baseline_vector, baseline_details = baseline_results[0]
-    baseline_bundle.score = baseline_score
-    baseline_bundle.score_vector = baseline_vector
+    eval_baseline.score = baseline_score
+    eval_baseline.score_vector = baseline_vector
 
     if n_runs > 1 and baseline_details:
         per_run_avgs = compute_per_run_avgs(baseline_details, n_runs=n_runs, fitness_metric=fitness_metric)
@@ -1474,20 +1764,51 @@ def run_bundle_evolution(
         print(f"Baseline avg {metric_label}: {baseline_score:.4f}")
     logger.log_baseline(baseline_score, baseline_vector)
 
+    if wandb_run is not None:
+        import wandb
+        wandb.log({"baseline_score": baseline_score, "generation": 0})
+        log_cpu_usage(wandb_run)
+
     # Generate initial population of bundles
-    # Each bundle starts with one random operator per type
+    # If a baseline_bundle is provided, include it and generate variations from it
     print("\n" + "=" * 60)
     print(f"Generating initial population ({population_size} bundles)...")
     print(f"Operator types: {', '.join(operator_type_names)}")
+    if baseline_bundle:
+        baseline_types = [t for t, op in baseline_bundle.operators.items() if op is not None]
+        print(f"Seeding from baseline: {', '.join(baseline_types)}")
     print("=" * 60)
 
     population: List[OperatorBundle] = []
+
+    # Seed population slot 0 with the baseline bundle (unchanged)
+    if baseline_bundle:
+        seed_bundle = OperatorBundle(
+            operators={k: copy.deepcopy(v) for k, v in baseline_bundle.operators.items()},
+            best_hparams=copy.deepcopy(baseline_bundle.best_hparams) if baseline_bundle.best_hparams else None,
+        )
+        population.append(seed_bundle)
+        print(f"\nBundle 1/{population_size}: baseline (unchanged)")
+        for t in operator_type_names:
+            op = seed_bundle.get_operator(t)
+            print(f"  {t}: {op.name if op else 'default'}")
+
     max_bundle_attempts = population_size * 2
     bundle_attempts = 0
     while len(population) < population_size and bundle_attempts < max_bundle_attempts:
         bundle_idx = bundle_attempts
         bundle_attempts += 1
-        bundle = OperatorBundle.create_default()
+
+        # When we have a baseline, start each new bundle from a copy of it
+        # and generate variations via "refine" for types that have a baseline operator
+        if baseline_bundle:
+            bundle = OperatorBundle(
+                operators={k: copy.deepcopy(v) for k, v in baseline_bundle.operators.items()},
+                best_hparams=copy.deepcopy(baseline_bundle.best_hparams) if baseline_bundle.best_hparams else None,
+            )
+        else:
+            bundle = OperatorBundle.create_default()
+
         n_generated = 0
         print(f"\nBundle {len(population) + 1}/{population_size} (attempt {bundle_idx + 1}):")
 
@@ -1495,14 +1816,20 @@ def run_bundle_evolution(
             op_type = OPERATOR_TYPES[type_name]
             reference = references[type_name]
 
+            # If we have a baseline operator for this type, refine it; otherwise explore
+            baseline_op = baseline_bundle.get_operator(type_name) if baseline_bundle else None
+            mode = "refine" if baseline_op else "explore"
+
             # Try to generate a valid operator for this type
             generated = False
             for attempt in range(3):
-                code, func_name = generate_operator_code(
+                code, func_name, selected_model = generate_operator_code(
                     op_type=op_type,
                     reference=reference,
+                    parent=baseline_op,
                     model=model,
-                    mode="explore",
+                    model_ensemble=model_ensemble,
+                    mode=mode,
                     variation_seed=bundle_idx * 100 + attempt,
                     temperature=temperature,
                     use_cache=use_cache,
@@ -1519,16 +1846,26 @@ def run_bundle_evolution(
                     continue
 
                 operator = op_type.create_operator(
-                    name=unique_name, code=code, generation=0, mode="explore",
+                    name=unique_name, code=code, generation=0,
+                    parent_name=baseline_op.name if baseline_op else None,
+                    mode=mode,
                 )
+                operator.model = selected_model
+                if baseline_op and baseline_op.weight is not None:
+                    operator.weight = baseline_op.weight
                 bundle = bundle.copy_with(type_name, operator)
-                print(f"  {type_name}: {unique_name}")
+                print(f"  {type_name}: {unique_name} (model={selected_model})")
                 generated = True
                 n_generated += 1
                 break
 
             if not generated:
-                print(f"  {type_name}: failed to generate after 3 attempts")
+                # If we have a baseline op, keep it in the bundle rather than failing
+                if baseline_op:
+                    print(f"  {type_name}: keeping baseline ({baseline_op.name})")
+                    n_generated += 1  # baseline op counts
+                else:
+                    print(f"  {type_name}: failed to generate after 3 attempts")
 
         if n_generated == 0:
             print(f"  Skipping bundle (no operators generated)")
@@ -1623,12 +1960,13 @@ def run_bundle_evolution(
                             mode = "refine"
                             parent2 = None
 
-            code, func_name = generate_operator_code(
+            code, func_name, selected_model = generate_operator_code(
                 op_type=current_op_type,
                 reference=reference,
                 parent=parent,
                 parent2=parent2,
                 model=model,
+                model_ensemble=model_ensemble,
                 mode=mode,
                 variation_seed=gen * 100 + offspring_attempts,
                 temperature=temperature,
@@ -1650,10 +1988,11 @@ def run_bundle_evolution(
                 name=unique_name, code=code, generation=gen,
                 parent_name=parent.name if parent else None, mode=mode,
             )
+            new_op.model = selected_model
             # Create new bundle: keep all other operators from parent, replace evolved type
             new_bundle = parent_bundle.copy_with(current_type_name, new_op)
             offspring_bundles.append(new_bundle)
-            print(f"  Created: {unique_name} (mode={mode})")
+            print(f"  Created: {unique_name} (mode={mode}, model={selected_model})")
 
         print(f"\nGenerated {len(offspring_bundles)} offspring bundles")
 
@@ -1714,6 +2053,16 @@ def run_bundle_evolution(
 
         logger.log_bundle_generation(gen, population, offspring_bundles, best, current_type_name)
 
+        if wandb_run is not None:
+            import wandb
+            wandb.log({
+                "generation": gen,
+                "best_score": best.score,
+                "improvement_over_baseline": best.score - baseline_score,
+                "evolved_type": current_type_name,
+            })
+            log_cpu_usage(wandb_run)
+
     logger.finalize_bundle(best)
 
     print("\n" + "=" * 60)
@@ -1723,6 +2072,17 @@ def run_bundle_evolution(
     print(f"Best score: {best.score:.4f}")
     print(f"Baseline ({metric_label}): {baseline_score:.4f}")
     print(f"Improvement: {best.score - baseline_score:+.4f}")
+
+    log_wandb_summary(
+        wandb_run,
+        evaluator=evaluator,
+        extra_summary={
+            "best_score": best.score,
+            "baseline_score": baseline_score,
+            "improvement": best.score - baseline_score,
+        },
+    )
+    finish_wandb(wandb_run)
 
     return best
 
@@ -1741,7 +2101,7 @@ def main():
                         help="Type of operator to evolve: mutation, survival, selection, "
                              "all (all three jointly), or comma-separated list (e.g. mutation,survival)")
 
-    parser.add_argument("--generations", type=int, default=20)
+    parser.add_argument("--generations", type=int, default=25)
     parser.add_argument("--population", type=int, default=4)
     parser.add_argument("--offspring", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
@@ -1751,8 +2111,8 @@ def main():
     parser.add_argument("--hp_tuning_trials", type=int, default=0,
                         help="HPO trials per bundle per generation (0=disabled)")
 
-    parser.add_argument("--split", type=str, default=None,
-                        help="Path to dataset split file (default: train.txt for mutation, train_hard.txt for survival/selection)")
+    parser.add_argument("--split", type=str, default='splits/train.txt',
+                        help="Path to dataset split file")
     parser.add_argument("--max_samples", type=int, default=1000)
     parser.add_argument("--target_noise", type=float, default=0.0)
     group = parser.add_mutually_exclusive_group()
@@ -1760,11 +2120,21 @@ def main():
     group.add_argument("--no_random_target_noise", dest="random_target_noise", action="store_false")
     parser.set_defaults(random_target_noise=True)
 
-    parser.add_argument("--max_evals", type=int, default=None,
+    parser.add_argument("--max_evals", type=int, default=1000000,
                         help="Maximum evaluations per PySR run (default: 1e6 for mutation, 100000 for survival/selection)")
     parser.add_argument("--timeout", type=int, default=3000)
 
-    parser.add_argument("--model", type=str, default="openai/gpt-5-mini")
+    DEFAULT_ENSEMBLE = (
+        "openai/gpt-5.4-mini:0.20,"
+        "openai/gpt-5.4-nano:0.30,"
+        "google/gemini-3.1-flash-lite-preview:0.25,"
+        "x-ai/grok-4.1-fast:0.25"
+    )
+    parser.add_argument("--model", type=str, default="openai/gpt-5.4-mini",
+                        help="Single LLM model (used as fallback if --models not set)")
+    parser.add_argument("--models", type=str, default=DEFAULT_ENSEMBLE,
+                        help="Ensemble of models with weights. "
+                             "Overrides --model when set.")
     parser.add_argument("--temperature", type=float, default=0.0)
 
     parser.add_argument("--partition", type=str, default="default_partition")
@@ -1783,6 +2153,12 @@ def main():
     parser.add_argument("--output_dir", type=str, default=None)
     parser.add_argument("--no-cache", action="store_true")
 
+    parser.add_argument("--baseline", type=str, default=None,
+                        help="Path to a baseline operator to seed the initial population. "
+                             "Accepts: evolve_pysr output dir or run_data.json, "
+                             "hpo_pysr output dir or best_params.json, "
+                             "openevolve best_program.py, or a raw .jl file.")
+
     args = parser.parse_args()
 
     # Parse operator type(s)
@@ -1794,14 +2170,6 @@ def main():
             if name not in OPERATOR_TYPES:
                 parser.error(f"Unknown operator type: {name}. Choose from: mutation, survival, selection, all")
 
-    # Apply defaults based on which types are included
-    has_mutation = "mutation" in operator_type_names
-    if args.split is None:
-        args.split = "splits/train.txt" if has_mutation else "splits/train_hard.txt"
-
-    if args.max_evals is None:
-        args.max_evals = int(1e6) if has_mutation else 100000
-
     if args.output_dir is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         type_label = "+".join(operator_type_names) if len(operator_type_names) > 1 else operator_type_names[0]
@@ -1809,6 +2177,14 @@ def main():
 
     dataset_names = load_dataset_names_from_split(args.split)
     print(f"Loaded {len(dataset_names)} datasets from {args.split}")
+
+    # Build model ensemble if --models is specified
+    model_ensemble = None
+    if args.models:
+        model_ensemble = ModelEnsemble.from_str(args.models, seed=args.seed)
+        print(f"Model ensemble: {model_ensemble}")
+    else:
+        print(f"Model: {args.model}")
 
     pysr_kwargs = get_default_pysr_kwargs()
     pysr_kwargs["max_evals"] = args.max_evals
@@ -1821,6 +2197,7 @@ def main():
         dataset_names=dataset_names,
         model=args.model,
         temperature=args.temperature,
+        model_ensemble=model_ensemble,
         seed=args.seed,
         output_dir=args.output_dir,
         pysr_kwargs=pysr_kwargs,
@@ -1841,17 +2218,58 @@ def main():
         julia_depot_path=args.julia_depot_path,
     )
 
+    # Load baseline if specified
+    baseline_bundle = None
+    if args.baseline:
+        baseline_bundle = load_baseline_bundle(
+            args.baseline,
+            operator_type=operator_type_names[0] if len(operator_type_names) == 1 else None,
+        )
+
     if len(operator_type_names) > 1:
         print(f"Bundle evolution: {', '.join(operator_type_names)} (round-robin)")
     else:
         print(f"Evolving: {operator_type_names[0]}")
 
+    # Initialize wandb
+    wandb_config = {
+        "operator_types": operator_type_names,
+        "generations": args.generations,
+        "population": args.population,
+        "offspring": args.offspring,
+        "seed": args.seed,
+        "n_runs": args.n_runs,
+        "fitness_metric": args.fitness_metric,
+        "hp_tuning_trials": args.hp_tuning_trials,
+        "split": args.split,
+        "max_samples": args.max_samples,
+        "target_noise": args.target_noise,
+        "random_target_noise": args.random_target_noise,
+        "max_evals": args.max_evals,
+        "timeout": args.timeout,
+        "model": args.model,
+        "models": args.models,
+        "temperature": args.temperature,
+        "partition": args.partition,
+        "baseline": args.baseline,
+        "no_cache": args.no_cache,
+    }
+    wandb_run = init_wandb(
+        config=wandb_config,
+        script_name="evolve_pysr.py",
+        output_dir=args.output_dir,
+        extra_tags=operator_type_names,
+    )
+
     best = run_bundle_evolution(
         operator_type_names=operator_type_names,
+        baseline_bundle=baseline_bundle,
+        wandb_run=wandb_run,
         **common_kwargs,
     )
 
     print(f"\nResults saved to: {args.output_dir}")
+    copy_slurm_log(args.output_dir)
 
 
 if __name__ == "__main__":

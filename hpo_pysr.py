@@ -596,6 +596,82 @@ def _split_hpo_params(params: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[st
     return mutation_weights, pysr_kwargs
 
 
+def _build_optuna_distributions(search_space: Dict[str, 'HPOParamSpec']) -> Dict:
+    """Build Optuna distribution objects from search space specs."""
+    import optuna
+
+    distributions = {}
+    for name, spec in search_space.items():
+        if spec.kind == "float":
+            distributions[name] = optuna.distributions.FloatDistribution(
+                spec.low, spec.high, log=(spec.scale == "log"),
+            )
+        elif spec.kind == "int":
+            distributions[name] = optuna.distributions.IntDistribution(
+                int(spec.low), int(spec.high), log=(spec.scale == "log"),
+            )
+        elif spec.kind in ("bool", "categorical"):
+            choices = [label for label, _ in spec.choices]
+            distributions[name] = optuna.distributions.CategoricalDistribution(choices)
+    return distributions
+
+
+def _replay_trials_into_study(
+    study,
+    prior_trials: List[Dict],
+    search_space: Dict[str, 'HPOParamSpec'],
+) -> int:
+    """Replay saved trial data into an Optuna study so TPE has full history.
+
+    Returns number of trials successfully replayed.
+    """
+    import optuna
+
+    distributions = _build_optuna_distributions(search_space)
+    replayed = 0
+
+    for trial_data in prior_trials:
+        params = trial_data.get("params", {})
+        score = trial_data.get("avg_r2")
+        if score is None:
+            continue
+
+        # Map params to Optuna's internal representation
+        # For categorical/bool params, we need the label not the value
+        optuna_params = {}
+        for name, spec in search_space.items():
+            if name not in params:
+                continue
+            if spec.kind in ("bool", "categorical"):
+                # Reverse-map value to label
+                value = params[name]
+                for label, val in spec.choices:
+                    if val == value:
+                        optuna_params[name] = label
+                        break
+                else:
+                    optuna_params[name] = value
+            else:
+                optuna_params[name] = params[name]
+
+        # Only include distributions for params we have
+        trial_distributions = {k: v for k, v in distributions.items() if k in optuna_params}
+
+        try:
+            frozen = optuna.trial.create_trial(
+                params=optuna_params,
+                distributions=trial_distributions,
+                values=[score],
+                state=optuna.trial.TrialState.COMPLETE,
+            )
+            study.add_trial(frozen)
+            replayed += 1
+        except Exception as e:
+            print(f"  Warning: could not replay trial {trial_data.get('trial_number', '?')}: {e}")
+
+    return replayed
+
+
 def create_param_config_from_trial(
     trial,
     search_space: Dict[str, HPOParamSpec],
@@ -628,6 +704,32 @@ def create_param_config_from_trial(
     return params
 
 
+def _apply_baseline_to_config(
+    config: PySRConfig,
+    baseline_bundle,
+) -> PySRConfig:
+    """Merge baseline operator(s) into a PySRConfig."""
+    if baseline_bundle is None:
+        return config
+
+    mut = baseline_bundle.operators.get("mutation")
+    if mut is not None:
+        weight = mut.weight if mut.weight is not None else 0.5
+        config.mutation_weights["weight_custom_mutation_1"] = weight
+        config.custom_mutation_code = {mut.name: mut.code}
+        config.allow_custom_mutations = True
+
+    surv = baseline_bundle.operators.get("survival")
+    if surv is not None:
+        config.custom_survival_code = surv.code
+
+    sel = baseline_bundle.operators.get("selection")
+    if sel is not None:
+        config.custom_selection_code = sel.code
+
+    return config
+
+
 def evaluate_param_configs_batch(
     param_configs: List[Dict[str, Any]],
     trial_numbers: List[int],
@@ -637,6 +739,7 @@ def evaluate_param_configs_batch(
     seed: int,
     n_runs: int,
     fitness_metric: str,
+    baseline_bundle=None,
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """
     Evaluate multiple hyperparameter configurations in a single SLURM batch.
@@ -648,6 +751,7 @@ def evaluate_param_configs_batch(
         base_pysr_kwargs: Base PySR configuration
         seed: Random seed
         n_runs: Number of runs per config per dataset
+        baseline_bundle: Optional OperatorBundle with custom operators to include
 
     Returns:
         List of (avg_r2, r2_vector, result_details) tuples
@@ -666,6 +770,7 @@ def evaluate_param_configs_batch(
             allow_custom_mutations=False,
             name=f"hpo_trial_{trial_numbers[i]}",
         )
+        config = _apply_baseline_to_config(config, baseline_bundle)
         configs.append(config)
 
     # Evaluate all configs in parallel via SLURM
@@ -685,9 +790,13 @@ def evaluate_baseline(
     seed: int,
     n_runs: int,
     fitness_metric: str,
+    baseline_bundle=None,
 ) -> Tuple[float, List[float], List[Dict], Dict[str, float]]:
     """
     Evaluate PySR with default mutation weights (baseline).
+
+    If baseline_bundle is provided, the custom operator(s) are included in the
+    baseline config so that HPO optimizes hyperparams *on top of* the operator.
 
     Returns:
         (avg_r2, r2_vector, result_details, explicit_weights_passed)
@@ -702,6 +811,7 @@ def evaluate_baseline(
         allow_custom_mutations=False,
         name="baseline",
     )
+    config = _apply_baseline_to_config(config, baseline_bundle)
 
     results = evaluator.evaluate_configs(
         [config],
@@ -735,6 +845,9 @@ def run_hpo(
     max_concurrent_jobs: Optional[int],
     fitness_metric: str = "gt",
     use_cache: bool = True,
+    baseline_bundle=None,
+    prior_trials: Optional[List[Dict]] = None,
+    continue_from: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], float]:
     """
     Run hyperparameter optimization for generic PySR hyperparameters.
@@ -811,11 +924,16 @@ def run_hpo(
 
         # Phase 1: Evaluate baseline
         print("=" * 60)
-        print("Phase 1: Evaluating baseline (current base PySR config, no HPO overrides)...")
+        if baseline_bundle:
+            loaded_types = [t for t, op in baseline_bundle.operators.items() if op is not None]
+            print(f"Phase 1: Evaluating baseline (with custom {', '.join(loaded_types)}, no HPO overrides)...")
+        else:
+            print("Phase 1: Evaluating baseline (current base PySR config, no HPO overrides)...")
         print("=" * 60)
 
         baseline_r2, baseline_vector, baseline_details, baseline_weights = evaluate_baseline(
-            evaluator, dataset_names, base_pysr_kwargs, seed, n_runs, fitness_metric
+            evaluator, dataset_names, base_pysr_kwargs, seed, n_runs, fitness_metric,
+            baseline_bundle=baseline_bundle,
         )
         if n_runs > 1 and baseline_details:
             per_run_avgs = []
@@ -837,11 +955,38 @@ def run_hpo(
         print(f"Phase 2: Running HPO ({n_trials} trials, {n_parallel} parallel)...")
         print("=" * 60)
 
-        study = optuna.create_study(
-            direction="maximize",
-            sampler=TPESampler(seed=seed),
-            study_name="pysr_hyperparameter_hpo",
-        )
+        db_path = Path(output_dir) / "optuna_study.db"
+        storage_url = f"sqlite:///{db_path}"
+        study_name = "pysr_hyperparameter_hpo"
+
+        # Check if we're resuming from a prior run's DB
+        prior_db_path = Path(continue_from) / "optuna_study.db" if continue_from else None
+        if prior_db_path and prior_db_path.exists():
+            import shutil
+            shutil.copy2(prior_db_path, db_path)
+            print(f"  Loaded Optuna study DB from {prior_db_path}")
+            study = optuna.load_study(
+                study_name=study_name,
+                storage=storage_url,
+                sampler=TPESampler(seed=seed),
+            )
+            print(f"  Resuming with {len(study.trials)} prior trials")
+            if study.best_trial:
+                print(f"  Best prior trial: {study.best_trial.number} (score: {study.best_trial.value:.4f})")
+        else:
+            study = optuna.create_study(
+                direction="maximize",
+                sampler=TPESampler(seed=seed),
+                study_name=study_name,
+                storage=storage_url,
+            )
+            # Fall back to JSON replay if no DB available
+            if prior_trials:
+                n_replayed = _replay_trials_into_study(study, prior_trials, search_space)
+                print(f"  Replayed {n_replayed}/{len(prior_trials)} prior trials into Optuna study (from JSON)")
+                if n_replayed > 0:
+                    best_prior = study.best_trial
+                    print(f"  Best prior trial: {best_prior.number} (score: {best_prior.value:.4f})")
 
         trials_completed = 0
         best_score = baseline_r2
@@ -872,6 +1017,7 @@ def run_hpo(
                     seed,
                     n_runs,
                     fitness_metric,
+                    baseline_bundle=baseline_bundle,
                 )
 
                 for trial, params, (avg_r2, r2_vector, result_details) in zip(trials, param_configs, results):
@@ -998,6 +1144,15 @@ def main():
     parser.add_argument("--no-cache", action="store_true",
                         help="Disable evaluation caching")
 
+    parser.add_argument("--baseline", type=str, default=None,
+                        help="Path to a baseline operator to include in all HPO trials. "
+                             "Accepts: evolve_pysr output dir or run_data.json, "
+                             "openevolve best_program.py, or a raw .jl file.")
+    parser.add_argument("--continue-from", type=str, default=None,
+                        help="Continue a previous HPO run. Pass the output directory of a prior run "
+                             "(e.g., outputs/hpo_pysr_20260407_152534). Replays saved trials into "
+                             "the Optuna study so TPE benefits from prior history.")
+
     args = parser.parse_args()
 
     # Set up output directory
@@ -1086,6 +1241,27 @@ def main():
         # "early_stop_condition",
     ]
 
+    # Load baseline operator if specified
+    baseline_bundle = None
+    if args.baseline:
+        from evolve_pysr import load_baseline_bundle
+        baseline_bundle = load_baseline_bundle(args.baseline)
+
+    # Load prior trials from JSON as fallback (for runs predating DB persistence)
+    prior_trials = None
+    if args.continue_from:
+        prior_db_path = Path(args.continue_from) / "optuna_study.db"
+        if not prior_db_path.exists():
+            prior_run_data_path = Path(args.continue_from) / "run_data.json"
+            if not prior_run_data_path.exists():
+                parser.error(f"Cannot find optuna_study.db or run_data.json in {args.continue_from}")
+            with open(prior_run_data_path) as f:
+                prior_run_data = json.load(f)
+            prior_trials = prior_run_data.get("trials", [])
+            print(f"Continuing from {args.continue_from}: {len(prior_trials)} prior trials (JSON fallback)")
+        else:
+            print(f"Continuing from {args.continue_from}: found optuna_study.db")
+
     # Run HPO
     best_params, best_score = run_hpo(
         n_trials=args.n_trials,
@@ -1104,6 +1280,9 @@ def main():
         max_concurrent_jobs=args.max_concurrent_jobs,
         fitness_metric=args.fitness_metric,
         use_cache=not args.no_cache,
+        baseline_bundle=baseline_bundle,
+        prior_trials=prior_trials,
+        continue_from=args.continue_from,
     )
 
     print(f"\nResults saved to: {args.output_dir}")

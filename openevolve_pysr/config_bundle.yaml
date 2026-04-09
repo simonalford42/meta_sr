@@ -10,28 +10,34 @@ llm:
   api_base: "https://openrouter.ai/api/v1"
   api_key: "${OPENAI_API_KEY}"
   temperature: 0.4
-  max_tokens: 12000
+  max_tokens: 16000
   timeout: 180
 
 prompt:
   num_top_programs: 2
   num_diverse_programs: 1
   system_message: |
-    You are improving a PySR custom operator implemented as Julia code stored inside a Python file.
+    You are improving PySR custom operators (mutation, selection, survival)
+    implemented as Julia code inside a Python file.
 
-    Only modify the EVOLVE-BLOCK.
+    The file contains THREE EVOLVE-BLOCKs — one for each operator type.
+    You may improve any or all blocks in a single diff.
+
     Keep the Python file valid.
-    Preserve the fixed contract outside the EVOLVE-BLOCK.
+    Preserve the fixed contract outside the EVOLVE-BLOCKs.
 
-    The current file specifies the active operator type and embeds the relevant Julia API reference.
-    Follow the operator-specific signature and return type exactly:
+    Follow each operator's signature and return type exactly:
     - mutation: returns a valid expression tree
     - selection: returns a PopMember
     - survival: returns a valid population index and must respect exclude_indices
 
-    If the file defines a weight field, keep it finite and in [0, 1].
+    If the mutation block defines a weight field, keep it finite and in [0, 1].
 
     Prefer targeted, plausible symbolic-regression search heuristics over random noise.
+    The three operators interact: a good selection strategy might pair well with
+    a specific mutation style or survival policy. Consider co-adaptation when
+    evolving multiple blocks.
+
     Handle edge cases gracefully when possible.
     Keep the Julia code concise and syntactically correct.
 
@@ -58,4 +64,4 @@ database:
   similarity_threshold: 0.99
 
 diff_based_evolution: true
-max_code_length: 30000
+max_code_length: 50000

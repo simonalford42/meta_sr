@@ -171,6 +171,7 @@ _usage = {
     "prompt_tokens": 0,
     "completion_tokens": 0,
     "num_calls": 0,
+    "num_cached_calls": 0,
 }
 
 
@@ -183,6 +184,7 @@ def reset_usage():
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "num_calls": 0,
+        "num_cached_calls": 0,
     }
 
 
@@ -263,6 +265,7 @@ def chat_completion(
             # All samples cached, reconstruct response
             cached_choices.sort(key=lambda x: x[0])
             print(f"      [API] cached (no API call)")
+            _usage["num_cached_calls"] += 1
             return {
                 'choices': [choice for _, choice in cached_choices],
                 'model': model,
@@ -281,6 +284,7 @@ def chat_completion(
         cached_response = _cache.lookup(model, messages, temperature, max_tokens, cache_kwargs)
         if cached_response is not None:
             print(f"      [API] cached (no API call)")
+            _usage["num_cached_calls"] += 1
             return cached_response
 
     if api_key is None:

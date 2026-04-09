@@ -32,6 +32,12 @@ def parse_args() -> argparse.Namespace:
         help="Explicit Julia project path to activate.",
     )
     parser.add_argument(
+        "--expected-symbolicregression-root",
+        type=str,
+        default=None,
+        help="Expected SymbolicRegression.jl root to be loaded (default: <repo-root>/SymbolicRegression.jl).",
+    )
+    parser.add_argument(
         "--python-juliapkg-project",
         type=str,
         default=None,
@@ -51,7 +57,12 @@ def main() -> int:
 
     repo_root = Path(args.repo_root).resolve() if args.repo_root else Path(__file__).resolve().parent.parent
     local_project = Path(args.julia_project).resolve() if args.julia_project else (repo_root / "SymbolicRegression.jl").resolve()
-    expected_source = (local_project / "src" / "SymbolicRegression.jl").resolve()
+    expected_sr_root = (
+        Path(args.expected_symbolicregression_root).resolve()
+        if args.expected_symbolicregression_root
+        else (repo_root / "SymbolicRegression.jl").resolve()
+    )
+    expected_source = (expected_sr_root / "src" / "SymbolicRegression.jl").resolve()
 
     conda_prefix = os.environ.get("CONDA_PREFIX")
     conda_julia_env = Path(conda_prefix).resolve() / "julia_env" if conda_prefix else None
@@ -90,6 +101,7 @@ def main() -> int:
         "using SymbolicRegression; "
         'println("SR_PATH=" * pathof(SymbolicRegression)); '
         'println("JULIA_PROJECT_ACTIVE=" * Base.active_project()); '
+        'println("PYTHON_JULIAPKG_PROJECT_ENV=" * get(ENV, "PYTHON_JULIAPKG_PROJECT", "")); '
         'println("HAS_CUSTOM_SELECTION=" * string(isdefined(SymbolicRegression, :CustomSelectionModule))); '
         'println("HAS_CUSTOM_SURVIVAL=" * string(isdefined(SymbolicRegression, :CustomSurvivalModule)));'
     )

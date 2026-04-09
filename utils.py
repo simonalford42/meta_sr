@@ -1,6 +1,8 @@
 """
 Utility functions for meta-evolution
 """
+import os
+import shutil
 import signal
 import time
 import traceback
@@ -34,6 +36,23 @@ class TeeLogger:
 
     def close(self):
         self.log_file.close()
+
+
+def copy_slurm_log(output_dir: "str | Path") -> None:
+    """Copy the SLURM stdout log into the job's output directory.
+
+    Looks for out/<job_id>.out (relative to this file's directory) and copies
+    it to <output_dir>/slurm_<job_id>.out. No-op when not running under SLURM
+    or if the log file doesn't exist yet.
+    """
+    job_id = os.environ.get("SLURM_JOB_ID")
+    if not job_id:
+        return
+    src = Path(__file__).parent / "out" / f"{job_id}.out"
+    if not src.exists():
+        return
+    dest = Path(output_dir) / f"slurm_{job_id}.out"
+    shutil.copy2(src, dest)
 
 
 def load_pickle(path):

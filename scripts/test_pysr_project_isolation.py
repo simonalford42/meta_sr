@@ -68,11 +68,16 @@ def run_verify(
         str(REPO_ROOT / "scripts" / "verify_local_symbolicregression.py"),
         "--repo-root",
         str(repo_root),
-        "--julia-project",
+        "--expected-symbolicregression-root",
         str(repo_root / "SymbolicRegression.jl"),
     ]
     if pyjuliapkg_project is not None:
-        cmd.extend(["--python-juliapkg-project", str(pyjuliapkg_project)])
+        cmd.extend([
+            "--julia-project",
+            str(pyjuliapkg_project),
+            "--python-juliapkg-project",
+            str(pyjuliapkg_project),
+        ])
     if julia_depot_path:
         cmd.extend(["--julia-depot-path", julia_depot_path])
 
@@ -84,16 +89,31 @@ def run_verify(
     )
 
 
-def assert_verify_passed(label: str, proc: subprocess.CompletedProcess[str], expected_repo_root: Path) -> None:
+def assert_verify_passed(
+    label: str,
+    proc: subprocess.CompletedProcess[str],
+    expected_repo_root: Path,
+    expected_julia_project: Path | None = None,
+    expected_pyjuliapkg_project: Path | None = None,
+) -> None:
     output = (proc.stdout or "") + (proc.stderr or "")
     if proc.returncode != 0:
         raise AssertionError(f"{label} verification failed with exit code {proc.returncode}:\n{output}")
     expected_sr_path = (expected_repo_root / "SymbolicRegression.jl" / "src" / "SymbolicRegression.jl").resolve()
-    expected_project = (expected_repo_root / "SymbolicRegression.jl").resolve()
     if f"SR_PATH={expected_sr_path}" not in output:
         raise AssertionError(f"{label} loaded the wrong backend path:\n{output}")
-    if f"JULIA_PROJECT_ACTIVE={expected_project}" not in output:
+    expected_project_file = None
+    if expected_julia_project is not None:
+        expected_julia_project = expected_julia_project.resolve()
+        expected_project_file = (
+            expected_julia_project / "Project.toml"
+            if expected_julia_project.is_dir()
+            else expected_julia_project
+        )
+    if expected_project_file is not None and f"JULIA_PROJECT_ACTIVE={expected_project_file}" not in output:
         raise AssertionError(f"{label} activated the wrong JULIA_PROJECT:\n{output}")
+    if expected_pyjuliapkg_project is not None and f"PYTHON_JULIAPKG_PROJECT_ENV={expected_pyjuliapkg_project.resolve()}" not in output:
+        raise AssertionError(f"{label} used the wrong PYTHON_JULIAPKG_PROJECT:\n{output}")
     if "PASS: Local SymbolicRegression.jl was loaded" not in output:
         raise AssertionError(f"{label} did not report PASS:\n{output}")
 
@@ -152,37 +172,51 @@ def main() -> int:
     baseline_pyjuliapkg_project = Path(args.baseline_pyjuliapkg_project).resolve() if args.baseline_pyjuliapkg_project else _default_pyjuliapkg_project(baseline_root).resolve()
     sandbox_pyjuliapkg_project = Path(args.sandbox_pyjuliapkg_project).resolve() if args.sandbox_pyjuliapkg_project else _default_pyjuliapkg_project(sandbox_root).resolve()
 
-    print("=" * 80)
-    print("PySR project isolation test")
-    print("=" * 80)
-    print(f"Baseline root:             {baseline_root}")
-    print(f"Sandbox root:              {sandbox_root}")
-    print(f"Baseline PYTHON_JULIAPKG_PROJECT: {baseline_pyjuliapkg_project}")
-    print(f"Sandbox PYTHON_JULIAPKG_PROJECT:  {sandbox_pyjuliapkg_project}")
-    print(f"Shared JULIA_DEPOT_PATH:   {args.julia_depot_path or '(default/shared)'}")
+    print("=" * 80, flush=True)
+    print("PySR project isolation test", flush=True)
+    print("=" * 80, flush=True)
+    print(f"Baseline root:             {baseline_root}", flush=True)
+    print(f"Sandbox root:              {sandbox_root}", flush=True)
+    print(f"Baseline PYTHON_JULIAPKG_PROJECT: {baseline_pyjuliapkg_project}", flush=True)
+    print(f"Sandbox PYTHON_JULIAPKG_PROJECT:  {sandbox_pyjuliapkg_project}", flush=True)
+    print(f"Shared JULIA_DEPOT_PATH:   {args.julia_depot_path or '(default/shared)'}", flush=True)
 
-    print("\n[1/3] Sequential verification")
+    print("\n[1/3] Sequential verification", flush=True)
     baseline_proc = run_verify(baseline_root, baseline_pyjuliapkg_project, args.julia_depot_path)
-    assert_verify_passed("baseline", baseline_proc, baseline_root)
-    print("  baseline OK")
+    assert_verify_passed(
+        "baseline",
+        baseline_proc,
+        baseline_root,
+        expected_julia_project=baseline_pyjuliapkg_project,
+        expected_pyjuliapkg_project=baseline_pyjuliapkg_project,
+    )
+    print("  baseline OK", flush=True)
 
     sandbox_proc = run_verify(sandbox_root, sandbox_pyjuliapkg_project, args.julia_depot_path)
-    assert_verify_passed("sandbox", sandbox_proc, sandbox_root)
-    print("  sandbox OK")
+    assert_verify_passed(
+        "sandbox",
+        sandbox_proc,
+        sandbox_root,
+        expected_julia_project=sandbox_pyjuliapkg_project,
+        expected_pyjuliapkg_project=sandbox_pyjuliapkg_project,
+    )
+    print("  sandbox OK", flush=True)
 
-    print("\n[2/3] Concurrent verification")
+    print("\n[2/3] Concurrent verification", flush=True)
     baseline_cmd = [
         sys.executable,
         str(REPO_ROOT / "scripts" / "verify_local_symbolicregression.py"),
         "--repo-root", str(baseline_root),
-        "--julia-project", str(baseline_root / "SymbolicRegression.jl"),
+        "--expected-symbolicregression-root", str(baseline_root / "SymbolicRegression.jl"),
+        "--julia-project", str(baseline_pyjuliapkg_project),
         "--python-juliapkg-project", str(baseline_pyjuliapkg_project),
     ]
     sandbox_cmd = [
         sys.executable,
         str(REPO_ROOT / "scripts" / "verify_local_symbolicregression.py"),
         "--repo-root", str(sandbox_root),
-        "--julia-project", str(sandbox_root / "SymbolicRegression.jl"),
+        "--expected-symbolicregression-root", str(sandbox_root / "SymbolicRegression.jl"),
+        "--julia-project", str(sandbox_pyjuliapkg_project),
         "--python-juliapkg-project", str(sandbox_pyjuliapkg_project),
     ]
     if args.julia_depot_path:
@@ -193,11 +227,23 @@ def main() -> int:
     p2 = subprocess.Popen(sandbox_cmd, cwd=str(REPO_ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     baseline_output, _ = p1.communicate()
     sandbox_output, _ = p2.communicate()
-    assert_verify_passed("baseline-concurrent", subprocess.CompletedProcess(baseline_cmd, p1.returncode, baseline_output, ""), baseline_root)
-    assert_verify_passed("sandbox-concurrent", subprocess.CompletedProcess(sandbox_cmd, p2.returncode, sandbox_output, ""), sandbox_root)
-    print("  concurrent import checks OK")
+    assert_verify_passed(
+        "baseline-concurrent",
+        subprocess.CompletedProcess(baseline_cmd, p1.returncode, baseline_output, ""),
+        baseline_root,
+        expected_julia_project=baseline_pyjuliapkg_project,
+        expected_pyjuliapkg_project=baseline_pyjuliapkg_project,
+    )
+    assert_verify_passed(
+        "sandbox-concurrent",
+        subprocess.CompletedProcess(sandbox_cmd, p2.returncode, sandbox_output, ""),
+        sandbox_root,
+        expected_julia_project=sandbox_pyjuliapkg_project,
+        expected_pyjuliapkg_project=sandbox_pyjuliapkg_project,
+    )
+    print("  concurrent import checks OK", flush=True)
 
-    print("\n[3/3] SLURM worker script isolation")
+    print("\n[3/3] SLURM worker script isolation", flush=True)
     assert_job_script_isolated(
         baseline_root,
         sandbox_root,
@@ -205,9 +251,9 @@ def main() -> int:
         sandbox_pyjuliapkg_project,
         args.julia_depot_path,
     )
-    print("  generated worker scripts export distinct Julia project settings")
+    print("  generated worker scripts export distinct Julia project settings", flush=True)
 
-    print("\nIsolation status: PASS")
+    print("\nIsolation status: PASS", flush=True)
     return 0
 
 

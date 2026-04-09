@@ -60,29 +60,7 @@ OPERATOR_SPECS: Dict[str, Dict[str, str]] = {
 }
 
 
-def _pre_validate_julia_syntax(code: str) -> Tuple[bool, str]:
-    import re
-
-    named_tuple_pattern = r"\(\s*(\w+)\s*=\s*[^,)]+\s*,\s*\1\s*="
-    if re.search(named_tuple_pattern, code):
-        return False, "Repeated field name in named tuple"
-
-    invalid_catch_pattern = r"\bcatch\s+(\d+[\d.eE+-]*|[^;\s\w])"
-    if re.search(invalid_catch_pattern, code):
-        return False, "Invalid try-catch syntax"
-
-    const_in_func_pattern = r"^[ \t]+const\s+"
-    if re.search(const_in_func_pattern, code, re.MULTILINE):
-        return False, "Cannot use 'const' inside function body"
-
-    return True, ""
-
-
 def _validate_julia_code(name: str, code: str, operator_type: str) -> Tuple[bool, str]:
-    is_valid, error = _pre_validate_julia_syntax(code)
-    if not is_valid:
-        return False, error
-
     try:
         _configure_julia_validation_env()
         from juliacall import Main as jl
@@ -184,7 +162,11 @@ def _load_candidate(program_path: str) -> Dict:
     return candidate
 
 
-def _validate_candidate(candidate: Dict) -> Tuple[str, str, Optional[float], str]:
+def _is_bundle_candidate(candidate: Dict) -> bool:
+    return "operators" in candidate
+
+
+def _validate_candidate_single(candidate: Dict) -> Tuple[str, str, Optional[float], str]:
     if "code" not in candidate:
         raise KeyError("Candidate is missing 'code'")
 
@@ -223,10 +205,44 @@ def _validate_candidate(candidate: Dict) -> Tuple[str, str, Optional[float], str
     return name, code, weight, operator_type
 
 
+def _validate_bundle_candidate(candidate: Dict) -> List[Tuple[str, str, Optional[float], str]]:
+    operators = candidate.get("operators", [])
+    if not operators:
+        raise ValueError("Bundle candidate has no operators")
+
+    results = []
+    for op in operators:
+        results.append(_validate_candidate_single(op))
+    return results
+
+
+def _validate_candidate(candidate: Dict):
+    if _is_bundle_candidate(candidate):
+        return _validate_bundle_candidate(candidate)
+    return _validate_candidate_single(candidate)
+
+
+def _load_baseline_hparams() -> Optional[Dict]:
+    """Load baseline hparams from OE_PYSR_BASELINE_HPARAMS env var (JSON)."""
+    raw = os.environ.get("OE_PYSR_BASELINE_HPARAMS")
+    if not raw:
+        return None
+    return json.loads(raw)
+
+
 def _build_pysr_kwargs() -> Dict:
     pysr_kwargs = get_default_pysr_kwargs()
     pysr_kwargs["max_evals"] = _env_int("OE_PYSR_MAX_EVALS", 100000)
     pysr_kwargs["timeout_in_seconds"] = _env_int("OE_PYSR_TIMEOUT_IN_SECONDS", 300)
+
+    # Merge baseline hparams (from HPO or prior runs)
+    baseline_hparams = _load_baseline_hparams()
+    if baseline_hparams:
+        for key, val in baseline_hparams.items():
+            if key.startswith("op_") or key.startswith("weight_"):
+                continue  # operator-specific or mutation weights handled separately
+            pysr_kwargs[key] = val
+
     return pysr_kwargs
 
 
@@ -250,8 +266,18 @@ def _build_slurm_evaluator(results_dir: Path) -> PySRSlurmEvaluator:
     )
 
 
+def _apply_baseline_mutation_weights(mutation_weights: Dict) -> None:
+    """Merge weight_* keys from baseline hparams into mutation_weights."""
+    baseline_hparams = _load_baseline_hparams()
+    if baseline_hparams:
+        for key, val in baseline_hparams.items():
+            if key.startswith("weight_"):
+                mutation_weights[key] = val
+
+
 def _build_config(name: str, code: str, weight: Optional[float], operator_type: str) -> PySRConfig:
     mutation_weights = get_default_mutation_weights()
+    _apply_baseline_mutation_weights(mutation_weights)
     config_kwargs = {
         "mutation_weights": mutation_weights,
         "pysr_kwargs": _build_pysr_kwargs(),
@@ -267,6 +293,26 @@ def _build_config(name: str, code: str, weight: Optional[float], operator_type: 
         config_kwargs["custom_survival_code"] = code
     else:
         raise ValueError(f"Unsupported operator_type: {operator_type}")
+    return PySRConfig(**config_kwargs)
+
+
+def _build_bundle_config(operators: List[Tuple[str, str, Optional[float], str]]) -> PySRConfig:
+    mutation_weights = get_default_mutation_weights()
+    _apply_baseline_mutation_weights(mutation_weights)
+    config_kwargs = {
+        "mutation_weights": mutation_weights,
+        "pysr_kwargs": _build_pysr_kwargs(),
+        "name": "bundle",
+    }
+    for name, code, weight, op_type in operators:
+        if op_type == "mutation":
+            mutation_weights["weight_custom_mutation_1"] = weight if weight is not None else 0.5
+            config_kwargs["custom_mutation_code"] = {name: code}
+            config_kwargs["allow_custom_mutations"] = True
+        elif op_type == "selection":
+            config_kwargs["custom_selection_code"] = code
+        elif op_type == "survival":
+            config_kwargs["custom_survival_code"] = code
     return PySRConfig(**config_kwargs)
 
 
@@ -304,6 +350,35 @@ def _aggregate_metrics(
     if weight is not None:
         metrics["operator_weight"] = float(weight)
         if operator_type == "mutation":
+            metrics["mutation_weight"] = float(weight)
+    return metrics
+
+
+def _aggregate_bundle_metrics(
+    avg_score: float,
+    result_details: List[Dict],
+    operators: List[Tuple[str, str, Optional[float], str]],
+    fitness_metric: str,
+) -> Dict[str, float]:
+    safe_score = float(max(0.0, avg_score))
+    avg_r2 = float(np.mean([float(d.get("avg_r2", -1.0)) for d in result_details])) if result_details else -1.0
+    avg_gt = float(np.mean([float(d.get("avg_gt", 0.0)) for d in result_details])) if result_details else 0.0
+    exact_matches = float(sum(1 for d in result_details if float(d.get("avg_gt", 0.0)) > 0.0))
+    metrics = {
+        "combined_score": safe_score,
+        "avg_r2": max(-1.0, avg_r2),
+        "avg_gt": max(0.0, avg_gt),
+        "exact_match_datasets": exact_matches,
+        "dataset_count": float(len(result_details)),
+        "fitness_metric_gt": 1.0 if fitness_metric == "gt" else 0.0,
+        "is_bundle": 1.0,
+        "is_mutation_operator": 1.0,
+        "is_selection_operator": 1.0,
+        "is_survival_operator": 1.0,
+    }
+    for name, _code, weight, op_type in operators:
+        if op_type == "mutation" and weight is not None:
+            metrics["operator_weight"] = float(weight)
             metrics["mutation_weight"] = float(weight)
     return metrics
 
@@ -347,13 +422,46 @@ def _make_artifacts(
     return artifacts
 
 
+def _make_bundle_artifacts(
+    operators: List[Tuple[str, str, Optional[float], str]],
+    result_details: List[Dict],
+) -> Dict[str, str]:
+    summary = []
+    for detail in result_details[:10]:
+        summary.append(
+            {
+                "dataset": detail.get("dataset"),
+                "avg_r2": detail.get("avg_r2"),
+                "avg_gt": detail.get("avg_gt"),
+                "errors": detail.get("errors"),
+            }
+        )
+    artifacts = {
+        "operator_type": "bundle",
+        "dataset_summary": json.dumps(summary, indent=2),
+    }
+    for name, code, weight, op_type in operators:
+        artifacts[f"{op_type}_name"] = name
+        artifacts[f"{op_type}_code"] = code
+        if weight is not None:
+            artifacts[f"{op_type}_weight"] = f"{weight:.6f}"
+    return artifacts
+
+
 def _evaluate_on_split(program_path: str, dataset_names: List[str], fitness_metric: str, stage_name: str) -> EvaluationResult:
     candidate = _load_candidate(program_path)
-    name, code, weight, operator_type = _validate_candidate(candidate)
+    is_bundle = _is_bundle_candidate(candidate)
+
+    if is_bundle:
+        operators = _validate_bundle_candidate(candidate)
+        config = _build_bundle_config(operators)
+    else:
+        name, code, weight, operator_type = _validate_candidate_single(candidate)
+        config = _build_config(name, code, weight, operator_type)
 
     results_root = Path(_env("OE_PYSR_RESULTS_DIR", "outputs/openevolve_pysr_eval"))
-    evaluator = _build_slurm_evaluator(results_root / stage_name)
-    config = _build_config(name, code, weight, operator_type)
+    run_id = uuid.uuid4().hex
+    evaluator = _build_slurm_evaluator(results_root / stage_name / run_id)
 
     seed = _env_int("OE_PYSR_SEED", 42)
     n_runs = _env_int("OE_PYSR_N_RUNS", 1)
@@ -365,6 +473,12 @@ def _evaluate_on_split(program_path: str, dataset_names: List[str], fitness_metr
         fitness_metric=fitness_metric,
     )
     avg_score, _score_vector, result_details = results[0]
+
+    if is_bundle:
+        return EvaluationResult(
+            metrics=_aggregate_bundle_metrics(avg_score, result_details, operators, fitness_metric),
+            artifacts=_make_bundle_artifacts(operators, result_details),
+        )
     return EvaluationResult(
         metrics=_aggregate_metrics(avg_score, result_details, weight, operator_type, fitness_metric),
         artifacts=_make_artifacts(name, code, weight, operator_type, result_details),
@@ -374,7 +488,32 @@ def _evaluate_on_split(program_path: str, dataset_names: List[str], fitness_metr
 def _validation_result(program_path: str) -> EvaluationResult:
     try:
         candidate = _load_candidate(program_path)
-        name, code, weight, operator_type = _validate_candidate(candidate)
+        is_bundle = _is_bundle_candidate(candidate)
+
+        if is_bundle:
+            operators = _validate_bundle_candidate(candidate)
+            total_code_len = sum(len(code) for _, code, _, _ in operators)
+            metrics = {
+                "combined_score": 1.0,
+                "syntax_valid": 1.0,
+                "code_length": float(total_code_len),
+                "is_bundle": 1.0,
+                "is_mutation_operator": 1.0,
+                "is_selection_operator": 1.0,
+                "is_survival_operator": 1.0,
+            }
+            artifacts: Dict[str, str] = {"operator_type": "bundle"}
+            for name, code, weight, op_type in operators:
+                artifacts[f"{op_type}_name"] = name
+                artifacts[f"{op_type}_code"] = code
+                if weight is not None:
+                    artifacts[f"{op_type}_weight"] = f"{weight:.6f}"
+                    if op_type == "mutation":
+                        metrics["operator_weight"] = float(weight)
+                        metrics["mutation_weight"] = float(weight)
+            return EvaluationResult(metrics=metrics, artifacts=artifacts)
+
+        name, code, weight, operator_type = _validate_candidate_single(candidate)
         metrics = {
             "combined_score": 1.0,
             "syntax_valid": 1.0,

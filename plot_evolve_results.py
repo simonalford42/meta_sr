@@ -3,7 +3,7 @@
 Plot evolution GT solve rate over generations and final evaluation scores.
 
 Reads evolve run_data.json files for the evolution curves, and an
-analysis_summary.json from analyze_hpo_pysr.py for the final multi-seed
+analysis_summary.json from evaluate.py for the final multi-seed
 evaluation scores.
 
 Usage:
@@ -90,7 +90,7 @@ def main():
     parser.add_argument("--evolve-selection-results", type=str,
                         help="Path to run_data.json from `evolve_pysr.py --operator_type selection`")
     parser.add_argument("--analysis-summary", type=str, required=True,
-                        help="Path to analysis_summary.json from analyze_hpo_pysr.py")
+                        help="Path to analysis_summary.json from evaluate.py")
     parser.add_argument("--output", type=str, default="evolve_results.png",
                         help="Output plot path")
     args = parser.parse_args()

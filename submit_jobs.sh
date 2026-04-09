@@ -1,4 +1,23 @@
 
+# 4/9/26
+sbatch run.sh hpo_pysr.py --n-trials 500
+
+# 4/8
+# sbatch run.sh hpo_pysr.py --n-trials 500
+# sbatch run.sh evolve_pysr.py --operator_type all --baseline outputs/hpo_pysr_20260407_152534
+
+# sbatch run.sh run_openevolve_pysr.py \
+#     --operator-type selection \
+#     --iterations 200 \
+#     --baseline outputs/hpo_pysr_20260407_152534
+
+# sbatch run.sh run_openevolve_pysr.py \
+#     --operator-type bundle \
+#     --iterations 200 \
+#     --baseline outputs/hpo_pysr_20260407_152534
+
+# sbatch run.sh evolve_pysr.py --operator_type selection --baseline outputs/hpo_pysr_20260407_152534 --generations 50
+
 # sbatch run.sh run_pysr_srbench.py --dataset feynman_III_15_27 --time_minutes 1
 # sbatch run_pysr.sh
 # sbatch run_meta_sr.sh
@@ -12,7 +31,7 @@
 #   done
 # done
 
-sbatch --time=10:00:00 run_pysr.sh --results_dir results_pysr_1e6 --max_evals 1000000
+# sbatch --time=10:00:00 run_pysr.sh --results_dir results_pysr_1e6 --max_evals 1000000
 
 # sbatch --time=01:00:00 run_pysr.sh --results_dir results_pysr_1e3 --max_evals 1000 --target_noise 0.001
 # sbatch --time=01:00:00 run_pysr.sh --results_dir results_pysr_1e4 --max_evals 10000
@@ -22,12 +41,35 @@ sbatch --time=10:00:00 run_pysr.sh --results_dir results_pysr_1e6 --max_evals 10
 # sbatch --time=08:00:00 run_pysr.sh --results_dir results_pysr_1e8 --max_evals 100000000
 # python evolve_pysr.py --operator_type mutation --generations 2 --n-runs 3
 # sbatch run.sh hpo_pysr.py --n-trials 500
-# sbatch run.sh evolve_pysr.py --operator_type mutation
+
+# sbatch run.sh evolve_pysr.py --operator_type all --baseline outputs/hpo_pysr_20260407_152534
 
 # sbatch run.sh evolve_pysr.py --operator_type mutation --fitness_metric gt --split splits/train_small.txt --n-runs 1 --max_evals 100000
 # sbatch run.sh evolve_basic_sr.py --split splits/train.txt
 # # sbatch run.sh evolve_basic_sr.py
 # sbatch run.sh evolve_pysr.py --operator_type selection --fitness_metric gt --split splits/train_small.txt
 # sbatch run.sh evolve_pysr.py --operator_type survival --fitness_metric gt --split splits/train.txt
-sbatch run.sh hpo_pysr.py --n-trials 500
+# sbatch run.sh hpo_pysr.py --n-trials 500
 
+# sbatch run.sh run_openevolve_pysr.py \
+#     --operator-type selection \
+#     --iterations 200 \
+#     --baseline outputs/hpo_pysr_20260407_152534
+
+# sbatch run.sh run_openevolve_pysr.py \
+#     --operator-type bundle \
+#     --iterations 200 \
+#     --baseline outputs/hpo_pysr_20260407_152534
+
+# sbatch run.sh evolve_pysr.py --operator_type selection --baseline outputs/hpo_pysr_20260407_152534 --generations 50
+
+# sbatch run.sh run_openevolve_pysr.py \
+#     --operator-type survival \
+#     --iterations 200
+
+# sbatch run.sh run_openevolve_pysr.py \
+#     --operator-type mutation \
+#     --iterations 200
+
+
+# sbatch run.sh evolve_pysr.py --operator_type survival --fitness_metric gt --split splits/train.txt
