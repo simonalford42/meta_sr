@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -17,7 +18,8 @@ from datetime import datetime
 from pathlib import Path
 
 
-from utils import copy_slurm_log
+import hashlib
+from utils import copy_slurm_log, load_dataset_names_from_split, resolve_run_dir
 from wandb_utils import init_wandb, log_wandb_summary, finish_wandb
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -45,6 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42, help="Evaluation seed")
     parser.add_argument("--data-seed", type=int, default=42, help="Dataset subsampling seed")
     parser.add_argument("--target-noise", type=float, default=0.0, help="Target noise level")
+    noise_group = parser.add_mutually_exclusive_group()
+    noise_group.add_argument("--random-target-noise", action="store_true",
+                             help="Assign per-dataset target noise from {0.0, 0.001, 0.01, 0.1} using the seed")
+    noise_group.add_argument("--no-random-target-noise", dest="random_target_noise", action="store_false",
+                             help="Disable per-dataset target noise and use --target-noise instead")
+    parser.set_defaults(random_target_noise=False)
     parser.add_argument("--max-samples", type=int, default=1000, help="Max samples per dataset")
     parser.add_argument("--max-evals", type=int, default=1000000, help="PySR max_evals")
     parser.add_argument("--timeout", type=int, default=300, help="PySR timeout_in_seconds")
@@ -306,6 +314,37 @@ def _append_signal_diagnostics(
         f.write("\n".join(sections))
 
 
+def _maybe_wrap_with_signal_strace(
+    cmd: list[str],
+    *,
+    signal_debug_dir: Path,
+) -> tuple[list[str], "Path | None"]:
+    """TEMP DEBUG: launch the child under strace to capture signal sender info.
+
+    Remove this wrapper once the unexpected SIGTERM root cause is identified.
+    """
+    if not os.environ.get("SLURM_JOB_ID"):
+        return cmd, None
+
+    strace_path = shutil.which("strace")
+    if not strace_path:
+        return cmd, None
+
+    signal_debug_dir.mkdir(parents=True, exist_ok=True)
+    trace_prefix = signal_debug_dir / "signal_strace"
+    wrapped_cmd = [
+        strace_path,
+        "-ff",
+        "-tt",
+        "-e",
+        "trace=signal",
+        "-o",
+        str(trace_prefix),
+        *cmd,
+    ]
+    return wrapped_cmd, trace_prefix
+
+
 def _run_openevolve_subprocess(
     cmd: list[str],
     *,
@@ -400,13 +439,75 @@ def _run_openevolve_subprocess(
             signal.signal(signum, handler)
 
 
+def _log_openevolve_evals_to_wandb(output_path: Path) -> None:
+    """Parse OpenEvolve log file and log each evaluated program to wandb.
+
+    Emits one wandb row per program with eval_idx, eval_score (=avg_gt),
+    eval_running_best, and eval_iteration, so wandb can recreate the
+    avg_gt-over-time scatter + running-best plot from plot_openevolve_logs.py.
+    """
+    import re
+    import wandb
+
+    logs_dir = output_path / "logs"
+    if not logs_dir.exists():
+        return
+    log_files = sorted(logs_dir.glob("openevolve_*.log"))
+    if not log_files:
+        return
+
+    eval_pat = re.compile(
+        r"Evaluated program (\S+) in [\d.]+s: combined_score=[\d.]+.*avg_gt=([\d.]+)"
+    )
+    iter_pat = re.compile(
+        r"Iteration (\d+): Program (\S+) \(parent: \S+\) completed"
+    )
+    best_pat = re.compile(r"New best program (\S+) replaces")
+
+    program_gt: dict[str, float] = {}
+    program_order: list[str] = []
+    iter_map: dict[str, int] = {}
+    new_bests: set[str] = set()
+
+    for log_file in log_files:
+        try:
+            with open(log_file) as f:
+                for line in f:
+                    m = eval_pat.search(line)
+                    if m:
+                        pid = m.group(1)
+                        if pid not in program_gt:
+                            program_order.append(pid)
+                        program_gt[pid] = float(m.group(2))
+                        continue
+                    m = iter_pat.search(line)
+                    if m:
+                        iter_map[m.group(2)] = int(m.group(1))
+                        continue
+                    m = best_pat.search(line)
+                    if m:
+                        new_bests.add(m.group(1))
+        except Exception as e:
+            print(f"WARNING: failed to parse {log_file}: {e}")
+
+    running_best = float("-inf")
+    for idx, pid in enumerate(program_order, start=1):
+        gt = program_gt[pid]
+        if gt > running_best:
+            running_best = gt
+        wandb.log({
+            "eval_idx": idx,
+            "eval_score": gt,
+            "eval_running_best": running_best,
+            "eval_iteration": iter_map.get(pid, 0),
+            "eval_is_new_best": int(pid in new_bests),
+        })
+
+
 def main() -> int:
     args = parse_args()
 
-    output_dir = args.output_dir
-    if output_dir is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = f"outputs/openevolve_pysr_{args.operator_type}_{timestamp}"
+    output_dir = resolve_run_dir(args.output_dir, label=f"openevolve_pysr_{args.operator_type}")
 
     output_path = REPO_ROOT / output_dir
     # TEMP DEBUG: write extra signal diagnostics here while tracking the
@@ -454,6 +555,7 @@ def main() -> int:
             "OE_PYSR_SEED": str(args.seed),
             "OE_PYSR_DATA_SEED": str(args.data_seed),
             "OE_PYSR_TARGET_NOISE": str(args.target_noise),
+            "OE_PYSR_RANDOM_TARGET_NOISE": str(args.random_target_noise),
             "OE_PYSR_MAX_SAMPLES": str(args.max_samples),
             "OE_PYSR_MAX_EVALS": str(args.max_evals),
             "OE_PYSR_TIMEOUT_IN_SECONDS": str(args.timeout),
@@ -510,6 +612,11 @@ def main() -> int:
     if args.secondary_model:
         cmd.extend(["--secondary-model", args.secondary_model])
 
+    traced_cmd, signal_trace_prefix = _maybe_wrap_with_signal_strace(
+        cmd,
+        signal_debug_dir=signal_debug_dir,
+    )
+
     # Initialize wandb
     wandb_config = {
         "operator_type": args.operator_type,
@@ -521,6 +628,7 @@ def main() -> int:
         "seed": args.seed,
         "data_seed": args.data_seed,
         "target_noise": args.target_noise,
+        "random_target_noise": args.random_target_noise,
         "max_samples": args.max_samples,
         "max_evals": args.max_evals,
         "timeout": args.timeout,
@@ -540,21 +648,106 @@ def main() -> int:
         extra_tags=[args.operator_type],
     )
 
-    print("Running:", " ".join(cmd))
+    print("Running:", " ".join(traced_cmd))
     print(f"Operator type: {args.operator_type}")
     print(f"Output dir: {output_path}")
     print(f"Temporary signal diagnostics: {signal_debug_file}")
     if child_job_registry is not None:
         print(f"Temporary child-job registry: {child_job_registry}")
+    if signal_trace_prefix is not None:
+        print(
+            "Temporary signal strace prefix: "
+            f"{signal_trace_prefix}.* "
+            "(remove this TEMP DEBUG wrapper once the SIGTERM root cause is fixed)"
+        )
     return_code = _run_openevolve_subprocess(
-        cmd,
+        traced_cmd,
         cwd=REPO_ROOT,
         env=env,
         signal_debug_file=signal_debug_file,
         child_job_registry=child_job_registry,
     )
 
-    log_wandb_summary(wandb_run, extra_summary={"return_code": return_code})
+    # Read best score from OpenEvolve output
+    extra = {"return_code": return_code}
+    best_info_path = output_path / "best" / "best_program_info.json"
+    if best_info_path.exists():
+        try:
+            with open(best_info_path) as f:
+                best_info = json.load(f)
+            metrics = best_info.get("metrics", {})
+            extra["best_score"] = metrics.get("combined_score")
+            extra["best_avg_r2"] = metrics.get("avg_r2")
+            extra["best_iteration"] = best_info.get("generation", best_info.get("iteration"))
+        except Exception:
+            pass
+
+    # Log per-iteration best scores from checkpoints
+    if wandb_run is not None:
+        import wandb
+        checkpoints_dir = output_path / "checkpoints"
+        if checkpoints_dir.exists():
+            for cp_dir in sorted(checkpoints_dir.iterdir()):
+                cp_info = cp_dir / "best_program_info.json"
+                if cp_info.exists():
+                    try:
+                        with open(cp_info) as f:
+                            cp_data = json.load(f)
+                        iteration = cp_data.get("generation", cp_data.get("iteration", 0))
+                        cp_metrics = cp_data.get("metrics", {})
+                        score = cp_metrics.get("combined_score")
+                        if score is not None:
+                            wandb.log({"iteration": iteration, "best_score": score})
+                    except Exception:
+                        pass
+
+        # Log per-program avg_gt by parsing the OpenEvolve log file. Mirrors
+        # scripts/plot_openevolve_logs.py so wandb can render the same
+        # avg_gt-over-time / running-best plot.
+        _log_openevolve_evals_to_wandb(output_path)
+
+    log_wandb_summary(wandb_run, extra_summary=extra)
+
+    # Final evaluation on train + val (10 seeds)
+    best_program_dir = output_path / "best"
+    if (best_program_dir / "best_program.py").exists():
+        try:
+            from evaluate_new_pysr import run_final_evaluation
+
+            TARGET_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
+            target_noise_map = None
+            if args.random_target_noise:
+                all_splits = ["splits/train.txt", "splits/val.txt"]
+                all_datasets = []
+                for sp in all_splits:
+                    all_datasets.extend(load_dataset_names_from_split(sp))
+                # Use same deterministic hash as evolve_pysr
+                def _stable_noise(name, seed, levels):
+                    digest = hashlib.sha256(f"{seed}:{name}".encode("utf-8")).digest()
+                    return levels[int.from_bytes(digest[:4], "little") % len(levels)]
+                target_noise_map = {n: _stable_noise(n, args.seed, TARGET_NOISE_LEVELS)
+                                    for n in dict.fromkeys(all_datasets)}
+
+            run_final_evaluation(
+                output_dir=str(output_path),
+                method_source="openevolve",
+                method_path=str(output_path),
+                partition=args.partition,
+                n_runs=10,
+                seed=args.seed,
+                max_samples=args.max_samples,
+                max_evals=args.max_evals,
+                timeout=args.timeout,
+                time_limit=args.time_limit,
+                mem_per_cpu=args.mem_per_cpu,
+                job_timeout=args.job_timeout,
+                use_cache=True,
+                wandb_run=wandb_run,
+                target_noise_map=target_noise_map,
+            )
+        except Exception as e:
+            print(f"\nFinal evaluation failed: {e}")
+
     finish_wandb(wandb_run)
     copy_slurm_log(output_path)
 

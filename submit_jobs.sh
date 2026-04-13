@@ -1,6 +1,75 @@
 
-# 4/9/26
-sbatch run.sh hpo_pysr.py --n-trials 500
+# 4/10/26 — task-aware mutation/crossover smoke test (3 generations)
+sbatch run.sh evolve_pysr.py --operator_type mutation --generations 3 --task_aware --task_aware_prob 0.5 --task_diverse_pop
+# /home/sca63/meta_sr/outputs/openevolve_pysr_selection_20260407_210230
+# 4/9/26 — Task-diverse population experiment (selection, with vs without)
+# sbatch run.sh evolve_pysr.py --operator_type selection --baseline outputs/hpo_pysr_20260407_152534 --generations 50 --task_diverse_pop
+# sbatch run.sh evolve_pysr.py --operator_type selection --baseline outputs/hpo_pysr_20260407_152534 --generations 50
+
+# 4/9/26 — Final evaluations (10 seeds, train+val)
+
+# # 199034: openevolve selection (0.43)
+# sbatch run.sh evaluate_new_pysr.py \
+#     --openevolve-results outputs/openevolve_pysr_selection_20260408_213220 \
+#     --n-runs 10
+
+# # 199036: evolve selection (0.43)
+# sbatch run.sh evaluate_new_pysr.py \
+#     --evolve-results outputs/evolve_selection_20260408_213226/run_data.json \
+#     --n-runs 10
+
+# # 172094: evolve selection (0.43) — out file overwritten, found in outputs/
+# sbatch run.sh evaluate_new_pysr.py \
+#     --evolve-results outputs/evolve_selection_20260408_144423/run_data.json \
+#     --n-runs 10
+
+# # 199033: evolve mutation+selection bundle (0.43)
+# sbatch run.sh evaluate_new_pysr.py \
+#     --evolve-results outputs/evolve_mutation+survival+selection_20260408_213219/run_data.json \
+#     --n-runs 10
+
+# # 199017: hpo 500 trials
+# sbatch run.sh evaluate_new_pysr.py \
+#     --best-weights outputs/hpo_pysr_20260408_212941/best_params.json \
+#     --n-runs 10
+
+# # 171895: evolve mutation+selection bundle (0.43)
+# sbatch run.sh evaluate_new_pysr.py \
+#     --evolve-results outputs/evolve_mutation+survival+selection_20260408_143835/run_data.json \
+#     --n-runs 10
+
+# # 172092: openevolve selection (0.45)
+# sbatch run.sh evaluate_new_pysr.py \
+#     --openevolve-results outputs/openevolve_pysr_selection_20260408_144423 \
+#     --n-runs 10
+
+# # 151084: openevolve mutation
+# sbatch run.sh evaluate_new_pysr.py \
+#     --openevolve-results outputs/openevolve_pysr_mutation_20260408_000544 \
+#     --n-runs 10
+
+# # 144408: openevolve selection (0.48!)
+# sbatch run.sh evaluate_new_pysr.py \
+#     --openevolve-results outputs/openevolve_pysr_selection_20260407_210230 \
+#     --n-runs 10
+
+# # 136931: openevolve selection (0.45)
+# sbatch run.sh evaluate_new_pysr.py \
+#     --openevolve-results outputs/openevolve_pysr_selection_20260407_155505 \
+#     --n-runs 10
+
+# # 136931 baseline (no operator — logs baseline to wandb)
+# sbatch run.sh evaluate_new_pysr.py \
+#     --n-runs 10
+
+# # 4/9/26
+# sbatch run.sh run_openevolve_pysr.py \
+#     --operator-type bundle \
+#     --iterations 200 \
+#     --baseline outputs/hpo_pysr_20260407_152534
+
+# sbatch run.sh hpo_pysr.py --n-trials 10
+# sbatch run.sh evolve_pysr.py --operator_type all --baseline outputs/hpo_pysr_20260407_152534 --generations 3
 
 # 4/8
 # sbatch run.sh hpo_pysr.py --n-trials 500

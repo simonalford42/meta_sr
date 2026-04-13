@@ -17,6 +17,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import sys
 from dataclasses import dataclass
@@ -32,7 +33,27 @@ from parallel_eval_pysr import (
     get_default_mutation_weights,
     get_default_pysr_kwargs,
 )
-from utils import load_dataset_names_from_split, TeeLogger
+from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log
+from wandb_utils import init_wandb, log_wandb_summary, log_cpu_usage, finish_wandb
+
+
+TARGET_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
+
+
+def _stable_target_noise(dataset_name: str, seed: int, noise_levels: List[float]) -> float:
+    """Deterministically assign a target noise level based on dataset name + seed."""
+    digest = hashlib.sha256(f"{seed}:{dataset_name}".encode("utf-8")).digest()
+    idx = int.from_bytes(digest[:4], "little") % len(noise_levels)
+    return noise_levels[idx]
+
+
+def _build_target_noise_map(
+    dataset_names: List[str],
+    seed: int,
+    noise_levels: List[float],
+) -> Dict[str, float]:
+    """Map each dataset name to a deterministic target noise level."""
+    return {name: _stable_target_noise(name, seed, noise_levels) for name in dataset_names}
 
 
 # =============================================================================
@@ -740,6 +761,7 @@ def evaluate_param_configs_batch(
     n_runs: int,
     fitness_metric: str,
     baseline_bundle=None,
+    target_noise_map: Optional[Dict[str, float]] = None,
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """
     Evaluate multiple hyperparameter configurations in a single SLURM batch.
@@ -779,6 +801,7 @@ def evaluate_param_configs_batch(
         dataset_names,
         seed=seed,
         n_runs=n_runs,
+        target_noise_map=target_noise_map,
         fitness_metric=fitness_metric,
     )
 
@@ -791,6 +814,7 @@ def evaluate_baseline(
     n_runs: int,
     fitness_metric: str,
     baseline_bundle=None,
+    target_noise_map: Optional[Dict[str, float]] = None,
 ) -> Tuple[float, List[float], List[Dict], Dict[str, float]]:
     """
     Evaluate PySR with default mutation weights (baseline).
@@ -818,6 +842,7 @@ def evaluate_baseline(
         dataset_names,
         seed=seed,
         n_runs=n_runs,
+        target_noise_map=target_noise_map,
         fitness_metric=fitness_metric,
     )
     avg_r2, r2_vector, result_details = results[0]
@@ -848,6 +873,8 @@ def run_hpo(
     baseline_bundle=None,
     prior_trials: Optional[List[Dict]] = None,
     continue_from: Optional[str] = None,
+    wandb_run: Any = None,
+    target_noise_map: Optional[Dict[str, float]] = None,
 ) -> Tuple[Dict[str, Any], float]:
     """
     Run hyperparameter optimization for generic PySR hyperparameters.
@@ -934,6 +961,7 @@ def run_hpo(
         baseline_r2, baseline_vector, baseline_details, baseline_weights = evaluate_baseline(
             evaluator, dataset_names, base_pysr_kwargs, seed, n_runs, fitness_metric,
             baseline_bundle=baseline_bundle,
+            target_noise_map=target_noise_map,
         )
         if n_runs > 1 and baseline_details:
             per_run_avgs = []
@@ -949,6 +977,11 @@ def run_hpo(
             print(f"Baseline avg {metric_label}: {baseline_r2:.4f}")
         print("Baseline uses the base PySR kwargs from this script with no additional HPO overrides.")
         logger.log_baseline(baseline_r2, baseline_vector, baseline_weights, baseline_details)
+
+        if wandb_run is not None:
+            import wandb
+            wandb.log({"baseline_score": baseline_r2, "best_score": baseline_r2, "trial": -1})
+            log_cpu_usage(wandb_run)
 
         # Phase 2: Optuna HPO Loop
         print("\n" + "=" * 60)
@@ -1018,6 +1051,7 @@ def run_hpo(
                     n_runs,
                     fitness_metric,
                     baseline_bundle=baseline_bundle,
+                    target_noise_map=target_noise_map,
                 )
 
                 for trial, params, (avg_r2, r2_vector, result_details) in zip(trials, param_configs, results):
@@ -1055,6 +1089,14 @@ def run_hpo(
                         logger.log_best_trial(trial.number, avg_r2)
                         print("    *** New best! ***")
 
+                    if wandb_run is not None:
+                        import wandb
+                        wandb.log({
+                            "trial": trial.number,
+                            "trial_score": avg_r2,
+                            "best_score": best_score,
+                        })
+
             except Exception as e:
                 print(f"  Batch evaluation failed: {e}")
                 for trial in trials:
@@ -1086,6 +1128,17 @@ def run_hpo(
                 print(f"  {name}: {value!r} (default: {default!r})")
 
         logger.finalize(best_params, best_trial.value, baseline_r2)
+
+        log_wandb_summary(
+            wandb_run,
+            evaluator=evaluator,
+            extra_summary={
+                "best_score": best_trial.value,
+                "baseline_score": baseline_r2,
+                "improvement": best_trial.value - baseline_r2,
+                "best_trial_number": best_trial.number,
+            },
+        )
 
         return best_params, best_trial.value
     finally:
@@ -1119,6 +1172,14 @@ def main():
                         help="Dataset split file")
     parser.add_argument("--max-samples", type=int, default=1000,
                         help="Max samples per dataset")
+    parser.add_argument("--target-noise", type=float, default=0.0,
+                        help="Fixed Gaussian noise level for target (SRBench standard levels: 0.0, 0.001, 0.01, 0.1)")
+    noise_group = parser.add_mutually_exclusive_group()
+    noise_group.add_argument("--random-target-noise", action="store_true",
+                             help="Assign per-dataset target noise from {0.0, 0.001, 0.01, 0.1} using the seed")
+    noise_group.add_argument("--no-random-target-noise", dest="random_target_noise", action="store_false",
+                             help="Disable per-dataset target noise and use --target-noise instead")
+    parser.set_defaults(random_target_noise=False)
 
     # PySR settings
     parser.add_argument("--max-evals", type=int, default=100000,
@@ -1164,6 +1225,13 @@ def main():
     dataset_names = load_dataset_names_from_split(args.split)
     print(f"Loaded {len(dataset_names)} datasets from {args.split}")
 
+    # Build target noise map
+    target_noise_map = None
+    if args.random_target_noise:
+        target_noise_map = _build_target_noise_map(dataset_names, args.seed, TARGET_NOISE_LEVELS)
+    elif args.target_noise > 0:
+        target_noise_map = {name: args.target_noise for name in dataset_names}
+
     # Set up PySR kwargs
     pysr_kwargs = get_default_pysr_kwargs()
     pysr_kwargs["max_evals"] = args.max_evals
@@ -1172,7 +1240,7 @@ def main():
     # Uncomment entries in this list to include them in HPO.
     # The order follows the estimated importance ranking in PYSR_HPARAM_IMPORTANCE_ORDER.
     active_hpo_params = [
-        "maxsize",
+        # "maxsize",
         "population_size",
         "populations",
         "ncycles_per_iteration",
@@ -1180,7 +1248,7 @@ def main():
         "optimize_probability",
         "crossover_probability",
         "adaptive_parsimony_scaling",
-        "maxdepth",
+        # "maxdepth",
         # "binary_operators",
         # "unary_operators",
         # "constraints",
@@ -1262,6 +1330,31 @@ def main():
         else:
             print(f"Continuing from {args.continue_from}: found optuna_study.db")
 
+    # Initialize wandb
+    wandb_config = {
+        "n_trials": args.n_trials,
+        "n_parallel": args.n_parallel,
+        "n_runs": args.n_runs,
+        "seed": args.seed,
+        "fitness_metric": args.fitness_metric,
+        "split": args.split,
+        "max_samples": args.max_samples,
+        "max_evals": args.max_evals,
+        "timeout": args.timeout,
+        "partition": args.partition,
+        "target_noise": args.target_noise,
+        "random_target_noise": args.random_target_noise,
+        "baseline": args.baseline,
+        "continue_from": args.continue_from,
+        "no_cache": args.no_cache,
+        "active_hpo_params": active_hpo_params,
+    }
+    wandb_run = init_wandb(
+        config=wandb_config,
+        script_name="hpo_pysr.py",
+        output_dir=args.output_dir,
+    )
+
     # Run HPO
     best_params, best_score = run_hpo(
         n_trials=args.n_trials,
@@ -1283,9 +1376,49 @@ def main():
         baseline_bundle=baseline_bundle,
         prior_trials=prior_trials,
         continue_from=args.continue_from,
+        wandb_run=wandb_run,
+        target_noise_map=target_noise_map,
     )
 
+    # Final evaluation on train + val (10 seeds)
+    best_params_path = Path(args.output_dir) / "best_params.json"
+    if best_params_path.exists():
+        try:
+            from evaluate_new_pysr import run_final_evaluation
+            # Build noise map for final eval splits
+            final_noise_map = None
+            if args.random_target_noise:
+                all_splits = ["splits/train.txt", "splits/val.txt"]
+                all_datasets = []
+                for sp in all_splits:
+                    all_datasets.extend(load_dataset_names_from_split(sp))
+                final_noise_map = _build_target_noise_map(
+                    list(dict.fromkeys(all_datasets)), args.seed, TARGET_NOISE_LEVELS,
+                )
+            run_final_evaluation(
+                output_dir=args.output_dir,
+                method_source="hpo",
+                method_path=str(best_params_path),
+                partition=args.partition,
+                n_runs=10,
+                seed=args.seed,
+                max_samples=args.max_samples,
+                max_evals=args.max_evals,
+                timeout=args.timeout,
+                time_limit=args.time_limit,
+                mem_per_cpu=args.mem_per_cpu,
+                job_timeout=args.job_timeout,
+                use_cache=not args.no_cache,
+                wandb_run=wandb_run,
+                target_noise_map=final_noise_map,
+            )
+        except Exception as e:
+            print(f"\nFinal evaluation failed: {e}")
+
+    finish_wandb(wandb_run)
+
     print(f"\nResults saved to: {args.output_dir}")
+    copy_slurm_log(args.output_dir)
 
 
 if __name__ == "__main__":

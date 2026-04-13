@@ -4,6 +4,7 @@ OpenEvolve evaluator for PySR custom operator evolution.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -95,6 +96,25 @@ def _env_int(name: str, default: int) -> int:
 
 def _env_float(name: str, default: float) -> float:
     return float(_env(name, str(default)))
+
+
+TARGET_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
+
+
+def _stable_target_noise(dataset_name: str, seed: int, noise_levels: List[float]) -> float:
+    """Deterministically assign a target noise level based on dataset name + seed."""
+    digest = hashlib.sha256(f"{seed}:{dataset_name}".encode("utf-8")).digest()
+    idx = int.from_bytes(digest[:4], "little") % len(noise_levels)
+    return noise_levels[idx]
+
+
+def _build_target_noise_map(
+    dataset_names: List[str],
+    seed: int,
+    noise_levels: List[float],
+) -> Dict[str, float]:
+    """Map each dataset name to a deterministic target noise level."""
+    return {name: _stable_target_noise(name, seed, noise_levels) for name in dataset_names}
 
 
 def _load_dataset_names_from_split(split_file: str) -> List[str]:
@@ -465,11 +485,16 @@ def _evaluate_on_split(program_path: str, dataset_names: List[str], fitness_metr
 
     seed = _env_int("OE_PYSR_SEED", 42)
     n_runs = _env_int("OE_PYSR_N_RUNS", 1)
+    random_target_noise = _env("OE_PYSR_RANDOM_TARGET_NOISE", "False").lower() in ("true", "1", "yes")
+    target_noise_map = None
+    if random_target_noise:
+        target_noise_map = _build_target_noise_map(dataset_names, seed, TARGET_NOISE_LEVELS)
     results = evaluator.evaluate_configs(
         [config],
         dataset_names=dataset_names,
         seed=seed,
         n_runs=n_runs,
+        target_noise_map=target_noise_map,
         fitness_metric=fitness_metric,
     )
     avg_score, _score_vector, result_details = results[0]

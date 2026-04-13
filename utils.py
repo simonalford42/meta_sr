@@ -6,6 +6,7 @@ import shutil
 import signal
 import time
 import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict
 import numpy as np
@@ -17,6 +18,27 @@ import sys
 
 # Path to PMLB datasets
 PMLB_PATH = Path(__file__).parent / 'pmlb' / 'datasets'
+
+# Root directory for run outputs. Each run lives at runs/<SLURM_JOB_ID> (or
+# runs/local_<timestamp> when not running under SLURM).
+RUNS_ROOT = Path(__file__).parent / "runs"
+
+
+def resolve_run_dir(explicit: Optional[str] = None, label: str = "run") -> str:
+    """Resolve the output directory for a run.
+
+    If `explicit` is provided, it's returned unchanged. Otherwise returns
+    `runs/<SLURM_JOB_ID>` under SLURM, or `runs/local_<label>_<timestamp>`
+    when running locally (the `local_` prefix distinguishes non-SLURM runs
+    from job-id-named ones).
+    """
+    if explicit:
+        return explicit
+    job_id = os.environ.get("SLURM_JOB_ID")
+    if job_id:
+        return str(RUNS_ROOT / job_id)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return str(RUNS_ROOT / f"local_{label}_{timestamp}")
 
 class TeeLogger:
     """Logger that writes to both stdout and a file."""
@@ -39,11 +61,11 @@ class TeeLogger:
 
 
 def copy_slurm_log(output_dir: "str | Path") -> None:
-    """Copy the SLURM stdout log into the job's output directory.
+    """Copy the SLURM stdout log into the job's output directory as slurm.out.
 
     Looks for out/<job_id>.out (relative to this file's directory) and copies
-    it to <output_dir>/slurm_<job_id>.out. No-op when not running under SLURM
-    or if the log file doesn't exist yet.
+    it to <output_dir>/slurm.out. No-op when not running under SLURM or if the
+    log file doesn't exist yet.
     """
     job_id = os.environ.get("SLURM_JOB_ID")
     if not job_id:
@@ -51,7 +73,8 @@ def copy_slurm_log(output_dir: "str | Path") -> None:
     src = Path(__file__).parent / "out" / f"{job_id}.out"
     if not src.exists():
         return
-    dest = Path(output_dir) / f"slurm_{job_id}.out"
+    dest = Path(output_dir) / "slurm.out"
+    dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dest)
 
 

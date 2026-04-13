@@ -20,6 +20,7 @@ from srbench_formulas import (
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_RESULTS_DIR = os.path.join(SCRIPT_DIR, '..', 'srbench', 'results')
 PMLB_DATASETS_DIR = os.path.join(SCRIPT_DIR, '..', 'pmlb', 'datasets')
+SPLITS_DIR = Path(SCRIPT_DIR).parent / 'splits'
 
 
 def load_data(results_dir=None):
@@ -868,6 +869,109 @@ def generate_subset_split(full_split_df, subset_train_size=4, subset_val_size=4)
     }
 
 
+def generate_barely_unsolvable_splits(
+    difficulty_df,
+    split_df,
+    train_size=20,
+    n_harder_in_val=7,
+    n_easier_in_val=6,
+    boundary_train_indices=(8, 12),
+):
+    """
+    Generate barely_unsolvable train/val splits centered on the solved→unsolved
+    inflection observed in an evolve_pysr run against splits/train.txt.
+
+    Context: running evolve_pysr on splits/train.txt (20 tasks sorted by
+    stratified difficulty) we logged per-candidate unsolved-task lists in
+    out/242356_scratch.txt. Across 191 candidates, train.txt tasks 0–7 were
+    always solved, tasks 13+ were essentially always unsolved, and tasks 8–12
+    straddled the flip (task 11 = feynman_I_44_4 was unsolved 28% of the time;
+    task 12 = feynman_I_38_12 jumped to 99%). See scripts/242356_analysis.py.
+
+    Mapped back onto the full 130-task SRBench difficulty ranking, train.txt
+    indices 8 and 12 correspond to a contiguous rank window — the "barely
+    unsolvable" band. This function slices that band and builds:
+      - train: `train_size` tasks evenly sampled from the band
+      - val:   the remaining band tasks + `n_harder_in_val` tasks immediately
+               harder than the band + `n_easier_in_val` tasks immediately
+               easier than the band (mutually exclusive with train)
+
+    Parameters
+    ----------
+    difficulty_df : pd.DataFrame
+        Output of compute_problem_difficulty (sorted hardest→easiest with
+        'difficulty_rank' column, 1 = hardest).
+    split_df : pd.DataFrame
+        Output of generate_train_val_test_split, used to locate the two
+        boundary tasks in splits/train.txt.
+    train_size : int
+        Size of the barely_unsolvable train split.
+    n_harder_in_val : int
+        Number of tasks immediately harder than the band to add to val.
+    n_easier_in_val : int
+        Number of tasks immediately easier than the band to add to val.
+    boundary_train_indices : tuple[int, int]
+        (low, high) 0-indexed positions into splits/train.txt defining the
+        band. Defaults to (8, 12) — the observed inflection window.
+
+    Returns
+    -------
+    dict with 'train', 'val', 'band_ranks', 'harder_ranks', 'easier_ranks'.
+    """
+    train_tasks = split_df[split_df['split'] == 'train']['dataset'].tolist()
+    # splits/train.txt is written in difficulty order (hardest first), so
+    # index i corresponds to the i-th entry after stratified sampling.
+    low_idx, high_idx = boundary_train_indices
+    rank_lookup = dict(zip(difficulty_df['dataset'], difficulty_df['difficulty_rank']))
+    low_task = train_tasks[low_idx]
+    high_task = train_tasks[high_idx]
+    rank_low = rank_lookup[low_task]
+    rank_high = rank_lookup[high_task]
+
+    band = difficulty_df[
+        difficulty_df['difficulty_rank'].between(rank_low, rank_high)
+    ].sort_values('difficulty_rank').reset_index(drop=True)
+    n_band = len(band)
+
+    if train_size > n_band:
+        raise ValueError(
+            f"train_size ({train_size}) > band size ({n_band}) "
+            f"for ranks {rank_low}..{rank_high}"
+        )
+
+    n_val_from_band = n_band - train_size
+    if n_val_from_band > 0:
+        step = (n_band - 1) / max(n_val_from_band - 1, 1) if n_val_from_band > 1 else 0
+        val_band_positions = sorted({
+            round(i * step) if n_val_from_band > 1 else (n_band - 1) // 2
+            for i in range(n_val_from_band)
+        })
+    else:
+        val_band_positions = []
+    train_band_positions = [i for i in range(n_band) if i not in set(val_band_positions)]
+
+    train_bu = band.iloc[train_band_positions]['dataset'].tolist()
+    val_band = band.iloc[val_band_positions]['dataset'].tolist()
+
+    harder = difficulty_df[
+        difficulty_df['difficulty_rank'].between(rank_low - n_harder_in_val, rank_low - 1)
+    ].sort_values('difficulty_rank')['dataset'].tolist()
+    easier = difficulty_df[
+        difficulty_df['difficulty_rank'].between(rank_high + 1, rank_high + n_easier_in_val)
+    ].sort_values('difficulty_rank')['dataset'].tolist()
+
+    val_bu = val_band + harder + easier
+
+    return {
+        'train': train_bu,
+        'val': val_bu,
+        'band_ranks': (rank_low, rank_high),
+        'val_band': val_band,
+        'val_harder': harder,
+        'val_easier': easier,
+    }
+
+
 def get_train_val_test_splits(train_size=20, val_size=20, test_size=None, noise_level=None):
     """
     Convenience function to get train/val/test splits as lists of problem names.
@@ -907,9 +1011,13 @@ def main():
                         help='Filter to specific noise level (0.0, 0.001, 0.01, 0.1)')
     parser.add_argument('--output', default=None, help='Output CSV file')
     parser.add_argument('--top-n', type=int, default=None, help='Show only top N hardest problems')
-    parser.add_argument('--split-mode', default='train_val_test',
-                        choices=['ab', 'train_val_test'],
-                        help='Split mode: ab (50/50) or train_val_test (default)')
+    parser.add_argument('--write-train-val-test', action='store_true',
+                        help='Write splits/train.txt, val.txt, test.txt (stratified difficulty split)')
+    parser.add_argument('--write-small', action='store_true',
+                        help='Write splits/train_small.txt and val_small.txt (4-task subsets). '
+                             'Implies --write-train-val-test for the underlying split.')
+    parser.add_argument('--write-ab', action='store_true',
+                        help='Write splits/A.txt and B.txt (balanced 50/50 split)')
     parser.add_argument('--train-size', type=int, default=20,
                         help='Number of training problems (default: 20)')
     parser.add_argument('--val-size', type=int, default=20,
@@ -932,6 +1040,9 @@ def main():
                         help='Total number of hardest problems to distribute across hard splits (default: 45)')
     parser.add_argument('--hard-tail', type=int, default=5,
                         help='Number of non-hard problems to add to train/val from remaining distribution (default: 5)')
+    parser.add_argument('--barely-unsolvable', action='store_true',
+                        help='Generate splits/barely_unsolvable.txt and barely_unsolvable_val.txt '
+                             'centered on the solved→unsolved inflection at train.txt indices 8..12')
 
     args = parser.parse_args()
 
@@ -975,13 +1086,11 @@ def main():
             n_tail_per_split=args.hard_tail,
         )
 
-        splits_dir = Path("splits")
-        splits_dir.mkdir(exist_ok=True)
+        SPLITS_DIR.mkdir(exist_ok=True)
         for split_name in ["train_hard", "val_hard", "test_hard"]:
             problems = hard_df[hard_df["split_hard"] == split_name]["dataset"].tolist()
-            filename = splits_dir / f"{split_name}.txt"
-            with open(filename, "w") as f:
-                f.write("\n".join(problems) + "\n")
+            filename = SPLITS_DIR / f"{split_name}.txt"
+            filename.write_text("\n".join(problems) + "\n")
             print(f"  {filename}: {len(problems)} datasets")
 
         # Plot PySR top-K coverage for hard splits
@@ -996,84 +1105,83 @@ def main():
             out_dir=args.pysr_outdir,
         )
 
-    if args.split_mode == 'ab':
-        print("Generating balanced A/B split...")
-        difficulty = generate_balanced_split(difficulty)
-        split_names = ['A', 'B']
-    else:
-        print(f"Generating train/val/test split (train={args.train_size}, val={args.val_size})...")
-        difficulty = generate_train_val_test_split(difficulty, args.train_size, args.val_size)
-        split_names = ['train', 'val', 'test']
-
     if args.top_n:
         print(f"\nTop {args.top_n} HARDEST problems:")
-        display_df = difficulty.head(args.top_n)
+        print(difficulty.head(args.top_n).to_string(index=False))
     else:
-        print(f"\nAll problems sorted by difficulty (hardest first):")
-        display_df = difficulty
-
-    print(display_df.to_string(index=False))
-
-    # Also show easiest problems
-    if not args.top_n:
-        print(f"\n\nTop 10 EASIEST problems:")
+        print(f"\nTop 10 HARDEST problems:")
+        print(difficulty.head(10).to_string(index=False))
+        print(f"\nTop 10 EASIEST problems:")
         print(difficulty.tail(10).iloc[::-1].to_string(index=False))
 
-    # Summary statistics
-    print(f"\n\nSummary:")
+    print(f"\nSummary:")
     print(f"  Total problems: {len(difficulty)}")
-    print(f"  Excluded: {(difficulty['split'] == 'excluded').sum()}")
     print(f"  n_solved range: {difficulty['n_solved'].min()} - {difficulty['n_solved'].max()}")
     print(f"  n_solved median: {difficulty['n_solved'].median()}")
 
-    # Print split summary
-    print(f"\n{'='*60}")
-    print("Split Summary:")
-    print('='*60)
-    print_split_summary(difficulty, split_names)
-
-    # Save to file if requested
     if args.output:
         difficulty.to_csv(args.output, index=False)
         print(f"\nResults saved to {args.output}")
 
-    # Save splits to text files
-    if args.split_mode == 'ab':
-        split_a = difficulty[difficulty['split'] == 'A']['dataset'].tolist()
-        split_b = difficulty[difficulty['split'] == 'B']['dataset'].tolist()
+    SPLITS_DIR.mkdir(exist_ok=True)
 
-        with open('A.txt', 'w') as f:
-            f.write('\n'.join(split_a) + '\n')
-        with open('B.txt', 'w') as f:
-            f.write('\n'.join(split_b) + '\n')
+    # Each of the write flags below is opt-in: the script will only
+    # (re)generate the splits it's explicitly asked to. This keeps
+    # `--barely-unsolvable` runs from clobbering the canonical
+    # train/val/test files.
 
-        print(f"\nSplit files saved:")
-        print(f"  A.txt: {len(split_a)} datasets")
-        print(f"  B.txt: {len(split_b)} datasets")
-    else:
-        # Save train/val/test splits
+    # Train/val/test (and optional 4-task subsets) share one computation.
+    tvt_df = None
+    need_tvt = args.write_train_val_test or args.write_small or args.barely_unsolvable
+    if need_tvt:
+        print(f"\nComputing train/val/test split "
+              f"(train={args.train_size}, val={args.val_size})...")
+        tvt_df = generate_train_val_test_split(
+            difficulty, args.train_size, args.val_size
+        )
+
+    if args.write_train_val_test or args.write_small:
+        print_split_summary(tvt_df, ['train', 'val', 'test'])
+
+    if args.write_train_val_test:
         for split_name in ['train', 'val', 'test']:
-            problems = difficulty[difficulty['split'] == split_name]['dataset'].tolist()
-            filename = f'{split_name}.txt'
-            with open(filename, 'w') as f:
-                f.write('\n'.join(problems) + '\n')
-            print(f"  {filename}: {len(problems)} datasets")
+            problems = tvt_df[tvt_df['split'] == split_name]['dataset'].tolist()
+            path = SPLITS_DIR / f'{split_name}.txt'
+            path.write_text('\n'.join(problems) + '\n')
+            print(f"  {path}: {len(problems)} datasets")
 
-        # Also generate and save the 4-problem subsets
-        print(f"\n{'='*60}")
-        print("Generating 4-problem subset splits...")
-        print('='*60)
-        subset = generate_subset_split(difficulty, subset_train_size=4, subset_val_size=4)
+    if args.write_small:
+        print("\nGenerating 4-problem subset splits...")
+        subset = generate_subset_split(tvt_df, subset_train_size=4, subset_val_size=4)
+        (SPLITS_DIR / 'train_small.txt').write_text('\n'.join(subset['train']) + '\n')
+        (SPLITS_DIR / 'val_small.txt').write_text('\n'.join(subset['val']) + '\n')
+        print(f"  {SPLITS_DIR / 'train_small.txt'}: {len(subset['train'])} datasets")
+        print(f"  {SPLITS_DIR / 'val_small.txt'}: {len(subset['val'])} datasets")
 
-        with open('train_small.txt', 'w') as f:
-            f.write('\n'.join(subset['train']) + '\n')
-        with open('val_small.txt', 'w') as f:
-            f.write('\n'.join(subset['val']) + '\n')
+    if args.write_ab:
+        print("\nGenerating balanced A/B split...")
+        ab_df = generate_balanced_split(difficulty)
+        print_split_summary(ab_df, ['A', 'B'])
+        for split_name in ['A', 'B']:
+            problems = ab_df[ab_df['split'] == split_name]['dataset'].tolist()
+            path = SPLITS_DIR / f'{split_name}.txt'
+            path.write_text('\n'.join(problems) + '\n')
+            print(f"  {path}: {len(problems)} datasets")
 
-        print(f"  train_small.txt: {len(subset['train'])} datasets")
-        print(f"  val_small.txt: {len(subset['val'])} datasets")
-        print(f"\nSmall train subset: {subset['train']}")
-        print(f"Small val subset: {subset['val']}")
+    if args.barely_unsolvable:
+        print(f"\nGenerating barely_unsolvable splits...")
+        bu = generate_barely_unsolvable_splits(
+            difficulty_df=difficulty,
+            split_df=tvt_df,
+        )
+        (SPLITS_DIR / 'barely_unsolvable.txt').write_text('\n'.join(bu['train']) + '\n')
+        (SPLITS_DIR / 'barely_unsolvable_val.txt').write_text('\n'.join(bu['val']) + '\n')
+        rl, rh = bu['band_ranks']
+        print(f"  band: difficulty_rank {rl}..{rh} ({rh - rl + 1} tasks)")
+        print(f"  {SPLITS_DIR / 'barely_unsolvable.txt'}: {len(bu['train'])} tasks (train)")
+        print(f"  {SPLITS_DIR / 'barely_unsolvable_val.txt'}: {len(bu['val'])} tasks "
+              f"(band leftover {len(bu['val_band'])} + harder {len(bu['val_harder'])} "
+              f"+ easier {len(bu['val_easier'])})")
 
     return difficulty
 

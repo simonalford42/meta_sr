@@ -84,6 +84,7 @@ def init_wandb(
 
     slurm_info = _get_slurm_info()
     command = _get_command()
+    print(command)
 
     if script_name is None:
         script_name = Path(sys.argv[0]).name

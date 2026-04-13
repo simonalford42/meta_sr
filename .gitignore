@@ -15,3 +15,5 @@ pysr_outputs
 graphics
 .vscode
 artifacts
+runs
+wandb

@@ -50,7 +50,7 @@ from parallel_eval_pysr import (
     get_default_mutation_weights,
     get_default_pysr_kwargs,
 )
-from utils import load_dataset_names_from_split, copy_slurm_log
+from utils import load_dataset_names_from_split, copy_slurm_log, resolve_run_dir
 from wandb_utils import init_wandb, log_wandb_summary, finish_wandb
 
 
@@ -84,12 +84,38 @@ class EvalSummary:
 # Loaders
 # =============================================================================
 
-def load_evolve_results(path: str, operator_type: str) -> EvolveResult:
-    """Load results from an evolve run_data.json file."""
+def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[EvolveResult]":
+    """Load results from an evolve run_data.json file.
+
+    For bundle runs (multiple operator types), returns a list of EvolveResult.
+    For single-operator runs, returns a single EvolveResult.
+    """
     with open(path, "r") as f:
         data = json.load(f)
 
     config = data.get("config", {})
+
+    # Handle bundle results (best_bundle with multiple operators)
+    if "best_bundle" in data:
+        bundle = data["best_bundle"]
+        operators = bundle.get("operators", {})
+        results = []
+        for op_type_name, op_data in operators.items():
+            if op_data is None:
+                continue
+            results.append(EvolveResult(
+                operator_type=op_type_name,
+                name=op_data["name"],
+                code=op_data["code"],
+                weight=op_data.get("weight", 0.5),
+                train_score=bundle.get("score", 0.0),
+                generation=op_data.get("generation", 0),
+                config=config,
+            ))
+        if results:
+            return results
+
+    # Single-operator fallback
     op_type = operator_type or config.get("operator_type", "mutation")
 
     best = None
@@ -230,6 +256,7 @@ def evaluate_config(
     allow_custom_mutations: bool = False,
     custom_survival_code: Optional[str] = None,
     custom_selection_code: Optional[str] = None,
+    target_noise_map: Optional[Dict[str, float]] = None,
 ) -> EvalSummary:
     """Evaluate a config and return summary. Cache stats are tracked on the evaluator."""
     config = PySRConfig(
@@ -242,7 +269,10 @@ def evaluate_config(
         name=name,
     )
 
-    results = evaluator.evaluate_configs([config], dataset_names, seed=seed, n_runs=n_runs)
+    results = evaluator.evaluate_configs(
+        [config], dataset_names, seed=seed, n_runs=n_runs,
+        target_noise_map=target_noise_map,
+    )
 
     avg_r2, r2_vector, result_details = results[0]
     per_run_r2_avgs = compute_per_run_avgs(result_details, n_runs, "run_r2_scores")
@@ -257,19 +287,24 @@ def evaluate_config(
     )
 
 
-def build_method_kwargs(evolve_data: EvolveResult, baseline_weights: Dict[str, float]):
-    """Build evaluate_config kwargs for an evolved operator."""
+def build_method_kwargs(evolve_data, baseline_weights: Dict[str, float]):
+    """Build evaluate_config kwargs for evolved operator(s).
+
+    evolve_data can be a single EvolveResult or a list of them (for bundles).
+    """
     weights = baseline_weights.copy()
     extra = {}
 
-    if evolve_data.operator_type == "mutation":
-        weights["weight_custom_mutation_1"] = evolve_data.weight
-        extra["custom_mutation_code"] = {evolve_data.name: evolve_data.code}
-        extra["allow_custom_mutations"] = True
-    elif evolve_data.operator_type == "survival":
-        extra["custom_survival_code"] = evolve_data.code
-    elif evolve_data.operator_type == "selection":
-        extra["custom_selection_code"] = evolve_data.code
+    items = evolve_data if isinstance(evolve_data, list) else [evolve_data]
+    for item in items:
+        if item.operator_type == "mutation":
+            weights["weight_custom_mutation_1"] = item.weight
+            extra["custom_mutation_code"] = {item.name: item.code}
+            extra["allow_custom_mutations"] = True
+        elif item.operator_type == "survival":
+            extra["custom_survival_code"] = item.code
+        elif item.operator_type == "selection":
+            extra["custom_selection_code"] = item.code
 
     return weights, extra
 
@@ -302,6 +337,190 @@ def print_results(split_summaries: Dict[str, EvalSummary], n_runs: int, method_l
             scores_str = ", ".join(f"{s:.2f}" for s in scores)
             avg = detail.get("avg_r2", float("nan"))
             print(f"    {dataset}: R2=[{scores_str}] avg={avg:.2f}")
+
+
+# =============================================================================
+# Programmatic Final Evaluation
+# =============================================================================
+
+def run_final_evaluation(
+    output_dir: str,
+    method_source: str,
+    method_path: str,
+    partition: str,
+    splits: Optional[List[str]] = None,
+    n_runs: int = 10,
+    seed: int = 42,
+    max_samples: int = 1000,
+    max_evals: int = 1000000,
+    timeout: int = 600,
+    time_limit: str = "00:30:00",
+    mem_per_cpu: str = "8G",
+    job_timeout: float = 3000.0,
+    max_concurrent_jobs: Optional[int] = None,
+    use_cache: bool = True,
+    wandb_run: Optional[Any] = None,
+    target_noise_map: Optional[Dict[str, float]] = None,
+) -> Dict[str, "EvalSummary"]:
+    """Run final evaluation on train/val splits after an evolution, OpenEvolve, or HPO run.
+
+    Args:
+        output_dir: Parent output directory; final eval results go in output_dir/final_eval/
+        method_source: One of "evolve", "openevolve", "hpo"
+        method_path: Path to the method result:
+            - evolve: path to run_data.json
+            - openevolve: path to output directory
+            - hpo: path to best_params.json (or best_weights.json)
+        partition: SLURM partition
+        splits: List of split file paths (default: train.txt + val.txt)
+        n_runs: Number of seeds per config per dataset
+        seed: Base random seed
+        max_samples/max_evals/timeout: PySR config
+        time_limit/mem_per_cpu/job_timeout: SLURM config
+        use_cache: Whether to use evaluation caching
+        wandb_run: Existing wandb run to log to (or None)
+        target_noise_map: Optional per-dataset noise map
+
+    Returns:
+        Dict mapping split name to EvalSummary
+    """
+    if splits is None:
+        splits = ["splits/train.txt", "splits/val.txt"]
+
+    eval_dir = str(Path(output_dir) / "final_eval")
+    Path(eval_dir).mkdir(parents=True, exist_ok=True)
+
+    # Load method
+    if method_source == "evolve":
+        method = load_evolve_results(method_path, None)
+        if isinstance(method, list):
+            types = "+".join(m.operator_type for m in method)
+            names = "+".join(m.name for m in method)
+            method_label = f"evolve_{types}:{names}"
+        else:
+            method_label = f"evolve_{method.operator_type}:{method.name}"
+    elif method_source == "openevolve":
+        method = load_openevolve_results(method_path, None)
+        method_label = f"openevolve_{method.operator_type}:{method.name}"
+    elif method_source == "hpo":
+        method = None
+        method_label = "hpo_best"
+    else:
+        raise ValueError(f"Unknown method_source: {method_source}")
+
+    print(f"\n{'=' * 60}")
+    print(f"Final Evaluation: {method_label}")
+    print(f"  Splits: {', '.join(Path(s).stem for s in splits)}")
+    print(f"  Seeds: {n_runs}")
+    print(f"{'=' * 60}")
+
+    pysr_kwargs = get_default_pysr_kwargs()
+    pysr_kwargs["max_evals"] = max_evals
+    pysr_kwargs["timeout_in_seconds"] = timeout
+
+    evaluator = PySRSlurmEvaluator(
+        results_dir=eval_dir,
+        partition=partition,
+        time_limit=time_limit,
+        mem_per_cpu=mem_per_cpu,
+        dataset_max_samples=max_samples,
+        data_seed=seed,
+        job_timeout=job_timeout,
+        max_concurrent_jobs=max_concurrent_jobs,
+        use_cache=use_cache,
+    )
+
+    baseline_weights = get_default_mutation_weights()
+    for i in range(1, 6):
+        baseline_weights[f"weight_custom_mutation_{i}"] = 0.0
+
+    eval_pysr_kwargs = pysr_kwargs
+    eval_weights = baseline_weights
+    eval_extra: Dict[str, Any] = {}
+
+    if method_source == "hpo":
+        pysr_overrides, hpo_weights = load_hpo_config(method_path)
+        eval_pysr_kwargs = {**pysr_kwargs, **pysr_overrides}
+        eval_weights = {**baseline_weights, **hpo_weights}
+    elif method is not None:
+        eval_weights, eval_extra = build_method_kwargs(method, baseline_weights)
+        items = method if isinstance(method, list) else [method]
+        for m in items:
+            print(f"  Loaded [{m.operator_type}] {m.name}")
+        print(f"  Training score: {items[0].train_score:.4f}")
+
+    split_summaries: Dict[str, EvalSummary] = {}
+    for split_path in splits:
+        split_name = Path(split_path).stem
+        datasets = load_dataset_names_from_split(split_path)
+        print(f"\nEvaluating on {split_name} ({len(datasets)} datasets, {n_runs} seeds)...")
+
+        summary = evaluate_config(
+            evaluator, datasets, eval_pysr_kwargs, eval_weights,
+            seed, n_runs, f"final_{split_name}_{method_label}",
+            target_noise_map=target_noise_map,
+            **eval_extra,
+        )
+        split_summaries[split_name] = summary
+
+        avg_r2 = float(np.mean(summary.per_run_r2_avgs)) if summary.per_run_r2_avgs else float("nan")
+        avg_gt = float(np.mean(summary.per_run_gt_avgs)) if summary.per_run_gt_avgs else float("nan")
+        print(f"  {split_name}: R²={avg_r2:.4f}, GT={avg_gt:.4f}")
+
+        if wandb_run is not None:
+            import wandb
+            wandb.log({
+                f"final_eval/{split_name}/avg_r2": avg_r2,
+                f"final_eval/{split_name}/avg_gt": avg_gt,
+                f"final_eval/{split_name}/n_datasets": len(datasets),
+            })
+            for seed_idx in range(n_runs):
+                if seed_idx < len(summary.per_run_r2_avgs):
+                    wandb.log({
+                        f"final_eval/{split_name}/seed_{seed_idx}_r2": summary.per_run_r2_avgs[seed_idx],
+                        f"final_eval/{split_name}/seed_{seed_idx}_gt": summary.per_run_gt_avgs[seed_idx],
+                    })
+
+    # Print full results table
+    print_results(split_summaries, n_runs, f"[Final Eval] {method_label}")
+
+    # Save summary JSON
+    summary_data = {
+        "method": method_label,
+        "splits": splits,
+        "n_runs": n_runs,
+        "seed": seed,
+    }
+    if method is not None:
+        items = method if isinstance(method, list) else [method]
+        if len(items) == 1:
+            summary_data["operator_type"] = items[0].operator_type
+            summary_data["operator_name"] = items[0].name
+            summary_data["generation"] = items[0].generation
+        else:
+            summary_data["operators"] = [
+                {"type": m.operator_type, "name": m.name, "generation": m.generation}
+                for m in items
+            ]
+        summary_data["evolve_train_score"] = items[0].train_score
+    for split_name, s in split_summaries.items():
+        summary_data[split_name] = asdict(s)
+
+    summary_path = Path(output_dir) / "final_eval_summary.json"
+    with open(summary_path, "w") as f:
+        json.dump(summary_data, f, indent=2)
+    print(f"\nFinal eval saved: {summary_path}")
+
+    # Log summary metrics to wandb
+    if wandb_run is not None:
+        import wandb
+        for split_name, s in split_summaries.items():
+            avg_r2 = float(np.mean(s.per_run_r2_avgs)) if s.per_run_r2_avgs else float("nan")
+            avg_gt = float(np.mean(s.per_run_gt_avgs)) if s.per_run_gt_avgs else float("nan")
+            wandb.summary[f"final_eval_{split_name}_avg_r2"] = avg_r2
+            wandb.summary[f"final_eval_{split_name}_avg_gt"] = avg_gt
+
+    return split_summaries
 
 
 # =============================================================================
@@ -356,7 +575,12 @@ def main() -> None:
     # Determine method label
     if args.evolve_results:
         method = load_evolve_results(args.evolve_results, None)
-        method_label = f"evolve_{method.operator_type}:{method.name}"
+        if isinstance(method, list):
+            types = "+".join(m.operator_type for m in method)
+            names = "+".join(m.name for m in method)
+            method_label = f"evolve_{types}:{names}"
+        else:
+            method_label = f"evolve_{method.operator_type}:{method.name}"
     elif args.openevolve_results:
         method = load_openevolve_results(args.openevolve_results, None)
         method_label = f"openevolve_{method.operator_type}:{method.name}"
@@ -367,9 +591,7 @@ def main() -> None:
         method = None
         method_label = "baseline"
 
-    if args.output_dir is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.output_dir = f"outputs/eval_pysr_{timestamp}"
+    args.output_dir = resolve_run_dir(args.output_dir, label="eval_pysr")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -387,10 +609,11 @@ def main() -> None:
         "no_cache": args.no_cache,
     }
     if method is not None:
-        wandb_config["operator_type"] = method.operator_type
-        wandb_config["operator_name"] = method.name
-        wandb_config["generation"] = method.generation
-        wandb_config["evolve_train_score"] = method.train_score
+        items = method if isinstance(method, list) else [method]
+        wandb_config["operator_type"] = "+".join(m.operator_type for m in items)
+        wandb_config["operator_name"] = "+".join(m.name for m in items)
+        wandb_config["generation"] = items[0].generation
+        wandb_config["evolve_train_score"] = items[0].train_score
 
     wandb_run = init_wandb(
         config=wandb_config,
@@ -431,13 +654,14 @@ def main() -> None:
     elif method is not None:
         eval_weights, eval_extra = build_method_kwargs(method, baseline_weights)
         # Print loaded method info
-        print(f"Loaded [{method.operator_type}] {method.name}")
-        print(f"  Generation: {method.generation}")
-        print(f"  Training score (from evolve): {method.train_score:.4f}")
-        # Save operator code
-        code_file = output_dir / f"{method.name}.jl"
-        code_file.write_text(method.code)
-        print(f"  Saved code to: {code_file}")
+        items = method if isinstance(method, list) else [method]
+        for m in items:
+            print(f"Loaded [{m.operator_type}] {m.name}")
+            print(f"  Generation: {m.generation}")
+            code_file = output_dir / f"{m.name}.jl"
+            code_file.write_text(m.code)
+            print(f"  Saved code to: {code_file}")
+        print(f"  Training score (from evolve): {items[0].train_score:.4f}")
         print()
 
     # Evaluate on each split
@@ -507,10 +731,17 @@ def main() -> None:
         "total_cached": total_cached,
     }
     if method is not None:
-        summary_data["operator_type"] = method.operator_type
-        summary_data["operator_name"] = method.name
-        summary_data["generation"] = method.generation
-        summary_data["evolve_train_score"] = method.train_score
+        items = method if isinstance(method, list) else [method]
+        if len(items) == 1:
+            summary_data["operator_type"] = items[0].operator_type
+            summary_data["operator_name"] = items[0].name
+            summary_data["generation"] = items[0].generation
+        else:
+            summary_data["operators"] = [
+                {"type": m.operator_type, "name": m.name, "generation": m.generation}
+                for m in items
+            ]
+        summary_data["evolve_train_score"] = items[0].train_score
     for split_name, s in split_summaries.items():
         summary_data[split_name] = asdict(s)
 

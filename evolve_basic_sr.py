@@ -979,7 +979,7 @@ if __name__ == "__main__":
                        help='Assign per-dataset target noise from {0.0, 0.001, 0.01, 0.1} using the seed')
     group.add_argument('--no_random_target_noise', dest='random_target_noise', action='store_false',
                        help='Disable per-dataset target noise and use --target_noise instead')
-    parser.set_defaults(random_target_noise=True)
+    parser.set_defaults(random_target_noise=False)
 
     # Model
     parser.add_argument('--model', type=str, default='openai/gpt-5-mini',

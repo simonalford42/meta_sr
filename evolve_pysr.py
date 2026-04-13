@@ -36,7 +36,7 @@ from parallel_eval_pysr import (
     get_default_mutation_weights,
     get_default_pysr_kwargs,
 )
-from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log
+from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log, resolve_run_dir
 
 TARGET_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
 
@@ -214,12 +214,223 @@ def select_parent(population: list, rng: random.Random):
     return max(candidates, key=lambda m: m.score if m.score is not None else -1)
 
 
+def get_solved_tasks(result_details: Optional[List[Dict]]) -> List[int]:
+    """Return indices of tasks where at least one run achieved gt_match >= 1.0."""
+    if not result_details:
+        return []
+    solved = []
+    for i, detail in enumerate(result_details):
+        run_gt = detail.get("run_gt_scores", [])
+        if any(g >= 1.0 for g in run_gt):
+            solved.append(i)
+    return solved
+
+
+def format_solved_str(result_details: Optional[List[Dict]]) -> str:
+    """Format solved task info for printing, e.g. 'solved 3/20 [0,4,12]'."""
+    solved = get_solved_tasks(result_details)
+    n_tasks = len(result_details) if result_details else 0
+    if not solved:
+        return f"solved 0/{n_tasks}"
+    indices_str = ",".join(str(i) for i in solved)
+    return f"solved {len(solved)}/{n_tasks} [{indices_str}]"
+
+
+def load_task_formulas(dataset_names: List[str]) -> Dict[str, str]:
+    """Load ground-truth formulas for each dataset by reading only metadata.yaml.
+
+    Returns a dict mapping dataset name -> formula string (empty string if unavailable).
+    """
+    from utils import PMLB_PATH, rhs_only
+    formulas: Dict[str, str] = {}
+    for name in dataset_names:
+        formula = ""
+        metadata_path = PMLB_PATH / name / "metadata.yaml"
+        if metadata_path.exists():
+            try:
+                import yaml
+                with open(metadata_path, "r") as f:
+                    metadata = yaml.safe_load(f)
+                desc = metadata.get("description", "") if isinstance(metadata, dict) else ""
+                for line in desc.split("\n"):
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        if " in [" not in line and " in (" not in line:
+                            formula = rhs_only(line)
+                            break
+            except Exception:
+                pass
+        formulas[name] = formula
+    return formulas
+
+
+def select_complementary_parents(
+    population: list,
+    baseline_solved: set,
+    rng: random.Random,
+) -> Optional[Tuple[Any, Any, List[int], List[int]]]:
+    """Find two population members with complementary solved-task sets.
+
+    Returns (p1, p2, p1_unique, p2_unique) where p1_unique are task indices
+    solved by p1 but not by p2 and not by baseline (and vice versa).
+    Returns None if no complementary pair exists.
+    """
+    candidates = [
+        (m, set(get_solved_tasks(getattr(m, "result_details", None))))
+        for m in population
+    ]
+
+    pairs: List[Tuple[Any, Any, List[int], List[int]]] = []
+    for i in range(len(candidates)):
+        for j in range(i + 1, len(candidates)):
+            m1, s1 = candidates[i]
+            m2, s2 = candidates[j]
+            p1_unique = sorted((s1 - s2) - baseline_solved)
+            p2_unique = sorted((s2 - s1) - baseline_solved)
+            if p1_unique and p2_unique:
+                pairs.append((m1, m2, p1_unique, p2_unique))
+
+    if not pairs:
+        return None
+    return rng.choice(pairs)
+
+
+def select_unsolved_task_for_parent(
+    parent: Any,
+    dataset_names: List[str],
+    task_formulas: Dict[str, str],
+    rng: random.Random,
+) -> Optional[int]:
+    """Return a task index that `parent` has not solved and for which we have a formula."""
+    solved = set(get_solved_tasks(getattr(parent, "result_details", None)))
+    unsolved = [
+        i for i, name in enumerate(dataset_names)
+        if i not in solved and task_formulas.get(name, "")
+    ]
+    if not unsolved:
+        return None
+    return rng.choice(unsolved)
+
+
+def select_unsolved_tasks_for_population(
+    population: list,
+    baseline_solved: set,
+    dataset_names: List[str],
+    task_formulas: Dict[str, str],
+    rng: random.Random,
+    n: int = 2,
+) -> List[int]:
+    """Pick task indices unsolved by baseline, preferring ones no population member solves.
+
+    Returns up to `n` task indices with available ground-truth formulas.
+    """
+    pop_solved: set = set()
+    for m in population:
+        pop_solved |= set(get_solved_tasks(getattr(m, "result_details", None)))
+
+    def has_formula(idx: int) -> bool:
+        return idx < len(dataset_names) and bool(task_formulas.get(dataset_names[idx], ""))
+
+    n_tasks = len(dataset_names)
+    # Preferred: unsolved by baseline AND unsolved by entire population
+    frontier_unsolved = [
+        i for i in range(n_tasks)
+        if i not in baseline_solved and i not in pop_solved and has_formula(i)
+    ]
+    # Fallback: unsolved by baseline (population may have solved it)
+    baseline_unsolved = [
+        i for i in range(n_tasks)
+        if i not in baseline_solved and has_formula(i)
+    ]
+
+    pool = frontier_unsolved if frontier_unsolved else baseline_unsolved
+    if not pool:
+        return []
+    rng.shuffle(pool)
+    return pool[:n]
+
+
+def format_task_list(
+    task_indices: List[int],
+    dataset_names: List[str],
+    task_formulas: Dict[str, str],
+    max_tasks: int = 3,
+) -> str:
+    """Format a list of (dataset_name, formula) entries for inclusion in an LLM prompt."""
+    entries = []
+    for idx in task_indices[:max_tasks]:
+        name = dataset_names[idx] if idx < len(dataset_names) else f"task_{idx}"
+        formula = task_formulas.get(name, "")
+        if formula:
+            entries.append(f"- `{name}`: y = {formula}")
+    return "\n".join(entries)
+
+
 def select_survivors(population: list, offspring: list, population_size: int) -> list:
     """Select best individuals from population + offspring."""
     combined = population + offspring
     scored = [m for m in combined if m.score is not None]
     scored.sort(key=lambda m: m.score, reverse=True)
     return scored[:population_size]
+
+
+def select_survivors_diverse(
+    population: list, offspring: list, min_population_size: int,
+    dataset_names: List[str],
+) -> list:
+    """Task-diverse survivor selection.
+
+    For each task, if any candidate solves it (any run with gt >= 1.0),
+    keep the solver with the highest overall score. Then backfill with
+    top-scoring candidates until we reach min_population_size.
+
+    Population can grow up to len(dataset_names) but never shrinks below
+    min_population_size.
+    """
+    combined = population + offspring
+    scored = [m for m in combined if m.score is not None]
+    scored.sort(key=lambda m: m.score, reverse=True)
+
+    # Step 1: For each task, find the best solver
+    frontier: Dict[int, Any] = {}  # candidate id -> candidate (use id to dedup)
+    for task_idx in range(len(dataset_names)):
+        best_solver = None
+        for candidate in scored:
+            rd = getattr(candidate, "result_details", None)
+            if not rd or task_idx >= len(rd):
+                continue
+            run_gt = rd[task_idx].get("run_gt_scores", [])
+            if any(g >= 1.0 for g in run_gt):
+                if best_solver is None or candidate.score > best_solver.score:
+                    best_solver = candidate
+        if best_solver is not None:
+            frontier[id(best_solver)] = best_solver
+
+    frontier_list = sorted(frontier.values(), key=lambda m: m.score, reverse=True)
+
+    # Step 2: Backfill with top-scoring candidates not in frontier
+    if len(frontier_list) < min_population_size:
+        frontier_ids = set(frontier.keys())
+        for candidate in scored:
+            if id(candidate) not in frontier_ids:
+                frontier_list.append(candidate)
+                frontier_ids.add(id(candidate))
+            if len(frontier_list) >= min_population_size:
+                break
+
+    n_tasks_covered = sum(
+        1 for task_idx in range(len(dataset_names))
+        if any(
+            any(g >= 1.0 for g in getattr(c, "result_details", [{}])[task_idx].get("run_gt_scores", []))
+            for c in frontier_list
+            if getattr(c, "result_details", None) and task_idx < len(getattr(c, "result_details", []))
+        )
+    )
+    print(f"  [diverse] Population: {len(frontier_list)} "
+          f"(frontier: {len(frontier)}, backfill: {len(frontier_list) - len(frontier)}, "
+          f"tasks covered: {n_tasks_covered}/{len(dataset_names)})")
+
+    return frontier_list
 
 
 # =============================================================================
@@ -236,6 +447,7 @@ class JuliaOperator:
     generation: int = 0
     parent_name: Optional[str] = None
     mode: str = "explore"
+    result_details: Optional[List[Dict]] = None  # Per-dataset evaluation details
     weight: Optional[float] = None  # Only used for mutation operators
     model: Optional[str] = None  # LLM model that generated this operator
     hp_specs: Optional[List[Dict]] = None  # Cached HyperparameterSpec dicts from LLM identification
@@ -266,6 +478,7 @@ class OperatorBundle:
     operators: Dict[str, Optional[JuliaOperator]] = field(default_factory=dict)
     score: Optional[float] = None
     score_vector: Optional[List[float]] = None
+    result_details: Optional[List[Dict]] = None  # Per-dataset evaluation details
     best_hparams: Optional[Dict[str, Any]] = None  # Best PySR hparams found by HPO
 
     @staticmethod
@@ -756,6 +969,157 @@ Give it a new descriptive name.
 Do not include markdown code blocks or explanations.
 """
 
+    def build_task_aware_explore_prompt(
+        self,
+        reference: str,
+        unsolved_tasks_text: str,
+        variation_seed: int = 0,
+    ) -> str:
+        ideas = [
+            "Pattern-based: Insert common mathematical patterns (e.g., polynomial terms, trig identities)",
+            "Structure-aware: Target specific tree structures for modification",
+            "Simplification-focused: Identify and simplify redundant patterns",
+            "Feature-focused: Encourage using underutilized input variables",
+            "Constant-aware: Smart constant insertion or modification",
+            "Depth-balancing: Rebalance tree depth for better search",
+            "Symmetry-aware: Detect and exploit symmetric patterns",
+            "Gradient-guided: Use loss gradient information to guide changes",
+        ]
+        selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
+        ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
+
+        return f"""You are an expert in symbolic regression and genetic programming.
+
+Your task is to create a NEW custom mutation operator for PySR/SymbolicRegression.jl.
+The mutation should help discover better symbolic expressions — in particular, it should
+help PySR reach the kinds of structures appearing in the unsolved target equations below,
+which neither the baseline nor the current population has managed to discover.
+
+## Reference: Existing Mutations and API
+{reference}
+
+## Unsolved target equation(s) (for inspiration only — do NOT hard-code)
+{unsolved_tasks_text}
+
+Think about what structural moves (e.g. inserting particular subexpressions, rewriting
+patterns, exploring certain operators or constants) would make it likelier for a search
+using this mutation to discover expressions of that form. Then design a mutation whose
+proposals bias the search toward such structures while remaining a general operator.
+
+## Requirements
+1. Create a NOVEL mutation that does something different from existing mutations.
+2. Do NOT hard-code the target equations — the mutation must be a general operator
+   useful across many symbolic regression problems.
+3. Use proper Julia syntax and the available API.
+
+## Ideas to consider (pick one or invent your own):
+{ideas_text}
+
+## Output Format
+Return ONLY the Julia function code, nothing else. The function should be named descriptively.
+Do not include markdown code blocks or explanations.
+
+Example format:
+function my_mutation_name(
+    tree::N,
+    options,
+    nfeatures::Int,
+    rng::AbstractRNG,
+) where {{T,N<:AbstractExpressionNode{{T}}}}
+    # Implementation
+    return tree
+end
+"""
+
+    def build_task_aware_crossover_prompt(
+        self,
+        p1_code: str,
+        p2_code: str,
+        reference: str,
+        p1_tasks_text: str,
+        p2_tasks_text: str,
+    ) -> str:
+        return f"""You are an expert in symbolic regression and genetic programming.
+
+Your task is to COMBINE two mutation operators so that the resulting operator can solve
+BOTH of the complementary task sets below. Each parent already solves a different subset
+of tasks (that the baseline cannot solve). Your job is to synthesize a new mutation that
+generalizes so it can help the search reach both target equations.
+
+## Parent Mutation 1 (solves these tasks the other parent and baseline do not)
+```julia
+{p1_code}
+```
+
+Ground-truth equations Parent 1 solves (that Parent 2 / baseline do not):
+{p1_tasks_text}
+
+## Parent Mutation 2 (solves these tasks the other parent and baseline do not)
+```julia
+{p2_code}
+```
+
+Ground-truth equations Parent 2 solves (that Parent 1 / baseline do not):
+{p2_tasks_text}
+
+## Reference: Mutations API
+{reference}
+
+## Requirements
+1. Create a NEW mutation that combines the best ideas from both parents so it can help
+   PySR discover the kinds of structures present in BOTH task sets above.
+2. Do NOT hard-code the target equations — the mutation must be a general operator that
+   works across many symbolic regression problems. Use the equations only as inspiration
+   for the structural moves your mutation should make available.
+3. Don't just concatenate — synthesize a coherent new approach.
+4. Use proper Julia syntax and the available API.
+
+## Output Format
+Return ONLY the new Julia function code, nothing else.
+Give it a new descriptive name.
+Do not include markdown code blocks or explanations.
+"""
+
+    def build_task_aware_refine_prompt(
+        self,
+        parent_code: str,
+        reference: str,
+        unsolved_tasks_text: str,
+    ) -> str:
+        return f"""You are an expert in symbolic regression and genetic programming.
+
+Your task is to IMPROVE an existing custom mutation operator for PySR so that it can
+help the search solve specific target equations it has so far FAILED to discover.
+
+## Parent Mutation Code
+```julia
+{parent_code}
+```
+
+## Unsolved target equation(s)
+The parent mutation has not helped PySR discover these ground-truth equations yet:
+{unsolved_tasks_text}
+
+Think about what structural moves (e.g. inserting particular subexpressions, rewriting
+patterns, exploring certain operators or constants) would make it likelier for a
+search using this mutation to reach expressions of that form. Then modify the mutation
+to make those moves more likely.
+
+## Reference: Mutations API
+{reference}
+
+## Requirements
+1. Do NOT hard-code the target equation — the mutation must remain a general operator
+   useful across many problems. Use the target equation only as motivation.
+2. Keep the core idea of the parent but bias it toward the structures above.
+3. Use proper Julia syntax.
+
+## Output Format
+Return ONLY the improved Julia function code, nothing else.
+Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
+Do not include markdown code blocks or explanations.
+"""
+
     def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
         mutation_weights = get_default_mutation_weights()
         weight = operator.weight if operator.weight is not None else 0.5
@@ -1121,13 +1485,28 @@ def generate_operator_code(
     variation_seed: int = 0,
     temperature: float = 0.0,
     use_cache: bool = True,
+    task_info: Optional[Dict[str, str]] = None,
+    log_prompt_dir: Optional[Path] = None,
+    log_generation: int = -1,
 ) -> Tuple[str, str, str]:
     """Generate new Julia operator code using an LLM.
+
+    For task-aware modes, `task_info` should supply:
+      - mode="task_refine": {"unsolved_tasks_text": "..."}
+      - mode="task_crossover": {"p1_tasks_text": "...", "p2_tasks_text": "..."}
 
     Returns (code, func_name, selected_model).
     """
     if mode == "explore":
         prompt = op_type.build_explore_prompt(reference, variation_seed)
+    elif mode == "task_explore":
+        if not hasattr(op_type, "build_task_aware_explore_prompt"):
+            raise ValueError(f"task_explore not supported for operator type {op_type.name}")
+        if not task_info or "unsolved_tasks_text" not in task_info:
+            raise ValueError("task_explore mode requires task_info['unsolved_tasks_text']")
+        prompt = op_type.build_task_aware_explore_prompt(
+            reference, task_info["unsolved_tasks_text"], variation_seed,
+        )
     elif mode == "refine":
         if parent is None:
             raise ValueError("refine mode requires a parent")
@@ -1136,11 +1515,46 @@ def generate_operator_code(
         if parent is None or parent2 is None:
             raise ValueError("crossover mode requires two parents")
         prompt = op_type.build_crossover_prompt(parent.code, parent2.code, reference)
+    elif mode == "task_refine":
+        if parent is None:
+            raise ValueError("task_refine mode requires a parent")
+        if not hasattr(op_type, "build_task_aware_refine_prompt"):
+            raise ValueError(f"task_refine not supported for operator type {op_type.name}")
+        if not task_info or "unsolved_tasks_text" not in task_info:
+            raise ValueError("task_refine mode requires task_info['unsolved_tasks_text']")
+        prompt = op_type.build_task_aware_refine_prompt(
+            parent.code, reference, task_info["unsolved_tasks_text"],
+        )
+    elif mode == "task_crossover":
+        if parent is None or parent2 is None:
+            raise ValueError("task_crossover mode requires two parents")
+        if not hasattr(op_type, "build_task_aware_crossover_prompt"):
+            raise ValueError(f"task_crossover not supported for operator type {op_type.name}")
+        if not task_info or "p1_tasks_text" not in task_info or "p2_tasks_text" not in task_info:
+            raise ValueError("task_crossover mode requires task_info['p1_tasks_text'] and ['p2_tasks_text']")
+        prompt = op_type.build_task_aware_crossover_prompt(
+            parent.code, parent2.code, reference,
+            task_info["p1_tasks_text"], task_info["p2_tasks_text"],
+        )
     else:
         raise ValueError(f"Unknown mode: {mode}")
 
     # Use ensemble to pick model if available, otherwise use single model
     selected_model = model_ensemble.sample() if model_ensemble else model
+
+    # Log prompt to disk (for the first few generations, controlled by caller).
+    if log_prompt_dir is not None:
+        try:
+            log_prompt_dir.mkdir(parents=True, exist_ok=True)
+            fname = f"gen{max(log_generation, 0):03d}_{op_type.name}_{mode}_seed{variation_seed}.md"
+            header = (
+                f"<!-- op_type={op_type.name} mode={mode} "
+                f"generation={log_generation} variation_seed={variation_seed} "
+                f"model={selected_model} -->\n\n"
+            )
+            (log_prompt_dir / fname).write_text(header + prompt + "\n")
+        except Exception as e:
+            print(f"  [prompt-log] Failed to write prompt: {e}")
 
     response = chat_completion(
         model=selected_model,
@@ -1386,6 +1800,8 @@ def run_evolution(
     julia_project: Optional[str] = None,
     python_juliapkg_project: Optional[str] = None,
     julia_depot_path: Optional[str] = None,
+    task_aware: bool = False,
+    task_aware_prob: float = 0.5,
 ) -> JuliaOperator:
     """Run the evolution loop for the specified operator type."""
     rng = random.Random(seed)
@@ -1445,15 +1861,32 @@ def run_evolution(
         n_runs=n_runs, target_noise_map=target_noise_map,
         fitness_metric=fitness_metric,
     )
+    solved_str = format_solved_str(baseline_details)
     if n_runs > 1 and baseline_details:
         per_run_avgs = compute_per_run_avgs(
             baseline_details, n_runs=n_runs, fitness_metric=fitness_metric,
         )
         runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-        print(f"Baseline avg {metric_label}: {baseline_r2:.4f} [{runs_str}]")
+        print(f"Baseline avg {metric_label}: {baseline_r2:.4f} [{runs_str}] {solved_str}")
     else:
-        print(f"Baseline avg {metric_label}: {baseline_r2:.4f}")
+        print(f"Baseline avg {metric_label}: {baseline_r2:.4f} {solved_str}")
     logger.log_baseline(baseline_r2, baseline_vector)
+
+    # Task-aware mutation setup: load ground-truth formulas and baseline solved set
+    use_task_aware = bool(task_aware) and op_type.name == "mutation"
+    task_formulas: Dict[str, str] = {}
+    baseline_solved: set = set()
+    if use_task_aware:
+        task_formulas = load_task_formulas(dataset_names)
+        baseline_solved = set(get_solved_tasks(baseline_details))
+        n_with_formula = sum(1 for f in task_formulas.values() if f)
+        print(f"Task-aware mutation enabled (prob={task_aware_prob}): "
+              f"{n_with_formula}/{len(dataset_names)} tasks have ground-truth formulas; "
+              f"baseline solves {len(baseline_solved)} tasks")
+
+    # Directory for logged prompts (first few generations only)
+    prompts_log_dir = Path(output_dir) / "prompts"
+    log_prompt_gens_max = 3
 
     # Generate initial population
     print("\n" + "=" * 60)
@@ -1473,6 +1906,8 @@ def run_evolution(
             reference=reference,
             model=model,
             mode="explore",
+            log_prompt_dir=prompts_log_dir,
+            log_generation=0,
             variation_seed=attempts,
             temperature=temperature,
             use_cache=use_cache,
@@ -1516,14 +1951,16 @@ def run_evolution(
         for operator, (avg_r2, r2_vector, result_details) in zip(population, results):
             operator.score = avg_r2
             operator.score_vector = r2_vector
+            operator.result_details = result_details
+            solved_str = format_solved_str(result_details)
             if n_runs > 1 and result_details:
                 per_run_avgs = compute_per_run_avgs(
                     result_details, n_runs=n_runs, fitness_metric=fitness_metric,
                 )
                 runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                print(f"  {operator.name}: Avg {avg_r2:.4f} [{runs_str}]")
+                print(f"  {operator.name}: Avg {avg_r2:.4f} [{runs_str}] {solved_str}")
             else:
-                print(f"  {operator.name}: {avg_r2:.4f}")
+                print(f"  {operator.name}: {avg_r2:.4f} {solved_str}")
     except Exception as e:
         print(f"  Batch evaluation failed: {e}")
         for operator in population:
@@ -1548,16 +1985,49 @@ def run_evolution(
             offspring_attempts += 1
 
             mode = rng.choice(["explore", "refine", "refine", "refine", "crossover"])
+            task_info: Optional[Dict[str, str]] = None
 
             if mode == "explore":
                 parent = None
                 parent2 = None
+                if use_task_aware and rng.random() < task_aware_prob:
+                    task_idxs = select_unsolved_tasks_for_population(
+                        population, baseline_solved, dataset_names, task_formulas, rng, n=2,
+                    )
+                    if task_idxs:
+                        text = format_task_list(task_idxs, dataset_names, task_formulas, max_tasks=2)
+                        if text:
+                            task_info = {"unsolved_tasks_text": text}
+                            mode = "task_explore"
             elif mode == "refine":
                 parent = select_parent(population, rng)
                 parent2 = None
-            else:
+                if use_task_aware and rng.random() < task_aware_prob:
+                    task_idx = select_unsolved_task_for_parent(
+                        parent, dataset_names, task_formulas, rng,
+                    )
+                    if task_idx is not None:
+                        task_info = {
+                            "unsolved_tasks_text": format_task_list(
+                                [task_idx], dataset_names, task_formulas, max_tasks=1,
+                            ),
+                        }
+                        mode = "task_refine"
+            else:  # crossover
                 parent = select_parent(population, rng)
                 parent2 = select_parent([s for s in population if s != parent], rng)
+                if use_task_aware and rng.random() < task_aware_prob:
+                    picked = select_complementary_parents(population, baseline_solved, rng)
+                    if picked is not None:
+                        parent, parent2, p1_unique, p2_unique = picked
+                        p1_text = format_task_list(p1_unique, dataset_names, task_formulas)
+                        p2_text = format_task_list(p2_unique, dataset_names, task_formulas)
+                        if p1_text and p2_text:
+                            task_info = {
+                                "p1_tasks_text": p1_text,
+                                "p2_tasks_text": p2_text,
+                            }
+                            mode = "task_crossover"
 
             code, func_name, selected_model = generate_operator_code(
                 op_type=op_type,
@@ -1569,6 +2039,9 @@ def run_evolution(
                 variation_seed=gen * 100 + offspring_attempts,
                 temperature=temperature,
                 use_cache=use_cache,
+                task_info=task_info,
+                log_prompt_dir=prompts_log_dir if gen <= log_prompt_gens_max else None,
+                log_generation=gen,
             )
 
             if not code or not func_name:
@@ -1603,14 +2076,16 @@ def run_evolution(
             for operator, (avg_r2, r2_vector, result_details) in zip(offspring, results):
                 operator.score = avg_r2
                 operator.score_vector = r2_vector
+                operator.result_details = result_details
+                solved_str = format_solved_str(result_details)
                 if n_runs > 1 and result_details:
                     per_run_avgs = compute_per_run_avgs(
                         result_details, n_runs=n_runs, fitness_metric=fitness_metric,
                     )
                     runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                    print(f"  {operator.name}: Avg {avg_r2:.4f} [{runs_str}]")
+                    print(f"  {operator.name}: Avg {avg_r2:.4f} [{runs_str}] {solved_str}")
                 else:
-                    print(f"  {operator.name}: {avg_r2:.4f}")
+                    print(f"  {operator.name}: {avg_r2:.4f} {solved_str}")
         except Exception as e:
             print(f"  Batch evaluation failed: {e}")
             for operator in offspring:
@@ -1673,7 +2148,10 @@ def run_bundle_evolution(
     julia_depot_path: Optional[str] = None,
     baseline_bundle: Optional[OperatorBundle] = None,
     wandb_run: Optional[Any] = None,
-) -> OperatorBundle:
+    task_diverse_pop: bool = False,
+    task_aware: bool = False,
+    task_aware_prob: float = 0.5,
+) -> Tuple[OperatorBundle, Any, float]:
     """Run round-robin bundle evolution across multiple operator types.
 
     Each generation evolves one operator type (cycling round-robin), while
@@ -1683,9 +2161,30 @@ def run_bundle_evolution(
     If baseline_bundle is provided, it seeds the initial population: one copy
     is kept as-is and the remaining slots are filled with LLM-generated
     variations that start from the baseline operator code.
+
+    If task_diverse_pop is True, uses task-diverse survivor selection that
+    keeps the best solver for each task on the Pareto frontier.
     """
     rng = random.Random(seed)
     np.random.seed(seed)
+
+    # Per-individual wandb logging state for avg_gt-over-time plots.
+    _eval_log_state = {"idx": 0, "best": float("-inf")}
+
+    def _log_bundle_eval(bundle: OperatorBundle, generation: int) -> None:
+        if wandb_run is None:
+            return
+        import wandb
+        score = bundle.score if bundle.score is not None else float("nan")
+        _eval_log_state["idx"] += 1
+        if score == score and score > _eval_log_state["best"]:  # score == score: NaN guard
+            _eval_log_state["best"] = score
+        wandb.log({
+            "eval_idx": _eval_log_state["idx"],
+            "eval_score": score,
+            "eval_running_best": _eval_log_state["best"],
+            "eval_generation": generation,
+        })
 
     op_types = [OPERATOR_TYPES[name] for name in operator_type_names]
     references = {name: OPERATOR_TYPES[name].load_reference() for name in operator_type_names}
@@ -1716,8 +2215,12 @@ def run_bundle_evolution(
         "julia_project": julia_project,
         "python_juliapkg_project": python_juliapkg_project,
         "julia_depot_path": julia_depot_path,
+        "task_diverse_pop": task_diverse_pop,
     })
     metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
+
+    if task_diverse_pop:
+        print(f"Task-diverse population enabled (min={population_size}, max={len(dataset_names)})")
 
     evaluator = PySRSlurmEvaluator(
         results_dir=output_dir,
@@ -1755,14 +2258,31 @@ def run_bundle_evolution(
     baseline_score, baseline_vector, baseline_details = baseline_results[0]
     eval_baseline.score = baseline_score
     eval_baseline.score_vector = baseline_vector
+    eval_baseline.result_details = baseline_details
 
+    solved_str = format_solved_str(baseline_details)
     if n_runs > 1 and baseline_details:
         per_run_avgs = compute_per_run_avgs(baseline_details, n_runs=n_runs, fitness_metric=fitness_metric)
         runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-        print(f"Baseline avg {metric_label}: {baseline_score:.4f} [{runs_str}]")
+        print(f"Baseline avg {metric_label}: {baseline_score:.4f} [{runs_str}] {solved_str}")
     else:
-        print(f"Baseline avg {metric_label}: {baseline_score:.4f}")
+        print(f"Baseline avg {metric_label}: {baseline_score:.4f} {solved_str}")
     logger.log_baseline(baseline_score, baseline_vector)
+
+    # Task-aware mutation setup: load ground-truth formulas and baseline solved set
+    task_formulas: Dict[str, str] = {}
+    baseline_solved: set = set()
+    if task_aware:
+        task_formulas = load_task_formulas(dataset_names)
+        baseline_solved = set(get_solved_tasks(baseline_details))
+        n_with_formula = sum(1 for f in task_formulas.values() if f)
+        print(f"Task-aware mutation enabled (prob={task_aware_prob}): "
+              f"{n_with_formula}/{len(dataset_names)} tasks have ground-truth formulas; "
+              f"baseline solves {len(baseline_solved)} tasks")
+
+    # Directory for logged prompts (first few generations only)
+    prompts_log_dir = Path(output_dir) / "prompts"
+    log_prompt_gens_max = 3
 
     if wandb_run is not None:
         import wandb
@@ -1833,6 +2353,8 @@ def run_bundle_evolution(
                     variation_seed=bundle_idx * 100 + attempt,
                     temperature=temperature,
                     use_cache=use_cache,
+                    log_prompt_dir=prompts_log_dir,
+                    log_generation=0,
                 )
                 if not code or not func_name:
                     continue
@@ -1893,21 +2415,29 @@ def run_bundle_evolution(
         for bundle, (avg_score, score_vector, result_details) in zip(population, results):
             bundle.score = avg_score
             bundle.score_vector = score_vector
+            bundle.result_details = result_details
+            _log_bundle_eval(bundle, generation=0)
+            solved_str = format_solved_str(result_details)
             if n_runs > 1 and result_details:
                 per_run_avgs = compute_per_run_avgs(result_details, n_runs=n_runs, fitness_metric=fitness_metric)
                 runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                print(f"  {bundle.display_name}: Avg {avg_score:.4f} [{runs_str}]")
+                print(f"  {bundle.display_name}: Avg {avg_score:.4f} [{runs_str}] {solved_str}")
             else:
-                print(f"  {bundle.display_name}: {avg_score:.4f}")
+                print(f"  {bundle.display_name}: {avg_score:.4f} {solved_str}")
     except Exception as e:
         print(f"  Batch evaluation failed: {e}")
         for bundle in population:
             bundle.score = -1.0
             bundle.score_vector = []
+            _log_bundle_eval(bundle, generation=0)
 
     population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
     best = population[0]
     print(f"\nBest initial bundle: {best.display_name} (score: {best.score:.4f})")
+
+    if wandb_run is not None:
+        import wandb
+        wandb.log({"best_score": best.score, "generation": 0})
 
     # Evolution loop (round-robin across operator types)
     for gen in range(1, n_generations + 1):
@@ -1924,12 +2454,15 @@ def run_bundle_evolution(
         offspring_attempts = 0
         max_offspring_attempts = n_offspring * 3
 
+        use_task_aware_this_gen = bool(task_aware) and current_type_name == "mutation"
+
         while len(offspring_bundles) < n_offspring and offspring_attempts < max_offspring_attempts:
             offspring_attempts += 1
 
             # Select parent bundle
             parent_bundle = select_parent(population, rng)
             parent_op = parent_bundle.get_operator(current_type_name)
+            task_info: Optional[Dict[str, str]] = None
 
             # Choose mode: if parent has no custom operator for this type, explore
             if parent_op is None:
@@ -1937,13 +2470,35 @@ def run_bundle_evolution(
                 parent = None
                 parent2 = None
             else:
-                mode = rng.choice(["explore", "refine", "refine", "refine", "crossover"])
+                mode = rng.choice(["explore", "refine", "crossover"])
                 if mode == "explore":
                     parent = None
                     parent2 = None
+                    if use_task_aware_this_gen and rng.random() < task_aware_prob:
+                        task_idxs = select_unsolved_tasks_for_population(
+                            population, baseline_solved, dataset_names, task_formulas, rng, n=2,
+                        )
+                        if task_idxs:
+                            text = format_task_list(
+                                task_idxs, dataset_names, task_formulas, max_tasks=2,
+                            )
+                            if text:
+                                task_info = {"unsolved_tasks_text": text}
+                                mode = "task_explore"
                 elif mode == "refine":
                     parent = parent_op
                     parent2 = None
+                    if use_task_aware_this_gen and rng.random() < task_aware_prob:
+                        task_idx = select_unsolved_task_for_parent(
+                            parent_bundle, dataset_names, task_formulas, rng,
+                        )
+                        if task_idx is not None:
+                            task_info = {
+                                "unsolved_tasks_text": format_task_list(
+                                    [task_idx], dataset_names, task_formulas, max_tasks=1,
+                                ),
+                            }
+                            mode = "task_refine"
                 else:  # crossover
                     parent = parent_op
                     # Find a second parent from a different bundle
@@ -1960,6 +2515,28 @@ def run_bundle_evolution(
                             mode = "refine"
                             parent2 = None
 
+                    if (mode == "crossover" and use_task_aware_this_gen
+                            and rng.random() < task_aware_prob):
+                        picked = select_complementary_parents(
+                            population, baseline_solved, rng,
+                        )
+                        if picked is not None:
+                            pb1, pb2, p1_unique, p2_unique = picked
+                            op1 = pb1.get_operator(current_type_name)
+                            op2 = pb2.get_operator(current_type_name)
+                            if op1 is not None and op2 is not None:
+                                p1_text = format_task_list(p1_unique, dataset_names, task_formulas)
+                                p2_text = format_task_list(p2_unique, dataset_names, task_formulas)
+                                if p1_text and p2_text:
+                                    parent_bundle = pb1
+                                    parent = op1
+                                    parent2 = op2
+                                    task_info = {
+                                        "p1_tasks_text": p1_text,
+                                        "p2_tasks_text": p2_text,
+                                    }
+                                    mode = "task_crossover"
+
             code, func_name, selected_model = generate_operator_code(
                 op_type=current_op_type,
                 reference=reference,
@@ -1971,6 +2548,9 @@ def run_bundle_evolution(
                 variation_seed=gen * 100 + offspring_attempts,
                 temperature=temperature,
                 use_cache=use_cache,
+                task_info=task_info,
+                log_prompt_dir=prompts_log_dir if gen <= log_prompt_gens_max else None,
+                log_generation=gen,
             )
 
             if not code or not func_name:
@@ -2007,19 +2587,26 @@ def run_bundle_evolution(
             for bundle, (avg_score, score_vector, result_details) in zip(offspring_bundles, results):
                 bundle.score = avg_score
                 bundle.score_vector = score_vector
+                bundle.result_details = result_details
+                _log_bundle_eval(bundle, generation=gen)
+                solved_str = format_solved_str(result_details)
                 if n_runs > 1 and result_details:
                     per_run_avgs = compute_per_run_avgs(result_details, n_runs=n_runs, fitness_metric=fitness_metric)
                     runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                    print(f"  {bundle.display_name}: Avg {avg_score:.4f} [{runs_str}]")
+                    print(f"  {bundle.display_name}: Avg {avg_score:.4f} [{runs_str}] {solved_str}")
                 else:
-                    print(f"  {bundle.display_name}: {avg_score:.4f}")
+                    print(f"  {bundle.display_name}: {avg_score:.4f} {solved_str}")
         except Exception as e:
             print(f"  Batch evaluation failed: {e}")
             for bundle in offspring_bundles:
                 bundle.score = -1.0
                 bundle.score_vector = []
+                _log_bundle_eval(bundle, generation=gen)
 
-        population = select_survivors(population, offspring_bundles, population_size)
+        if task_diverse_pop:
+            population = select_survivors_diverse(population, offspring_bundles, population_size, dataset_names)
+        else:
+            population = select_survivors(population, offspring_bundles, population_size)
         best = population[0]
 
         # HPO tuning step
@@ -2047,6 +2634,7 @@ def run_bundle_evolution(
 
         print(f"\nGeneration {gen} complete:")
         print(f"  Evolved: {current_type_name}")
+        print(f"  Pop size: {len(population)}")
         print(f"  Best: {best.display_name} (score: {best.score:.4f})")
         print(f"  Baseline ({metric_label}): {baseline_score:.4f}")
         print(f"  Improvement: {best.score - baseline_score:+.4f}")
@@ -2073,18 +2661,7 @@ def run_bundle_evolution(
     print(f"Baseline ({metric_label}): {baseline_score:.4f}")
     print(f"Improvement: {best.score - baseline_score:+.4f}")
 
-    log_wandb_summary(
-        wandb_run,
-        evaluator=evaluator,
-        extra_summary={
-            "best_score": best.score,
-            "baseline_score": baseline_score,
-            "improvement": best.score - baseline_score,
-        },
-    )
-    finish_wandb(wandb_run)
-
-    return best
+    return best, evaluator, baseline_score
 
 
 # =============================================================================
@@ -2118,7 +2695,7 @@ def main():
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--random_target_noise", action="store_true")
     group.add_argument("--no_random_target_noise", dest="random_target_noise", action="store_false")
-    parser.set_defaults(random_target_noise=True)
+    parser.set_defaults(random_target_noise=False)
 
     parser.add_argument("--max_evals", type=int, default=1000000,
                         help="Maximum evaluations per PySR run (default: 1e6 for mutation, 100000 for survival/selection)")
@@ -2152,6 +2729,15 @@ def main():
 
     parser.add_argument("--output_dir", type=str, default=None)
     parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--task_diverse_pop", action="store_true",
+                        help="Use task-diverse population selection: keep the best solver for each task, "
+                             "allowing population to grow up to #tasks. Requires fitness_metric=gt.")
+    parser.add_argument("--task_aware", action="store_true",
+                        help="Enable task-aware mutation/crossover: when evolving mutations, "
+                             "sometimes pick parents with complementary solved-task sets (crossover) "
+                             "or feed unsolved ground-truth equations to refine (mutation).")
+    parser.add_argument("--task_aware_prob", type=float, default=0.5,
+                        help="Probability of using task-aware variant when --task_aware is set.")
 
     parser.add_argument("--baseline", type=str, default=None,
                         help="Path to a baseline operator to seed the initial population. "
@@ -2170,10 +2756,8 @@ def main():
             if name not in OPERATOR_TYPES:
                 parser.error(f"Unknown operator type: {name}. Choose from: mutation, survival, selection, all")
 
-    if args.output_dir is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        type_label = "+".join(operator_type_names) if len(operator_type_names) > 1 else operator_type_names[0]
-        args.output_dir = f"outputs/evolve_{type_label}_{timestamp}"
+    type_label = "+".join(operator_type_names) if len(operator_type_names) > 1 else operator_type_names[0]
+    args.output_dir = resolve_run_dir(args.output_dir, label=f"evolve_{type_label}")
 
     dataset_names = load_dataset_names_from_split(args.split)
     print(f"Loaded {len(dataset_names)} datasets from {args.split}")
@@ -2216,6 +2800,9 @@ def main():
         julia_project=args.julia_project or str((Path(args.repo_root) / "SymbolicRegression.jl").resolve()),
         python_juliapkg_project=args.python_juliapkg_project,
         julia_depot_path=args.julia_depot_path,
+        task_diverse_pop=args.task_diverse_pop,
+        task_aware=args.task_aware,
+        task_aware_prob=args.task_aware_prob,
     )
 
     # Load baseline if specified
@@ -2253,6 +2840,9 @@ def main():
         "partition": args.partition,
         "baseline": args.baseline,
         "no_cache": args.no_cache,
+        "task_diverse_pop": args.task_diverse_pop,
+        "task_aware": args.task_aware,
+        "task_aware_prob": args.task_aware_prob,
     }
     wandb_run = init_wandb(
         config=wandb_config,
@@ -2261,12 +2851,59 @@ def main():
         extra_tags=operator_type_names,
     )
 
-    best = run_bundle_evolution(
+    best, evaluator, baseline_score = run_bundle_evolution(
         operator_type_names=operator_type_names,
         baseline_bundle=baseline_bundle,
         wandb_run=wandb_run,
         **common_kwargs,
     )
+
+    log_wandb_summary(
+        wandb_run,
+        evaluator=evaluator,
+        extra_summary={
+            "best_score": best.score,
+            "baseline_score": baseline_score,
+            "improvement": best.score - baseline_score,
+        },
+    )
+
+    # Final evaluation on train + val (10 seeds)
+    run_data_path = str(Path(args.output_dir) / "run_data.json")
+    if Path(run_data_path).exists():
+        try:
+            from evaluate_new_pysr import run_final_evaluation
+            # Build noise map matching evolution settings
+            target_noise_map = None
+            if args.random_target_noise:
+                all_splits = ["splits/train.txt", "splits/val.txt"]
+                all_datasets = []
+                for sp in all_splits:
+                    all_datasets.extend(load_dataset_names_from_split(sp))
+                target_noise_map = _build_target_noise_map(
+                    list(dict.fromkeys(all_datasets)), args.seed, TARGET_NOISE_LEVELS,
+                )
+            run_final_evaluation(
+                output_dir=args.output_dir,
+                method_source="evolve",
+                method_path=run_data_path,
+                partition=args.partition,
+                n_runs=10,
+                seed=args.seed,
+                max_samples=args.max_samples,
+                max_evals=args.max_evals,
+                timeout=args.timeout,
+                time_limit=args.time_limit,
+                mem_per_cpu=args.mem_per_cpu,
+                job_timeout=args.job_timeout,
+                use_cache=not args.no_cache,
+                wandb_run=wandb_run,
+                target_noise_map=target_noise_map,
+            )
+        except Exception as e:
+            print(f"\nFinal evaluation failed: {e}")
+
+    finish_wandb(wandb_run)
 
     print(f"\nResults saved to: {args.output_dir}")
     copy_slurm_log(args.output_dir)
