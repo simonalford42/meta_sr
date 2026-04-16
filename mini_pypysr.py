@@ -137,9 +137,9 @@ class EngineConfig:
     nested_constraints: dict[str, dict[str, int]]
 
 
-def _nodes_with_parent(root: Node) -> list[tuple[Node, Node | None, str | None]]:
-    out: list[tuple[Node, Node | None, str | None]] = []
-    stack: list[tuple[Node, Node | None, str | None]] = [(root, None, None)]
+def _nodes_with_parent(root):
+    """Return list of (node, parent, side) tuples for all nodes in tree."""
+    out, stack = [], [(root, None, None)]
     while stack:
         node, parent, side = stack.pop()
         out.append((node, parent, side))
@@ -150,11 +150,11 @@ def _nodes_with_parent(root: Node) -> list[tuple[Node, Node | None, str | None]]
     return out
 
 
-def _leaf_nodes(root: Node) -> list[Node]:
-    return [node for node, _, _ in _nodes_with_parent(root) if node.left is None and node.right is None]
+def _leaf_nodes(root):
+    return [n for n, _, _ in _nodes_with_parent(root) if n.left is None and n.right is None]
 
 
-def _replace_subtree(root: Node, parent: Node | None, side: str | None, subtree: Node) -> Node:
+def _replace_subtree(root, parent, side, subtree):
     if parent is None:
         return subtree
     if side == "left":
@@ -799,13 +799,10 @@ class RegularizedEvolutionEngine:
     def _simplify_tree(self, tree: Node) -> Node:
         tree = tree.copy()
         for node, _, _ in _nodes_with_parent(tree):
-            if node.left is None or node.right is None:
-                continue
-            if not isinstance(node.left.value, (int, float)):
-                continue
-            if not isinstance(node.right.value, (int, float)):
-                continue
-            if node.value not in FUNCTION_SET:
+            if (node.left is None or node.right is None
+                    or not isinstance(node.left.value, (int, float))
+                    or not isinstance(node.right.value, (int, float))
+                    or node.value not in FUNCTION_SET):
                 continue
             func, arity = FUNCTION_SET[node.value]
             if arity != 2:
@@ -816,8 +813,7 @@ class RegularizedEvolutionEngine:
                 continue
             if np.isfinite(out):
                 node.value = float(np.clip(out, -1e6, 1e6))
-                node.left = None
-                node.right = None
+                node.left = node.right = None
         return tree
 
     def _initialize_population(self) -> list[Individual]:
