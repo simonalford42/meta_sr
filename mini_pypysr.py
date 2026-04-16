@@ -648,19 +648,7 @@ class RegularizedEvolutionEngine:
         )
 
     def _valid_tree(self, tree: Node) -> bool:
-        if tree.size() > self.cfg.maxsize:
-            return False
-        if tree.height() > self.cfg.maxdepth:
-            return False
-        if not self._check_constraints(tree):
-            return False
-        return True
-
-    def _count_op(self, node: Node | None, op_name: str) -> int:
-        if node is None:
-            return 0
-        here = 1 if node.value == op_name else 0
-        return here + self._count_op(node.left, op_name) + self._count_op(node.right, op_name)
+        return tree.size() <= self.cfg.maxsize and tree.height() <= self.cfg.maxdepth and self._check_constraints(tree)
 
     def _max_nestedness(self, node: Node | None, op_name: str) -> int:
         if node is None:
