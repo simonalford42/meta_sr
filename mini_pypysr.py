@@ -205,7 +205,7 @@ def _oldest_survival(
 ) -> int:
     candidates = [i for i in range(len(population)) if i not in exclude_indices]
     if not candidates:
-        return int(rng.randint(0, len(population)))
+        return rng.randint(0, len(population))
     return int(min(candidates, key=lambda i: population[i].birth))
 
 
@@ -267,7 +267,7 @@ def _sample_mutation_choice(
     if weights.sum() <= 0:
         return "do_nothing"
     weights /= weights.sum()
-    return str(rng.choice(names, p=weights))
+    return rng.choice(names, p=weights)
 
 
 def _default_mutation(
@@ -283,14 +283,14 @@ def _default_mutation(
     if forced_mutation is None:
         mutation = _sample_mutation_choice(engine, tree, rng)
     else:
-        mutation = str(forced_mutation)
+        mutation = forced_mutation
 
     if mutation == "do_nothing":
         return tree
 
     if mutation == "mutate_constant":
         if constants:
-            node = constants[int(rng.randint(0, len(constants)))]
+            node = constants[rng.randint(0, len(constants))]
             temperature = float(np.clip(getattr(engine, "_current_temperature", 1.0), 0.0, 1.0))
             bottom = 0.1
             max_change = engine.cfg.perturbation_factor * temperature + 1.0 + bottom
@@ -305,40 +305,36 @@ def _default_mutation(
     if mutation == "mutate_feature":
         vars_only = [n for n in leaves if isinstance(n.value, str) and n.value.startswith("x")]
         if vars_only:
-            node = vars_only[int(rng.randint(0, len(vars_only)))]
-            cur = None
-            try:
-                cur = int(str(node.value)[1:])
-            except Exception:
-                cur = None
-            if engine.n_features > 1 and cur is not None:
+            node = vars_only[rng.randint(0, len(vars_only))]
+            cur = int(node.value[1:])
+            if engine.n_features > 1:
                 choices = [i for i in range(engine.n_features) if i != cur]
-                node.value = f"x{int(rng.choice(choices))}"
+                node.value = f"x{rng.choice(choices)}"
             else:
-                node.value = f"x{int(rng.randint(0, engine.n_features))}"
+                node.value = f"x{rng.randint(0, engine.n_features)}"
         return tree
 
     if mutation == "mutate_operator":
         op_nodes = [n for n, _, _ in nodes if n.left is not None]
         if op_nodes:
-            node = op_nodes[int(rng.randint(0, len(op_nodes)))]
+            node = op_nodes[rng.randint(0, len(op_nodes))]
             if node.right is None and engine.unary_ops:
-                node.value = str(rng.choice(engine.unary_ops))
+                node.value = rng.choice(engine.unary_ops)
             elif node.right is not None and engine.binary_ops:
-                node.value = str(rng.choice(engine.binary_ops))
+                node.value = rng.choice(engine.binary_ops)
         return tree
 
     if mutation == "swap_operands":
         binary_nodes = [n for n, _, _ in nodes if n.left is not None and n.right is not None]
         if binary_nodes:
-            node = binary_nodes[int(rng.randint(0, len(binary_nodes)))]
+            node = binary_nodes[rng.randint(0, len(binary_nodes))]
             node.left, node.right = node.right, node.left
         return tree
 
     if mutation == "delete_node":
         deletable = [(n, p, s) for n, p, s in nodes if (n.left is not None or n.right is not None)]
         if deletable:
-            node, parent, side = deletable[int(rng.randint(0, len(deletable)))]
+            node, parent, side = deletable[rng.randint(0, len(deletable))]
             if node.right is None:
                 repl = node.left.copy() if node.left is not None else engine.random_terminal()
             elif node.left is None:
@@ -360,8 +356,8 @@ def _default_mutation(
                 valid.append((node, parent, side, pivot_sides))
 
         if valid:
-            node, parent, side, pivot_sides = valid[int(rng.randint(0, len(valid)))]
-            pivot_side = pivot_sides[int(rng.randint(0, len(pivot_sides)))]
+            node, parent, side, pivot_sides = valid[rng.randint(0, len(valid))]
+            pivot_side = pivot_sides[rng.randint(0, len(pivot_sides))]
             pivot = node.left if pivot_side == "left" else node.right
             if pivot is not None:
                 grand_sides: list[str] = []
@@ -370,7 +366,7 @@ def _default_mutation(
                 if pivot.right is not None:
                     grand_sides.append("right")
                 if grand_sides:
-                    grand_side = grand_sides[int(rng.randint(0, len(grand_sides)))]
+                    grand_side = grand_sides[rng.randint(0, len(grand_sides))]
                     grand_child = pivot.left if grand_side == "left" else pivot.right
                     if pivot_side == "left":
                         node.left = grand_child
@@ -395,13 +391,13 @@ def _default_mutation(
         return tree
 
     if mutation == "randomize":
-        target_size = int(rng.randint(1, max(2, engine.cfg.maxsize + 1)))
+        target_size = rng.randint(1, max(2, engine.cfg.maxsize + 1))
         return engine.random_tree_fixed_size(target_size, rng=rng)
 
     if mutation in {"custom_mutation_1", "custom_mutation_2", "custom_mutation_3", "custom_mutation_4", "custom_mutation_5"}:
-        target, parent, side = nodes[int(rng.randint(0, len(nodes)))]
+        target, parent, side = nodes[rng.randint(0, len(nodes))]
         if engine.binary_ops:
-            op = str(rng.choice(engine.binary_ops))
+            op = rng.choice(engine.binary_ops)
             other = engine.random_terminal()
             if rng.rand() < 0.5:
                 wrapped = Node(op, target.copy(), other)
@@ -423,8 +419,8 @@ def _default_crossover(
     t2 = parent2.copy()
     n1 = _nodes_with_parent(t1)
     n2 = _nodes_with_parent(t2)
-    node1, p1, s1 = n1[int(rng.randint(0, len(n1)))]
-    node2, p2, s2 = n2[int(rng.randint(0, len(n2)))]
+    node1, p1, s1 = n1[rng.randint(0, len(n1))]
+    node2, p2, s2 = n2[rng.randint(0, len(n2))]
     rep1 = node2.copy()
     rep2 = node1.copy()
     t1 = _replace_subtree(t1, p1, s1, rep1)
@@ -452,8 +448,8 @@ def _default_migration(
             return
         n = min(n, len(target))
         for _ in range(n):
-            dst = int(rng.randint(0, len(target)))
-            src = candidates[int(rng.randint(0, len(candidates)))].copy()
+            dst = rng.randint(0, len(target))
+            src = candidates[rng.randint(0, len(candidates))].copy()
             src.birth = engine.next_birth()
             src.ref = engine.next_ref()
             target[dst] = src
@@ -528,7 +524,7 @@ class RegularizedEvolutionEngine:
 
     def random_terminal(self) -> Node:
         if self.rng.rand() < 0.5:
-            return Node(f"x{int(self.rng.randint(0, self.n_features))}")
+            return Node(f"x{self.rng.randint(0, self.n_features)}")
         if self.cfg.constants:
             return Node(float(self.rng.choice(self.cfg.constants)))
         return Node(float(self.rng.normal()))
@@ -556,8 +552,8 @@ class RegularizedEvolutionEngine:
     def _sample_operator(self, arity: int, rng: np.random.RandomState | None = None) -> str:
         rng = rng or self.rng
         if arity == 1:
-            return str(rng.choice(self.unary_ops))
-        return str(rng.choice(self.binary_ops))
+            return rng.choice(self.unary_ops)
+        return rng.choice(self.binary_ops)
 
     def append_random_op(
         self,
@@ -570,7 +566,7 @@ class RegularizedEvolutionEngine:
         leaves = [(n, p, s) for n, p, s in _nodes_with_parent(tree) if n.left is None and n.right is None]
         if not leaves:
             return tree
-        _, parent, side = leaves[int(rng.randint(0, len(leaves)))]
+        _, parent, side = leaves[rng.randint(0, len(leaves))]
         picked_arity = int(arity if arity is not None else self._sample_operator_arity(max_added_nodes=None, rng=rng))
         if picked_arity <= 0:
             return tree
@@ -600,7 +596,7 @@ class RegularizedEvolutionEngine:
         nodes = _nodes_with_parent(tree)
         if not nodes:
             return tree
-        target, parent, side = nodes[int(rng.randint(0, len(nodes)))]
+        target, parent, side = nodes[rng.randint(0, len(nodes))]
         arity = self._sample_operator_arity(max_added_nodes=None, rng=rng)
         if arity <= 0:
             return tree
@@ -638,9 +634,9 @@ class RegularizedEvolutionEngine:
         if not full and depth > 0 and self.rng.rand() < 0.3:
             return self.random_terminal()
         if self.unary_ops and self.rng.rand() < 0.25:
-            op = str(self.rng.choice(self.unary_ops))
+            op = self.rng.choice(self.unary_ops)
             return Node(op, self.random_tree(max_depth, full, depth + 1), None)
-        op = str(self.rng.choice(self.binary_ops))
+        op = self.rng.choice(self.binary_ops)
         return Node(
             op,
             self.random_tree(max_depth, full, depth + 1),
