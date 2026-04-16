@@ -9,7 +9,7 @@ can be swapped out easily.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 import math
 import re
 
@@ -1181,17 +1181,12 @@ class PyPySRRegressor:
         optimizer_iterations: int = 8,
         optimizer_nrestarts: int = 2,
         optimizer_f_calls_limit: int | None = None,
-        random_state: int | np.random.RandomState | None = None,
-        verbosity: int = 1,
-        progress: bool = True,
-        output_directory: str | None = None,
-        # Operator hooks for easy experimentation:
+        random_state: int = 0,
         selection_operator: SelectionOperator | None = None,
         survival_operator: SurvivalOperator | None = None,
         mutation_operator: MutationOperator | None = None,
         crossover_operator: CrossoverOperator | None = None,
         migration_operator: MigrationOperator | None = None,
-        # Mutation weights:
         weight_add_node: float = 2.47,
         weight_insert_node: float = 0.0112,
         weight_delete_node: float = 0.87,
@@ -1209,7 +1204,6 @@ class PyPySRRegressor:
         weight_custom_mutation_3: float = 0.0,
         weight_custom_mutation_4: float = 0.0,
         weight_custom_mutation_5: float = 0.0,
-        **kwargs: Any,
     ) -> None:
         self.model_selection = model_selection
         self.binary_operators = binary_operators
@@ -1247,9 +1241,6 @@ class PyPySRRegressor:
         self.optimizer_nrestarts = optimizer_nrestarts
         self.optimizer_f_calls_limit = optimizer_f_calls_limit
         self.random_state = random_state
-        self.verbosity = verbosity
-        self.progress = progress
-        self.output_directory = output_directory
 
         self.selection_operator = selection_operator or _tournament_select
         self.survival_operator = survival_operator or _oldest_survival
@@ -1293,49 +1284,42 @@ class PyPySRRegressor:
         variable_names = list(variable_names)
 
         rng = np.random.RandomState(int(self.random_state))
-        binary_ops = list(self.binary_operators)
-        unary_ops = list(self.unary_operators)
-        maxdepth = int(self.maxdepth if self.maxdepth is not None else max(3, min(int(self.maxsize), 16)))
-        constants: list[float] = []
+        maxdepth = self.maxdepth if self.maxdepth is not None else min(self.maxsize, 16)
 
         cfg = EngineConfig(
-            population_size=max(4, int(self.population_size)),
-            populations=max(1, int(self.populations)),
-            niterations=max(1, int(self.niterations)),
-            ncycles_per_iteration=max(1, int(self.ncycles_per_iteration)),
-            maxsize=max(2, int(self.maxsize)),
-            maxdepth=max(2, maxdepth),
-            max_evals=(None if self.max_evals is None else int(self.max_evals)),
-            parsimony=float(self.parsimony),
-            tournament_selection_n=max(2, int(self.tournament_selection_n)),
-            tournament_selection_p=float(self.tournament_selection_p),
-            crossover_probability=float(self.crossover_probability),
-            skip_mutation_failures=bool(self.skip_mutation_failures),
-            use_frequency=bool(self.use_frequency),
-            use_frequency_in_tournament=bool(self.use_frequency_in_tournament),
-            adaptive_parsimony_scaling=float(self.adaptive_parsimony_scaling),
-            annealing=bool(self.annealing),
-            alpha=float(self.alpha),
-            perturbation_factor=float(self.perturbation_factor),
-            probability_negate_constant=float(self.probability_negate_constant),
-            migration=bool(self.migration),
-            hof_migration=bool(self.hof_migration),
-            fraction_replaced=float(self.fraction_replaced),
-            fraction_replaced_hof=float(self.fraction_replaced_hof),
-            topn=max(1, int(self.topn)),
-            should_optimize_constants=bool(self.should_optimize_constants),
-            optimize_probability=float(self.optimize_probability),
-            optimizer_iterations=max(1, int(self.optimizer_iterations)),
-            optimizer_nrestarts=max(1, int(self.optimizer_nrestarts)),
-            optimizer_f_calls_limit=(
-                10_000
-                if self.optimizer_f_calls_limit is None
-                else max(1, int(self.optimizer_f_calls_limit))
-            ),
-            should_simplify=bool(self.should_simplify),
-            binary_operators=binary_ops,
-            unary_operators=unary_ops,
-            constants=constants,
+            population_size=self.population_size,
+            populations=self.populations,
+            niterations=self.niterations,
+            ncycles_per_iteration=self.ncycles_per_iteration,
+            maxsize=self.maxsize,
+            maxdepth=maxdepth,
+            max_evals=self.max_evals,
+            parsimony=self.parsimony,
+            tournament_selection_n=self.tournament_selection_n,
+            tournament_selection_p=self.tournament_selection_p,
+            crossover_probability=self.crossover_probability,
+            skip_mutation_failures=self.skip_mutation_failures,
+            use_frequency=self.use_frequency,
+            use_frequency_in_tournament=self.use_frequency_in_tournament,
+            adaptive_parsimony_scaling=self.adaptive_parsimony_scaling,
+            annealing=self.annealing,
+            alpha=self.alpha,
+            perturbation_factor=self.perturbation_factor,
+            probability_negate_constant=self.probability_negate_constant,
+            migration=self.migration,
+            hof_migration=self.hof_migration,
+            fraction_replaced=self.fraction_replaced,
+            fraction_replaced_hof=self.fraction_replaced_hof,
+            topn=self.topn,
+            should_optimize_constants=self.should_optimize_constants,
+            optimize_probability=self.optimize_probability,
+            optimizer_iterations=self.optimizer_iterations,
+            optimizer_nrestarts=self.optimizer_nrestarts,
+            optimizer_f_calls_limit=self.optimizer_f_calls_limit if self.optimizer_f_calls_limit is not None else 10_000,
+            should_simplify=self.should_simplify,
+            binary_operators=list(self.binary_operators),
+            unary_operators=list(self.unary_operators),
+            constants=[],
             mutation_weights=dict(self.mutation_weights),
             constraints=dict(self.constraints or {}),
             nested_constraints=dict(self.nested_constraints or {}),
