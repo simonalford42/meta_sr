@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Sequence
 import math
 
 import numpy as np
@@ -171,30 +171,24 @@ def _tournament_select(
     rng: np.random.RandomState,
 ) -> int:
     n = len(population)
-    k = min(max(cfg.tournament_selection_n, 1), n)
+    k = min(cfg.tournament_selection_n, n)
     candidate_idx = rng.choice(n, size=k, replace=False)
-    adjusted_costs: list[float] = []
+    adjusted_costs = []
     for idx in candidate_idx:
-        m = population[int(idx)]
-        cost = float(m.cost)
+        m = population[idx]
+        cost = m.cost
         if cfg.use_frequency_in_tournament and 1 <= m.complexity <= cfg.maxsize:
-            freq = float(stats.normalized_frequencies[m.complexity - 1])
-            exponent = np.clip(cfg.adaptive_parsimony_scaling * freq, -50.0, 50.0)
-            cost *= float(np.exp(exponent))
+            freq = stats.normalized_frequencies[m.complexity - 1]
+            cost *= np.exp(np.clip(cfg.adaptive_parsimony_scaling * freq, -50.0, 50.0))
         adjusted_costs.append(cost)
-    order = np.argsort(np.asarray(adjusted_costs))
-    p = float(cfg.tournament_selection_p)
+    order = np.argsort(adjusted_costs)
+    p = cfg.tournament_selection_p
     if p >= 1.0:
-        chosen_local = int(order[0])
-    else:
-        weights = np.array([p * ((1 - p) ** i) for i in range(k)], dtype=float)
-        if weights.sum() <= 0:
-            weights = np.ones(k, dtype=float) / k
-        else:
-            weights /= weights.sum()
-        place = int(rng.choice(np.arange(k), p=weights))
-        chosen_local = int(order[place])
-    return int(candidate_idx[chosen_local])
+        return int(candidate_idx[order[0]])
+    weights = np.array([p * ((1 - p) ** i) for i in range(k)])
+    weights /= weights.sum()
+    place = rng.choice(k, p=weights)
+    return int(candidate_idx[order[place]])
 
 
 def _oldest_survival(
@@ -755,10 +749,10 @@ class RegularizedEvolutionEngine:
         if self.cfg.use_frequency:
             old_size = min(max(parent.complexity, 1), self.cfg.maxsize) - 1
             new_size = min(max(child.complexity, 1), self.cfg.maxsize) - 1
-            old_f = float(stats.normalized_frequencies[old_size])
-            new_f = float(stats.normalized_frequencies[new_size])
+            old_f = stats.normalized_frequencies[old_size]
+            new_f = stats.normalized_frequencies[new_size]
             prob *= old_f / max(new_f, 1e-12)
-        prob = float(np.clip(prob, 0.0, 1e6))
+        prob = min(prob, 1e6)
         if prob >= 1.0:
             return True
         return self.rng.rand() < prob
@@ -1009,7 +1003,7 @@ class RegularizedEvolutionEngine:
             s = stats[j]
             s.normalize()
             if self.cfg.annealing and self.cfg.ncycles_per_iteration > 1:
-                temps: Iterable[float] = np.linspace(1.0, 0.0, self.cfg.ncycles_per_iteration)
+                temps = np.linspace(1.0, 0.0, self.cfg.ncycles_per_iteration)
             else:
                 temps = [1.0] * max(1, self.cfg.ncycles_per_iteration)
             for temp in temps:
