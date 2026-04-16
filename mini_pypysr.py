@@ -1279,50 +1279,22 @@ class PyPySRRegressor:
 
         self.equations_ = None
 
-    def _make_rng(self) -> np.random.RandomState:
-        if isinstance(self.random_state, np.random.RandomState):
-            return np.random.RandomState(self.random_state.randint(0, 2**31 - 1))
-        if self.random_state is None:
-            return np.random.RandomState()
-        return np.random.RandomState(int(self.random_state))
-
-    def _supported_ops(self, ops: Sequence[str] | None, arity: int) -> list[str]:
-        requested = list(ops or [])
-        supported = [op for op in requested if op in FUNCTION_SET and FUNCTION_SET[op][1] == arity]
-        if not supported:
-            if arity == 2:
-                supported = ["+", "-", "*", "/"]
-            else:
-                supported = ["sin", "cos", "exp", "log", "sqrt", "square"]
-            supported = [op for op in supported if op in FUNCTION_SET]
-        dropped = sorted(set(requested) - set(supported))
-        if dropped and self.verbosity > 0:
-            print(f"[PySR-Python] Ignoring unsupported operators: {dropped}")
-        return supported
-
     def fit(
         self,
         X: np.ndarray,
         y: np.ndarray,
         *,
         variable_names: Sequence[str] | None = None,
-        **kwargs: Any,
-    ) -> "PySRRegressor":
+    ) -> "PyPySRRegressor":
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=float).reshape(-1)
-        if X.ndim != 2:
-            raise ValueError("X must be 2D")
-        if y.shape[0] != X.shape[0]:
-            raise ValueError("X and y length mismatch")
         if variable_names is None:
             variable_names = [f"x{i}" for i in range(X.shape[1])]
         variable_names = list(variable_names)
-        if len(variable_names) != X.shape[1]:
-            raise ValueError("Length of variable_names must match number of columns in X")
 
-        rng = self._make_rng()
-        binary_ops = self._supported_ops(self.binary_operators, arity=2)
-        unary_ops = self._supported_ops(self.unary_operators, arity=1)
+        rng = np.random.RandomState(int(self.random_state))
+        binary_ops = list(self.binary_operators)
+        unary_ops = list(self.unary_operators)
         maxdepth = int(self.maxdepth if self.maxdepth is not None else max(3, min(int(self.maxsize), 16)))
         constants: list[float] = []
 
