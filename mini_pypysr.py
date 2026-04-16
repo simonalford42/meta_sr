@@ -745,81 +745,56 @@ class RegularizedEvolutionEngine:
             return True
         return self.rng.rand() < prob
 
-    def _optimize_constants(
-        self, member: Individual
-    ) -> tuple[Individual, int]:
+    def _optimize_constants(self, member: Individual) -> tuple[Individual, int]:
         constants = [n for n in _leaf_nodes(member.tree) if isinstance(n.value, (int, float))]
         if not constants:
             return member, 0
         budget = self.budget_remaining()
         if budget is not None and budget <= 1:
             return member, 0
-        initial = np.array([float(n.value) for n in constants], dtype=float)
-        best_tree = member.tree.copy()
-        best_loss = float(member.loss)
-        improved = False
-        evals_before = self.eval_count
-        maxfun = self.cfg.optimizer_f_calls_limit
+        maxfun = self.cfg.optimizer_f_calls_limit or 10_000
         if budget is not None:
-            if maxfun is None:
-                maxfun = budget
-            else:
-                maxfun = min(maxfun, budget)
-        if maxfun is None or maxfun <= 0:
-            return member, 0
+            maxfun = min(maxfun, budget)
 
-        def _set_values(tree: Node, vals: np.ndarray) -> None:
-            nodes = [n for n in _leaf_nodes(tree) if isinstance(n.value, (int, float))]
-            for i, node in enumerate(nodes):
-                node.value = float(vals[i])
+        initial = np.array([float(n.value) for n in constants])
+        best_tree, best_loss = member.tree.copy(), member.loss
+        evals_before = self.eval_count
 
-        def _obj(vals: np.ndarray) -> float:
+        def _set_constants(tree, vals):
+            for node, v in zip((n for n in _leaf_nodes(tree) if isinstance(n.value, (int, float))), vals):
+                node.value = float(v)
+
+        def _obj(vals):
             if not self.has_budget():
                 return 1e30
             trial = member.tree.copy()
-            _set_values(trial, vals)
+            _set_constants(trial, vals)
             scored = self.evaluate_tree(trial)
-            if scored is None:
-                return 1e30
-            loss, _, _ = scored
-            return float(loss)
+            return scored[0] if scored else 1e30
 
-        starts = [initial]
-        for _ in range(max(0, self.cfg.optimizer_nrestarts - 1)):
-            starts.append(initial * (1.0 + 0.5 * self.rng.normal(size=len(initial))))
+        starts = [initial] + [initial * (1.0 + 0.5 * self.rng.normal(size=len(initial)))
+                               for _ in range(self.cfg.optimizer_nrestarts - 1)]
         for x0 in starts:
             if not self.has_budget():
                 break
             try:
-                res = minimize(
-                    _obj,
-                    x0,
-                    method="L-BFGS-B",
-                    options={"maxiter": int(max(1, self.cfg.optimizer_iterations)), "maxfun": int(maxfun)},
-                )
+                res = minimize(_obj, x0, method="L-BFGS-B",
+                               options={"maxiter": self.cfg.optimizer_iterations, "maxfun": maxfun})
             except Exception:
                 continue
-            if res is not None and np.isfinite(float(res.fun)) and float(res.fun) < best_loss:
+            if res is not None and np.isfinite(res.fun) and res.fun < best_loss:
                 trial = member.tree.copy()
-                _set_values(trial, np.asarray(res.x))
-                best_tree = trial
-                best_loss = float(res.fun)
-                improved = True
-        new_member = member
-        if improved:
+                _set_constants(trial, res.x)
+                best_tree, best_loss = trial, float(res.fun)
+
+        if best_loss < member.loss:
             scored = self.evaluate_tree(best_tree)
-            if scored is not None:
+            if scored:
                 loss, cost, complexity = scored
-                new_member = Individual(
-                    tree=best_tree,
-                    loss=loss,
-                    cost=cost,
-                    complexity=complexity,
-                    birth=self.next_birth(),
-                    ref=self.next_ref(),
-                    parent_ref=member.ref,
-                )
-        return new_member, self.eval_count - evals_before
+                return Individual(tree=best_tree, loss=loss, cost=cost, complexity=complexity,
+                                  birth=self.next_birth(), ref=self.next_ref(),
+                                  parent_ref=member.ref), self.eval_count - evals_before
+        return member, self.eval_count - evals_before
 
     def _simplify_tree(self, tree: Node) -> Node:
         tree = tree.copy()
