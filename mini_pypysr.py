@@ -41,12 +41,12 @@ class Individual:
     def copy(self) -> "Individual":
         return Individual(
             tree=self.tree.copy(),
-            loss=float(self.loss),
-            cost=float(self.cost),
-            complexity=int(self.complexity),
-            birth=int(self.birth),
-            ref=int(self.ref),
-            parent_ref=int(self.parent_ref),
+            loss=self.loss,
+            cost=self.cost,
+            complexity=self.complexity,
+            birth=self.birth,
+            ref=self.ref,
+            parent_ref=self.parent_ref,
         )
 
 
@@ -719,16 +719,13 @@ class RegularizedEvolutionEngine:
             pred = tree.evaluate(self.X)
         if pred.shape[0] != self.y.shape[0]:
             return (float("inf"), float("inf"), tree.size())
-        finite = np.isfinite(pred)
-        finite &= np.abs(pred) < 1e12
-        if not bool(np.all(finite)):
+        if not np.all(np.isfinite(pred) & (np.abs(pred) < 1e12)):
             return (float("inf"), float("inf"), tree.size())
         mse = float(np.mean((self.y - pred) ** 2))
-        complexity = int(tree.size())
-        cost = float((mse / self.loss_normalization) + self.cfg.parsimony * complexity)
+        complexity = tree.size()
+        cost = (mse / self.loss_normalization) + self.cfg.parsimony * complexity
         if not np.isfinite(cost):
-            cost = float("inf")
-            mse = float("inf")
+            return (float("inf"), float("inf"), complexity)
         return (mse, cost, complexity)
 
     def create_individual(self, tree: Node, parent_ref: int = -1) -> Individual | None:
@@ -749,12 +746,12 @@ class RegularizedEvolutionEngine:
     def spawn_from_existing(self, member: Individual, parent_ref: int | None = None) -> Individual:
         return Individual(
             tree=member.tree.copy(),
-            loss=float(member.loss),
-            cost=float(member.cost),
-            complexity=int(member.complexity),
+            loss=member.loss,
+            cost=member.cost,
+            complexity=member.complexity,
             birth=self.next_birth(),
             ref=self.next_ref(),
-            parent_ref=int(member.ref if parent_ref is None else parent_ref),
+            parent_ref=member.ref if parent_ref is None else parent_ref,
         )
 
     def _accept_candidate(
@@ -988,15 +985,15 @@ class RegularizedEvolutionEngine:
             if self.cfg.should_simplify:
                 simplified = self._simplify_tree(member.tree)
                 if self._valid_tree(simplified):
-                    new_complexity = int(simplified.size())
+                    new_complexity = simplified.size()
                     member = Individual(
                         tree=simplified,
-                        loss=float(member.loss),
-                        cost=float((member.loss / self.loss_normalization) + self.cfg.parsimony * new_complexity),
+                        loss=member.loss,
+                        cost=(member.loss / self.loss_normalization) + self.cfg.parsimony * new_complexity,
                         complexity=new_complexity,
-                        birth=int(member.birth),
-                        ref=int(member.ref),
-                        parent_ref=int(member.parent_ref),
+                        birth=member.birth,
+                        ref=member.ref,
+                        parent_ref=member.parent_ref,
                     )
             if self.cfg.should_optimize_constants and self.rng.rand() < self.cfg.optimize_probability:
                 member, _ = self._optimize_constants(member)
