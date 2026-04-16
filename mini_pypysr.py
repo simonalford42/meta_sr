@@ -209,46 +209,34 @@ def _conditioned_mutation_weights(
 ) -> tuple[list[str], dict[str, float]]:
     nodes = _nodes_with_parent(tree)
     leaves = _leaf_nodes(tree)
-    constants = [n for n in leaves if isinstance(n.value, (int, float))]
+    n_constants = sum(1 for n in leaves if isinstance(n.value, (int, float)))
 
     names = list(engine.cfg.mutation_weights.keys())
-    weight_map = {n: max(0.0, float(engine.cfg.mutation_weights[n])) for n in names}
+    w = {n: max(0.0, engine.cfg.mutation_weights[n]) for n in names}
 
     is_leaf = tree.left is None and tree.right is None
     if is_leaf:
-        for k in ("mutate_operator", "swap_operands", "delete_node", "simplify"):
-            if k in weight_map:
-                weight_map[k] = 0.0
+        w["mutate_operator"] = w["swap_operands"] = w["delete_node"] = w["simplify"] = 0.0
         if isinstance(tree.value, str) and tree.value.startswith("x"):
-            if "optimize" in weight_map:
-                weight_map["optimize"] = 0.0
-            if "mutate_constant" in weight_map:
-                weight_map["mutate_constant"] = 0.0
+            w["optimize"] = w["mutate_constant"] = 0.0
         else:
-            if "mutate_feature" in weight_map:
-                weight_map["mutate_feature"] = 0.0
+            w["mutate_feature"] = 0.0
 
     if not any(n.left is not None and n.right is not None for n, _, _ in nodes):
-        if "swap_operands" in weight_map:
-            weight_map["swap_operands"] = 0.0
+        w["swap_operands"] = 0.0
 
-    if "mutate_constant" in weight_map:
-        n_constants = len(constants)
-        weight_map["mutate_constant"] *= min(8, n_constants) / 8.0
+    w["mutate_constant"] *= min(8, n_constants) / 8.0
 
-    if engine.n_features <= 1 and "mutate_feature" in weight_map:
-        weight_map["mutate_feature"] = 0.0
+    if engine.n_features <= 1:
+        w["mutate_feature"] = 0.0
 
     if tree.size() >= engine.cfg.maxsize:
-        if "add_node" in weight_map:
-            weight_map["add_node"] = 0.0
-        if "insert_node" in weight_map:
-            weight_map["insert_node"] = 0.0
+        w["add_node"] = w["insert_node"] = 0.0
 
-    if not engine.cfg.should_simplify and "simplify" in weight_map:
-        weight_map["simplify"] = 0.0
+    if not engine.cfg.should_simplify:
+        w["simplify"] = 0.0
 
-    return names, weight_map
+    return names, w
 
 
 def _sample_mutation_choice(
@@ -256,12 +244,12 @@ def _sample_mutation_choice(
     tree: Node,
     rng: np.random.RandomState,
 ) -> str:
-    names, weight_map = _conditioned_mutation_weights(engine, tree)
-    weights = np.array([weight_map[n] for n in names], dtype=float)
-    if weights.sum() <= 0:
+    names, w = _conditioned_mutation_weights(engine, tree)
+    weights = np.array([w[n] for n in names])
+    total = weights.sum()
+    if total <= 0:
         return "do_nothing"
-    weights /= weights.sum()
-    return rng.choice(names, p=weights)
+    return rng.choice(names, p=weights / total)
 
 
 def _default_mutation(
