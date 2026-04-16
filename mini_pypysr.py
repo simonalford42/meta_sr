@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Iterable, Sequence
 import math
-import re
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
 from operators import FUNCTION_SET, Node
+from mini_pypysr_utils import node_to_equation, calculate_scores, idx_model_selection
 
 
 SelectionOperator = Callable[
@@ -1062,56 +1062,6 @@ def calculate_pareto_frontier_from_dict(hof_by_complexity: dict[int, Individual]
     return dominating
 
 
-def _node_to_equation(tree: Node, variable_names: Sequence[str] | None) -> str:
-    expr = str(tree)
-    if not variable_names:
-        return expr
-    out = expr
-    for i in sorted(range(len(variable_names)), key=lambda x: -x):
-        name = variable_names[i]
-        out = re.sub(rf"\bx{i}\b", name, out)
-    return out
-
-
-def calculate_scores(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate PySR-style incremental frontier scores."""
-    scores: list[float] = []
-    last_loss = None
-    last_complexity = 0
-    for _, row in df.iterrows():
-        cur_loss = float(row["loss"])
-        cur_complexity = int(row["complexity"])
-        if last_loss is None:
-            score = 0.0
-        else:
-            delta_c = max(1, cur_complexity - last_complexity)
-            if cur_loss <= 0 or last_loss <= 0:
-                score = float("inf")
-            else:
-                score = max(0.0, float(-np.log(cur_loss / last_loss) / delta_c))
-        scores.append(float(score))
-        last_loss = cur_loss
-        last_complexity = cur_complexity
-    out = df.copy()
-    out["score"] = scores
-    return out
-
-
-def idx_model_selection(equations: pd.DataFrame, model_selection: str):
-    """Select an expression index using PySR-compatible policy."""
-    if "score" not in equations.columns:
-        model_selection = "accuracy"
-    if model_selection == "accuracy":
-        return equations["loss"].idxmin()
-    if model_selection == "best":
-        threshold = 1.5 * float(equations["loss"].min())
-        filtered = equations.query(f"loss <= {threshold}")
-        return filtered["score"].idxmax()
-    if model_selection == "score":
-        return equations["score"].idxmax()
-    raise NotImplementedError(f"{model_selection} is not a valid model selection strategy.")
-
-
 class PyPySRRegressor:
     """Pure Python symbolic regression regressor (PyPySR)."""
 
@@ -1315,7 +1265,7 @@ class PyPySRRegressor:
 
         rows = []
         for m in sorted(dominating, key=lambda z: z.complexity):
-            eqn = _node_to_equation(m.tree, variable_names)
+            eqn = node_to_equation(m.tree, variable_names)
             rows.append(
                 {
                     "complexity": int(m.complexity),
