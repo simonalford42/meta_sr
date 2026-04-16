@@ -1023,7 +1023,7 @@ def main():
     parser.set_defaults(random_target_noise=True)
 
     # PySR settings
-    parser.add_argument("--max_evals", type=int, default=1e6,
+    parser.add_argument("--max_evals", type=int, default=1_000_000,
                         help="Maximum evaluations per PySR run")
     parser.add_argument("--timeout", type=int, default=3000,
                         help="PySR timeout in seconds")
@@ -1063,7 +1063,7 @@ def main():
 
     # Set up PySR kwargs
     pysr_kwargs = get_default_pysr_kwargs()
-    pysr_kwargs["max_evals"] = args.max_evals
+    pysr_kwargs["max_evals"] = int(args.max_evals)
     pysr_kwargs["timeout_in_seconds"] = args.timeout
 
     # Run evolution

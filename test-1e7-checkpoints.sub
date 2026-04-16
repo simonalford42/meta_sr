@@ -4,10 +4,10 @@
 #SBATCH -e test_file_1e7_checkpoints_%j.err                  # error log file (%j expands to jobID)
 #SBATCH -N 8                                 # Total number of nodes requested
 #SBATCH -n 8                                 # Total number of cores requested
-#SBATCH --cpus-per-task=8                   # Total number of cores requested per task
-#SBATCH --mem=16000                           # server memory requested in MB (per node)
+#SBATCH --cpus-per-task=8                  # Total number of cores requested per task
+#SBATCH --mem=64000                           # server memory requested in MB (per node)
 #SBATCH --get-user-env                       # retrieve the users login environment
-#SBATCH -t 10:00:00                           # Time limit (hh:mm:ss)
+#SBATCH -t 48:00:00                           # Time limit (hh:mm:ss)
 #SBATCH --partition=default_partition        # Request partition
 
 python -u run_sr_all_srbench_1e7_checkpoints.py

@@ -1,2 +1,0 @@
-/var/spool/slurmd/job717478/slurm_script: line 13: 3030090 Killed                  python -u run_sr_all_srbench_1e7_checkpoints.py
-[2026-03-23T02:32:28.536] error: Detected 1 oom_kill event in StepId=717478.batch. Some of the step tasks have been OOM Killed.
