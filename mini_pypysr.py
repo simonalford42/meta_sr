@@ -1,11 +1,3 @@
-"""Pure-Python subset implementation of the PySR API.
-
-This module intentionally implements only the subset of behavior required by
-the repository's SRBench workflows. The search core is regularized evolution
-with modular operator hooks so mutation/crossover/selection/survival/migration
-can be swapped out easily.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,25 +7,9 @@ import re
 
 import numpy as np
 import pandas as pd
-
-try:
-    from scipy.optimize import minimize
-except Exception:  # pragma: no cover - scipy is optional at runtime
-    minimize = None
+from scipy.optimize import minimize
 
 from operators import FUNCTION_SET, Node
-
-
-def _safe_pow(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """Protected power used when `^` is requested."""
-    base = np.clip(np.abs(x), 1e-12, 1e6)
-    exp = np.clip(y, -6.0, 6.0)
-    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-        return np.power(base, exp)
-
-
-if "^" not in FUNCTION_SET:
-    FUNCTION_SET["^"] = (_safe_pow, 2)
 
 
 SelectionOperator = Callable[
@@ -809,8 +785,6 @@ class RegularizedEvolutionEngine:
     def _optimize_constants(
         self, member: Individual
     ) -> tuple[Individual, int]:
-        if minimize is None:
-            return member, 0
         constants = [n for n in _leaf_nodes(member.tree) if isinstance(n.value, (int, float))]
         if not constants:
             return member, 0
