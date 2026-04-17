@@ -336,7 +336,28 @@ def chat_completion(
             )
             response.raise_for_status()
             api_elapsed = time.time() - api_start
-            data = response.json()
+            try:
+                data = response.json()
+            except (ValueError, requests.exceptions.JSONDecodeError) as json_err:
+                # Upstream returned a non-JSON body (HTML error page, truncated
+                # response, etc.). Treat as a transient error and retry.
+                body_preview = ""
+                try:
+                    body_preview = response.text[:500]
+                except Exception:
+                    pass
+                last_exception = json_err
+                if attempt < max_retries:
+                    print(f"  API returned non-JSON body (attempt {attempt + 1}/{max_retries + 1}): {json_err}")
+                    if body_preview:
+                        print(f"  Body preview: {body_preview!r}")
+                    print(f"  Retrying in {retry_delay:.1f}s...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                else:
+                    print(f"  API request failed after {max_retries + 1} attempts (non-JSON body)")
+                    raise
 
             # Print per-call timing and token info
             if "usage" in data:

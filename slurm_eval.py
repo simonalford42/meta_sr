@@ -11,7 +11,10 @@ import os
 import sys
 import time
 import json
+import atexit
+import signal
 import subprocess
+import threading
 from abc import ABC, abstractmethod
 from typing import Dict, List, Tuple, Optional, Set, Any, TypeVar, Generic
 from dataclasses import dataclass
@@ -20,6 +23,80 @@ from pathlib import Path
 # Type variables for generic task/result types
 TSpec = TypeVar('TSpec')
 TResult = TypeVar('TResult')
+
+
+# =============================================================================
+# Global tracker: cancel any live SLURM jobs if the driver process is
+# interrupted (Ctrl-C) or exits. Prevents orphaned evaluation jobs from
+# continuing to consume cluster resources when evolve_pysr.py etc. are killed.
+# =============================================================================
+
+_ACTIVE_JOB_IDS: Set[str] = set()
+_ACTIVE_JOB_IDS_LOCK = threading.Lock()
+_CLEANUP_INSTALLED = False
+
+
+def _cancel_tracked_jobs(reason: str = "driver exiting") -> None:
+    with _ACTIVE_JOB_IDS_LOCK:
+        jobs = sorted(_ACTIVE_JOB_IDS)
+        _ACTIVE_JOB_IDS.clear()
+    if not jobs:
+        return
+    print(
+        f"\n  Cancelling {len(jobs)} active SLURM job(s) ({reason}): {', '.join(jobs)}",
+        flush=True,
+    )
+    try:
+        subprocess.run(
+            ['scancel', *jobs],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except Exception as e:
+        print(f"  WARNING: scancel failed: {e}", flush=True)
+
+
+def _install_cleanup_handlers() -> None:
+    global _CLEANUP_INSTALLED
+    if _CLEANUP_INSTALLED:
+        return
+    _CLEANUP_INSTALLED = True
+
+    atexit.register(_cancel_tracked_jobs, "atexit")
+
+    # Only install signal handlers from the main thread; otherwise skip
+    # (signal.signal raises ValueError off the main thread).
+    try:
+        prev_sigint = signal.getsignal(signal.SIGINT)
+        prev_sigterm = signal.getsignal(signal.SIGTERM)
+
+        def _handle(signum, frame, _prev_int=prev_sigint, _prev_term=prev_sigterm):
+            name = 'SIGINT' if signum == signal.SIGINT else 'SIGTERM'
+            _cancel_tracked_jobs(f"received {name}")
+            prev = _prev_int if signum == signal.SIGINT else _prev_term
+            # Restore previous handler and re-raise so normal shutdown proceeds.
+            signal.signal(signum, prev if prev is not None else signal.SIG_DFL)
+            if signum == signal.SIGINT:
+                raise KeyboardInterrupt()
+            os.kill(os.getpid(), signum)
+
+        signal.signal(signal.SIGINT, _handle)
+        signal.signal(signal.SIGTERM, _handle)
+    except (ValueError, OSError):
+        # Not in main thread or handlers unavailable — atexit still covers us.
+        pass
+
+
+def _track_job(job_id: str) -> None:
+    _install_cleanup_handlers()
+    with _ACTIVE_JOB_IDS_LOCK:
+        _ACTIVE_JOB_IDS.add(job_id)
+
+
+def _untrack_job(job_id: str) -> None:
+    with _ACTIVE_JOB_IDS_LOCK:
+        _ACTIVE_JOB_IDS.discard(job_id)
 
 
 def init_worker(extra_env: Optional[Dict[str, str]] = None):
@@ -81,6 +158,7 @@ class BaseSlurmEvaluator(ABC):
         bad_nodes_file: Optional[str] = "caches/bad_nodes.txt",
         max_concurrent_jobs: Optional[int] = None,
         job_timeout: Optional[float] = 300.0,
+        stall_timeout: Optional[float] = 300.0,
         use_cache: bool = True,
     ):
         """
@@ -116,12 +194,9 @@ class BaseSlurmEvaluator(ABC):
         self.constraint = constraint
         self.max_concurrent_jobs = max_concurrent_jobs
         self.job_timeout = job_timeout
+        self.stall_timeout = stall_timeout
         self.use_cache = use_cache
         self.bad_nodes_file = Path(bad_nodes_file).resolve() if bad_nodes_file else None
-        # TEMP DEBUG: child-job registry for investigating unexpected parent-job shutdowns.
-        # Remove this once the SIGTERM issue is understood.
-        child_job_registry = os.environ.get("META_SR_CHILD_JOB_REGISTRY")
-        self.child_job_registry = Path(child_job_registry).resolve() if child_job_registry else None
 
         # Detect conda environment at init time so SLURM scripts activate the right env
         self.conda_env_name = os.environ.get("CONDA_DEFAULT_ENV", "base")
@@ -134,35 +209,6 @@ class BaseSlurmEvaluator(ABC):
             self.conda_sh_path = "$(conda info --base)/etc/profile.d/conda.sh"
 
         self._batch_counter = 0
-
-    def _record_child_job_event(
-        self,
-        job_id: str,
-        event: str,
-        batch_dir: Optional[Path] = None,
-        **details: Any,
-    ) -> None:
-        """Append a child-job event to the temporary registry file."""
-        if not self.child_job_registry or not job_id:
-            return
-
-        payload = {
-            "timestamp": time.time(),
-            "event": event,
-            "job_id": str(job_id),
-            "parent_slurm_job_id": os.environ.get("SLURM_JOB_ID", ""),
-        }
-        if batch_dir is not None:
-            payload["batch_dir"] = str(batch_dir)
-        payload.update(details)
-
-        try:
-            self.child_job_registry.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.child_job_registry, "a", encoding="utf-8") as f:
-                f.write(json.dumps(payload, sort_keys=True) + "\n")
-        except Exception:
-            pass
-
     def _get_exclude_nodes(self) -> Optional[str]:
         """
         Combine explicitly excluded nodes with nodes listed in bad_nodes_file.
@@ -261,16 +307,12 @@ class BaseSlurmEvaluator(ABC):
         # Parse job ID from output like "Submitted batch job 12345"
         output = result.stdout.strip()
         job_id = output.split()[-1]
-        self._record_child_job_event(
-            job_id,
-            "submit",
-            batch_dir=script_path.parent,
-            script_path=str(script_path),
-        )
+        _track_job(job_id)
         return job_id
 
     def _cancel_job(self, job_id: str):
         """Cancel a SLURM job."""
+        _untrack_job(job_id)
         try:
             result = subprocess.run(
                 ['scancel', job_id],
@@ -279,7 +321,6 @@ class BaseSlurmEvaluator(ABC):
             )
             if result.returncode == 0:
                 print(f"    Cancelled job {job_id}")
-                self._record_child_job_event(job_id, "cancel_request")
             else:
                 print(f"    WARNING: Failed to cancel job {job_id}: {result.stderr}")
         except Exception as e:
@@ -328,6 +369,7 @@ class BaseSlurmEvaluator(ABC):
         """
         start_time = time.time()
         last_completed = initial_cached
+        last_progress_time = start_time
         poll_interval = 10
         first_check = True
 
@@ -336,7 +378,8 @@ class BaseSlurmEvaluator(ABC):
             results_dir = batch_dir / "results"
             completed = len(list(results_dir.glob("task_*.json")))
 
-            elapsed = time.time() - start_time
+            now = time.time()
+            elapsed = now - start_time
 
             # On first check, detect cached results (completed with near-zero elapsed time)
             if first_check and completed > 0 and elapsed < 2:
@@ -353,29 +396,31 @@ class BaseSlurmEvaluator(ABC):
                 print(f"    Progress: {completed}/{n_tasks} tasks complete "
                       f"({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)")
                 last_completed = completed
+                last_progress_time = now
                 first_check = False
 
             if completed >= n_tasks:
                 print(f"  All {n_tasks} tasks completed in {time.time() - start_time:.1f}s")
-                self._record_child_job_event(
-                    job_id,
-                    "results_complete",
-                    batch_dir=batch_dir,
-                    completed=completed,
-                    n_tasks=n_tasks,
-                )
+                _untrack_job(job_id)
                 return True
 
             # Check for timeout
             if self.job_timeout is not None and elapsed > self.job_timeout:
                 print(f"  TIMEOUT: Job {job_id} exceeded {self.job_timeout}s limit "
                       f"({completed}/{n_tasks} tasks complete)")
-                self._record_child_job_event(
-                    job_id,
-                    "wait_timeout",
-                    batch_dir=batch_dir,
-                    completed=completed,
-                    n_tasks=n_tasks,
+                self._cancel_job(job_id)
+                return False
+
+            # Check for stall (no new completions for stall_timeout seconds)
+            if (
+                self.stall_timeout is not None
+                and completed < n_tasks
+                and (now - last_progress_time) > self.stall_timeout
+            ):
+                print(
+                    f"  STALL: Job {job_id} made no progress for "
+                    f"{now - last_progress_time:.0f}s "
+                    f"({completed}/{n_tasks} tasks complete)"
                 )
                 self._cancel_job(job_id)
                 return False
@@ -383,17 +428,10 @@ class BaseSlurmEvaluator(ABC):
             # Also check job status
             job_status = self._get_job_status(job_id)
             if job_status in ('COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT'):
-                self._record_child_job_event(
-                    job_id,
-                    "observed_terminal_state",
-                    batch_dir=batch_dir,
-                    status=job_status,
-                    completed=completed,
-                    n_tasks=n_tasks,
-                )
                 if completed < n_tasks:
                     print(f"  WARNING: Job {job_id} ended with status {job_status} "
                           f"but only {completed}/{n_tasks} results found")
+                _untrack_job(job_id)
                 return True
 
             time.sleep(poll_interval)
@@ -422,28 +460,67 @@ class BaseSlurmEvaluator(ABC):
 
             if completed >= n_tasks:
                 print(f"    Retry completed in {time.time() - start_time:.1f}s")
-                self._record_child_job_event(
-                    job_id,
-                    "retry_results_complete",
-                    batch_dir=batch_dir,
-                    completed=completed,
-                    n_tasks=n_tasks,
-                )
+                _untrack_job(job_id)
                 break
 
             # Check job status
             job_status = self._get_job_status(job_id)
             if job_status in ('COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'):
-                self._record_child_job_event(
-                    job_id,
-                    "retry_terminal_state",
-                    batch_dir=batch_dir,
-                    status=job_status,
-                    completed=completed,
-                    n_tasks=n_tasks,
-                )
                 if completed < n_tasks:
                     print(f"    Retry job ended with status {job_status}, {completed}/{n_tasks} results")
+                _untrack_job(job_id)
+                break
+
+            time.sleep(poll_interval)
+
+    def _wait_for_retry_jobs(
+        self,
+        job_ids: List[str],
+        n_tasks: int,
+        batch_dir: Path,
+        task_indices: List[int],
+    ):
+        """Wait for multiple retry job arrays to complete."""
+        if len(job_ids) == 1:
+            return self._wait_for_retry_job(
+                job_ids[0], n_tasks, batch_dir, task_indices
+            )
+
+        start_time = time.time()
+        last_completed = 0
+        poll_interval = 5
+        terminal = {'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'}
+
+        while True:
+            results_dir = batch_dir / "results"
+            completed = sum(
+                1 for i in task_indices
+                if (results_dir / f"task_{i:06d}.json").exists()
+            )
+
+            if completed != last_completed:
+                elapsed = time.time() - start_time
+                print(
+                    f"    Retry progress: {completed}/{n_tasks} tasks complete "
+                    f"({elapsed:.0f}s elapsed)"
+                )
+                last_completed = completed
+
+            if completed >= n_tasks:
+                print(f"    Retry completed in {time.time() - start_time:.1f}s")
+                for jid in job_ids:
+                    _untrack_job(jid)
+                break
+
+            statuses = [self._get_job_status(jid) for jid in job_ids]
+            if all(s in terminal for s in statuses):
+                if completed < n_tasks:
+                    print(
+                        f"    Retry jobs ended with statuses={statuses}, "
+                        f"{completed}/{n_tasks} results"
+                    )
+                for jid in job_ids:
+                    _untrack_job(jid)
                 break
 
             time.sleep(poll_interval)

@@ -69,6 +69,7 @@ def _evaluate_configs_with_noise_map(
     n_runs: int,
     target_noise_map: Optional[Dict[str, float]] = None,
     fitness_metric: str = "r2",
+    run_index_start_per_config: Optional[List[int]] = None,
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """Evaluate configs with optional per-dataset target noise mapping."""
     return evaluator.evaluate_configs(
@@ -78,6 +79,7 @@ def _evaluate_configs_with_noise_map(
         n_runs=n_runs,
         target_noise_map=target_noise_map,
         fitness_metric=fitness_metric,
+        run_index_start_per_config=run_index_start_per_config,
     )
 
 
@@ -206,6 +208,95 @@ def compute_per_run_avgs(
         per_run_avgs.append(float(np.mean(run_scores)) if run_scores else missing_fill)
 
     return per_run_avgs
+
+
+def merge_result_details(
+    old: Optional[List[Dict]],
+    new: List[Dict],
+) -> List[Dict]:
+    """Append per-run scores from `new` onto `old` per dataset.
+
+    Used by racing mode to accumulate fresh-seed evaluations into a member's
+    existing result_details. Assumes both lists are aligned by dataset order
+    (as produced by `_aggregate_pysr_results` using the same `dataset_names`).
+    If `old` is None/empty this returns a deep copy of `new`.
+    """
+    if not old:
+        return copy.deepcopy(new)
+    if len(old) != len(new):
+        # Dataset lists don't line up — fall back to the fresh evaluation
+        # rather than corrupting the accumulated history.
+        return copy.deepcopy(new)
+
+    merged: List[Dict] = []
+    for old_d, new_d in zip(old, new):
+        old_r2 = list(old_d.get("run_r2_scores", []) or [])
+        old_gt = list(old_d.get("run_gt_scores", []) or [])
+        new_r2 = list(new_d.get("run_r2_scores", []) or [])
+        new_gt = list(new_d.get("run_gt_scores", []) or [])
+        run_r2 = old_r2 + new_r2
+        run_gt = old_gt + new_gt
+
+        old_eqs = list(old_d.get("best_equations", []) or [])
+        new_eqs = list(new_d.get("best_equations", []) or [])
+        all_eqs = old_eqs + new_eqs
+
+        old_errs = old_d.get("errors") or []
+        new_errs = new_d.get("errors") or []
+        all_errs = list(old_errs) + list(new_errs)
+
+        merged.append({
+            "dataset": old_d.get("dataset") or new_d.get("dataset"),
+            "avg_r2": float(np.mean(run_r2)) if run_r2 else -1.0,
+            "avg_gt": float(np.mean(run_gt)) if run_gt else 0.0,
+            "run_r2_scores": run_r2,
+            "run_gt_scores": run_gt,
+            "best_equations": all_eqs,
+            "errors": all_errs if all_errs else None,
+        })
+    return merged
+
+
+def recompute_aggregate(
+    result_details: List[Dict],
+    fitness_metric: str,
+) -> Tuple[float, List[float]]:
+    """Recompute (avg_score, per_dataset_vector) from merged result_details.
+
+    Uses the same missing-fill policy as `_aggregate_pysr_results`:
+    an empty per-dataset run list maps to -1.0 (r2) or 0.0 (gt).
+    """
+    score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
+    missing_fill = 0.0 if fitness_metric == "gt" else -1.0
+
+    per_dataset: List[float] = []
+    for detail in result_details:
+        runs = detail.get(score_key, []) or []
+        per_dataset.append(float(np.mean(runs)) if runs else missing_fill)
+    avg = float(np.mean(per_dataset)) if per_dataset else missing_fill
+    return avg, per_dataset
+
+
+def apply_racing_results(
+    members: List[Any],
+    results: List[Tuple[float, List[float], List[Dict]]],
+    n_runs: int,
+    fitness_metric: str,
+) -> None:
+    """Merge fresh-seed evaluation results onto each member's state.
+
+    For every member, appends the new per-run scores onto its existing
+    `result_details`, bumps `seeds_evaluated` by `n_runs`, and recomputes
+    `score` / `score_vector` from the accumulated history. Works for both
+    `JuliaOperator` and `OperatorBundle`.
+    """
+    for m, (_, _, new_details) in zip(members, results):
+        merged = merge_result_details(m.result_details, new_details)
+        m.result_details = merged
+        m.seeds_evaluated = int(getattr(m, "seeds_evaluated", 0) or 0) + n_runs
+        avg, vec = recompute_aggregate(merged, fitness_metric)
+        m.score = avg
+        m.score_vector = vec
 
 
 def select_parent(population: list, rng: random.Random):
@@ -451,6 +542,7 @@ class JuliaOperator:
     weight: Optional[float] = None  # Only used for mutation operators
     model: Optional[str] = None  # LLM model that generated this operator
     hp_specs: Optional[List[Dict]] = None  # Cached HyperparameterSpec dicts from LLM identification
+    seeds_evaluated: int = 0  # Number of PySR seeds accumulated in result_details (racing mode)
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -480,6 +572,7 @@ class OperatorBundle:
     score_vector: Optional[List[float]] = None
     result_details: Optional[List[Dict]] = None  # Per-dataset evaluation details
     best_hparams: Optional[Dict[str, Any]] = None  # Best PySR hparams found by HPO
+    seeds_evaluated: int = 0  # Number of PySR seeds accumulated in result_details (racing mode)
 
     @staticmethod
     def create_default() -> 'OperatorBundle':
@@ -569,6 +662,7 @@ class OperatorBundle:
             "score": self.score,
             "score_vector": self.score_vector,
             "best_hparams": self.best_hparams,
+            "seeds_evaluated": self.seeds_evaluated,
         }
 
     @classmethod
@@ -581,6 +675,7 @@ class OperatorBundle:
             score=d.get("score"),
             score_vector=d.get("score_vector"),
             best_hparams=d.get("best_hparams"),
+            seeds_evaluated=d.get("seeds_evaluated", 0),
         )
 
     @property
@@ -813,6 +908,7 @@ class OperatorType(ABC):
     load_func: str
     clear_func: str
     list_func: str
+    smoke_test_julia: str = ""  # Julia code template for runtime smoke test
 
     @abstractmethod
     def load_reference(self) -> str:
@@ -853,6 +949,22 @@ class MutationOperatorType(OperatorType):
     load_func = "load_mutation_from_string!"
     clear_func = "clear_dynamic_mutations!"
     list_func = "list_available_mutations"
+    smoke_test_julia = """
+    let
+        using SymbolicRegression: Options, Node, AbstractExpressionNode
+        using SymbolicRegression.CustomMutationsModule: apply_custom_mutation
+        using Random: Xoshiro
+        options = Options(;
+            binary_operators=[+, -, *, /],
+            unary_operators=[sin, cos],
+        )
+        # Build a small tree: x1 + 0.5
+        tree = Node(Float64; op=1, l=Node(Float64; feature=1), r=Node(Float64; val=0.5))
+        rng = Xoshiro(42)
+        result = apply_custom_mutation(:{name}, tree, options, 3, rng)
+        @assert result isa AbstractExpressionNode "Smoke test: mutation must return a Node, got $(typeof(result))"
+    end
+    """
 
     def load_reference(self) -> str:
         base = Path(__file__).resolve().parent / "SymbolicRegression.jl/src/custom_mutations"
@@ -1158,6 +1270,27 @@ class SurvivalOperatorType(OperatorType):
     load_func = "load_survival_from_string!"
     clear_func = "clear_dynamic_survivals!"
     list_func = "list_available_survivals"
+    smoke_test_julia = """
+    let
+        using SymbolicRegression: Options, Dataset
+        using SymbolicRegression.PopulationModule: Population
+        using SymbolicRegression.CustomSurvivalModule: apply_custom_survival
+        options = Options(;
+            binary_operators=[+, -, *, /],
+            unary_operators=[sin, cos],
+            populations=1,
+            population_size=20,
+            tournament_selection_n=5,
+        )
+        X = randn(Float64, 3, 30)
+        y = randn(Float64, 30)
+        dataset = Dataset(X, y)
+        pop = Population(dataset; options=options, population_size=20, nfeatures=3)
+        idx = apply_custom_survival(pop, options; exclude_indices=Int[])
+        @assert idx isa Integer "Smoke test: survival must return Int, got $(typeof(idx))"
+        @assert 1 <= idx <= pop.n "Smoke test: survival returned index $idx, must be in 1:$(pop.n)"
+    end
+    """
 
     def load_reference(self) -> str:
         ref_path = Path(__file__).resolve().parent / "SymbolicRegression.jl/src/custom_survival/SURVIVAL_REFERENCE.md"
@@ -1297,6 +1430,29 @@ class SelectionOperatorType(OperatorType):
     load_func = "load_selection_from_string!"
     clear_func = "clear_dynamic_selections!"
     list_func = "list_available_selections"
+    smoke_test_julia = """
+    let
+        using SymbolicRegression: Options, Dataset
+        using SymbolicRegression.PopMemberModule: PopMember
+        using SymbolicRegression.PopulationModule: Population
+        using SymbolicRegression.AdaptiveParsimonyModule: RunningSearchStatistics
+        using SymbolicRegression.CustomSelectionModule: apply_custom_selection
+        options = Options(;
+            binary_operators=[+, -, *, /],
+            unary_operators=[sin, cos],
+            populations=1,
+            population_size=20,
+            tournament_selection_n=5,
+        )
+        X = randn(Float64, 3, 30)
+        y = randn(Float64, 30)
+        dataset = Dataset(X, y)
+        pop = Population(dataset; options=options, population_size=20, nfeatures=3)
+        rss = RunningSearchStatistics(; options=options)
+        result = apply_custom_selection(pop, rss, options)
+        @assert result isa PopMember "Smoke test: selection must return PopMember, got $(typeof(result))"
+    end
+    """
 
     def load_reference(self) -> str:
         ref_path = Path(__file__).resolve().parent / "SymbolicRegression.jl/src/custom_selection/SELECTION_REFERENCE.md"
@@ -1440,7 +1596,7 @@ OPERATOR_TYPES: Dict[str, OperatorType] = {
 # =============================================================================
 
 def validate_julia_code(name: str, code: str, op_type: OperatorType) -> Tuple[bool, str]:
-    """Validate Julia operator code by attempting to load it."""
+    """Validate Julia operator code by attempting to load it and smoke-testing it."""
     is_valid, error = pre_validate_julia_syntax(code)
     if not is_valid:
         return False, error
@@ -1460,6 +1616,11 @@ def validate_julia_code(name: str, code: str, op_type: OperatorType) -> Tuple[bo
         if name not in [str(m) for m in available]:
             return False, f"{op_type.name.title()} '{name}' not found in registry after loading"
 
+        # Smoke test: actually invoke the operator on synthetic inputs
+        if op_type.smoke_test_julia:
+            smoke_code = op_type.smoke_test_julia.replace(":{name}", f":{name}")
+            jl.seval(smoke_code)
+
         return True, ""
 
     except Exception as e:
@@ -1467,6 +1628,82 @@ def validate_julia_code(name: str, code: str, op_type: OperatorType) -> Tuple[bo
         if len(error_msg) > 500:
             error_msg = error_msg[:500] + "..."
         return False, error_msg
+
+
+def smoke_test_operator(name: str, code: str, op_type: OperatorType) -> Tuple[bool, str]:
+    """Run a runtime smoke test on an already-loaded operator.
+
+    Loads the operator fresh and invokes it on synthetic inputs.
+    Returns (passed, error_message).
+    """
+    if not op_type.smoke_test_julia:
+        return True, ""
+    try:
+        from juliacall import Main as jl
+
+        jl.seval("using SymbolicRegression")
+        jl.seval(f"using SymbolicRegression.{op_type.julia_module}")
+        jl.seval(f"{op_type.clear_func}()")
+
+        escaped_code = code.replace('"""', '\\"\\"\\"')
+        jl.seval(f'{op_type.load_func}(:{name}, raw"""{escaped_code}""")')
+
+        smoke_code = op_type.smoke_test_julia.replace(":{name}", f":{name}")
+        jl.seval(smoke_code)
+        return True, ""
+    except Exception as e:
+        error_msg = str(e)
+        if len(error_msg) > 500:
+            error_msg = error_msg[:500] + "..."
+        return False, error_msg
+
+
+def append_validation_log(
+    log_prompt_dir: Optional[Path],
+    op_type: OperatorType,
+    mode: str,
+    generation: int,
+    variation_seed: int,
+    is_valid: bool,
+    error: str,
+    unique_name: str,
+) -> None:
+    """Append a validation-outcome section to the prompt log file for this generation attempt."""
+    if log_prompt_dir is None:
+        return
+    try:
+        fname = f"gen{max(generation, 0):03d}_{op_type.name}_{mode}_seed{variation_seed}.md"
+        path = log_prompt_dir / fname
+        if not path.exists():
+            return
+        section = (
+            f"\n## Validation\n\n"
+            f"- unique_name: `{unique_name}`\n"
+            f"- result: {'PASS' if is_valid else 'FAIL'}\n"
+        )
+        if not is_valid:
+            section += f"- error:\n```\n{error}\n```\n"
+        with open(path, "a") as f:
+            f.write(section)
+    except Exception as e:
+        print(f"  [prompt-log] Failed to append validation: {e}")
+
+
+def smoke_test_bundle(bundle: 'OperatorBundle') -> Tuple[bool, List[str]]:
+    """Smoke test all operators in a bundle.
+
+    Returns (all_passed, list_of_error_messages).
+    """
+    errors = []
+    for type_name in ("mutation", "survival", "selection"):
+        op = bundle.get_operator(type_name)
+        if op is None:
+            continue
+        op_type = OPERATOR_TYPES[type_name]
+        passed, error = smoke_test_operator(op.name, op.code, op_type)
+        if not passed:
+            errors.append(f"{type_name}/{op.name}: {error}")
+    return len(errors) == 0, errors
 
 
 # =============================================================================
@@ -1539,10 +1776,44 @@ def generate_operator_code(
     else:
         raise ValueError(f"Unknown mode: {mode}")
 
-    # Use ensemble to pick model if available, otherwise use single model
+    # Use ensemble to pick model if available, otherwise use single model.
+    # If the API call fails (even after internal retries), resample a different
+    # model from the ensemble and try again a few times before giving up.
+    max_model_attempts = 4 if model_ensemble else 1
+    tried_models: List[str] = []
+    response = None
     selected_model = model_ensemble.sample() if model_ensemble else model
+    for model_attempt in range(max_model_attempts):
+        tried_models.append(selected_model)
+        try:
+            response = chat_completion(
+                model=selected_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                sample_index=variation_seed + model_attempt * 10_000,
+                use_cache=use_cache,
+            )
+            break
+        except Exception as e:
+            print(f"  chat_completion failed with {selected_model}: {type(e).__name__}: {e}")
+            if model_attempt + 1 >= max_model_attempts or not model_ensemble:
+                print(f"  Giving up after trying models: {tried_models}")
+                raise
+            # Sample a different model if possible
+            for _ in range(10):
+                candidate = model_ensemble.sample()
+                if candidate not in tried_models:
+                    selected_model = candidate
+                    break
+            else:
+                selected_model = model_ensemble.sample()
+            print(f"  Retrying with different model: {selected_model}")
 
-    # Log prompt to disk (for the first few generations, controlled by caller).
+    content = get_content(response)
+    code = extract_julia_code(content)
+    func_name = extract_function_name(code) if code else ""
+
+    # Log prompt + response + extracted code to disk.
     if log_prompt_dir is not None:
         try:
             log_prompt_dir.mkdir(parents=True, exist_ok=True)
@@ -1550,26 +1821,25 @@ def generate_operator_code(
             header = (
                 f"<!-- op_type={op_type.name} mode={mode} "
                 f"generation={log_generation} variation_seed={variation_seed} "
-                f"model={selected_model} -->\n\n"
+                f"model={selected_model} func_name={func_name} -->\n\n"
             )
-            (log_prompt_dir / fname).write_text(header + prompt + "\n")
+            body = (
+                header
+                + "## Prompt\n\n"
+                + prompt
+                + "\n\n## Raw Response\n\n"
+                + (content or "(empty)")
+                + "\n\n## Extracted Code\n\n```julia\n"
+                + (code or "(no code extracted)")
+                + "\n```\n"
+            )
+            (log_prompt_dir / fname).write_text(body)
         except Exception as e:
             print(f"  [prompt-log] Failed to write prompt: {e}")
 
-    response = chat_completion(
-        model=selected_model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=temperature,
-        sample_index=variation_seed,
-        use_cache=use_cache,
-    )
-
-    content = get_content(response)
-    code = extract_julia_code(content)
     if not code:
         return "", "", selected_model
 
-    func_name = extract_function_name(code)
     return code, func_name, selected_model
 
 
@@ -1586,6 +1856,7 @@ def evaluate_bundles(
     n_runs: int = 1,
     target_noise_map: Optional[Dict[str, float]] = None,
     fitness_metric: str = "r2",
+    run_index_start_per_config: Optional[List[int]] = None,
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """Evaluate multiple operator bundles in parallel via SLURM."""
     if not bundles:
@@ -1601,6 +1872,7 @@ def evaluate_bundles(
         n_runs=n_runs,
         target_noise_map=target_noise_map,
         fitness_metric=fitness_metric,
+        run_index_start_per_config=run_index_start_per_config,
     )
 
 
@@ -1614,6 +1886,7 @@ def evaluate_operators(
     n_runs: int = 1,
     target_noise_map: Optional[Dict[str, float]] = None,
     fitness_metric: str = "r2",
+    run_index_start_per_config: Optional[List[int]] = None,
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """Evaluate multiple operators in parallel via SLURM."""
     if not operators:
@@ -1629,6 +1902,7 @@ def evaluate_operators(
         n_runs=n_runs,
         target_noise_map=target_noise_map,
         fitness_metric=fitness_metric,
+        run_index_start_per_config=run_index_start_per_config,
     )
 
 
@@ -1772,350 +2046,6 @@ class EvolutionLogger:
 
 
 # =============================================================================
-# Main Evolution Loop (DEPRECATED - use run_bundle_evolution with single type)
-# =============================================================================
-
-def run_evolution(
-    op_type: OperatorType,
-    n_generations: int,
-    population_size: int,
-    n_offspring: int,
-    dataset_names: List[str],
-    model: str,
-    temperature: float,
-    seed: int,
-    output_dir: str,
-    pysr_kwargs: Dict,
-    slurm_partition: str,
-    slurm_time_limit: str,
-    slurm_mem_per_cpu: str,
-    max_samples: int,
-    job_timeout: float,
-    use_cache: bool = True,
-    n_runs: int = 1,
-    target_noise: float = 0.0,
-    random_target_noise: bool = False,
-    fitness_metric: str = "gt",
-    repo_root: Optional[str] = None,
-    julia_project: Optional[str] = None,
-    python_juliapkg_project: Optional[str] = None,
-    julia_depot_path: Optional[str] = None,
-    task_aware: bool = False,
-    task_aware_prob: float = 0.5,
-) -> JuliaOperator:
-    """Run the evolution loop for the specified operator type."""
-    rng = random.Random(seed)
-    np.random.seed(seed)
-
-    logger = EvolutionLogger(output_dir, operator_type=op_type.name)
-    target_noise_map = None
-    if random_target_noise:
-        target_noise_map = _build_target_noise_map(dataset_names, seed, TARGET_NOISE_LEVELS)
-
-    logger.set_config({
-        "operator_type": op_type.name,
-        "n_generations": n_generations,
-        "population_size": population_size,
-        "n_offspring": n_offspring,
-        "n_datasets": len(dataset_names),
-        "dataset_names": dataset_names,
-        "model": model,
-        "temperature": temperature,
-        "seed": seed,
-        "pysr_kwargs": pysr_kwargs,
-        "max_samples": max_samples,
-        "n_runs": n_runs,
-        "target_noise": target_noise,
-        "random_target_noise": random_target_noise,
-        "fitness_metric": fitness_metric,
-        "repo_root": repo_root,
-        "julia_project": julia_project,
-        "python_juliapkg_project": python_juliapkg_project,
-        "julia_depot_path": julia_depot_path,
-    })
-    metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
-
-    evaluator = PySRSlurmEvaluator(
-        results_dir=output_dir,
-        partition=slurm_partition,
-        time_limit=slurm_time_limit,
-        mem_per_cpu=slurm_mem_per_cpu,
-        dataset_max_samples=max_samples,
-        data_seed=seed,
-        job_timeout=job_timeout,
-        target_noise=target_noise,
-        repo_root=repo_root,
-        julia_project=julia_project,
-        python_juliapkg_project=python_juliapkg_project,
-        julia_depot_path=julia_depot_path,
-    )
-
-    reference = op_type.load_reference()
-
-    # Evaluate baseline
-    print("=" * 60)
-    print(f"Evaluating baseline (default {op_type.name})...")
-    print("=" * 60)
-    baseline_r2, baseline_vector, baseline_details = evaluate_baseline(
-        op_type, evaluator, dataset_names, pysr_kwargs, seed,
-        n_runs=n_runs, target_noise_map=target_noise_map,
-        fitness_metric=fitness_metric,
-    )
-    solved_str = format_solved_str(baseline_details)
-    if n_runs > 1 and baseline_details:
-        per_run_avgs = compute_per_run_avgs(
-            baseline_details, n_runs=n_runs, fitness_metric=fitness_metric,
-        )
-        runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-        print(f"Baseline avg {metric_label}: {baseline_r2:.4f} [{runs_str}] {solved_str}")
-    else:
-        print(f"Baseline avg {metric_label}: {baseline_r2:.4f} {solved_str}")
-    logger.log_baseline(baseline_r2, baseline_vector)
-
-    # Task-aware mutation setup: load ground-truth formulas and baseline solved set
-    use_task_aware = bool(task_aware) and op_type.name == "mutation"
-    task_formulas: Dict[str, str] = {}
-    baseline_solved: set = set()
-    if use_task_aware:
-        task_formulas = load_task_formulas(dataset_names)
-        baseline_solved = set(get_solved_tasks(baseline_details))
-        n_with_formula = sum(1 for f in task_formulas.values() if f)
-        print(f"Task-aware mutation enabled (prob={task_aware_prob}): "
-              f"{n_with_formula}/{len(dataset_names)} tasks have ground-truth formulas; "
-              f"baseline solves {len(baseline_solved)} tasks")
-
-    # Directory for logged prompts (first few generations only)
-    prompts_log_dir = Path(output_dir) / "prompts"
-    log_prompt_gens_max = 3
-
-    # Generate initial population
-    print("\n" + "=" * 60)
-    print(f"Generating initial population ({population_size} {op_type.name} operators)...")
-    print("=" * 60)
-
-    population: List[JuliaOperator] = []
-    attempts = 0
-    max_attempts = population_size * 3
-
-    while len(population) < population_size and attempts < max_attempts:
-        attempts += 1
-        print(f"\nGenerating {op_type.name} {len(population) + 1}/{population_size} (attempt {attempts})...")
-
-        code, func_name, selected_model = generate_operator_code(
-            op_type=op_type,
-            reference=reference,
-            model=model,
-            mode="explore",
-            log_prompt_dir=prompts_log_dir,
-            log_generation=0,
-            variation_seed=attempts,
-            temperature=temperature,
-            use_cache=use_cache,
-        )
-
-        if not code or not func_name:
-            print("  Failed to generate code")
-            continue
-
-        unique_name = f"{func_name}_init_{len(population)}"
-        code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
-
-        is_valid, error = validate_julia_code(unique_name, code, op_type)
-        if not is_valid:
-            print(f"  Validation failed: {error[:100]}...")
-            continue
-
-        operator = op_type.create_operator(
-            name=unique_name, code=code, generation=0, mode="explore",
-        )
-        operator.model = selected_model
-        population.append(operator)
-        print(f"  Created: {unique_name}")
-
-    if len(population) == 0:
-        raise RuntimeError(f"Failed to generate any valid {op_type.name} operators")
-
-    print(f"\nGenerated {len(population)} valid {op_type.name} operators")
-
-    # Evaluate initial population
-    print("\n" + "=" * 60)
-    print(f"Evaluating initial population ({len(population)} operators in parallel)...")
-    print("=" * 60)
-
-    try:
-        results = evaluate_operators(
-            population, op_type, evaluator, dataset_names, pysr_kwargs, seed,
-            n_runs=n_runs, target_noise_map=target_noise_map,
-            fitness_metric=fitness_metric,
-        )
-        for operator, (avg_r2, r2_vector, result_details) in zip(population, results):
-            operator.score = avg_r2
-            operator.score_vector = r2_vector
-            operator.result_details = result_details
-            solved_str = format_solved_str(result_details)
-            if n_runs > 1 and result_details:
-                per_run_avgs = compute_per_run_avgs(
-                    result_details, n_runs=n_runs, fitness_metric=fitness_metric,
-                )
-                runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                print(f"  {operator.name}: Avg {avg_r2:.4f} [{runs_str}] {solved_str}")
-            else:
-                print(f"  {operator.name}: {avg_r2:.4f} {solved_str}")
-    except Exception as e:
-        print(f"  Batch evaluation failed: {e}")
-        for operator in population:
-            operator.score = -1.0
-            operator.score_vector = []
-
-    population.sort(key=lambda s: s.score if s.score else -1, reverse=True)
-    best = population[0]
-    print(f"\nBest initial {op_type.name}: {best.name} (score: {best.score:.4f})")
-
-    # Evolution loop
-    for gen in range(1, n_generations + 1):
-        print("\n" + "=" * 60)
-        print(f"Generation {gen}/{n_generations}")
-        print("=" * 60)
-
-        offspring: List[JuliaOperator] = []
-        offspring_attempts = 0
-        max_offspring_attempts = n_offspring * 3
-
-        while len(offspring) < n_offspring and offspring_attempts < max_offspring_attempts:
-            offspring_attempts += 1
-
-            mode = rng.choice(["explore", "refine", "refine", "refine", "crossover"])
-            task_info: Optional[Dict[str, str]] = None
-
-            if mode == "explore":
-                parent = None
-                parent2 = None
-                if use_task_aware and rng.random() < task_aware_prob:
-                    task_idxs = select_unsolved_tasks_for_population(
-                        population, baseline_solved, dataset_names, task_formulas, rng, n=2,
-                    )
-                    if task_idxs:
-                        text = format_task_list(task_idxs, dataset_names, task_formulas, max_tasks=2)
-                        if text:
-                            task_info = {"unsolved_tasks_text": text}
-                            mode = "task_explore"
-            elif mode == "refine":
-                parent = select_parent(population, rng)
-                parent2 = None
-                if use_task_aware and rng.random() < task_aware_prob:
-                    task_idx = select_unsolved_task_for_parent(
-                        parent, dataset_names, task_formulas, rng,
-                    )
-                    if task_idx is not None:
-                        task_info = {
-                            "unsolved_tasks_text": format_task_list(
-                                [task_idx], dataset_names, task_formulas, max_tasks=1,
-                            ),
-                        }
-                        mode = "task_refine"
-            else:  # crossover
-                parent = select_parent(population, rng)
-                parent2 = select_parent([s for s in population if s != parent], rng)
-                if use_task_aware and rng.random() < task_aware_prob:
-                    picked = select_complementary_parents(population, baseline_solved, rng)
-                    if picked is not None:
-                        parent, parent2, p1_unique, p2_unique = picked
-                        p1_text = format_task_list(p1_unique, dataset_names, task_formulas)
-                        p2_text = format_task_list(p2_unique, dataset_names, task_formulas)
-                        if p1_text and p2_text:
-                            task_info = {
-                                "p1_tasks_text": p1_text,
-                                "p2_tasks_text": p2_text,
-                            }
-                            mode = "task_crossover"
-
-            code, func_name, selected_model = generate_operator_code(
-                op_type=op_type,
-                reference=reference,
-                parent=parent,
-                parent2=parent2,
-                model=model,
-                mode=mode,
-                variation_seed=gen * 100 + offspring_attempts,
-                temperature=temperature,
-                use_cache=use_cache,
-                task_info=task_info,
-                log_prompt_dir=prompts_log_dir if gen <= log_prompt_gens_max else None,
-                log_generation=gen,
-            )
-
-            if not code or not func_name:
-                continue
-
-            unique_name = f"{func_name}_gen{gen}_{len(offspring)}"
-            code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
-
-            is_valid, error = validate_julia_code(unique_name, code, op_type)
-            if not is_valid:
-                print(f"  Validation failed for {unique_name}: {error[:80]}...")
-                continue
-
-            operator = op_type.create_operator(
-                name=unique_name, code=code, generation=gen,
-                parent_name=parent.name if parent else None, mode=mode,
-            )
-            operator.model = selected_model
-            offspring.append(operator)
-            print(f"  Created: {unique_name} (mode={mode}, model={selected_model})")
-
-        print(f"\nGenerated {len(offspring)} offspring")
-
-        # Evaluate offspring
-        print(f"\nEvaluating {len(offspring)} offspring in parallel...")
-        try:
-            results = evaluate_operators(
-                offspring, op_type, evaluator, dataset_names, pysr_kwargs, seed,
-                n_runs=n_runs, target_noise_map=target_noise_map,
-                fitness_metric=fitness_metric,
-            )
-            for operator, (avg_r2, r2_vector, result_details) in zip(offspring, results):
-                operator.score = avg_r2
-                operator.score_vector = r2_vector
-                operator.result_details = result_details
-                solved_str = format_solved_str(result_details)
-                if n_runs > 1 and result_details:
-                    per_run_avgs = compute_per_run_avgs(
-                        result_details, n_runs=n_runs, fitness_metric=fitness_metric,
-                    )
-                    runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                    print(f"  {operator.name}: Avg {avg_r2:.4f} [{runs_str}] {solved_str}")
-                else:
-                    print(f"  {operator.name}: {avg_r2:.4f} {solved_str}")
-        except Exception as e:
-            print(f"  Batch evaluation failed: {e}")
-            for operator in offspring:
-                operator.score = -1.0
-                operator.score_vector = []
-
-        population = select_survivors(population, offspring, population_size)
-        best = population[0]
-
-        print(f"\nGeneration {gen} complete:")
-        print(f"  Best: {best.name} (score: {best.score:.4f})")
-        print(f"  Baseline ({metric_label}): {baseline_r2:.4f}")
-        print(f"  Improvement: {best.score - baseline_r2:+.4f}")
-
-        logger.log_generation(gen, population, offspring, best)
-
-    logger.finalize(best)
-
-    print("\n" + "=" * 60)
-    print("Evolution complete!")
-    print("=" * 60)
-    print(f"Best {op_type.name}: {best.name}")
-    print(f"Best score: {best.score:.4f}")
-    print(f"Baseline ({metric_label}): {baseline_r2:.4f}")
-    print(f"Improvement: {best.score - baseline_r2:+.4f}")
-
-    return best
-
-
-# =============================================================================
 # Bundle Evolution Loop (joint evolution of multiple operator types)
 # =============================================================================
 
@@ -2151,6 +2081,9 @@ def run_bundle_evolution(
     task_diverse_pop: bool = False,
     task_aware: bool = False,
     task_aware_prob: float = 0.5,
+    racing: bool = False,
+    hof: bool = False,
+    max_concurrent_jobs: Optional[int] = None,
 ) -> Tuple[OperatorBundle, Any, float]:
     """Run round-robin bundle evolution across multiple operator types.
 
@@ -2216,8 +2149,28 @@ def run_bundle_evolution(
         "python_juliapkg_project": python_juliapkg_project,
         "julia_depot_path": julia_depot_path,
         "task_diverse_pop": task_diverse_pop,
+        "racing": racing,
+        "hof": hof,
     })
     metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
+
+    if racing:
+        print(f"Racing enabled: re-evaluating bundle population each generation on {n_runs} fresh seeds")
+    if hof:
+        if not racing:
+            raise ValueError("--hof requires --racing")
+        print("Hall of Fame enabled: survivors chosen from all-time archive by avg score across accumulated seeds")
+
+    # All-time archive of every bundle ever evaluated (for --hof survivor pool).
+    # Dedup by object identity since racing updates bundles in place across generations.
+    archive: List[OperatorBundle] = []
+    archive_ids: set = set()
+
+    def _extend_archive(bundles: List[OperatorBundle]) -> None:
+        for b in bundles:
+            if id(b) not in archive_ids:
+                archive_ids.add(id(b))
+                archive.append(b)
 
     if task_diverse_pop:
         print(f"Task-diverse population enabled (min={population_size}, max={len(dataset_names)})")
@@ -2230,6 +2183,7 @@ def run_bundle_evolution(
         dataset_max_samples=max_samples,
         data_seed=seed,
         job_timeout=job_timeout,
+        max_concurrent_jobs=max_concurrent_jobs,
         target_noise=target_noise,
         repo_root=repo_root,
         julia_project=julia_project,
@@ -2330,15 +2284,17 @@ def run_bundle_evolution(
             bundle = OperatorBundle.create_default()
 
         n_generated = 0
-        print(f"\nBundle {len(population) + 1}/{population_size} (attempt {bundle_idx + 1}):")
+        # Sample a single operator type to vary for this bundle; keep the others at baseline.
+        type_to_vary = rng.choice(operator_type_names)
+        print(f"\nBundle {len(population) + 1}/{population_size} (attempt {bundle_idx + 1}): varying {type_to_vary}")
 
-        for type_name in operator_type_names:
+        for type_name in [type_to_vary]:
             op_type = OPERATOR_TYPES[type_name]
             reference = references[type_name]
 
-            # If we have a baseline operator for this type, refine it; otherwise explore
+            # Always explore for initial population — no refine prompts.
             baseline_op = baseline_bundle.get_operator(type_name) if baseline_bundle else None
-            mode = "refine" if baseline_op else "explore"
+            mode = "explore"
 
             # Try to generate a valid operator for this type
             generated = False
@@ -2363,6 +2319,9 @@ def run_bundle_evolution(
                 code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
 
                 is_valid, error = validate_julia_code(unique_name, code, op_type)
+                append_validation_log(prompts_log_dir, op_type, mode, 0,
+                                      bundle_idx * 100 + attempt,
+                                      is_valid, error, unique_name)
                 if not is_valid:
                     print(f"  {type_name}: validation failed (attempt {attempt + 1}): {error[:80]}...")
                     continue
@@ -2393,9 +2352,6 @@ def run_bundle_evolution(
             print(f"  Skipping bundle (no operators generated)")
             continue
 
-        if n_generated < len(operator_type_names):
-            print(f"  Warning: bundle has {n_generated}/{len(operator_type_names)} operators")
-
         population.append(bundle)
 
     if not population:
@@ -2416,6 +2372,7 @@ def run_bundle_evolution(
             bundle.score = avg_score
             bundle.score_vector = score_vector
             bundle.result_details = result_details
+            bundle.seeds_evaluated = n_runs
             _log_bundle_eval(bundle, generation=0)
             solved_str = format_solved_str(result_details)
             if n_runs > 1 and result_details:
@@ -2432,6 +2389,7 @@ def run_bundle_evolution(
             _log_bundle_eval(bundle, generation=0)
 
     population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
+    _extend_archive(population)
     best = population[0]
     print(f"\nBest initial bundle: {best.display_name} (score: {best.score:.4f})")
 
@@ -2470,7 +2428,8 @@ def run_bundle_evolution(
                 parent = None
                 parent2 = None
             else:
-                mode = rng.choice(["explore", "refine", "crossover"])
+                # Crossover disabled for now — mutation only. 3:1 refine:explore bias.
+                mode = rng.choice(["explore", "refine", "refine", "refine"])
                 if mode == "explore":
                     parent = None
                     parent2 = None
@@ -2560,6 +2519,11 @@ def run_bundle_evolution(
             code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
 
             is_valid, error = validate_julia_code(unique_name, code, current_op_type)
+            append_validation_log(
+                prompts_log_dir if gen <= log_prompt_gens_max else None,
+                current_op_type, mode, gen, gen * 100 + offspring_attempts,
+                is_valid, error, unique_name,
+            )
             if not is_valid:
                 print(f"  Validation failed for {unique_name}: {error[:80]}...")
                 continue
@@ -2576,37 +2540,78 @@ def run_bundle_evolution(
 
         print(f"\nGenerated {len(offspring_bundles)} offspring bundles")
 
-        # Evaluate offspring bundles
-        print(f"\nEvaluating {len(offspring_bundles)} offspring bundles...")
-        try:
-            results = evaluate_bundles(
-                offspring_bundles, evaluator, dataset_names, pysr_kwargs, seed,
-                n_runs=n_runs, target_noise_map=target_noise_map,
-                fitness_metric=fitness_metric,
+        if racing:
+            members = list(population) + list(offspring_bundles)
+            starts = [int(getattr(m, "seeds_evaluated", 0) or 0) for m in members]
+            print(
+                f"\nRacing: re-evaluating {len(population)} pop + {len(offspring_bundles)} "
+                f"offspring bundles on {n_runs} fresh seeds each..."
             )
-            for bundle, (avg_score, score_vector, result_details) in zip(offspring_bundles, results):
-                bundle.score = avg_score
-                bundle.score_vector = score_vector
-                bundle.result_details = result_details
-                _log_bundle_eval(bundle, generation=gen)
-                solved_str = format_solved_str(result_details)
-                if n_runs > 1 and result_details:
-                    per_run_avgs = compute_per_run_avgs(result_details, n_runs=n_runs, fitness_metric=fitness_metric)
-                    runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                    print(f"  {bundle.display_name}: Avg {avg_score:.4f} [{runs_str}] {solved_str}")
-                else:
-                    print(f"  {bundle.display_name}: {avg_score:.4f} {solved_str}")
-        except Exception as e:
-            print(f"  Batch evaluation failed: {e}")
-            for bundle in offspring_bundles:
-                bundle.score = -1.0
-                bundle.score_vector = []
-                _log_bundle_eval(bundle, generation=gen)
-
-        if task_diverse_pop:
-            population = select_survivors_diverse(population, offspring_bundles, population_size, dataset_names)
+            try:
+                results = evaluate_bundles(
+                    members, evaluator, dataset_names, pysr_kwargs, seed,
+                    n_runs=n_runs, target_noise_map=target_noise_map,
+                    fitness_metric=fitness_metric,
+                    run_index_start_per_config=starts,
+                )
+                apply_racing_results(members, results, n_runs, fitness_metric)
+                for bundle in members:
+                    _log_bundle_eval(bundle, generation=gen)
+                    solved_str = format_solved_str(bundle.result_details)
+                    print(
+                        f"  {bundle.display_name}: Avg {bundle.score:.4f} "
+                        f"(seeds={bundle.seeds_evaluated}) {solved_str}"
+                    )
+            except Exception as e:
+                print(f"  Batch evaluation failed: {e}")
+                for bundle in offspring_bundles:
+                    if bundle.score is None:
+                        bundle.score = -1.0
+                        bundle.score_vector = []
+                    _log_bundle_eval(bundle, generation=gen)
+            _extend_archive(offspring_bundles)
+            if hof:
+                pool = archive
+                print(f"  [hof] Selecting survivors from all-time archive of {len(pool)} bundles")
+            else:
+                pool = members
+            if task_diverse_pop:
+                population = select_survivors_diverse(pool, [], population_size, dataset_names)
+            else:
+                population = select_survivors(pool, [], population_size)
         else:
-            population = select_survivors(population, offspring_bundles, population_size)
+            # Evaluate offspring bundles
+            print(f"\nEvaluating {len(offspring_bundles)} offspring bundles...")
+            try:
+                results = evaluate_bundles(
+                    offspring_bundles, evaluator, dataset_names, pysr_kwargs, seed,
+                    n_runs=n_runs, target_noise_map=target_noise_map,
+                    fitness_metric=fitness_metric,
+                )
+                for bundle, (avg_score, score_vector, result_details) in zip(offspring_bundles, results):
+                    bundle.score = avg_score
+                    bundle.score_vector = score_vector
+                    bundle.result_details = result_details
+                    bundle.seeds_evaluated = n_runs
+                    _log_bundle_eval(bundle, generation=gen)
+                    solved_str = format_solved_str(result_details)
+                    if n_runs > 1 and result_details:
+                        per_run_avgs = compute_per_run_avgs(result_details, n_runs=n_runs, fitness_metric=fitness_metric)
+                        runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
+                        print(f"  {bundle.display_name}: Avg {avg_score:.4f} [{runs_str}] {solved_str}")
+                    else:
+                        print(f"  {bundle.display_name}: {avg_score:.4f} {solved_str}")
+            except Exception as e:
+                print(f"  Batch evaluation failed: {e}")
+                for bundle in offspring_bundles:
+                    bundle.score = -1.0
+                    bundle.score_vector = []
+                    _log_bundle_eval(bundle, generation=gen)
+
+            if task_diverse_pop:
+                population = select_survivors_diverse(population, offspring_bundles, population_size, dataset_names)
+            else:
+                population = select_survivors(population, offspring_bundles, population_size)
         best = population[0]
 
         # HPO tuning step
@@ -2699,7 +2704,7 @@ def main():
 
     parser.add_argument("--max_evals", type=int, default=1000000,
                         help="Maximum evaluations per PySR run (default: 1e6 for mutation, 100000 for survival/selection)")
-    parser.add_argument("--timeout", type=int, default=3000)
+    parser.add_argument("--timeout", type=int, default=6000)
 
     DEFAULT_ENSEMBLE = (
         "openai/gpt-5.4-mini:0.20,"
@@ -2718,6 +2723,9 @@ def main():
     parser.add_argument("--time_limit", type=str, default="04:00:00")
     parser.add_argument("--mem_per_cpu", type=str, default="8G")
     parser.add_argument("--job_timeout", type=float, default=3000.0)
+    parser.add_argument("--max_concurrent_jobs", type=int, default=None,
+                        help="Cap on concurrent SLURM array tasks (applies %%N to --array spec). "
+                             "None = no limit.")
     parser.add_argument("--repo-root", type=str, default=str(Path(__file__).resolve().parent),
                         help="Repo root containing PySR and SymbolicRegression.jl.")
     parser.add_argument("--julia-project", type=str, default=None,
@@ -2738,6 +2746,16 @@ def main():
                              "or feed unsolved ground-truth equations to refine (mutation).")
     parser.add_argument("--task_aware_prob", type=float, default=0.5,
                         help="Probability of using task-aware variant when --task_aware is set.")
+    parser.add_argument("--racing", action="store_true",
+                        help="Racing population maintenance: each generation, re-evaluate "
+                             "current population members on n_runs fresh seeds (beyond what "
+                             "they've already seen) alongside offspring, accumulate results, "
+                             "and select survivors from the combined pool using the mean "
+                             "across all accumulated seeds.")
+    parser.add_argument("--hof", action="store_true",
+                        help="Hall of Fame: select survivors from the all-time archive of every "
+                             "bundle ever evaluated, ranked by avg score across all accumulated "
+                             "seeds. Requires --racing so scores remain comparable as seeds grow.")
 
     parser.add_argument("--baseline", type=str, default=None,
                         help="Path to a baseline operator to seed the initial population. "
@@ -2746,6 +2764,9 @@ def main():
                              "openevolve best_program.py, or a raw .jl file.")
 
     args = parser.parse_args()
+
+    if args.hof and not args.racing:
+        parser.error("--hof requires --racing")
 
     # Parse operator type(s)
     if args.operator_type == "all":
@@ -2790,6 +2811,7 @@ def main():
         slurm_mem_per_cpu=args.mem_per_cpu,
         max_samples=args.max_samples,
         job_timeout=args.job_timeout,
+        max_concurrent_jobs=args.max_concurrent_jobs,
         use_cache=not args.no_cache,
         n_runs=args.n_runs,
         target_noise=args.target_noise,
@@ -2803,6 +2825,8 @@ def main():
         task_diverse_pop=args.task_diverse_pop,
         task_aware=args.task_aware,
         task_aware_prob=args.task_aware_prob,
+        racing=args.racing,
+        hof=args.hof,
     )
 
     # Load baseline if specified
@@ -2843,6 +2867,8 @@ def main():
         "task_diverse_pop": args.task_diverse_pop,
         "task_aware": args.task_aware,
         "task_aware_prob": args.task_aware_prob,
+        "racing": args.racing,
+        "hof": args.hof,
     }
     wandb_run = init_wandb(
         config=wandb_config,

@@ -11,7 +11,7 @@ import hashlib
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from sqlalchemy import Column, String, Float, Text, Boolean, DateTime, create_engine, select
+from sqlalchemy import Column, String, Float, Text, Boolean, DateTime, create_engine, select, event
 from sqlalchemy.orm import Session
 
 try:
@@ -20,6 +20,17 @@ except ImportError:
     from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
+
+
+def _configure_sqlite_engine(engine) -> None:
+    """Apply conservative SQLite settings for shared, bursty access."""
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=60000")
+        cursor.close()
 
 
 class EvaluationCacheEntry(Base):
@@ -69,7 +80,11 @@ class EvaluationCacheDB:
         db_dir = os.path.dirname(database_path)
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
-        self.engine = create_engine(f"sqlite:///{database_path}")
+        self.engine = create_engine(
+            f"sqlite:///{database_path}",
+            connect_args={"timeout": 60},
+        )
+        _configure_sqlite_engine(self.engine)
         Base.metadata.create_all(self.engine)
 
     def _make_bundle_hash(self, bundle_codes: Dict[str, str]) -> str:
@@ -261,7 +276,11 @@ class PySRCacheDB:
         db_dir = os.path.dirname(database_path)
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
-        self.engine = create_engine(f"sqlite:///{database_path}")
+        self.engine = create_engine(
+            f"sqlite:///{database_path}",
+            connect_args={"timeout": 60},
+        )
+        _configure_sqlite_engine(self.engine)
         Base.metadata.create_all(self.engine)
         self._migrate()
 
@@ -331,6 +350,39 @@ class PySRCacheDB:
         }
         key_str = json.dumps(key_data, sort_keys=True, ensure_ascii=True)
         return hashlib.sha256(key_str.encode()).hexdigest()
+
+    def make_request_hash(
+        self,
+        mutation_weights: Dict[str, float],
+        pysr_kwargs: Dict,
+        dataset_name: str,
+        seed: int,
+        data_seed: int,
+        max_samples: Optional[int],
+        run_index: int,
+        custom_mutation_code: Optional[Dict[str, str]] = None,
+        allow_custom_mutations: bool = False,
+        pysr_model_kwargs: Optional[Dict] = None,
+        target_noise: float = 0.0,
+        custom_selection_code: Optional[str] = None,
+        custom_survival_code: Optional[str] = None,
+    ) -> str:
+        """Public wrapper for the deterministic request hash."""
+        return self._make_cache_key(
+            mutation_weights=mutation_weights,
+            pysr_kwargs=pysr_kwargs,
+            dataset_name=dataset_name,
+            seed=seed,
+            data_seed=data_seed,
+            max_samples=max_samples,
+            run_index=run_index,
+            custom_mutation_code=custom_mutation_code,
+            allow_custom_mutations=allow_custom_mutations,
+            pysr_model_kwargs=pysr_model_kwargs,
+            target_noise=target_noise,
+            custom_selection_code=custom_selection_code,
+            custom_survival_code=custom_survival_code,
+        )
 
     def lookup(
         self,
@@ -445,6 +497,37 @@ class PySRCacheDB:
             mutation_weights, pysr_kwargs, custom_mutation_code, allow_custom_mutations,
             custom_selection_code, custom_survival_code
         )
+
+    def store_many(self, entries: List[Dict[str, Any]]) -> int:
+        """Store many PySR cache entries in one transaction.
+
+        Returns the number of rows merged into the cache.
+        """
+        if not entries:
+            return 0
+
+        orm_entries = []
+        for entry in entries:
+            orm_entries.append(PySRCacheEntry(
+                request_hash=entry["request_hash"],
+                config_hash=entry["config_hash"],
+                dataset_name=entry["dataset_name"],
+                r2_score=entry["r2_score"],
+                gt_match_score=entry.get("gt_match_score"),
+                best_equation=entry.get("best_equation"),
+                best_loss=entry["best_loss"],
+                error=entry.get("error"),
+                timed_out=entry.get("timed_out", False),
+                runtime_seconds=entry.get("runtime_seconds", 0.0),
+                created_at=entry.get("created_at", datetime.utcnow()),
+            ))
+
+        with Session(self.engine) as session:
+            for orm_entry in orm_entries:
+                session.merge(orm_entry)
+            session.commit()
+
+        return len(orm_entries)
 
 
 # Global PySR cache instance

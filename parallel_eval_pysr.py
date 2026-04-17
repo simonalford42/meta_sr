@@ -12,13 +12,166 @@ import os
 import sys
 import json
 import re
+import tempfile
 import traceback
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
-from slurm_eval import BaseSlurmEvaluator, init_worker
+from slurm_eval import BaseSlurmEvaluator, init_worker, _untrack_job
+
+
+_TRANSIENT_PYSR_ERROR_SNIPPETS = (
+    "illegal instruction",
+    "signal",
+    "segmentation fault",
+    "bus error",
+    "core dumped",
+    "worker exception",
+    "result file missing",
+    "timeout: job exceeded time limit",
+    "job exceeded time limit",
+    "exceeded time limit",
+    "slurmstepd:",
+    "cancelled",
+    "canceled",
+    "oom",
+    "out of memory",
+    "memoryerror",
+    "broken pipe",
+    "connection reset",
+    "connection aborted",
+    "transport endpoint",
+    "stale file handle",
+    "resource temporarily unavailable",
+    "database is locked",
+    "julia has exited",
+    "process terminated",
+    "process exited",
+)
+
+_DETERMINISTIC_PYSR_ERROR_SNIPPETS = (
+    "undefvarerror",
+    "methoderror",
+    "parseerror",
+    "syntaxerror",
+    "loaderror",
+    "argumenterror",
+    "domainerror",
+    "typeerror",
+    "boundserror",
+    "dimensionmismatch",
+    "errorexception",
+    "stackoverflowerror",
+    "overflowerror",
+    "divideerror",
+    "assertionerror",
+    "weights cannot contain inf or nan",
+    "cannot convert",
+)
+
+
+def _classify_pysr_error(error_msg: Optional[str]) -> str:
+    """Classify PySR failures for retry/caching policy."""
+    if not error_msg:
+        return "success"
+
+    error_lower = error_msg.lower()
+    if any(snippet in error_lower for snippet in _TRANSIENT_PYSR_ERROR_SNIPPETS):
+        return "transient"
+    if any(snippet in error_lower for snippet in _DETERMINISTIC_PYSR_ERROR_SNIPPETS):
+        return "deterministic"
+    return "unknown"
+
+
+def _has_usable_pysr_cached_result(cached: Optional[Dict[str, Any]]) -> bool:
+    """Return True when a cache entry is complete enough to reuse."""
+    return cached is not None and cached.get("gt_match_score") is not None
+
+
+def _write_json_atomic(path: Path, payload: Any) -> None:
+    """Atomically write JSON payloads so readers never see partial files."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _build_cache_identity(
+    spec: "PySRTaskSpec",
+) -> Tuple[Dict[str, float], Dict[str, Any]]:
+    """Build deterministic cache identity inputs for a task."""
+    pysr_mutation_kwargs = {}
+    for key, value in spec.mutation_weights.items():
+        if not key.startswith('weight_'):
+            key = f'weight_{key}'
+        if 'custom_mutation' in key and not spec.allow_custom_mutations:
+            continue
+        pysr_mutation_kwargs[key] = value
+
+    model_kwargs = {**pysr_mutation_kwargs, **spec.pysr_kwargs}
+    model_kwargs['random_state'] = spec.seed + spec.run_index
+    return pysr_mutation_kwargs, model_kwargs
+
+
+def _build_pysr_cache_entry(
+    spec: "PySRTaskSpec",
+    result: "PySRTaskResult",
+) -> Dict[str, Any]:
+    """Convert a task spec/result pair into a PySR cache entry payload."""
+    from evaluation_cache import get_pysr_cache
+
+    cache = get_pysr_cache()
+    if cache is None:
+        raise RuntimeError("PySR cache is disabled")
+
+    pysr_mutation_kwargs, model_kwargs = _build_cache_identity(spec)
+    config_hash = cache.get_config_hash(
+        mutation_weights=pysr_mutation_kwargs,
+        pysr_kwargs=spec.pysr_kwargs,
+        custom_mutation_code=spec.custom_mutation_code,
+        allow_custom_mutations=spec.allow_custom_mutations,
+        custom_selection_code=spec.custom_selection_code,
+        custom_survival_code=spec.custom_survival_code,
+    )
+    request_hash = cache.make_request_hash(
+        mutation_weights=pysr_mutation_kwargs,
+        pysr_kwargs=spec.pysr_kwargs,
+        dataset_name=spec.dataset_name,
+        seed=spec.seed,
+        data_seed=spec.data_seed,
+        max_samples=spec.max_samples,
+        run_index=spec.run_index,
+        custom_mutation_code=spec.custom_mutation_code,
+        allow_custom_mutations=spec.allow_custom_mutations,
+        pysr_model_kwargs=model_kwargs,
+        target_noise=spec.target_noise,
+        custom_selection_code=spec.custom_selection_code,
+        custom_survival_code=spec.custom_survival_code,
+    )
+    return {
+        "request_hash": request_hash,
+        "config_hash": config_hash,
+        "dataset_name": spec.dataset_name,
+        "r2_score": result.r2_score,
+        "gt_match_score": result.gt_match_score,
+        "best_equation": result.best_equation,
+        "best_loss": result.best_loss,
+        "error": result.error,
+        "timed_out": result.timed_out,
+        "runtime_seconds": result.runtime_seconds,
+    }
 
 
 def _remap_formula_variables(
@@ -225,6 +378,7 @@ class PySRTaskResult:
     run_index: int = 0
     timed_out: bool = False
     runtime_seconds: float = 0.0
+    num_evaluations: Optional[float] = None  # total PySR expression evaluations actually used (may be < max_evals if early stopped)
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -240,7 +394,28 @@ class PySRTaskResult:
         if 'runtime_seconds' not in d:
             d = dict(d)
             d['runtime_seconds'] = 0.0
+        if 'num_evaluations' not in d:
+            d = dict(d)
+            d['num_evaluations'] = None
         return cls(**d)
+
+
+def _get_pysr_num_evaluations(model) -> Optional[float]:
+    """Return the total number of expression evaluations PySR actually ran.
+
+    Sums SymbolicRegression.jl's SearchState.num_evals (Vector{Vector{Float64}}),
+    the same quantity `check_max_evals` tests against `options.max_evals`. Returns
+    None if the state isn't available (older PySR versions, failed fits, etc.).
+    """
+    try:
+        state = model.julia_state_
+        if state is None:
+            return None
+        search_state = state[1]
+        from juliacall import Main as jl
+        return float(jl.seval("s -> sum(sum, s.num_evals)")(search_state))
+    except Exception:
+        return None
 
 
 def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskResult:
@@ -260,56 +435,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
     # Seed for train/val split and PySR (base seed + run_index)
     run_seed = spec.seed + spec.run_index
 
-    # Extract mutation weights - PySR uses weight_ prefix
-    # Filter out custom_mutation weights unless explicitly allowed
-    pysr_mutation_kwargs = {}
-    for key, value in spec.mutation_weights.items():
-        if not key.startswith('weight_'):
-            key = f'weight_{key}'
-        if 'custom_mutation' in key and not spec.allow_custom_mutations:
-            continue
-        pysr_mutation_kwargs[key] = value
-
-    # Merge with pysr_kwargs (pysr_kwargs takes precedence for non-weight params)
-    model_kwargs = {**pysr_mutation_kwargs, **spec.pysr_kwargs}
-    model_kwargs['random_state'] = run_seed
-
-    # Check cache first
-    if use_cache:
-        try:
-            from evaluation_cache import get_pysr_cache
-            cache = get_pysr_cache()
-            if cache is not None:
-                cached = cache.lookup(
-                    mutation_weights=pysr_mutation_kwargs,
-                    pysr_kwargs=spec.pysr_kwargs,
-                    dataset_name=spec.dataset_name,
-                    seed=spec.seed,
-                    data_seed=spec.data_seed,
-                    max_samples=spec.max_samples,
-                    run_index=spec.run_index,
-                    custom_mutation_code=spec.custom_mutation_code,
-                    allow_custom_mutations=spec.allow_custom_mutations,
-                    pysr_model_kwargs=model_kwargs,
-                    target_noise=spec.target_noise,
-                    custom_selection_code=spec.custom_selection_code,
-                    custom_survival_code=spec.custom_survival_code,
-                )
-                if cached is not None and cached.get("gt_match_score") is not None:
-                    return PySRTaskResult(
-                        config_id=spec.config_id,
-                        dataset_name=spec.dataset_name,
-                        r2_score=cached["r2_score"],
-                        best_equation=cached["best_equation"],
-                        best_loss=cached["best_loss"],
-                        gt_match_score=cached.get("gt_match_score"),
-                        error=cached["error"],
-                        run_index=spec.run_index,
-                        timed_out=cached.get("timed_out", False),
-                        runtime_seconds=cached.get("runtime_seconds", 0.0),
-                    )
-        except Exception:
-            pass  # Cache errors should not break evaluation
+    # Build model kwargs once so execution and parent-side cache compaction share identity logic.
+    _, model_kwargs = _build_cache_identity(spec)
 
     try:
         # Seed for dataset loading
@@ -392,7 +519,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         print(f"[{spec.dataset_name}] Starting PySR search: {X_train.shape[0]} train samples, {n_features} features", flush=True)
         model.fit(X_train, y_train, variable_names=variable_names)
         t_search = _time.time() - t3
-        print(f"[{spec.dataset_name}] PySR search complete in {t_search:.1f}s (total: {_time.time() - start_time:.1f}s)", flush=True)
+        num_evals_used = _get_pysr_num_evaluations(model)
+        print(f"[{spec.dataset_name}] PySR search complete in {t_search:.1f}s (total: {_time.time() - start_time:.1f}s, num_evals={num_evals_used})", flush=True)
 
         # Get best equation
         best = model.get_best()
@@ -438,38 +566,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             error=None,
             run_index=spec.run_index,
             runtime_seconds=runtime,
+            num_evaluations=num_evals_used,
         )
-
-        # Store in cache
-        if use_cache:
-            try:
-                from evaluation_cache import get_pysr_cache
-                cache = get_pysr_cache()
-                if cache is not None:
-                    cache.store(
-                        mutation_weights=pysr_mutation_kwargs,
-                        pysr_kwargs=spec.pysr_kwargs,
-                        dataset_name=spec.dataset_name,
-                        seed=spec.seed,
-                        data_seed=spec.data_seed,
-                        max_samples=spec.max_samples,
-                        run_index=spec.run_index,
-                        custom_mutation_code=spec.custom_mutation_code,
-                        allow_custom_mutations=spec.allow_custom_mutations,
-                        pysr_model_kwargs=model_kwargs,
-                        target_noise=spec.target_noise,
-                        r2_score=result.r2_score,
-                        best_equation=result.best_equation,
-                        best_loss=result.best_loss,
-                        error=result.error,
-                        timed_out=result.timed_out,
-                        runtime_seconds=result.runtime_seconds,
-                        custom_selection_code=spec.custom_selection_code,
-                        custom_survival_code=spec.custom_survival_code,
-                        gt_match_score=result.gt_match_score,
-                    )
-            except Exception:
-                pass
 
         return result
 
@@ -486,9 +584,6 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             run_index=spec.run_index,
             runtime_seconds=runtime,
         )
-
-        # Don't cache errors — they may be transient (node issues, Julia crashes)
-        # and caching them poisons future runs.
 
         return result
 
@@ -525,28 +620,35 @@ def _aggregate_pysr_results(
     for config_id in range(num_configs):
         r2_vector = []
         result_details = []
+        # Per-dataset averages over successful runs only, used for overall mean
+        valid_dataset_scores: List[float] = []
 
         for dataset_name in dataset_names:
             key = (config_id, dataset_name)
-            if key in results_by_config_dataset:
-                run_results = results_by_config_dataset[key]
-                # Handle potential None/NaN values defensively
+            all_run_results = results_by_config_dataset.get(key, [])
+            # Only count runs that actually succeeded (no error recorded)
+            good_runs = [r for r in all_run_results if r.error is None]
+
+            if good_runs:
                 run_r2_scores = [
                     r.r2_score if (r.r2_score is not None and not np.isnan(r.r2_score)) else -1.0
-                    for r in run_results
+                    for r in good_runs
                 ]
                 run_gt_scores = [
                     r.gt_match_score if (r.gt_match_score is not None and not np.isnan(r.gt_match_score)) else 0.0
-                    for r in run_results
+                    for r in good_runs
                 ]
                 run_scores = run_gt_scores if fitness_metric == "gt" else run_r2_scores
                 avg_score = float(np.mean(run_scores))
 
-                # Combine results from all runs
-                all_equations = [r.best_equation for r in run_results if r.best_equation]
-                errors = [r.error for r in run_results if r.error]
+                all_equations = [r.best_equation for r in good_runs if r.best_equation]
+                errors = [r.error for r in all_run_results if r.error]
+                run_num_evals = [r.num_evaluations for r in good_runs]
+                valid_num_evals = [n for n in run_num_evals if n is not None]
+                avg_num_evals = float(np.mean(valid_num_evals)) if valid_num_evals else None
 
                 r2_vector.append(avg_score)
+                valid_dataset_scores.append(avg_score)
                 result_details.append({
                     "dataset": dataset_name,
                     "avg_r2": float(np.mean(run_r2_scores)),
@@ -555,8 +657,15 @@ def _aggregate_pysr_results(
                     "run_gt_scores": run_gt_scores,
                     "best_equations": all_equations,
                     "errors": errors if errors else None,
+                    "run_num_evaluations": run_num_evals,
+                    "avg_num_evaluations": avg_num_evals,
+                    "n_successful_runs": len(good_runs),
+                    "n_total_runs": len(all_run_results),
                 })
             else:
+                # All runs for this (config, dataset) errored or are missing.
+                # Exclude from overall mean; r2_vector still records a placeholder.
+                errors = [r.error for r in all_run_results if r.error] or ["No results found"]
                 r2_vector.append(0.0 if fitness_metric == "gt" else -1.0)
                 result_details.append({
                     "dataset": dataset_name,
@@ -565,10 +674,20 @@ def _aggregate_pysr_results(
                     "run_r2_scores": [],
                     "run_gt_scores": [],
                     "best_equations": [],
-                    "errors": ["No results found"],
+                    "errors": errors,
+                    "run_num_evaluations": [],
+                    "avg_num_evaluations": None,
+                    "n_successful_runs": 0,
+                    "n_total_runs": len(all_run_results),
                 })
 
-        avg_r2 = float(np.mean(r2_vector))
+        # Overall average is the mean of per-dataset averages over datasets
+        # where at least one run succeeded. If every dataset failed, fall back
+        # to the r2_vector mean so downstream code sees a number.
+        if valid_dataset_scores:
+            avg_r2 = float(np.mean(valid_dataset_scores))
+        else:
+            avg_r2 = float(np.mean(r2_vector))
         config_results.append((avg_r2, r2_vector, result_details))
 
     return config_results
@@ -600,6 +719,10 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
     Extends BaseSlurmEvaluator with PySR-specific job scripts and result handling.
     """
 
+    # SLURM's MaxArraySize caps how many tasks one job array can hold
+    # (1001 on this cluster). Chunk larger batches into multiple submissions.
+    MAX_ARRAY_SIZE = 1000
+
     def __init__(
         self,
         results_dir: str,
@@ -614,6 +737,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         bad_nodes_file: Optional[str] = "caches/bad_nodes.txt",
         max_concurrent_jobs: Optional[int] = None,
         job_timeout: Optional[float] = 600.0,
+        stall_timeout: Optional[float] = 300.0,
         use_cache: bool = True,
         target_noise: float = 0.0,
         repo_root: Optional[str] = None,
@@ -635,6 +759,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             bad_nodes_file=bad_nodes_file,
             max_concurrent_jobs=max_concurrent_jobs,
             job_timeout=job_timeout,
+            stall_timeout=stall_timeout,
             use_cache=use_cache,
         )
         self.target_noise = target_noise
@@ -648,6 +773,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             else None
         )
         self.julia_depot_path = julia_depot_path
+        self._pending_cache_entries: List[Dict[str, Any]] = []
 
     def _build_worker_env_exports(self) -> str:
         """Build shell exports for PySR worker environment isolation."""
@@ -673,6 +799,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         n_runs: int = 1,
         target_noise_map: Optional[Dict[str, float]] = None,
         fitness_metric: str = "r2",
+        run_index_start_per_config: Optional[List[int]] = None,
     ) -> List[Tuple[float, List[float], List[Dict]]]:
         """
         Evaluate PySR configurations via SLURM job array.
@@ -694,10 +821,15 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # Build task specs
         tasks = []
         for config_id, config in enumerate(configs):
+            run_start = (
+                run_index_start_per_config[config_id]
+                if run_index_start_per_config is not None
+                else 0
+            )
             for dataset_name in dataset_names:
                 # Use per-dataset noise if map provided, otherwise use evaluator default
                 noise = target_noise_map.get(dataset_name, self.target_noise) if target_noise_map else self.target_noise
-                for run_idx in range(n_runs):
+                for run_idx in range(run_start, run_start + n_runs):
                     tasks.append(PySRTaskSpec(
                         config_id=config_id,
                         dataset_name=dataset_name,
@@ -727,16 +859,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 cache = get_pysr_cache()
                 if cache is not None:
                     for task_idx, task in enumerate(tasks):
-                        # Build the same mutation kwargs that _evaluate_pysr_task uses
-                        pysr_mutation_kwargs = {}
-                        for key, value in task.mutation_weights.items():
-                            if not key.startswith('weight_'):
-                                key = f'weight_{key}'
-                            if 'custom_mutation' in key and not task.allow_custom_mutations:
-                                continue
-                            pysr_mutation_kwargs[key] = value
-                        model_kwargs = {**pysr_mutation_kwargs, **task.pysr_kwargs}
-                        model_kwargs['random_state'] = task.seed + task.run_index
+                        pysr_mutation_kwargs, model_kwargs = _build_cache_identity(task)
 
                         cached = cache.lookup(
                             mutation_weights=pysr_mutation_kwargs,
@@ -753,7 +876,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             custom_selection_code=task.custom_selection_code,
                             custom_survival_code=task.custom_survival_code,
                         )
-                        if cached is not None and cached.get("gt_match_score") is not None:
+                        if _has_usable_pysr_cached_result(cached):
                             # Pre-write cached result to results directory
                             # Handle potential None values from cache
                             r2_score = cached["r2_score"]
@@ -775,16 +898,14 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                                 runtime_seconds=cached.get("runtime_seconds", 0.0),
                             )
                             result_file = results_subdir / f"task_{task_idx:06d}.json"
-                            with open(result_file, 'w') as f:
-                                json.dump(cached_result.to_json_dict(), f)
+                            _write_json_atomic(result_file, cached_result.to_json_dict())
                             n_cached += 1
                         else:
                             uncached_indices.append(task_idx)
                 else:
                     uncached_indices = list(range(n_tasks))
             except Exception as e:
-                print(f"  WARNING: Cache pre-filter failed: {e}")
-                uncached_indices = list(range(n_tasks))
+                raise RuntimeError(f"PySR cache pre-filter failed: {e}") from e
         else:
             uncached_indices = list(range(n_tasks))
 
@@ -799,30 +920,41 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
 
         # Save task specifications
         tasks_file = batch_dir / "tasks.json"
-        with open(tasks_file, 'w') as f:
-            json.dump([t.to_json_dict() for t in tasks], f)
+        _write_json_atomic(tasks_file, [t.to_json_dict() for t in tasks])
 
         # Skip SLURM if all tasks are cached
         if not uncached_indices:
             print(f"  All {n_tasks} tasks served from cache - skipping SLURM")
             results, failed_indices = self._collect_results(results_subdir, n_tasks, timed_out=False)
         else:
-            # Submit SLURM job array for uncached tasks only
+            # Submit SLURM job array(s) for uncached tasks, chunking if the
+            # batch exceeds SLURM's MaxArraySize.
             original_use_cache = self.use_cache
             self.use_cache = use_cache_for_run
-            if len(uncached_indices) < n_tasks:
-                job_script = self._create_retry_job_script(batch_dir, uncached_indices, 0)
-            else:
-                job_script = self._create_job_script(batch_dir, n_tasks)
+            chunks = [
+                uncached_indices[i:i + self.MAX_ARRAY_SIZE]
+                for i in range(0, len(uncached_indices), self.MAX_ARRAY_SIZE)
+            ]
+            job_ids: List[str] = []
+            for chunk_num, chunk in enumerate(chunks):
+                job_script = self._create_chunk_job_script(
+                    batch_dir, chunk, chunk_num
+                )
+                jid = self._submit_job(job_script)
+                job_ids.append(jid)
+                print(
+                    f"  Submitted SLURM job array: {jid} "
+                    f"(chunk {chunk_num + 1}/{len(chunks)}, {len(chunk)} tasks)"
+                )
+                print(f"    Script: {job_script}")
             self.use_cache = original_use_cache
-            job_id = self._submit_job(job_script)
-            print(f"  Submitted SLURM job array: {job_id} ({len(uncached_indices)} tasks)")
-            print(f"    Script: {job_script}")
             logs_dir = batch_dir / "logs"
             print(f"    Watch logs: tail -f {logs_dir}/task_<N>.out")
 
-            # Wait for completion
-            job_completed = self._wait_for_job(job_id, n_tasks, batch_dir, initial_cached=n_cached)
+            # Wait for completion across all chunks
+            job_completed = self._wait_for_jobs(
+                job_ids, n_tasks, batch_dir, initial_cached=n_cached
+            )
 
             # Update bad nodes from logs
             try:
@@ -835,26 +967,38 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 results_subdir, n_tasks, timed_out=not job_completed
             )
 
-            # Retry failed tasks
+            # Retry failed tasks (including those missing due to timeout/stall)
             retry_count = 0
-            if not job_completed:
-                print(f"  Skipping retries - job timed out")
-            while job_completed and failed_indices and retry_count < self.max_retries:
+            while failed_indices and retry_count < self.max_retries:
                 retry_count += 1
                 print(f"  Retrying {len(failed_indices)} failed tasks "
                       f"(attempt {retry_count}/{self.max_retries})...")
 
                 original_use_cache = self.use_cache
                 self.use_cache = use_cache_for_run
-                retry_job_script = self._create_retry_job_script(
-                    batch_dir, failed_indices, retry_count
-                )
+                # Chunk retries the same way as the initial submission so that
+                # neither MaxArraySize nor the max-index limit are hit.
+                retry_chunks = [
+                    failed_indices[i:i + self.MAX_ARRAY_SIZE]
+                    for i in range(0, len(failed_indices), self.MAX_ARRAY_SIZE)
+                ]
+                retry_job_ids: List[str] = []
+                for rc_num, rc in enumerate(retry_chunks):
+                    retry_job_script = self._create_chunk_job_script(
+                        batch_dir, rc, chunk_num=1000 + retry_count * 100 + rc_num
+                    )
+                    rjid = self._submit_job(retry_job_script)
+                    retry_job_ids.append(rjid)
+                    print(
+                        f"    Submitted retry job: {rjid} "
+                        f"(retry {retry_count} chunk {rc_num + 1}/{len(retry_chunks)}, "
+                        f"{len(rc)} tasks)"
+                    )
                 self.use_cache = original_use_cache
-                retry_job_id = self._submit_job(retry_job_script)
-                print(f"    Submitted retry job: {retry_job_id}")
 
-                self._wait_for_retry_job(retry_job_id, len(failed_indices),
-                                          batch_dir, failed_indices)
+                self._wait_for_retry_jobs(
+                    retry_job_ids, len(failed_indices), batch_dir, failed_indices
+                )
 
                 # Re-collect results for retried tasks
                 for idx in failed_indices:
@@ -874,10 +1018,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             if failed_indices:
                 print(f"  WARNING: {len(failed_indices)} tasks still failed")
 
+        self._queue_results_for_cache(tasks, results)
+        self.flush_pending_cache()
+
         # Save combined results
         combined_file = batch_dir / "combined.json"
-        with open(combined_file, 'w') as f:
-            json.dump([r.to_json_dict() for r in results], f, indent=2)
+        _write_json_atomic(combined_file, [r.to_json_dict() for r in results])
 
         return _aggregate_pysr_results(
             results,
@@ -885,6 +1031,55 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             num_configs=len(configs),
             fitness_metric=fitness_metric,
         )
+
+    def _queue_results_for_cache(
+        self,
+        tasks: List[PySRTaskSpec],
+        results: List[PySRTaskResult],
+    ) -> int:
+        """Queue finished successful task results for later cache import."""
+        if not self.use_cache:
+            return 0
+
+        entries = []
+        for task, result in zip(tasks, results):
+            if result.config_id < 0:
+                continue
+            if task.config_id != result.config_id:
+                continue
+            if result.error is not None:
+                continue
+
+            entries.append(_build_pysr_cache_entry(task, result))
+
+        if entries:
+            self._pending_cache_entries.extend(entries)
+        return len(entries)
+
+    def flush_pending_cache(self) -> int:
+        """Flush queued cache entries in one transaction.
+
+        Raises on failure so cache problems are visible to the caller.
+        """
+        if not self.use_cache or not self._pending_cache_entries:
+            return 0
+
+        from evaluation_cache import get_pysr_cache
+
+        cache = get_pysr_cache()
+        if cache is None:
+            raise RuntimeError("PySR cache compaction requested but cache is disabled")
+
+        entries = self._pending_cache_entries
+        self._pending_cache_entries = []
+        try:
+            imported = cache.store_many(entries)
+        except Exception:
+            self._pending_cache_entries = entries + self._pending_cache_entries
+            raise
+
+        print(f"    Imported {imported} task results into PySR cache")
+        return imported
 
     def _create_job_script(self, batch_dir: Path, n_tasks: int) -> Path:
         """Create SLURM job array submission script for PySR."""
@@ -998,6 +1193,162 @@ python -u -m parallel_eval_pysr --worker \\
 
         return script_path
 
+    def _create_chunk_job_script(
+        self, batch_dir: Path, chunk_indices: List[int], chunk_num: int
+    ) -> Path:
+        """Create SLURM job script for one chunk of a large batch.
+
+        Uses `--array=0-(N-1)` with a bash lookup table mapping each
+        SLURM_ARRAY_TASK_ID to the real task index. This keeps every array
+        index in [0, N-1], so chunks past SLURM's MaxArraySize (which caps
+        the maximum allowed task ID, not the count) still submit cleanly.
+        """
+        abs_batch = batch_dir.resolve()
+        logs_dir = abs_batch / "logs"
+        tasks_file = abs_batch / "tasks.json"
+        results_dir = abs_batch / "results"
+
+        n = len(chunk_indices)
+        array_spec = f"0-{n - 1}"
+        if self.max_concurrent_jobs and self.max_concurrent_jobs > 0:
+            array_spec = f"{array_spec}%{self.max_concurrent_jobs}"
+
+        real_idx_bash = " ".join(str(i) for i in chunk_indices)
+        optional_directives = self._get_optional_directives()
+        no_cache_flag = ' --no-cache' if not self.use_cache else ''
+        worker_env_exports = self._build_worker_env_exports()
+
+        script_content = f"""#!/bin/bash
+#SBATCH --job-name=pysr_chunk_{chunk_num}
+#SBATCH --output={logs_dir}/chunk{chunk_num}_slot_%a.out
+#SBATCH --error={logs_dir}/chunk{chunk_num}_slot_%a.err
+#SBATCH --array={array_spec}
+#SBATCH --time={self.time_limit}
+#SBATCH --cpus-per-task=1
+#SBATCH --mem-per-cpu={self.mem_per_cpu}
+#SBATCH --partition={self.partition}
+{optional_directives}
+# Environment setup
+source {self.conda_sh_path}
+conda activate {self.conda_env_name}
+
+# Disable Python output buffering so we see output immediately
+export PYTHONUNBUFFERED=1
+
+# Avoid thread oversubscription
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export JULIA_NUM_THREADS=1
+
+{worker_env_exports}
+
+# Map SLURM's 0..N-1 slot to the real task index within tasks.json
+REAL_IDX=({real_idx_bash})
+TASK_INDEX=${{REAL_IDX[$SLURM_ARRAY_TASK_ID]}}
+
+echo "Slot $SLURM_ARRAY_TASK_ID -> task $TASK_INDEX on node: $(hostname)"
+
+# Run the worker script (-u for unbuffered output)
+python -u -m parallel_eval_pysr --worker \\
+    --tasks-file "{tasks_file}" \\
+    --task-index $TASK_INDEX \\
+    --output-dir "{results_dir}"{no_cache_flag}
+"""
+
+        script_path = abs_batch / f"chunk_{chunk_num}.sh"
+        with open(script_path, 'w') as f:
+            f.write(script_content)
+
+        return script_path
+
+    def _wait_for_jobs(
+        self,
+        job_ids: List[str],
+        n_tasks: int,
+        batch_dir: Path,
+        initial_cached: int = 0,
+    ) -> bool:
+        """Wait for multiple SLURM job arrays to complete.
+
+        Polls the shared results directory for completed task files, and
+        considers the batch done when either n_tasks results exist or all
+        submitted jobs have reached a terminal status. Cancels all jobs on
+        timeout.
+        """
+        if len(job_ids) == 1:
+            return self._wait_for_job(
+                job_ids[0], n_tasks, batch_dir, initial_cached=initial_cached
+            )
+
+        import time as _time
+        start_time = _time.time()
+        last_completed = initial_cached
+        last_progress_time = start_time
+        poll_interval = 10
+        results_dir = batch_dir / "results"
+        terminal = {'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'}
+
+        while True:
+            completed = len(list(results_dir.glob("task_*.json")))
+            now = _time.time()
+            elapsed = now - start_time
+
+            if completed != last_completed:
+                newly = completed - initial_cached
+                rate = newly / elapsed if elapsed > 0 else 0
+                remaining = n_tasks - completed
+                eta = remaining / rate if rate > 0 else float('inf')
+                print(
+                    f"    Progress: {completed}/{n_tasks} tasks complete "
+                    f"({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)"
+                )
+                last_completed = completed
+                last_progress_time = now
+
+            if completed >= n_tasks:
+                print(f"  All {n_tasks} tasks completed in {elapsed:.1f}s")
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return True
+
+            if self.job_timeout is not None and elapsed > self.job_timeout:
+                print(
+                    f"  TIMEOUT: Jobs {job_ids} exceeded {self.job_timeout}s limit "
+                    f"({completed}/{n_tasks} tasks complete)"
+                )
+                for jid in job_ids:
+                    self._cancel_job(jid)
+                return False
+
+            if (
+                self.stall_timeout is not None
+                and completed < n_tasks
+                and (now - last_progress_time) > self.stall_timeout
+            ):
+                print(
+                    f"  STALL: Jobs {job_ids} made no progress for "
+                    f"{now - last_progress_time:.0f}s "
+                    f"({completed}/{n_tasks} tasks complete)"
+                )
+                for jid in job_ids:
+                    self._cancel_job(jid)
+                return False
+
+            statuses = [self._get_job_status(jid) for jid in job_ids]
+            if all(s in terminal for s in statuses):
+                if completed < n_tasks:
+                    print(
+                        f"  WARNING: All jobs ended (statuses={statuses}) "
+                        f"but only {completed}/{n_tasks} results found"
+                    )
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return True
+
+            _time.sleep(poll_interval)
+
     def _parse_result_file(self, result_file: Path) -> PySRTaskResult:
         """Parse a result JSON file into a PySRTaskResult."""
         with open(result_file, 'r') as f:
@@ -1018,10 +1369,7 @@ python -u -m parallel_eval_pysr --worker \\
 
     def _is_retryable_error(self, result: PySRTaskResult) -> bool:
         """Check if a PySRTaskResult has an error that should trigger a retry."""
-        if result.error:
-            error_lower = result.error.lower()
-            return "illegal" in error_lower or "signal" in error_lower
-        return False
+        return _classify_pysr_error(result.error) == "transient"
 
     def _collect_results(self, results_dir: Path, n_tasks: int, timed_out: bool = False) -> Tuple[List[PySRTaskResult], List[int]]:
         """Collect results from result files."""
@@ -1072,8 +1420,7 @@ def run_pysr_worker(tasks_file: str, task_index: int, output_dir: str, use_cache
         output_path.mkdir(parents=True, exist_ok=True)
         result_file = output_path / f"task_{task_index:06d}.json"
 
-        with open(result_file, 'w') as f:
-            json.dump(result.to_json_dict(), f)
+        _write_json_atomic(result_file, result.to_json_dict())
 
         status = "OK" if result.error is None else f"ERROR: {result.error}"
         print(f"PySR Worker finished: task={task_index}, R²={result.r2_score:.4f}, {status}", flush=True)
@@ -1098,8 +1445,7 @@ def run_pysr_worker(tasks_file: str, task_index: int, output_dir: str, use_cache
                 error=f"Worker exception: {str(e)}",
             )
 
-            with open(result_file, 'w') as f:
-                json.dump(error_result.to_json_dict(), f)
+            _write_json_atomic(result_file, error_result.to_json_dict())
         except Exception as save_error:
             print(f"Failed to save error result: {save_error}", flush=True)
 
@@ -1119,6 +1465,7 @@ def get_default_pysr_kwargs() -> Dict[str, Any]:
     return {
         # Search settings (matching run_pysr_srbench.py)
         # "timeout_in_seconds": int(1 * 60), # disabled
+        "early_stop_condition": 1e-8,
         "niterations": 10000000,
         "populations": 15,
         "population_size": 33,

@@ -72,6 +72,62 @@ def check_symbolic_solve_rate(results_dir):
     print(f"\n  Symbolic matches: {matches}/{total} ({solve_rate:.1f}%)")
 
 
+def loss_stats_by_solve_status(results_dir):
+    """
+    For a PySR results directory, split per-dataset test_mse / test_r2 by
+    whether the best equation symbolically matches the ground truth, and
+    report min / median / mean / max for each group.
+    """
+    results_dir = Path(results_dir)
+    json_files = sorted(results_dir.glob('*_results.json'))
+
+    solved, unsolved = [], []
+
+    for json_file in tqdm(json_files, desc=f"Checking {results_dir.name}"):
+        with open(json_file) as f:
+            data = json.load(f)
+
+        dataset = data['dataset']
+        best_eq = data['best_equation']
+        test_mse = data.get('test_mse')
+        test_r2 = data.get('test_r2')
+
+        _, _, ground_truth = load_srbench_dataset(dataset, max_samples=10)
+        assert ground_truth
+
+        var_names = get_dataset_var_names(dataset)
+        match_result = check_pysr_symbolic_match(best_eq, ground_truth, var_names)
+        entry = {'dataset': dataset, 'test_mse': test_mse, 'test_r2': test_r2}
+        (solved if match_result['match'] else unsolved).append(entry)
+
+    def _stats(group, key):
+        vals = [e[key] for e in group if e[key] is not None and np.isfinite(e[key])]
+        if not vals:
+            return None
+        arr = np.array(vals)
+        return {
+            'n': len(arr),
+            'min': float(arr.min()),
+            'median': float(np.median(arr)),
+            'mean': float(arr.mean()),
+            'max': float(arr.max()),
+        }
+
+    print(f"\n{results_dir}")
+    print(f"  solved: {len(solved)}   unsolved: {len(unsolved)}")
+    for label, group in [('solved', solved), ('unsolved', unsolved)]:
+        for key in ('test_mse', 'test_r2'):
+            s = _stats(group, key)
+            if s is None:
+                print(f"  {label:9s} {key}: (no data)")
+            else:
+                print(f"  {label:9s} {key}: n={s['n']} "
+                      f"min={s['min']:.3e} median={s['median']:.3e} "
+                      f"mean={s['mean']:.3e} max={s['max']:.3e}")
+
+    return {'solved': solved, 'unsolved': unsolved}
+
+
 def evaluate_pysr_results(results_path, dataset_name=None, ground_truth_str=None, verbose=True):
     """
     Evaluate PySR results against ground truth.

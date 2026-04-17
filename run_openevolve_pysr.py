@@ -8,13 +8,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shlex
-import shutil
 import signal
 import subprocess
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 
@@ -24,7 +21,6 @@ from wandb_utils import init_wandb, log_wandb_summary, finish_wandb
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_SHUTDOWN_GRACE_SECONDS = float(os.environ.get("OE_SHUTDOWN_GRACE_SECONDS", "30"))
-TEMP_SIGNAL_DEBUG_SUBDIR = "TEMP_signal_diagnostics"
 
 
 def parse_args() -> argparse.Namespace:
@@ -173,185 +169,11 @@ def _generate_initial_program_from_baseline(
     return generated
 
 
-def _load_registered_child_job_ids(registry_path: "Path | None") -> list[str]:
-    """Read unique child SLURM job IDs from the temporary registry."""
-    if registry_path is None or not registry_path.exists():
-        return []
-
-    job_ids = []
-    seen = set()
-    try:
-        with open(registry_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    payload = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                job_id = str(payload.get("job_id", "")).strip()
-                if job_id and job_id not in seen:
-                    seen.add(job_id)
-                    job_ids.append(job_id)
-    except Exception:
-        return []
-
-    return job_ids
-
-
-def _run_debug_command(cmd: list[str], timeout: float = 15.0) -> str:
-    """Run a diagnostics command and format the output for the log file."""
-    header = "$ " + " ".join(shlex.quote(part) for part in cmd)
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except Exception as exc:
-        return f"{header}\nERROR: {exc}\n"
-
-    output = result.stdout
-    if result.stderr:
-        output += ("\n" if output and not output.endswith("\n") else "") + result.stderr
-    if not output:
-        output = f"<no output> (exit={result.returncode})\n"
-    elif not output.endswith("\n"):
-        output += "\n"
-    return f"{header}\n{output}"
-
-
-def _append_signal_diagnostics(
-    signal_debug_file: Path,
-    *,
-    phase: str,
-    signum: int,
-    process: subprocess.Popen,
-    child_job_registry: "Path | None",
-) -> None:
-    """Append a snapshot of SLURM and process state for signal debugging.
-
-    TEMP DEBUG: remove this helper and its callers once the unexpected SIGTERM
-    issue is understood.
-    """
-    signal_debug_file.parent.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now().isoformat()
-    sections = [
-        "",
-        (
-            f"=== TEMP SIGNAL DEBUG START {timestamp} phase={phase} signum={signum} "
-            f"wrapper_pid={os.getpid()} child_pid={process.pid} ==="
-        ),
-        "Note: TEMP signal diagnostics in run_openevolve_pysr.py. Remove after the SIGTERM root cause is fixed.",
-    ]
-
-    slurm_job_id = os.environ.get("SLURM_JOB_ID", "").strip()
-    if slurm_job_id:
-        sections.append(_run_debug_command(["squeue", "-j", slurm_job_id, "-o", "%i %T %M %L %R", "-h"]))
-        sections.append(
-            _run_debug_command(
-                [
-                    "sacct",
-                    "-j",
-                    slurm_job_id,
-                    "--format=JobID,JobName%25,State,ExitCode,DerivedExitCode,Elapsed,Timelimit,NodeList%30,Reason%40",
-                ]
-            )
-        )
-        sections.append(_run_debug_command(["scontrol", "show", "job", slurm_job_id]))
-    else:
-        sections.append("No SLURM_JOB_ID in environment\n")
-
-    sections.append(
-        _run_debug_command(
-            [
-                "bash",
-                "-lc",
-                (
-                    "ps -eo pid,ppid,pgid,sid,stat,etime,cmd | "
-                    f"awk 'NR==1 || $1=={os.getpid()} || $1=={process.pid} || $3=={process.pid} {{print}}'"
-                ),
-            ]
-        )
-    )
-
-    child_job_ids = _load_registered_child_job_ids(child_job_registry)
-    if child_job_ids:
-        child_job_arg = ",".join(child_job_ids)
-        sections.append(
-            _run_debug_command(
-                ["squeue", "-j", child_job_arg, "-o", "%i %T %M %L %R", "-h"]
-            )
-        )
-        sections.append(
-            _run_debug_command(
-                [
-                    "sacct",
-                    "-j",
-                    child_job_arg,
-                    "--format=JobID,JobName%25,State,ExitCode,Elapsed,Timelimit,NodeList%30,Reason%40",
-                ]
-            )
-        )
-        try:
-            registry_text = child_job_registry.read_text(encoding="utf-8")
-        except Exception as exc:
-            registry_text = f"ERROR reading child job registry: {exc}\n"
-        sections.append(
-            f"$ tail -n +1 {shlex.quote(str(child_job_registry))}\n{registry_text}"
-            if registry_text
-            else f"$ tail -n +1 {shlex.quote(str(child_job_registry))}\n<empty>\n"
-        )
-    elif child_job_registry is not None:
-        sections.append(f"No child jobs recorded yet in {child_job_registry}\n")
-
-    sections.append("=== TEMP SIGNAL DEBUG END ===\n")
-
-    with open(signal_debug_file, "a", encoding="utf-8") as f:
-        f.write("\n".join(sections))
-
-
-def _maybe_wrap_with_signal_strace(
-    cmd: list[str],
-    *,
-    signal_debug_dir: Path,
-) -> tuple[list[str], "Path | None"]:
-    """TEMP DEBUG: launch the child under strace to capture signal sender info.
-
-    Remove this wrapper once the unexpected SIGTERM root cause is identified.
-    """
-    if not os.environ.get("SLURM_JOB_ID"):
-        return cmd, None
-
-    strace_path = shutil.which("strace")
-    if not strace_path:
-        return cmd, None
-
-    signal_debug_dir.mkdir(parents=True, exist_ok=True)
-    trace_prefix = signal_debug_dir / "signal_strace"
-    wrapped_cmd = [
-        strace_path,
-        "-ff",
-        "-tt",
-        "-e",
-        "trace=signal",
-        "-o",
-        str(trace_prefix),
-        *cmd,
-    ]
-    return wrapped_cmd, trace_prefix
-
-
 def _run_openevolve_subprocess(
     cmd: list[str],
     *,
     cwd: Path,
     env: dict[str, str],
-    signal_debug_file: "Path | None" = None,
-    child_job_registry: "Path | None" = None,
     shutdown_grace_seconds: float = DEFAULT_SHUTDOWN_GRACE_SECONDS,
 ) -> int:
     """Run OpenEvolve in its own process group with bounded shutdown."""
@@ -378,14 +200,6 @@ def _run_openevolve_subprocess(
     def _handle_signal(signum, _frame):
         if signal_state["signum"] is None:
             signal_state["signum"] = signum
-            if signal_debug_file is not None:
-                _append_signal_diagnostics(
-                    signal_debug_file,
-                    phase="signal_received",
-                    signum=signum,
-                    process=process,
-                    child_job_registry=child_job_registry,
-                )
             signal_state["deadline"] = time.monotonic() + shutdown_grace_seconds
             print(
                 f"Received signal {signum}; forwarding to OpenEvolve subprocess "
@@ -415,14 +229,6 @@ def _run_openevolve_subprocess(
                     and not signal_state["sent_sigkill"]
                     and time.monotonic() >= deadline
                 ):
-                    if signal_debug_file is not None:
-                        _append_signal_diagnostics(
-                            signal_debug_file,
-                            phase="grace_period_expired",
-                            signum=signal_state["signum"],
-                            process=process,
-                            child_job_registry=child_job_registry,
-                        )
                     print(
                         f"OpenEvolve did not exit within {shutdown_grace_seconds:.0f}s; "
                         "sending SIGKILL to the subprocess group."
@@ -510,12 +316,6 @@ def main() -> int:
     output_dir = resolve_run_dir(args.output_dir, label=f"openevolve_pysr_{args.operator_type}")
 
     output_path = REPO_ROOT / output_dir
-    # TEMP DEBUG: write extra signal diagnostics here while tracking the
-    # unexpected SIGTERM issue. Remove after the root cause is understood.
-    signal_debug_dir = output_path / TEMP_SIGNAL_DEBUG_SUBDIR
-    signal_debug_file = signal_debug_dir / "wrapper_signal_diagnostics.log"
-    child_job_registry_env = os.environ.get("META_SR_CHILD_JOB_REGISTRY")
-    child_job_registry = Path(child_job_registry_env) if child_job_registry_env else None
     initial_program_map = {
         "mutation": REPO_ROOT / "openevolve_pysr" / "initial_program.py",
         "selection": REPO_ROOT / "openevolve_pysr" / "initial_program_selection.py",
@@ -612,11 +412,6 @@ def main() -> int:
     if args.secondary_model:
         cmd.extend(["--secondary-model", args.secondary_model])
 
-    traced_cmd, signal_trace_prefix = _maybe_wrap_with_signal_strace(
-        cmd,
-        signal_debug_dir=signal_debug_dir,
-    )
-
     # Initialize wandb
     wandb_config = {
         "operator_type": args.operator_type,
@@ -648,24 +443,13 @@ def main() -> int:
         extra_tags=[args.operator_type],
     )
 
-    print("Running:", " ".join(traced_cmd))
+    print("Running:", " ".join(cmd))
     print(f"Operator type: {args.operator_type}")
     print(f"Output dir: {output_path}")
-    print(f"Temporary signal diagnostics: {signal_debug_file}")
-    if child_job_registry is not None:
-        print(f"Temporary child-job registry: {child_job_registry}")
-    if signal_trace_prefix is not None:
-        print(
-            "Temporary signal strace prefix: "
-            f"{signal_trace_prefix}.* "
-            "(remove this TEMP DEBUG wrapper once the SIGTERM root cause is fixed)"
-        )
     return_code = _run_openevolve_subprocess(
-        traced_cmd,
+        cmd,
         cwd=REPO_ROOT,
         env=env,
-        signal_debug_file=signal_debug_file,
-        child_job_registry=child_job_registry,
     )
 
     # Read best score from OpenEvolve output

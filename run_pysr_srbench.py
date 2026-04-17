@@ -219,13 +219,16 @@ def run_pysr_on_dataset(
         maxdepth=10,
         batching=False,
         # ncycles_per_iteration=10,
-        parallelism='multithreading',
-        procs=n_cpus,
+        # parallelism='multithreading',
+        # procs=n_cpus,
+        parallelism='serial',
+        deterministic=True,
         # model-selection='score',
         populations=3*n_cpus,
         niterations=1000000000000,
         # population_size=100,
         max_evals=max_evals,
+        early_stop_condition=1e-8,
         random_state=seed,
         # verbosity=5,
         output_directory=results_dir,
@@ -282,13 +285,14 @@ def run_pysr_on_dataset(
     # Get best equation
     best_eq = model.get_best()
 
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
 
     if hasattr(best_eq, 'sympy_format'):
         best_equation_str = str(best_eq.sympy_format)
     else:
         best_equation_str = str(best_eq)
 
+    from parallel_eval_pysr import _get_pysr_num_evaluations
     results = {
         'dataset': dataset_name,
         'test_mse': float(mse),
@@ -302,6 +306,7 @@ def run_pysr_on_dataset(
         # 'n_cpus': n_cpus,
         'max_size': max_size,
         'target_noise': target_noise,
+        'num_evaluations': _get_pysr_num_evaluations(model),
     }
 
     if verbose:
@@ -353,7 +358,7 @@ def main():
     # group = parser.add_mutually_exclusive_group(required=True)
     # group.add_argument('--niterations', type=int, default=None,
                     #    help='Maximum iterations')
-    parser.add_argument('--max_evals', type=int, default=1e6,
+    parser.add_argument('--max_evals', type=int, default=int(1e6),
                        help='Maximum evaluations')
 
     # Output settings

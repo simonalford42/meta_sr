@@ -1,6 +1,26 @@
 
+# 4/16/26
+# sbatch -J big run.sh evolve_pysr.py --operator_type all --generations 10 --population 5 --offspring 20 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt
+# sbatch -J racing run.sh evolve_pysr.py --operator_type all --generations 60 --population 5 --offspring 5 --n-runs 2 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing
+# sbatch -J task --mem 40G run.sh evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 10 --n-runs 5 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --task_aware
+
+
+# 4/14/26
+# sbatch -J racing run.sh evolve_pysr.py --operator_type all --generations 30 --population 5 --offspring 5 --n-runs 1 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing
+# sbatch -J task run.sh evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 10 --n-runs 5 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --task_aware
+# sbatch -J topk_10 run.sh evolve_pysr.py --operator_type all --generations 1 --population 40 --offspring 40 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt
+
+# new hpo run
+# sbatch -J hpo5 run.sh hpo_pysr.py --n-trials 100 --n-parallel 2 --n-runs 5
+# sbatch -J hpo5_bu run.sh hpo_pysr.py --n-trials 100 --n-parallel 2 --split splits/barely_unsolvable.txt --n-runs 5
+
+# top-k run with --n-runs 10
+# sbatch -J topk_10 run.sh evolve_pysr.py --operator_type all --generations 1 --population 40 --offspring 40 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt
+# sbatch -J racing run.sh evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 10 --n-runs 1 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing
+# sbatch -J task run.sh evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 10 --n-runs 1 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --task_aware
+
 # 4/10/26 — task-aware mutation/crossover smoke test (3 generations)
-sbatch run.sh evolve_pysr.py --operator_type mutation --generations 3 --task_aware --task_aware_prob 0.5 --task_diverse_pop
+# sbatch run.sh evolve_pysr.py --operator_type mutation --generations 3 --task_aware --task_aware_prob 0.5 --task_diverse_pop
 # /home/sca63/meta_sr/outputs/openevolve_pysr_selection_20260407_210230
 # 4/9/26 — Task-diverse population experiment (selection, with vs without)
 # sbatch run.sh evolve_pysr.py --operator_type selection --baseline outputs/hpo_pysr_20260407_152534 --generations 50 --task_diverse_pop

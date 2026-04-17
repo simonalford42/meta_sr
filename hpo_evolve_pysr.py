@@ -649,7 +649,6 @@ def tune_population(
             base_hpo_params=base_hpo_params,
             verbose=verbose,
         )
-
     # Re-sort by score
     population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
     return population

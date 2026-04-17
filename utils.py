@@ -36,9 +36,19 @@ def resolve_run_dir(explicit: Optional[str] = None, label: str = "run") -> str:
         return explicit
     job_id = os.environ.get("SLURM_JOB_ID")
     if job_id:
-        return str(RUNS_ROOT / job_id)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return str(RUNS_ROOT / f"local_{label}_{timestamp}")
+        base = RUNS_ROOT / job_id
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = RUNS_ROOT / f"local_{label}_{timestamp}"
+    # Avoid reusing an existing non-empty dir (e.g. repeated invocations
+    # inside a single interactive srun share SLURM_JOB_ID). Stale result
+    # files and optuna DBs in a reused dir silently corrupt new runs.
+    candidate = base
+    suffix = 2
+    while candidate.exists() and any(candidate.iterdir()):
+        candidate = base.with_name(f"{base.name}_{suffix}")
+        suffix += 1
+    return str(candidate)
 
 class TeeLogger:
     """Logger that writes to both stdout and a file."""

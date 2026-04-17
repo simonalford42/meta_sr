@@ -81,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--partition",
         type=str,
-        default="ellis",
+        default="default_partition",
         help="SLURM partition (default: ellis)",
     )
     parser.add_argument(

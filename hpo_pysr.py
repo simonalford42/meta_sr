@@ -184,8 +184,8 @@ class HPOTrialResult:
     """Result from a single HPO trial."""
     trial_number: int
     params: Dict[str, Any]
-    avg_r2: float
-    r2_vector: List[float]
+    avg_score: float
+    score_vector: List[float]
     result_details: List[Dict]
     improvement_vs_baseline: float
 
@@ -197,9 +197,10 @@ class HPOTrialResult:
 class HPOLogger:
     """Tracks and saves HPO run data."""
 
-    def __init__(self, output_dir: str):
+    def __init__(self, output_dir: str, fitness_metric: str = "r2"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.fitness_metric = fitness_metric
 
         # Set up tee logging
         self.log_file = self.output_dir / "run.log"
@@ -209,6 +210,7 @@ class HPOLogger:
         # Initialize run data
         self.run_data = {
             "start_time": datetime.now().isoformat(),
+            "fitness_metric": fitness_metric,
             "config": {},
             "baseline": {},
             "trials": [],
@@ -223,15 +225,15 @@ class HPOLogger:
 
     def log_baseline(
         self,
-        avg_r2: float,
-        r2_vector: List[float],
+        avg_score: float,
+        score_vector: List[float],
         weights: Dict[str, float],
         result_details: List[Dict],
     ):
         """Log baseline results."""
         self.run_data["baseline"] = {
-            "avg_r2": avg_r2,
-            "r2_vector": r2_vector,
+            "avg_score": avg_score,
+            "score_vector": score_vector,
             "weights": weights,
             "result_details": result_details,
         }
@@ -242,8 +244,8 @@ class HPOLogger:
         entry = {
             "trial_number": trial_result.trial_number,
             "params": trial_result.params,
-            "avg_r2": trial_result.avg_r2,
-            "r2_vector": trial_result.r2_vector,
+            "avg_score": trial_result.avg_score,
+            "score_vector": trial_result.score_vector,
             "result_details": trial_result.result_details,
             "improvement_vs_baseline": trial_result.improvement_vs_baseline,
         }
@@ -257,11 +259,11 @@ class HPOLogger:
 
         self._save()
 
-    def log_best_trial(self, trial_number: int, avg_r2: float):
+    def log_best_trial(self, trial_number: int, avg_score: float):
         """Log the best trial so far."""
         self.run_data["best_trial"] = {
             "trial_number": trial_number,
-            "avg_r2": avg_r2,
+            "avg_score": avg_score,
         }
         self._save()
 
@@ -290,8 +292,9 @@ class HPOLogger:
         with open(best_params_file, "w") as f:
             json.dump({
                 "params": best_params,
-                "avg_r2": best_score,
-                "baseline_r2": baseline_score,
+                "fitness_metric": self.fitness_metric,
+                "avg_score": best_score,
+                "baseline_score": baseline_score,
                 "improvement": improvement,
             }, f, indent=2)
         print(f"\nBest params saved to: {best_params_file}")
@@ -653,7 +656,7 @@ def _replay_trials_into_study(
 
     for trial_data in prior_trials:
         params = trial_data.get("params", {})
-        score = trial_data.get("avg_r2")
+        score = trial_data.get("avg_score", trial_data.get("avg_r2"))
         if score is None:
             continue
 
@@ -907,7 +910,7 @@ def run_hpo(
         raise ValueError("No active HPO hyperparameters selected.")
     metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
 
-    logger = HPOLogger(output_dir)
+    logger = HPOLogger(output_dir, fitness_metric=fitness_metric)
     try:
         logger.set_config({
             "n_trials": n_trials,
@@ -1054,15 +1057,15 @@ def run_hpo(
                     target_noise_map=target_noise_map,
                 )
 
-                for trial, params, (avg_r2, r2_vector, result_details) in zip(trials, param_configs, results):
-                    study.tell(trial, avg_r2)
+                for trial, params, (avg_score, score_vector, result_details) in zip(trials, param_configs, results):
+                    study.tell(trial, avg_score)
 
-                    improvement = avg_r2 - baseline_r2
+                    improvement = avg_score - baseline_r2
                     trial_result = HPOTrialResult(
                         trial_number=trial.number,
                         params=params,
-                        avg_r2=avg_r2,
-                        r2_vector=r2_vector,
+                        avg_score=avg_score,
+                        score_vector=score_vector,
                         result_details=result_details,
                         improvement_vs_baseline=improvement,
                     )
@@ -1078,22 +1081,22 @@ def run_hpo(
                             if run_scores:
                                 per_run_avgs.append(float(np.mean(run_scores)))
                         runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
-                        print(f"  Trial {trial.number}: {metric_label}={avg_r2:.4f} [{runs_str}] "
+                        print(f"  Trial {trial.number}: {metric_label}={avg_score:.4f} [{runs_str}] "
                               f"({sign}{improvement:.4f} vs baseline)")
                     else:
-                        print(f"  Trial {trial.number}: {metric_label}={avg_r2:.4f} ({sign}{improvement:.4f} vs baseline)")
+                        print(f"  Trial {trial.number}: {metric_label}={avg_score:.4f} ({sign}{improvement:.4f} vs baseline)")
 
-                    if avg_r2 > best_score:
-                        best_score = avg_r2
+                    if avg_score > best_score:
+                        best_score = avg_score
                         best_params = params.copy()
-                        logger.log_best_trial(trial.number, avg_r2)
+                        logger.log_best_trial(trial.number, avg_score)
                         print("    *** New best! ***")
 
                     if wandb_run is not None:
                         import wandb
                         wandb.log({
                             "trial": trial.number,
-                            "trial_score": avg_r2,
+                            "trial_score": avg_score,
                             "best_score": best_score,
                         })
 

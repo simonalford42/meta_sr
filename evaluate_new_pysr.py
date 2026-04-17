@@ -333,10 +333,10 @@ def print_results(split_summaries: Dict[str, EvalSummary], n_runs: int, method_l
         print(f"\n  Per-dataset breakdown:")
         for detail in summary.result_details:
             dataset = detail["dataset"]
-            scores = detail.get("run_r2_scores", [])
-            scores_str = ", ".join(f"{s:.2f}" for s in scores)
-            avg = detail.get("avg_r2", float("nan"))
-            print(f"    {dataset}: R2=[{scores_str}] avg={avg:.2f}")
+            scores = detail.get("run_gt_scores", [])
+            scores_str = ", ".join(f"{int(s)}" for s in scores)
+            avg = detail.get("avg_gt", float("nan"))
+            print(f"    {dataset}: GT=[{scores_str}] avg={avg:.2f}")
 
 
 # =============================================================================
