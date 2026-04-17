@@ -1185,7 +1185,7 @@ def main():
     parser.set_defaults(random_target_noise=False)
 
     # PySR settings
-    parser.add_argument("--max-evals", type=int, default=100000,
+    parser.add_argument("--max-evals", type=int, default=1000000,
                         help="Max evaluations per PySR run")
     parser.add_argument("--timeout", type=int, default=300,
                         help="PySR timeout in seconds")
