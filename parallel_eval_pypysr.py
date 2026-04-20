@@ -126,19 +126,18 @@ def _evaluate_pypysr_task(spec: PyPySRTaskSpec) -> PyPySRTaskResult:
         n_evals = int(getattr(model, "n_evals_", -1))
 
         gt_match_score = None
-        if spec.fitness_metric == "gt":
-            from evaluation import check_pysr_frontier_symbolic_match
-            try:
-                gt_match_result = check_pysr_frontier_symbolic_match(
-                    equations_df=model.equations_,
-                    best_df_index=best.name if best is not None else None,
-                    ground_truth_str=ground_truth_for_match,
-                    var_names=variable_names,
-                    timeout_seconds_per_expression=3,
-                )
-                gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
-            except Exception:
-                gt_match_score = 0.0
+        from evaluation import check_pysr_frontier_symbolic_match
+        try:
+            gt_match_result = check_pysr_frontier_symbolic_match(
+                equations_df=model.equations_,
+                best_df_index=best.name if best is not None else None,
+                ground_truth_str=ground_truth_for_match,
+                var_names=variable_names,
+                timeout_seconds_per_expression=3,
+            )
+            gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
+        except Exception:
+            gt_match_score = 0.0
 
         y_pred = model.predict(X_val)
         y_pred = np.clip(y_pred, -1e10, 1e10)

@@ -70,8 +70,8 @@ def _merge_summary(
     pypysr_result_tuple,
     out_dir: Path,
 ) -> Dict:
-    pysr_avg, pysr_vec, pysr_details = pysr_result_tuple
-    pypysr_avg, pypysr_vec, pypysr_details = pypysr_result_tuple
+    _, _, pysr_details = pysr_result_tuple
+    _, _, pypysr_details = pypysr_result_tuple
 
     rows = []
     pypysr_detail_map = {d["dataset"]: d for d in pypysr_details}
@@ -81,11 +81,16 @@ def _merge_summary(
         d_jl = pysr_detail_map.get(ds, {})
         py_r2 = d_py.get("avg_r2")
         jl_r2 = d_jl.get("avg_r2")
+        py_gt = d_py.get("avg_gt")
+        jl_gt = d_jl.get("avg_gt")
         row = {
             "dataset": ds,
             "pypysr_avg_r2": py_r2,
             "pysr_avg_r2": jl_r2,
+            "pypysr_avg_gt": py_gt,
+            "pysr_avg_gt": jl_gt,
             "r2_gap_pysr_minus_pypysr": None if py_r2 is None or jl_r2 is None else float(jl_r2 - py_r2),
+            "gt_gap_pysr_minus_pypysr": None if py_gt is None or jl_gt is None else float(jl_gt - py_gt),
             "pypysr_errors": d_py.get("errors"),
             "pysr_errors": d_jl.get("errors"),
             "pypysr_eq": (d_py.get("best_equations") or [None])[0],
@@ -102,16 +107,26 @@ def _merge_summary(
         & df["pypysr_errors"].isna()
         & df["pysr_errors"].isna()
     ]
+    both_discovered = good[(good["pypysr_avg_gt"] >= 1.0) & (good["pysr_avg_gt"] >= 1.0)]
     summary = {
         "n_datasets": len(datasets),
-        "pypysr_mean_r2": float(pypysr_avg),
-        "pysr_mean_r2": float(pysr_avg),
+        "pypysr_mean_r2": (None if df["pypysr_avg_r2"].dropna().empty else float(df["pypysr_avg_r2"].dropna().mean())),
+        "pysr_mean_r2": (None if df["pysr_avg_r2"].dropna().empty else float(df["pysr_avg_r2"].dropna().mean())),
+        "pypysr_discovery_rate_gt": (None if df["pypysr_avg_gt"].dropna().empty else float(df["pypysr_avg_gt"].dropna().mean())),
+        "pysr_discovery_rate_gt": (None if df["pysr_avg_gt"].dropna().empty else float(df["pysr_avg_gt"].dropna().mean())),
         "n_success_both": int(len(good)),
+        "n_discovered_gt_both": int(len(both_discovered)),
         "mean_gap_pysr_minus_pypysr_on_successes": (
             None if good.empty else float(good["r2_gap_pysr_minus_pypysr"].mean())
         ),
         "median_gap_pysr_minus_pypysr_on_successes": (
             None if good.empty else float(good["r2_gap_pysr_minus_pypysr"].median())
+        ),
+        "mean_gt_gap_pysr_minus_pypysr_on_successes": (
+            None if good.empty else float(good["gt_gap_pysr_minus_pypysr"].mean())
+        ),
+        "median_gt_gap_pysr_minus_pypysr_on_successes": (
+            None if good.empty else float(good["gt_gap_pysr_minus_pypysr"].median())
         ),
     }
     with open(out_dir / "summary.json", "w") as f:

@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from evaluation import check_pysr_symbolic_match
+from evaluation import check_pysr_frontier_symbolic_match, check_pysr_symbolic_match
 from pypysr import PyPySRRegressor
 from utils import load_dataset_names_from_split, load_srbench_dataset
 
@@ -68,6 +68,7 @@ class MethodResult:
     best_equation: str | None
     symbolic_match: bool | None
     error: str | None
+    gt_match_score: float | None = None
 
 
 @dataclass
@@ -120,11 +121,23 @@ def _evaluate_pypysr(
         best = model.get_best()
         eq = str(best["sympy_format"] if "sympy_format" in best.index else best["equation"])
         sym = None
+        gt = None
         if ground_truth:
             try:
                 sym = bool(check_pysr_symbolic_match(eq, ground_truth, var_names=var_names)["match"])
             except Exception:
                 sym = False
+            try:
+                gt_res = check_pysr_frontier_symbolic_match(
+                    equations_df=model.equations_,
+                    best_df_index=best.name if best is not None else None,
+                    ground_truth_str=ground_truth,
+                    var_names=var_names,
+                    timeout_seconds_per_expression=3,
+                )
+                gt = 1.0 if gt_res.get("match", False) else 0.0
+            except Exception:
+                gt = 0.0
         return MethodResult(
             success=True,
             method="pypysr",
@@ -135,6 +148,7 @@ def _evaluate_pypysr(
             best_equation=eq,
             symbolic_match=sym,
             error=None,
+            gt_match_score=gt,
         )
     except Exception as e:
         return MethodResult(
@@ -147,10 +161,18 @@ def _evaluate_pypysr(
             best_equation=None,
             symbolic_match=None,
             error=str(e),
+            gt_match_score=None,
         )
 
 
 def _import_real_pysr():
+    local_juliapkg_project = REPO_ROOT / ".juliapkg_env"
+    local_julia_depot = REPO_ROOT / ".julia_depot"
+    local_juliapkg_project.mkdir(parents=True, exist_ok=True)
+    local_julia_depot.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", str(local_juliapkg_project))
+    os.environ.setdefault("JULIA_DEPOT_PATH", str(local_julia_depot))
+
     pysr_repo = REPO_ROOT / "PySR"
     if pysr_repo.exists() and str(pysr_repo) not in sys.path:
         sys.path.insert(0, str(pysr_repo))
@@ -230,11 +252,23 @@ def _evaluate_real_pysr(
         best = model.get_best()
         eq = str(best["sympy_format"] if "sympy_format" in best.index else best["equation"])
         sym = None
+        gt = None
         if ground_truth:
             try:
                 sym = bool(check_pysr_symbolic_match(eq, ground_truth, var_names=var_names)["match"])
             except Exception:
                 sym = False
+            try:
+                gt_res = check_pysr_frontier_symbolic_match(
+                    equations_df=model.equations_,
+                    best_df_index=best.name if best is not None else None,
+                    ground_truth_str=ground_truth,
+                    var_names=var_names,
+                    timeout_seconds_per_expression=3,
+                )
+                gt = 1.0 if gt_res.get("match", False) else 0.0
+            except Exception:
+                gt = 0.0
         return MethodResult(
             success=True,
             method="pysr",
@@ -245,6 +279,7 @@ def _evaluate_real_pysr(
             best_equation=eq,
             symbolic_match=sym,
             error=None,
+            gt_match_score=gt,
         )
     except Exception as e:
         return MethodResult(
@@ -257,6 +292,7 @@ def _evaluate_real_pysr(
             best_equation=None,
             symbolic_match=None,
             error=str(e),
+            gt_match_score=None,
         )
 
 
@@ -415,6 +451,13 @@ def main() -> int:
             ),
             "pypysr_symbolic_match": r.pypysr.symbolic_match,
             "pysr_symbolic_match": r.pysr.symbolic_match,
+            "pypysr_gt_match_score": r.pypysr.gt_match_score,
+            "pysr_gt_match_score": r.pysr.gt_match_score,
+            "gt_gap_pysr_minus_pypysr": (
+                None
+                if (r.pypysr.gt_match_score is None or r.pysr.gt_match_score is None)
+                else float(r.pysr.gt_match_score - r.pypysr.gt_match_score)
+            ),
             "pypysr_time_s": r.pypysr.fit_time_seconds,
             "pysr_time_s": r.pysr.fit_time_seconds,
             "pypysr_n_evals": r.pypysr.n_evals,
@@ -427,6 +470,7 @@ def main() -> int:
     df.to_csv(results_dir / "comparison.csv", index=False)
 
     successful = df[(df["pypysr_success"]) & (df["pysr_success"])]
+    gt_gap = successful["gt_gap_pysr_minus_pypysr"].dropna() if not successful.empty else pd.Series(dtype=float)
     summary = {
         "n_tasks": len(df),
         "n_success_both": int(len(successful)),
@@ -443,6 +487,18 @@ def main() -> int:
         ),
         "pysr_symbolic_rate": (
             None if successful.empty else float(successful["pysr_symbolic_match"].fillna(False).mean())
+        ),
+        "pypysr_discovery_rate_gt": (
+            None if successful.empty else float(successful["pypysr_gt_match_score"].fillna(0.0).mean())
+        ),
+        "pysr_discovery_rate_gt": (
+            None if successful.empty else float(successful["pysr_gt_match_score"].fillna(0.0).mean())
+        ),
+        "mean_gt_gap_pysr_minus_pypysr": (
+            None if gt_gap.empty else float(gt_gap.mean())
+        ),
+        "median_gt_gap_pysr_minus_pypysr": (
+            None if gt_gap.empty else float(gt_gap.median())
         ),
     }
     with open(results_dir / "summary.json", "w") as f:

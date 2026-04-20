@@ -704,21 +704,18 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         best_equation = str(best["equation"]) if best is not None else None
         best_loss = float(best["loss"]) if best is not None else float("inf")
         gt_match_score = None
-
-        # Always attempt GT matching when a ground truth formula is available
-        if ground_truth_for_match is not None:
-            from evaluation import check_pysr_frontier_symbolic_match
-            try:
-                gt_match_result = check_pysr_frontier_symbolic_match(
-                    equations_df=model.equations_,
-                    best_df_index=best.name if best is not None else None,
-                    ground_truth_str=ground_truth_for_match,
-                    var_names=variable_names,
-                    timeout_seconds_per_expression=3,
-                )
-                gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
-            except Exception:
-                gt_match_score = 0.0
+        from evaluation import check_pysr_frontier_symbolic_match
+        try:
+            gt_match_result = check_pysr_frontier_symbolic_match(
+                equations_df=model.equations_,
+                best_df_index=best.name if best is not None else None,
+                ground_truth_str=ground_truth_for_match,
+                var_names=variable_names,
+                timeout_seconds_per_expression=3,
+            )
+            gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
+        except Exception:
+            gt_match_score = 0.0
 
         # Evaluate on validation set
         y_pred = model.predict(X_val)
