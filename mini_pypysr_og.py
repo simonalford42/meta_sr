@@ -1,12 +1,13 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Sequence
+from typing import Callable, Sequence
 import math
-import re
 
 import numpy as np
 import pandas as pd
-
 from scipy.optimize import minimize
+import re
 
 from operators import FUNCTION_SET, Node
 
@@ -26,6 +27,55 @@ MigrationOperator = Callable[
     None,
 ]
 
+def node_to_equation(tree, variable_names: Sequence[str] | None) -> str:
+    expr = str(tree)
+    if not variable_names:
+        return expr
+    out = expr
+    for i in sorted(range(len(variable_names)), key=lambda x: -x):
+        out = re.sub(rf"\bx{i}\b", variable_names[i], out)
+    return out
+
+
+def calculate_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate PySR-style incremental frontier scores."""
+    scores: list[float] = []
+    last_loss = None
+    last_complexity = 0
+    for _, row in df.iterrows():
+        cur_loss = float(row["loss"])
+        cur_complexity = int(row["complexity"])
+        if last_loss is None:
+            score = 0.0
+        else:
+            delta_c = max(1, cur_complexity - last_complexity)
+            if cur_loss <= 0 or last_loss <= 0:
+                score = float("inf")
+            else:
+                score = max(0.0, float(-np.log(cur_loss / last_loss) / delta_c))
+        scores.append(float(score))
+        last_loss = cur_loss
+        last_complexity = cur_complexity
+    out = df.copy()
+    out["score"] = scores
+    return out
+
+
+def idx_model_selection(equations: pd.DataFrame, model_selection: str):
+    """Select an expression index using PySR-compatible policy."""
+    if "score" not in equations.columns:
+        model_selection = "accuracy"
+    if model_selection == "accuracy":
+        return equations["loss"].idxmin()
+    if model_selection == "best":
+        threshold = 1.5 * float(equations["loss"].min())
+        filtered = equations.query(f"loss <= {threshold}")
+        return filtered["score"].idxmax()
+    if model_selection == "score":
+        return equations["score"].idxmax()
+    raise NotImplementedError(f"{model_selection} is not a valid model selection strategy.")
+
+
 
 @dataclass
 class Individual:
@@ -40,12 +90,12 @@ class Individual:
     def copy(self) -> "Individual":
         return Individual(
             tree=self.tree.copy(),
-            loss=float(self.loss),
-            cost=float(self.cost),
-            complexity=int(self.complexity),
-            birth=int(self.birth),
-            ref=int(self.ref),
-            parent_ref=int(self.parent_ref),
+            loss=self.loss,
+            cost=self.cost,
+            complexity=self.complexity,
+            birth=self.birth,
+            ref=self.ref,
+            parent_ref=self.parent_ref,
         )
 
 
@@ -136,9 +186,9 @@ class EngineConfig:
     nested_constraints: dict[str, dict[str, int]]
 
 
-def _nodes_with_parent(root: Node) -> list[tuple[Node, Node | None, str | None]]:
-    out: list[tuple[Node, Node | None, str | None]] = []
-    stack: list[tuple[Node, Node | None, str | None]] = [(root, None, None)]
+def _nodes_with_parent(root):
+    """Return list of (node, parent, side) tuples for all nodes in tree."""
+    out, stack = [], [(root, None, None)]
     while stack:
         node, parent, side = stack.pop()
         out.append((node, parent, side))
@@ -149,11 +199,11 @@ def _nodes_with_parent(root: Node) -> list[tuple[Node, Node | None, str | None]]
     return out
 
 
-def _leaf_nodes(root: Node) -> list[Node]:
-    return [node for node, _, _ in _nodes_with_parent(root) if node.left is None and node.right is None]
+def _leaf_nodes(root):
+    return [n for n, _, _ in _nodes_with_parent(root) if n.left is None and n.right is None]
 
 
-def _replace_subtree(root: Node, parent: Node | None, side: str | None, subtree: Node) -> Node:
+def _replace_subtree(root, parent, side, subtree):
     if parent is None:
         return subtree
     if side == "left":
@@ -170,30 +220,24 @@ def _tournament_select(
     rng: np.random.RandomState,
 ) -> int:
     n = len(population)
-    k = min(max(cfg.tournament_selection_n, 1), n)
+    k = min(cfg.tournament_selection_n, n)
     candidate_idx = rng.choice(n, size=k, replace=False)
-    adjusted_costs: list[float] = []
+    adjusted_costs = []
     for idx in candidate_idx:
-        m = population[int(idx)]
-        cost = float(m.cost)
+        m = population[idx]
+        cost = m.cost
         if cfg.use_frequency_in_tournament and 1 <= m.complexity <= cfg.maxsize:
-            freq = float(stats.normalized_frequencies[m.complexity - 1])
-            exponent = np.clip(cfg.adaptive_parsimony_scaling * freq, -50.0, 50.0)
-            cost *= float(np.exp(exponent))
+            freq = stats.normalized_frequencies[m.complexity - 1]
+            cost *= np.exp(np.clip(cfg.adaptive_parsimony_scaling * freq, -50.0, 50.0))
         adjusted_costs.append(cost)
-    order = np.argsort(np.asarray(adjusted_costs))
-    p = float(cfg.tournament_selection_p)
+    order = np.argsort(adjusted_costs)
+    p = cfg.tournament_selection_p
     if p >= 1.0:
-        chosen_local = int(order[0])
-    else:
-        weights = np.array([p * ((1 - p) ** i) for i in range(k)], dtype=float)
-        if weights.sum() <= 0:
-            weights = np.ones(k, dtype=float) / k
-        else:
-            weights /= weights.sum()
-        place = int(rng.choice(np.arange(k), p=weights))
-        chosen_local = int(order[place])
-    return int(candidate_idx[chosen_local])
+        return int(candidate_idx[order[0]])
+    weights = np.array([p * ((1 - p) ** i) for i in range(k)])
+    weights /= weights.sum()
+    place = rng.choice(k, p=weights)
+    return int(candidate_idx[order[place]])
 
 
 def _oldest_survival(
@@ -204,7 +248,7 @@ def _oldest_survival(
 ) -> int:
     candidates = [i for i in range(len(population)) if i not in exclude_indices]
     if not candidates:
-        return int(rng.randint(0, len(population)))
+        return rng.randint(0, len(population))
     return int(min(candidates, key=lambda i: population[i].birth))
 
 
@@ -214,46 +258,34 @@ def _conditioned_mutation_weights(
 ) -> tuple[list[str], dict[str, float]]:
     nodes = _nodes_with_parent(tree)
     leaves = _leaf_nodes(tree)
-    constants = [n for n in leaves if isinstance(n.value, (int, float))]
+    n_constants = sum(1 for n in leaves if isinstance(n.value, (int, float)))
 
     names = list(engine.cfg.mutation_weights.keys())
-    weight_map = {n: max(0.0, float(engine.cfg.mutation_weights[n])) for n in names}
+    w = {n: max(0.0, engine.cfg.mutation_weights[n]) for n in names}
 
     is_leaf = tree.left is None and tree.right is None
     if is_leaf:
-        for k in ("mutate_operator", "swap_operands", "delete_node", "simplify"):
-            if k in weight_map:
-                weight_map[k] = 0.0
+        w["mutate_operator"] = w["swap_operands"] = w["delete_node"] = w["simplify"] = 0.0
         if isinstance(tree.value, str) and tree.value.startswith("x"):
-            if "optimize" in weight_map:
-                weight_map["optimize"] = 0.0
-            if "mutate_constant" in weight_map:
-                weight_map["mutate_constant"] = 0.0
+            w["optimize"] = w["mutate_constant"] = 0.0
         else:
-            if "mutate_feature" in weight_map:
-                weight_map["mutate_feature"] = 0.0
+            w["mutate_feature"] = 0.0
 
     if not any(n.left is not None and n.right is not None for n, _, _ in nodes):
-        if "swap_operands" in weight_map:
-            weight_map["swap_operands"] = 0.0
+        w["swap_operands"] = 0.0
 
-    if "mutate_constant" in weight_map:
-        n_constants = len(constants)
-        weight_map["mutate_constant"] *= min(8, n_constants) / 8.0
+    w["mutate_constant"] *= min(8, n_constants) / 8.0
 
-    if engine.n_features <= 1 and "mutate_feature" in weight_map:
-        weight_map["mutate_feature"] = 0.0
+    if engine.n_features <= 1:
+        w["mutate_feature"] = 0.0
 
     if tree.size() >= engine.cfg.maxsize:
-        if "add_node" in weight_map:
-            weight_map["add_node"] = 0.0
-        if "insert_node" in weight_map:
-            weight_map["insert_node"] = 0.0
+        w["add_node"] = w["insert_node"] = 0.0
 
-    if not engine.cfg.should_simplify and "simplify" in weight_map:
-        weight_map["simplify"] = 0.0
+    if not engine.cfg.should_simplify:
+        w["simplify"] = 0.0
 
-    return names, weight_map
+    return names, w
 
 
 def _sample_mutation_choice(
@@ -261,12 +293,12 @@ def _sample_mutation_choice(
     tree: Node,
     rng: np.random.RandomState,
 ) -> str:
-    names, weight_map = _conditioned_mutation_weights(engine, tree)
-    weights = np.array([weight_map[n] for n in names], dtype=float)
-    if weights.sum() <= 0:
+    names, w = _conditioned_mutation_weights(engine, tree)
+    weights = np.array([w[n] for n in names])
+    total = weights.sum()
+    if total <= 0:
         return "do_nothing"
-    weights /= weights.sum()
-    return str(rng.choice(names, p=weights))
+    return rng.choice(names, p=weights / total)
 
 
 def _default_mutation(
@@ -282,14 +314,14 @@ def _default_mutation(
     if forced_mutation is None:
         mutation = _sample_mutation_choice(engine, tree, rng)
     else:
-        mutation = str(forced_mutation)
+        mutation = forced_mutation
 
     if mutation == "do_nothing":
         return tree
 
     if mutation == "mutate_constant":
         if constants:
-            node = constants[int(rng.randint(0, len(constants)))]
+            node = constants[rng.randint(0, len(constants))]
             temperature = float(np.clip(getattr(engine, "_current_temperature", 1.0), 0.0, 1.0))
             bottom = 0.1
             max_change = engine.cfg.perturbation_factor * temperature + 1.0 + bottom
@@ -304,40 +336,36 @@ def _default_mutation(
     if mutation == "mutate_feature":
         vars_only = [n for n in leaves if isinstance(n.value, str) and n.value.startswith("x")]
         if vars_only:
-            node = vars_only[int(rng.randint(0, len(vars_only)))]
-            cur = None
-            try:
-                cur = int(str(node.value)[1:])
-            except Exception:
-                cur = None
-            if engine.n_features > 1 and cur is not None:
+            node = vars_only[rng.randint(0, len(vars_only))]
+            cur = int(node.value[1:])
+            if engine.n_features > 1:
                 choices = [i for i in range(engine.n_features) if i != cur]
-                node.value = f"x{int(rng.choice(choices))}"
+                node.value = f"x{rng.choice(choices)}"
             else:
-                node.value = f"x{int(rng.randint(0, engine.n_features))}"
+                node.value = f"x{rng.randint(0, engine.n_features)}"
         return tree
 
     if mutation == "mutate_operator":
         op_nodes = [n for n, _, _ in nodes if n.left is not None]
         if op_nodes:
-            node = op_nodes[int(rng.randint(0, len(op_nodes)))]
+            node = op_nodes[rng.randint(0, len(op_nodes))]
             if node.right is None and engine.unary_ops:
-                node.value = str(rng.choice(engine.unary_ops))
+                node.value = rng.choice(engine.unary_ops)
             elif node.right is not None and engine.binary_ops:
-                node.value = str(rng.choice(engine.binary_ops))
+                node.value = rng.choice(engine.binary_ops)
         return tree
 
     if mutation == "swap_operands":
         binary_nodes = [n for n, _, _ in nodes if n.left is not None and n.right is not None]
         if binary_nodes:
-            node = binary_nodes[int(rng.randint(0, len(binary_nodes)))]
+            node = binary_nodes[rng.randint(0, len(binary_nodes))]
             node.left, node.right = node.right, node.left
         return tree
 
     if mutation == "delete_node":
         deletable = [(n, p, s) for n, p, s in nodes if (n.left is not None or n.right is not None)]
         if deletable:
-            node, parent, side = deletable[int(rng.randint(0, len(deletable)))]
+            node, parent, side = deletable[rng.randint(0, len(deletable))]
             if node.right is None:
                 repl = node.left.copy() if node.left is not None else engine.random_terminal()
             elif node.left is None:
@@ -359,8 +387,8 @@ def _default_mutation(
                 valid.append((node, parent, side, pivot_sides))
 
         if valid:
-            node, parent, side, pivot_sides = valid[int(rng.randint(0, len(valid)))]
-            pivot_side = pivot_sides[int(rng.randint(0, len(pivot_sides)))]
+            node, parent, side, pivot_sides = valid[rng.randint(0, len(valid))]
+            pivot_side = pivot_sides[rng.randint(0, len(pivot_sides))]
             pivot = node.left if pivot_side == "left" else node.right
             if pivot is not None:
                 grand_sides: list[str] = []
@@ -369,7 +397,7 @@ def _default_mutation(
                 if pivot.right is not None:
                     grand_sides.append("right")
                 if grand_sides:
-                    grand_side = grand_sides[int(rng.randint(0, len(grand_sides)))]
+                    grand_side = grand_sides[rng.randint(0, len(grand_sides))]
                     grand_child = pivot.left if grand_side == "left" else pivot.right
                     if pivot_side == "left":
                         node.left = grand_child
@@ -394,13 +422,13 @@ def _default_mutation(
         return tree
 
     if mutation == "randomize":
-        target_size = int(rng.randint(1, max(2, engine.cfg.maxsize + 1)))
+        target_size = rng.randint(1, max(2, engine.cfg.maxsize + 1))
         return engine.random_tree_fixed_size(target_size, rng=rng)
 
     if mutation in {"custom_mutation_1", "custom_mutation_2", "custom_mutation_3", "custom_mutation_4", "custom_mutation_5"}:
-        target, parent, side = nodes[int(rng.randint(0, len(nodes)))]
+        target, parent, side = nodes[rng.randint(0, len(nodes))]
         if engine.binary_ops:
-            op = str(rng.choice(engine.binary_ops))
+            op = rng.choice(engine.binary_ops)
             other = engine.random_terminal()
             if rng.rand() < 0.5:
                 wrapped = Node(op, target.copy(), other)
@@ -422,8 +450,8 @@ def _default_crossover(
     t2 = parent2.copy()
     n1 = _nodes_with_parent(t1)
     n2 = _nodes_with_parent(t2)
-    node1, p1, s1 = n1[int(rng.randint(0, len(n1)))]
-    node2, p2, s2 = n2[int(rng.randint(0, len(n2)))]
+    node1, p1, s1 = n1[rng.randint(0, len(n1))]
+    node2, p2, s2 = n2[rng.randint(0, len(n2))]
     rep1 = node2.copy()
     rep2 = node1.copy()
     t1 = _replace_subtree(t1, p1, s1, rep1)
@@ -451,8 +479,8 @@ def _default_migration(
             return
         n = min(n, len(target))
         for _ in range(n):
-            dst = int(rng.randint(0, len(target)))
-            src = candidates[int(rng.randint(0, len(candidates)))].copy()
+            dst = rng.randint(0, len(target))
+            src = candidates[rng.randint(0, len(candidates))].copy()
             src.birth = engine.next_birth()
             src.ref = engine.next_ref()
             target[dst] = src
@@ -527,7 +555,7 @@ class RegularizedEvolutionEngine:
 
     def random_terminal(self) -> Node:
         if self.rng.rand() < 0.5:
-            return Node(f"x{int(self.rng.randint(0, self.n_features))}")
+            return Node(f"x{self.rng.randint(0, self.n_features)}")
         if self.cfg.constants:
             return Node(float(self.rng.choice(self.cfg.constants)))
         return Node(float(self.rng.normal()))
@@ -555,8 +583,8 @@ class RegularizedEvolutionEngine:
     def _sample_operator(self, arity: int, rng: np.random.RandomState | None = None) -> str:
         rng = rng or self.rng
         if arity == 1:
-            return str(rng.choice(self.unary_ops))
-        return str(rng.choice(self.binary_ops))
+            return rng.choice(self.unary_ops)
+        return rng.choice(self.binary_ops)
 
     def append_random_op(
         self,
@@ -569,7 +597,7 @@ class RegularizedEvolutionEngine:
         leaves = [(n, p, s) for n, p, s in _nodes_with_parent(tree) if n.left is None and n.right is None]
         if not leaves:
             return tree
-        _, parent, side = leaves[int(rng.randint(0, len(leaves)))]
+        _, parent, side = leaves[rng.randint(0, len(leaves))]
         picked_arity = int(arity if arity is not None else self._sample_operator_arity(max_added_nodes=None, rng=rng))
         if picked_arity <= 0:
             return tree
@@ -599,7 +627,7 @@ class RegularizedEvolutionEngine:
         nodes = _nodes_with_parent(tree)
         if not nodes:
             return tree
-        target, parent, side = nodes[int(rng.randint(0, len(nodes)))]
+        target, parent, side = nodes[rng.randint(0, len(nodes))]
         arity = self._sample_operator_arity(max_added_nodes=None, rng=rng)
         if arity <= 0:
             return tree
@@ -637,9 +665,9 @@ class RegularizedEvolutionEngine:
         if not full and depth > 0 and self.rng.rand() < 0.3:
             return self.random_terminal()
         if self.unary_ops and self.rng.rand() < 0.25:
-            op = str(self.rng.choice(self.unary_ops))
+            op = self.rng.choice(self.unary_ops)
             return Node(op, self.random_tree(max_depth, full, depth + 1), None)
-        op = str(self.rng.choice(self.binary_ops))
+        op = self.rng.choice(self.binary_ops)
         return Node(
             op,
             self.random_tree(max_depth, full, depth + 1),
@@ -647,19 +675,7 @@ class RegularizedEvolutionEngine:
         )
 
     def _valid_tree(self, tree: Node) -> bool:
-        if tree.size() > self.cfg.maxsize:
-            return False
-        if tree.height() > self.cfg.maxdepth:
-            return False
-        if not self._check_constraints(tree):
-            return False
-        return True
-
-    def _count_op(self, node: Node | None, op_name: str) -> int:
-        if node is None:
-            return 0
-        here = 1 if node.value == op_name else 0
-        return here + self._count_op(node.left, op_name) + self._count_op(node.right, op_name)
+        return tree.size() <= self.cfg.maxsize and tree.height() <= self.cfg.maxdepth and self._check_constraints(tree)
 
     def _max_nestedness(self, node: Node | None, op_name: str) -> int:
         if node is None:
@@ -718,16 +734,13 @@ class RegularizedEvolutionEngine:
             pred = tree.evaluate(self.X)
         if pred.shape[0] != self.y.shape[0]:
             return (float("inf"), float("inf"), tree.size())
-        finite = np.isfinite(pred)
-        finite &= np.abs(pred) < 1e12
-        if not bool(np.all(finite)):
+        if not np.all(np.isfinite(pred) & (np.abs(pred) < 1e12)):
             return (float("inf"), float("inf"), tree.size())
         mse = float(np.mean((self.y - pred) ** 2))
-        complexity = int(tree.size())
-        cost = float((mse / self.loss_normalization) + self.cfg.parsimony * complexity)
+        complexity = tree.size()
+        cost = (mse / self.loss_normalization) + self.cfg.parsimony * complexity
         if not np.isfinite(cost):
-            cost = float("inf")
-            mse = float("inf")
+            return (float("inf"), float("inf"), complexity)
         return (mse, cost, complexity)
 
     def create_individual(self, tree: Node, parent_ref: int = -1) -> Individual | None:
@@ -748,12 +761,12 @@ class RegularizedEvolutionEngine:
     def spawn_from_existing(self, member: Individual, parent_ref: int | None = None) -> Individual:
         return Individual(
             tree=member.tree.copy(),
-            loss=float(member.loss),
-            cost=float(member.cost),
-            complexity=int(member.complexity),
+            loss=member.loss,
+            cost=member.cost,
+            complexity=member.complexity,
             birth=self.next_birth(),
             ref=self.next_ref(),
-            parent_ref=int(member.ref if parent_ref is None else parent_ref),
+            parent_ref=member.ref if parent_ref is None else parent_ref,
         )
 
     def _accept_candidate(
@@ -773,102 +786,72 @@ class RegularizedEvolutionEngine:
         if self.cfg.use_frequency:
             old_size = min(max(parent.complexity, 1), self.cfg.maxsize) - 1
             new_size = min(max(child.complexity, 1), self.cfg.maxsize) - 1
-            old_f = float(stats.normalized_frequencies[old_size])
-            new_f = float(stats.normalized_frequencies[new_size])
+            old_f = stats.normalized_frequencies[old_size]
+            new_f = stats.normalized_frequencies[new_size]
             prob *= old_f / max(new_f, 1e-12)
-        prob = float(np.clip(prob, 0.0, 1e6))
+        prob = min(prob, 1e6)
         if prob >= 1.0:
             return True
         return self.rng.rand() < prob
 
-    def _optimize_constants(
-        self, member: Individual
-    ) -> tuple[Individual, int]:
-        if minimize is None:
-            return member, 0
+    def _optimize_constants(self, member: Individual) -> tuple[Individual, int]:
         constants = [n for n in _leaf_nodes(member.tree) if isinstance(n.value, (int, float))]
         if not constants:
             return member, 0
         budget = self.budget_remaining()
         if budget is not None and budget <= 1:
             return member, 0
-        initial = np.array([float(n.value) for n in constants], dtype=float)
-        best_tree = member.tree.copy()
-        best_loss = float(member.loss)
-        improved = False
-        evals_before = self.eval_count
-        maxfun = self.cfg.optimizer_f_calls_limit
+        maxfun = self.cfg.optimizer_f_calls_limit or 10_000
         if budget is not None:
-            if maxfun is None:
-                maxfun = budget
-            else:
-                maxfun = min(maxfun, budget)
-        if maxfun is None or maxfun <= 0:
-            return member, 0
+            maxfun = min(maxfun, budget)
 
-        def _set_values(tree: Node, vals: np.ndarray) -> None:
-            nodes = [n for n in _leaf_nodes(tree) if isinstance(n.value, (int, float))]
-            for i, node in enumerate(nodes):
-                node.value = float(vals[i])
+        initial = np.array([float(n.value) for n in constants])
+        best_tree, best_loss = member.tree.copy(), member.loss
+        evals_before = self.eval_count
 
-        def _obj(vals: np.ndarray) -> float:
+        def _set_constants(tree, vals):
+            for node, v in zip((n for n in _leaf_nodes(tree) if isinstance(n.value, (int, float))), vals):
+                node.value = float(v)
+
+        def _obj(vals):
             if not self.has_budget():
                 return 1e30
             trial = member.tree.copy()
-            _set_values(trial, vals)
+            _set_constants(trial, vals)
             scored = self.evaluate_tree(trial)
-            if scored is None:
-                return 1e30
-            loss, _, _ = scored
-            return float(loss)
+            return scored[0] if scored else 1e30
 
-        starts = [initial]
-        for _ in range(max(0, self.cfg.optimizer_nrestarts - 1)):
-            starts.append(initial * (1.0 + 0.5 * self.rng.normal(size=len(initial))))
+        starts = [initial] + [initial * (1.0 + 0.5 * self.rng.normal(size=len(initial)))
+                               for _ in range(self.cfg.optimizer_nrestarts - 1)]
         for x0 in starts:
             if not self.has_budget():
                 break
             try:
-                res = minimize(
-                    _obj,
-                    x0,
-                    method="L-BFGS-B",
-                    options={"maxiter": int(max(1, self.cfg.optimizer_iterations)), "maxfun": int(maxfun)},
-                )
+                res = minimize(_obj, x0, method="L-BFGS-B",
+                               options={"maxiter": self.cfg.optimizer_iterations, "maxfun": maxfun})
             except Exception:
                 continue
-            if res is not None and np.isfinite(float(res.fun)) and float(res.fun) < best_loss:
+            if res is not None and np.isfinite(res.fun) and res.fun < best_loss:
                 trial = member.tree.copy()
-                _set_values(trial, np.asarray(res.x))
-                best_tree = trial
-                best_loss = float(res.fun)
-                improved = True
-        new_member = member
-        if improved:
+                _set_constants(trial, res.x)
+                best_tree, best_loss = trial, float(res.fun)
+
+        if best_loss < member.loss:
             scored = self.evaluate_tree(best_tree)
-            if scored is not None:
+            if scored:
                 loss, cost, complexity = scored
-                new_member = Individual(
-                    tree=best_tree,
-                    loss=loss,
-                    cost=cost,
-                    complexity=complexity,
-                    birth=self.next_birth(),
-                    ref=self.next_ref(),
-                    parent_ref=member.ref,
-                )
-        return new_member, self.eval_count - evals_before
+                return Individual(tree=best_tree, loss=loss, cost=cost, complexity=complexity,
+                                  birth=self.next_birth(), ref=self.next_ref(),
+                                  parent_ref=member.ref), self.eval_count - evals_before
+        return member, self.eval_count - evals_before
 
     def _simplify_tree(self, tree: Node) -> Node:
         tree = tree.copy()
         for node, _, _ in _nodes_with_parent(tree):
-            if node.left is None or node.right is None:
-                continue
-            if not isinstance(node.left.value, (int, float)):
-                continue
-            if not isinstance(node.right.value, (int, float)):
-                continue
-            if node.value not in FUNCTION_SET:
+            if (node.left is None or node.right is None
+                    or not isinstance(node.left.value, (int, float))
+                    or not isinstance(node.right.value, (int, float))
+                    or node.value not in FUNCTION_SET):
                 continue
             func, arity = FUNCTION_SET[node.value]
             if arity != 2:
@@ -879,8 +862,7 @@ class RegularizedEvolutionEngine:
                 continue
             if np.isfinite(out):
                 node.value = float(np.clip(out, -1e6, 1e6))
-                node.left = None
-                node.right = None
+                node.left = node.right = None
         return tree
 
     def _initialize_population(self) -> list[Individual]:
@@ -989,15 +971,15 @@ class RegularizedEvolutionEngine:
             if self.cfg.should_simplify:
                 simplified = self._simplify_tree(member.tree)
                 if self._valid_tree(simplified):
-                    new_complexity = int(simplified.size())
+                    new_complexity = simplified.size()
                     member = Individual(
                         tree=simplified,
-                        loss=float(member.loss),
-                        cost=float((member.loss / self.loss_normalization) + self.cfg.parsimony * new_complexity),
+                        loss=member.loss,
+                        cost=(member.loss / self.loss_normalization) + self.cfg.parsimony * new_complexity,
                         complexity=new_complexity,
-                        birth=int(member.birth),
-                        ref=int(member.ref),
-                        parent_ref=int(member.parent_ref),
+                        birth=member.birth,
+                        ref=member.ref,
+                        parent_ref=member.parent_ref,
                     )
             if self.cfg.should_optimize_constants and self.rng.rand() < self.cfg.optimize_probability:
                 member, _ = self._optimize_constants(member)
@@ -1029,7 +1011,7 @@ class RegularizedEvolutionEngine:
             s = stats[j]
             s.normalize()
             if self.cfg.annealing and self.cfg.ncycles_per_iteration > 1:
-                temps: Iterable[float] = np.linspace(1.0, 0.0, self.cfg.ncycles_per_iteration)
+                temps = np.linspace(1.0, 0.0, self.cfg.ncycles_per_iteration)
             else:
                 temps = [1.0] * max(1, self.cfg.ncycles_per_iteration)
             for temp in temps:
@@ -1061,56 +1043,6 @@ def calculate_pareto_frontier_from_dict(hof_by_complexity: dict[int, Individual]
             dominating.append(member.copy())
             best_so_far = member.loss
     return dominating
-
-
-def _node_to_equation(tree: Node, variable_names: Sequence[str] | None) -> str:
-    expr = str(tree)
-    if not variable_names:
-        return expr
-    out = expr
-    for i in sorted(range(len(variable_names)), key=lambda x: -x):
-        name = variable_names[i]
-        out = re.sub(rf"\bx{i}\b", name, out)
-    return out
-
-
-def calculate_scores(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate PySR-style incremental frontier scores."""
-    scores: list[float] = []
-    last_loss = None
-    last_complexity = 0
-    for _, row in df.iterrows():
-        cur_loss = float(row["loss"])
-        cur_complexity = int(row["complexity"])
-        if last_loss is None:
-            score = 0.0
-        else:
-            delta_c = max(1, cur_complexity - last_complexity)
-            if cur_loss <= 0 or last_loss <= 0:
-                score = float("inf")
-            else:
-                score = max(0.0, float(-np.log(cur_loss / last_loss) / delta_c))
-        scores.append(float(score))
-        last_loss = cur_loss
-        last_complexity = cur_complexity
-    out = df.copy()
-    out["score"] = scores
-    return out
-
-
-def idx_model_selection(equations: pd.DataFrame, model_selection: str):
-    """Select an expression index using PySR-compatible policy."""
-    if "score" not in equations.columns:
-        model_selection = "accuracy"
-    if model_selection == "accuracy":
-        return equations["loss"].idxmin()
-    if model_selection == "best":
-        threshold = 1.5 * float(equations["loss"].min())
-        filtered = equations.query(f"loss <= {threshold}")
-        return filtered["score"].idxmax()
-    if model_selection == "score":
-        return equations["score"].idxmax()
-    raise NotImplementedError(f"{model_selection} is not a valid model selection strategy.")
 
 
 class PyPySRRegressor:
@@ -1156,17 +1088,12 @@ class PyPySRRegressor:
         optimizer_iterations: int = 8,
         optimizer_nrestarts: int = 2,
         optimizer_f_calls_limit: int | None = None,
-        random_state: int | np.random.RandomState | None = None,
-        verbosity: int = 1,
-        progress: bool = True,
-        output_directory: str | None = None,
-        # Operator hooks for easy experimentation:
+        random_state: int = 0,
         selection_operator: SelectionOperator | None = None,
         survival_operator: SurvivalOperator | None = None,
         mutation_operator: MutationOperator | None = None,
         crossover_operator: CrossoverOperator | None = None,
         migration_operator: MigrationOperator | None = None,
-        # Mutation weights:
         weight_add_node: float = 2.47,
         weight_insert_node: float = 0.0112,
         weight_delete_node: float = 0.87,
@@ -1179,12 +1106,6 @@ class PyPySRRegressor:
         weight_randomize: float = 0.000502,
         weight_simplify: float = 0.00209,
         weight_optimize: float = 0.0,
-        weight_custom_mutation_1: float = 0.0,
-        weight_custom_mutation_2: float = 0.0,
-        weight_custom_mutation_3: float = 0.0,
-        weight_custom_mutation_4: float = 0.0,
-        weight_custom_mutation_5: float = 0.0,
-        **kwargs: Any,
     ) -> None:
         self.model_selection = model_selection
         self.binary_operators = binary_operators
@@ -1222,9 +1143,6 @@ class PyPySRRegressor:
         self.optimizer_nrestarts = optimizer_nrestarts
         self.optimizer_f_calls_limit = optimizer_f_calls_limit
         self.random_state = random_state
-        self.verbosity = verbosity
-        self.progress = progress
-        self.output_directory = output_directory
 
         self.selection_operator = selection_operator or _tournament_select
         self.survival_operator = survival_operator or _oldest_survival
@@ -1245,30 +1163,9 @@ class PyPySRRegressor:
             "randomize": weight_randomize,
             "simplify": weight_simplify,
             "optimize": weight_optimize,
-            "custom_mutation_1": weight_custom_mutation_1,
-            "custom_mutation_2": weight_custom_mutation_2,
-            "custom_mutation_3": weight_custom_mutation_3,
-            "custom_mutation_4": weight_custom_mutation_4,
-            "custom_mutation_5": weight_custom_mutation_5,
         }
 
-        self.extra_params_ = dict(kwargs)
         self.equations_ = None
-        self.selection_mask_ = None
-        self.feature_names_in_ = None
-        self.n_features_in_ = None
-        self.nout_ = 1
-        self._equation_trees: list[Node] = []
-        self._best_index: int | None = None
-        self.n_evals_: int = 0
-
-    def _supported_ops(self, ops: Sequence[str] | None, arity: int) -> list[str]:
-        supported = [op for op in ops if op in FUNCTION_SET and FUNCTION_SET[op][1] == arity]
-        assert supported
-        dropped = sorted(set(ops) - set(supported))
-        if dropped and self.verbosity > 0:
-            print(f"[PySR-Python] Ignoring unsupported operators: {dropped}")
-        return supported
 
     def fit(
         self,
@@ -1276,69 +1173,50 @@ class PyPySRRegressor:
         y: np.ndarray,
         *,
         variable_names: Sequence[str] | None = None,
-        **kwargs: Any,
-    ) -> "PySRRegressor":
+    ) -> "PyPySRRegressor":
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=float).reshape(-1)
-        if X.ndim != 2:
-            raise ValueError("X must be 2D")
-        if y.shape[0] != X.shape[0]:
-            raise ValueError("X and y length mismatch")
         if variable_names is None:
             variable_names = [f"x{i}" for i in range(X.shape[1])]
         variable_names = list(variable_names)
-        if len(variable_names) != X.shape[1]:
-            raise ValueError("Length of variable_names must match number of columns in X")
-
-        self.selection_mask_ = np.ones(X.shape[1], dtype=np.bool_)
-        self.feature_names_in_ = np.asarray(variable_names, dtype=object)
-        self.n_features_in_ = int(X.shape[1])
-        self.display_feature_names_in_ = np.asarray(variable_names, dtype=object)
 
         rng = np.random.RandomState(int(self.random_state))
-        binary_ops = self._supported_ops(self.binary_operators, arity=2)
-        unary_ops = self._supported_ops(self.unary_operators, arity=1)
-        maxdepth = int(self.maxdepth if self.maxdepth is not None else max(3, min(int(self.maxsize), 16)))
-        constants: list[float] = []
+        maxdepth = self.maxdepth if self.maxdepth is not None else min(self.maxsize, 16)
 
         cfg = EngineConfig(
-            population_size=max(4, int(self.population_size)),
-            populations=max(1, int(self.populations)),
-            niterations=max(1, int(self.niterations)),
-            ncycles_per_iteration=max(1, int(self.ncycles_per_iteration)),
-            maxsize=max(2, int(self.maxsize)),
-            maxdepth=max(2, maxdepth),
-            max_evals=(None if self.max_evals is None else int(self.max_evals)),
-            parsimony=float(self.parsimony),
-            tournament_selection_n=max(2, int(self.tournament_selection_n)),
-            tournament_selection_p=float(self.tournament_selection_p),
-            crossover_probability=float(self.crossover_probability),
-            skip_mutation_failures=bool(self.skip_mutation_failures),
-            use_frequency=bool(self.use_frequency),
-            use_frequency_in_tournament=bool(self.use_frequency_in_tournament),
-            adaptive_parsimony_scaling=float(self.adaptive_parsimony_scaling),
-            annealing=bool(self.annealing),
-            alpha=float(self.alpha),
-            perturbation_factor=float(self.perturbation_factor),
-            probability_negate_constant=float(self.probability_negate_constant),
-            migration=bool(self.migration),
-            hof_migration=bool(self.hof_migration),
-            fraction_replaced=float(self.fraction_replaced),
-            fraction_replaced_hof=float(self.fraction_replaced_hof),
-            topn=max(1, int(self.topn)),
-            should_optimize_constants=bool(self.should_optimize_constants),
-            optimize_probability=float(self.optimize_probability),
-            optimizer_iterations=max(1, int(self.optimizer_iterations)),
-            optimizer_nrestarts=max(1, int(self.optimizer_nrestarts)),
-            optimizer_f_calls_limit=(
-                10_000
-                if self.optimizer_f_calls_limit is None
-                else max(1, int(self.optimizer_f_calls_limit))
-            ),
-            should_simplify=bool(self.should_simplify),
-            binary_operators=binary_ops,
-            unary_operators=unary_ops,
-            constants=constants,
+            population_size=self.population_size,
+            populations=self.populations,
+            niterations=self.niterations,
+            ncycles_per_iteration=self.ncycles_per_iteration,
+            maxsize=self.maxsize,
+            maxdepth=maxdepth,
+            max_evals=self.max_evals,
+            parsimony=self.parsimony,
+            tournament_selection_n=self.tournament_selection_n,
+            tournament_selection_p=self.tournament_selection_p,
+            crossover_probability=self.crossover_probability,
+            skip_mutation_failures=self.skip_mutation_failures,
+            use_frequency=self.use_frequency,
+            use_frequency_in_tournament=self.use_frequency_in_tournament,
+            adaptive_parsimony_scaling=self.adaptive_parsimony_scaling,
+            annealing=self.annealing,
+            alpha=self.alpha,
+            perturbation_factor=self.perturbation_factor,
+            probability_negate_constant=self.probability_negate_constant,
+            migration=self.migration,
+            hof_migration=self.hof_migration,
+            fraction_replaced=self.fraction_replaced,
+            fraction_replaced_hof=self.fraction_replaced_hof,
+            topn=self.topn,
+            should_optimize_constants=self.should_optimize_constants,
+            optimize_probability=self.optimize_probability,
+            optimizer_iterations=self.optimizer_iterations,
+            optimizer_nrestarts=self.optimizer_nrestarts,
+            optimizer_f_calls_limit=self.optimizer_f_calls_limit if self.optimizer_f_calls_limit is not None else 10_000,
+            should_simplify=self.should_simplify,
+            binary_operators=list(self.binary_operators),
+            unary_operators=list(self.unary_operators),
+            constants=[],
             mutation_weights=dict(self.mutation_weights),
             constraints=dict(self.constraints or {}),
             nested_constraints=dict(self.nested_constraints or {}),
@@ -1359,9 +1237,8 @@ class PyPySRRegressor:
         self.n_evals_ = int(n_evals)
 
         rows = []
-        trees: list[Node] = []
         for m in sorted(dominating, key=lambda z: z.complexity):
-            eqn = _node_to_equation(m.tree, variable_names)
+            eqn = node_to_equation(m.tree, variable_names)
             rows.append(
                 {
                     "complexity": int(m.complexity),
@@ -1370,53 +1247,22 @@ class PyPySRRegressor:
                     "sympy_format": eqn,
                 }
             )
-            trees.append(m.tree.copy())
         equations = pd.DataFrame(rows)
         if equations.empty:
             eqn = str(float(np.mean(y)))
             equations = pd.DataFrame(
                 [{"complexity": 1, "loss": float(np.mean((y - np.mean(y)) ** 2)), "equation": eqn, "sympy_format": eqn}]
             )
-            trees = [Node(float(np.mean(y)))]
         equations = equations.sort_values(["complexity", "loss"]).drop_duplicates(
             subset=["complexity"], keep="first"
         )
-        equations = calculate_scores(equations.reset_index(drop=True))
-        self.equations_ = equations
-        self._equation_trees = trees
-        self._best_index = int(idx_model_selection(self.equations_, self.model_selection))
+        self.equations_ = calculate_scores(equations.reset_index(drop=True))
         return self
 
     def get_best(self, index: int | list[int] | None = None) -> pd.Series | list[pd.Series]:
-        if self.equations_ is None:
-            raise ValueError("Model is not fitted yet")
         if index is not None:
             if isinstance(index, list):
                 return [self.equations_.iloc[i] for i in index]
             return self.equations_.iloc[index]
         idx = idx_model_selection(self.equations_, self.model_selection)
-        self._best_index = int(idx)
         return self.equations_.loc[idx]
-
-    def _tree_for_index(self, index: int | None = None) -> Node:
-        if self.equations_ is None or not self._equation_trees:
-            raise ValueError("Model is not fitted yet")
-        if index is None:
-            index = int(self._best_index if self._best_index is not None else idx_model_selection(self.equations_, self.model_selection))
-        index = int(index)
-        if index < 0 or index >= len(self._equation_trees):
-            raise IndexError(index)
-        return self._equation_trees[index]
-
-    def predict(self, X: np.ndarray, index: int | None = None) -> np.ndarray:
-        X = np.asarray(X, dtype=float)
-        if X.ndim == 1:
-            X = X.reshape(-1, 1)
-        tree = self._tree_for_index(index=index)
-        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-            pred = tree.evaluate(X)
-        pred = np.asarray(pred, dtype=float)
-        if pred.shape[0] != X.shape[0] or not np.all(np.isfinite(pred)):
-            # Match PySR prediction fallback behavior when evaluation fails.
-            return np.zeros(X.shape[0], dtype=float)
-        return pred

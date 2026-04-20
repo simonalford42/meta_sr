@@ -110,7 +110,7 @@ def main():
     # Import both implementations
     import importlib
     ref_mod = importlib.import_module("pypysr")
-    test_mod = importlib.import_module("mini_pypysr")
+    test_mod = importlib.import_module("mini_pysr")
     RefClass = ref_mod.PyPySRRegressor
     TestClass = test_mod.PyPySRRegressor
 
