@@ -32,11 +32,14 @@ Usage:
 """
 
 import argparse
+import atexit
 import importlib.util
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
@@ -192,6 +195,97 @@ def load_openevolve_results(output_dir: str, operator_type: str) -> EvolveResult
         train_score=float(train_score),
         generation=generation,
         config={"source": "openevolve", "output_dir": str(output_path)},
+    )
+
+
+def _read_autoresearch_results_tsv() -> List[Dict[str, str]]:
+    tsv_path = Path("autoresearch_sr/results.tsv")
+    if not tsv_path.exists():
+        raise FileNotFoundError(f"{tsv_path} missing")
+    rows: List[Dict[str, str]] = []
+    with open(tsv_path) as f:
+        lines = f.read().splitlines()
+    if not lines:
+        return rows
+    header = lines[0].split("\t")
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        rows.append(dict(zip(header, parts)))
+    return rows
+
+
+def _best_autoresearch_row() -> Dict[str, str]:
+    """Return the results.tsv row with the highest score (skipping crashes).
+
+    Ties broken by highest experiment number (most recent).
+    """
+    rows = _read_autoresearch_results_tsv()
+    candidates = [r for r in rows if r.get("status") != "crash"]
+    if not candidates:
+        raise ValueError("No non-crash rows in autoresearch_sr/results.tsv")
+    best = max(candidates, key=lambda r: (float(r["score"]), int(r["exp"])))
+    return best
+
+
+def resolve_autoresearch_commit(target: str, submodule_path: Path) -> str:
+    """Resolve an autoresearch target to a full commit hash in the SR.jl submodule.
+
+    target can be 'best' (highest score in results.tsv), 'latest'/'HEAD',
+    a commit hash, a branch, or an 'expN' row from autoresearch_sr/results.tsv.
+    """
+    if target == "best":
+        best = _best_autoresearch_row()
+        print(f"[autoresearch] best row: exp{best['exp']} "
+              f"score={best['score']} status={best.get('status', '?')}")
+        revspec = best["commit"]
+    elif target in ("latest", "HEAD", None):
+        revspec = "HEAD"
+    elif target.lower().startswith("exp"):
+        exp_num = target[3:]
+        tsv_path = Path("autoresearch_sr/results.tsv")
+        if not tsv_path.exists():
+            raise FileNotFoundError(f"Cannot resolve {target!r}: {tsv_path} missing")
+        revspec = None
+        with open(tsv_path) as f:
+            lines = f.read().splitlines()
+        for line in lines[1:]:
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            if parts[0] == exp_num:
+                revspec = parts[1]
+                break
+        if revspec is None:
+            raise ValueError(f"Experiment {target!r} not found in {tsv_path}")
+    else:
+        revspec = target
+
+    result = subprocess.run(
+        ["git", "-C", str(submodule_path), "rev-parse", revspec],
+        capture_output=True, text=True, check=True,
+    )
+    return result.stdout.strip()
+
+
+def create_sr_worktree(submodule_path: Path, commit: str) -> Path:
+    """Create a detached git worktree of the SR.jl submodule at `commit`."""
+    wt_dir = Path(tempfile.mkdtemp(prefix=f"srjl_{commit[:8]}_"))
+    # `worktree add` insists the target directory not already exist.
+    wt_dir.rmdir()
+    subprocess.run(
+        ["git", "-C", str(submodule_path), "worktree", "add", "--detach",
+         str(wt_dir), commit],
+        check=True,
+    )
+    return wt_dir
+
+
+def cleanup_sr_worktree(submodule_path: Path, wt_dir: Path) -> None:
+    subprocess.run(
+        ["git", "-C", str(submodule_path), "worktree", "remove", "--force", str(wt_dir)],
+        check=False,
     )
 
 
@@ -541,6 +635,15 @@ def main() -> None:
                               help="Path to OpenEvolve output directory")
     method_group.add_argument("--best-weights", type=str,
                               help="Path to HPO best-weights JSON")
+    method_group.add_argument("--autoresearch", type=str, nargs="?", const="best",
+                              default=None, metavar="TARGET",
+                              help="Evaluate an autoresearch_sr run. Pass a commit hash, "
+                                   "branch, 'expN' (row in autoresearch_sr/results.tsv), "
+                                   "'latest'/HEAD, or 'best' for the highest-scoring row "
+                                   "(default when flag used without value).")
+    parser.add_argument("--autoresearch-submodule", type=str,
+                        default="SymbolicRegression.jl",
+                        help="Path to the SR.jl submodule used for --autoresearch worktree")
 
     parser.add_argument("--splits", type=str, nargs="+",
                         default=["splits/train.txt", "splits/val.txt"],
@@ -572,6 +675,26 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    # Autoresearch: resolve commit and create a worktree of SR.jl at that commit.
+    autoresearch_commit: Optional[str] = None
+    autoresearch_worktree: Optional[Path] = None
+    autoresearch_submodule: Optional[Path] = None
+    if args.autoresearch:
+        autoresearch_submodule = Path(args.autoresearch_submodule).resolve()
+        autoresearch_commit = resolve_autoresearch_commit(
+            args.autoresearch, autoresearch_submodule
+        )
+        autoresearch_worktree = create_sr_worktree(
+            autoresearch_submodule, autoresearch_commit
+        )
+        atexit.register(cleanup_sr_worktree, autoresearch_submodule, autoresearch_worktree)
+        print(f"[autoresearch] submodule: {autoresearch_submodule}")
+        print(f"[autoresearch] commit:    {autoresearch_commit}")
+        print(f"[autoresearch] worktree:  {autoresearch_worktree}")
+        # The evaluation cache key does not include the Julia source hash, so a
+        # modified SR.jl source would otherwise collide with baseline cache entries.
+        args.no_cache = True
+
     # Determine method label
     if args.evolve_results:
         method = load_evolve_results(args.evolve_results, None)
@@ -587,6 +710,9 @@ def main() -> None:
     elif args.best_weights:
         method = None
         method_label = "hpo_best"
+    elif args.autoresearch:
+        method = None
+        method_label = f"autoresearch_{autoresearch_commit[:8]}"
     else:
         method = None
         method_label = "baseline"
@@ -626,6 +752,10 @@ def main() -> None:
     pysr_kwargs["max_evals"] = args.max_evals
     pysr_kwargs["timeout_in_seconds"] = args.timeout
 
+    evaluator_kwargs: Dict[str, Any] = {}
+    if autoresearch_worktree is not None:
+        evaluator_kwargs["julia_project"] = str(autoresearch_worktree)
+
     evaluator = PySRSlurmEvaluator(
         results_dir=str(output_dir),
         partition=args.partition,
@@ -636,6 +766,7 @@ def main() -> None:
         job_timeout=args.job_timeout,
         max_concurrent_jobs=args.max_concurrent_jobs,
         use_cache=not args.no_cache,
+        **evaluator_kwargs,
     )
 
     baseline_weights = get_default_mutation_weights()

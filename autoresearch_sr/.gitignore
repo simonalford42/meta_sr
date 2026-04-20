@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Agent-generated (not tracked by git)
+results.tsv
+run.log
+run2.log
+baseline_run.log
+eval_results/
+
+# Operator files (tracked on experiment branches, not main)
+operators/*.jl
+
+# Reference docs (copied from parent repo at launch)
+reference/
+
+caches/
+out/
+.claude

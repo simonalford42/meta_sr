@@ -1,0 +1,6 @@
+[project]
+name = "autoresearch-sr"
+version = "0.1.0"
+description = "Autonomous symbolic regression research via agent-in-the-loop"
+readme = "README.md"
+requires-python = ">=3.10"

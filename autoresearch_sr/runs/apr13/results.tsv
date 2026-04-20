@@ -1,0 +1,14 @@
+exp	commit	score	score2	status	description
+1	6560f07f	0.400000	0.000000	keep	Baseline: unmodified PySR on clean autoresearch_sr/apr13 branch. Score 0.40 (8/20 datasets nonzero). Chronic fails: I_29_16, II_35_21, II_6_15a, I_6_2b, I_15_3t, I_15_10, III_9_52, test_5, I_24_6, test_11.
+2	fc324f7c	0.400000	0.000000	discard	exp2: scale-aware additive constant restarts. Identical per-dataset results to baseline — no benefit from fixing the zero-constant restart issue.
+3	3c0f821a	0.400000	0.000000	discard	exp3: mutate_constant weight 0.0353->0.5 (14x boost). Hit stale cache — result invalid, treated as discard.
+4	bb851913	0.400000	0.000000	discard	exp4: hard-code 25% crossover (vs default ~6.6%). Real eval (post cache-clear): I_24_6 0→0.333, III_15_12 0.667→1.0, but I_13_4 0.333→0.0, I_14_4 1.0→0.667. Net zero. Crossover trades wins for losses.
+5	002f309c	0.400000	0.000000	discard	exp5: parsimony window 100000->30000. INVALID — hit exp4's cache (same cache key, different Julia source not captured). Per-dataset identical to exp4. Discarded.
+6	b26122cd	0.050000	0.000000	crash	exp6: death tournament survival (replace worst not oldest). All SLURM tasks cancelled simultaneously at t=10min (cluster event); only 8/60 tasks completed. Among partial results, only II_2_42 succeeded — suggests diversity loss from elitist replacement is harmful.
+7	382ec4bf	0.441667	0.395000	discard	exp7: delete_node weight 0.369->2.0 to balance tree bloat. First eval 0.4417 (I_27_6 and III_15_12 to 1.0, I_24_6 0->0.333) but confirmation with 10 runs 0.395 — noise, doesn't hold. More deletion harms reliability.
+8	57c6f241	0.400000	0.000000	discard	exp8: random 2nd crossover parent for diversity. Same net score 0.400 — III_15_12/I_27_6 go to 1.0 but I_13_4/I_44_4 both drop to 0.0. These pairs trade off inversely.
+9	d8704da2	0.383333	0.000000	discard	exp9: rotate_tree 1.42->0.3. Hurt I_27_6 (0.667->0.333), I_13_4 (0.333->0). Rotation is important for escape; reducing it harms search.
+10	94ca638e	0.450000	0.385000	discard	exp10: additive constant restarts. First eval 0.450 (I_44_4 0.333->0.667, III_15_12/I_27_6 to 1.0) but 10-run confirmation 0.385 — noise, doesn't hold across seeds.
+11	2afac405	0.400000	0.000000	discard	exp11: parsimony smallest_freq 1->0.1. I_13_4/I_44_4 drop to 0.0.
+12	04b0583a	0.366667	0.000000	discard	exp12: additive mutate_value (val+(factor-1)*max(|val|,1)) to fix near-zero stuck constants. I_13_4/I_44_4 both drop to 0.0 — additive perturbation too disruptive for small constants.
+13	3e43250c	0.400000	0.000000	discard	exp13: optimize mutation weight 0.0->0.1 for extra constant refinement. Same net 0.400 — I_13_4/I_44_4 drop to 0.0 but I_14_4 goes to 1.0 and I_24_6 to 0.333. Inverse trade-off pattern again.

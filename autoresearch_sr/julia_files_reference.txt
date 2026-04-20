@@ -1,0 +1,17 @@
+Reference: All SymbolicRegression.jl/src files considered for autoresearch editing.
+Ranked from best to least important for autonomous editing.
+
+| Rank | File                      | LOC | What it does                                                                 | Impact | Risk |
+|------|---------------------------|-----|------------------------------------------------------------------------------|--------|------|
+| 1    | MutationWeights.jl        | 157 | Relative probabilities for each mutation type                                | Med    | Low  |
+| 2    | AdaptiveParsimony.jl      |  95 | Sliding-window stats to adaptively bias parsimony pressure by complexity     | Med    | Low  |
+| 3    | Complexity.jl             |  65 | Computes expression tree complexity (custom weights or node count)           | Med    | Low  |
+| 4    | ConstantOptimization.jl   | 169 | Refines constants via BFGS/Newton with autodiff + random restarts            | High   | Med  |
+| 5    | MutationFunctions.jl      | 635 | All mutation primitives: swap, insert, delete, crossover, randomize nodes    | High   | Med  |
+| 6    | RegularizedEvolution.jl   | 159 | Core evolution cycle: select -> mutate/crossover -> replace oldest           | High   | High |
+| 7    | CheckConstraints.jl       |  98 | Validates mutations against depth/size/nesting constraints                   | Med    | Med  |
+| 8    | HallOfFame.jl             | 279 | Tracks best equation per complexity level, Pareto frontier                   | Med    | Low  |
+| 9    | PopMember.jl              | 181 | Data struct for an individual (tree + loss + metadata)                       | High   | Low  |
+| 10   | Population.jl             | 221 | Population container, initialization, cost finalization                      | High   | Low  |
+| 11   | SingleIteration.jl        | 141 | Wraps evolution with annealing, HoF updates, simplification                 | High   | High |
+| 12   | Mutate.jl                 | 833 | Central mutation dispatcher, constraint checking, pipeline orchestration     | High   | High |

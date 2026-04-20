@@ -10,6 +10,3 @@
 [submodule "openevolve"]
 	path = openevolve
 	url = https://github.com/simonalford42/openevolve.git
-[submodule "autoresearch_sr"]
-	path = autoresearch_sr
-	url = https://github.com/simonalford42/autoresearch_sr.git

@@ -1,0 +1,432 @@
+====================================================================================================
+  AUTORESEARCH EXPERIMENTS  (13 total)
+====================================================================================================
+
+ exp  commit         score    score2  status    description
+----------------------------------------------------------------------------------------------------
+   1  6560f07f    0.400000  0.000000  keep      Baseline: unmodified PySR on clean autoresearch_sr/apr13 branch. Score 0.40 (8/20 datasets nonzero). Chronic fails: I_29_16, II_35_21, II_6_15a, I_6_2b, I_15_3t, I_15_10, III_9_52, test_5, I_24_6, test_11.
+   2  fc324f7c    0.400000  0.000000  discard   exp2: scale-aware additive constant restarts. Identical per-dataset results to baseline — no benefit from fixing the zero-constant restart issue.
+   3  3c0f821a    0.400000  0.000000  discard   exp3: mutate_constant weight 0.0353->0.5 (14x boost). Hit stale cache — result invalid, treated as discard.
+   4  bb851913    0.400000  0.000000  discard   exp4: hard-code 25% crossover (vs default ~6.6%). Real eval (post cache-clear): I_24_6 0→0.333, III_15_12 0.667→1.0, but I_13_4 0.333→0.0, I_14_4 1.0→0.667. Net zero. Crossover trades wins for losses.
+   5  002f309c    0.400000  0.000000  discard   exp5: parsimony window 100000->30000. INVALID — hit exp4's cache (same cache key, different Julia source not captured). Per-dataset identical to exp4. Discarded.
+   6  b26122cd    0.050000  0.000000  crash     exp6: death tournament survival (replace worst not oldest). All SLURM tasks cancelled simultaneously at t=10min (cluster event); only 8/60 tasks completed. Among partial results, only II_2_42 succeeded — suggests diversity loss from elitist replacement is harmful.
+   7  382ec4bf    0.441667  0.395000  discard   exp7: delete_node weight 0.369->2.0 to balance tree bloat. First eval 0.4417 (I_27_6 and III_15_12 to 1.0, I_24_6 0->0.333) but confirmation with 10 runs 0.395 — noise, doesn't hold. More deletion harms reliability.
+   8  57c6f241    0.400000  0.000000  discard   exp8: random 2nd crossover parent for diversity. Same net score 0.400 — III_15_12/I_27_6 go to 1.0 but I_13_4/I_44_4 both drop to 0.0. These pairs trade off inversely.
+   9  d8704da2    0.383333  0.000000  discard   exp9: rotate_tree 1.42->0.3. Hurt I_27_6 (0.667->0.333), I_13_4 (0.333->0). Rotation is important for escape; reducing it harms search.
+  10  94ca638e    0.450000  0.385000  discard   exp10: additive constant restarts. First eval 0.450 (I_44_4 0.333->0.667, III_15_12/I_27_6 to 1.0) but 10-run confirmation 0.385 — noise, doesn't hold across seeds.
+  11  2afac405    0.400000  0.000000  discard   exp11: parsimony smallest_freq 1->0.1. I_13_4/I_44_4 drop to 0.0.
+  12  04b0583a    0.366667  0.000000  discard   exp12: additive mutate_value (val+(factor-1)*max(|val|,1)) to fix near-zero stuck constants. I_13_4/I_44_4 both drop to 0.0 — additive perturbation too disruptive for small constants.
+  13  3e43250c    0.400000  0.000000  discard   exp13: optimize mutation weight 0.0->0.1 for extra constant refinement. Same net 0.400 — I_13_4/I_44_4 drop to 0.0 but I_14_4 goes to 1.0 and I_24_6 to 0.333. Inverse trade-off pattern again.
+
+
+====================================================================================================
+exp 1  |  6560f07f  |  score 0.400000  |  score2 0.000000  |  [KEEP]
+description: Baseline: unmodified PySR on clean autoresearch_sr/apr13 branch. Score 0.40 (8/20 datasets nonzero). Chronic fails: I_29_16, II_35_21, II_6_15a, I_6_2b, I_15_3t, I_15_10, III_9_52, test_5, I_24_6, test_11.
+====================================================================================================
+
+commit 6560f07f45378554023c0759915fa1547c983b76
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Feb 12 19:17:05 2026 -0500
+
+    relax OpenSSL_jll compat to major version 3
+---
+ Project.toml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Project.toml b/Project.toml
+index c78bdcd9..b3cca846 100644
+--- a/Project.toml
++++ b/Project.toml
+@@ -81,4 +81,4 @@ TOML = "<0.0.1, 1"
+ julia = "1.10"
+ Serialization = "^1"
+ PythonCall = "=0.9.28"
+-OpenSSL_jll = "3.0.0 - 3.6"
++OpenSSL_jll = "3"
+
+
+====================================================================================================
+exp 2  |  fc324f7c  |  score 0.400000  |  score2 0.000000  |  [DISCARD]
+description: exp2: scale-aware additive constant restarts. Identical per-dataset results to baseline — no benefit from fixing the zero-constant restart issue.
+====================================================================================================
+
+commit fc324f7ce2bb491600c24f7960eb63c3f1d195fa
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Mon Apr 13 23:06:14 2026 -0400
+
+    exp2: scale-aware additive constant restarts (x0 + 0.5*max(|x0|,1)*eps)
+---
+ src/ConstantOptimization.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 585a6ef7..733ca927 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -89,7 +89,7 @@ function _optimize_constants_inner(
+     # Try other initial conditions:
+     for _ in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+-        xt = @. x0 * (T(1) + T(1//2) * eps)
++        xt = @. x0 + T(1//2) * max(abs(x0), T(1)) * eps
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+
+
+====================================================================================================
+exp 3  |  3c0f821a  |  score 0.400000  |  score2 0.000000  |  [DISCARD]
+description: exp3: mutate_constant weight 0.0353->0.5 (14x boost). Hit stale cache — result invalid, treated as discard.
+====================================================================================================
+
+commit 3c0f821a1bfcd6dc53018b9c487bb1e3e68a071a
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Mon Apr 13 23:15:59 2026 -0400
+
+    exp3: increase mutate_constant weight 0.0353->0.5 (14x) for better constant exploration
+---
+ src/MutationWeights.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..01e0b262 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -101,7 +101,7 @@ will be normalized to sum to 1.0 after initialization.
+ - [`AbstractMutationWeights`](@ref SymbolicRegression.CoreModule.MutationWeightsModule.AbstractMutationWeights): Use to define custom mutation weight types.
+ """
+ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+-    mutate_constant::Float64 = 0.0353
++    mutate_constant::Float64 = 0.5
+     mutate_operator::Float64 = 3.63
+     mutate_feature::Float64 = 0.1
+     swap_operands::Float64 = 0.00608
+
+
+====================================================================================================
+exp 4  |  bb851913  |  score 0.400000  |  score2 0.000000  |  [DISCARD]
+description: exp4: hard-code 25% crossover (vs default ~6.6%). Real eval (post cache-clear): I_24_6 0→0.333, III_15_12 0.667→1.0, but I_13_4 0.333→0.0, I_14_4 1.0→0.667. Net zero. Crossover trades wins for losses.
+====================================================================================================
+
+commit bb851913e8b243c1739e0306c51e4c55c0ea7ef8
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Mon Apr 13 23:34:49 2026 -0400
+
+    exp4: hard-code 25% crossover rate (vs default ~6.6%) for more structural recombination
+---
+ src/RegularizedEvolution.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index ec4df43d..174772d6 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -25,7 +25,7 @@ function reg_evol_cycle(
+     n_evol_cycles = ceil(Int, pop.n / options.tournament_selection_n)
+
+     for i in 1:n_evol_cycles
+-        if rand() > options.crossover_probability
++        if rand() > 0.25  # increased crossover: 25% vs default ~6.6%
+             allstar = apply_custom_selection(pop, running_search_statistics, options)
+             mutation_recorder = RecordType()
+             baby, mutation_accepted, tmp_num_evals = next_generation(
+
+
+====================================================================================================
+exp 5  |  002f309c  |  score 0.400000  |  score2 0.000000  |  [DISCARD]
+description: exp5: parsimony window 100000->30000. INVALID — hit exp4's cache (same cache key, different Julia source not captured). Per-dataset identical to exp4. Discarded.
+====================================================================================================
+
+commit 002f309c3f555ee4837d6934dab18ae49d5833e4
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Tue Apr 14 00:05:24 2026 -0400
+
+    exp5: adaptive parsimony window_size 100000->30000 for faster complexity adaptation
+---
+ src/AdaptiveParsimony.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/AdaptiveParsimony.jl b/src/AdaptiveParsimony.jl
+index f45891fa..1e4eedaa 100644
+--- a/src/AdaptiveParsimony.jl
++++ b/src/AdaptiveParsimony.jl
+@@ -23,7 +23,7 @@ struct RunningSearchStatistics
+     normalized_frequencies::Vector{Float64}  # Stores `frequencies`, but normalized (updated once in a while)
+ end
+
+-function RunningSearchStatistics(; options::AbstractOptions, window_size::Int=100000)
++function RunningSearchStatistics(; options::AbstractOptions, window_size::Int=30000)
+     init_frequencies = ones(Float64, options.maxsize)
+
+     return RunningSearchStatistics(
+
+
+====================================================================================================
+exp 6  |  b26122cd  |  score 0.050000  |  score2 0.000000  |  [CRASH]
+description: exp6: death tournament survival (replace worst not oldest). All SLURM tasks cancelled simultaneously at t=10min (cluster event); only 8/60 tasks completed. Among partial results, only II_2_42 succeeded — suggests diversity loss from elitist replacement is harmful.
+====================================================================================================
+
+commit b26122cddc6d514002c2ad88e6737f65c72c1fb0
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Tue Apr 14 00:16:08 2026 -0400
+
+    exp6: death tournament survival — replace worst in random sample instead of oldest
+---
+ src/RegularizedEvolution.jl | 21 +++++++++++++++------
+ 1 file changed, 15 insertions(+), 6 deletions(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index ec4df43d..72d30ec2 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -10,8 +10,17 @@ using ..UtilsModule: argmin_fast
+ using ..CustomSurvivalModule: apply_custom_survival
+ using ..CustomSelectionModule: apply_custom_selection
+
+-# Pass through the population several times, replacing the oldest
+-# with the fittest of a small subsample
++# Death tournament: select the worst member from a random sample to be replaced
++function _death_tournament(pop::P, n_sample::Int, exclude::Vector{Int}=Int[]) where {P<:Population}
++    valid = [i for i in 1:pop.n if i ∉ exclude]
++    isempty(valid) && return rand(1:pop.n)
++    n = min(n_sample, length(valid))
++    sample_idxs = [valid[rand(1:length(valid))] for _ in 1:n]
++    return sample_idxs[argmax([pop.members[i].cost for i in sample_idxs])]
++end
++
++# Pass through the population several times, replacing the worst in a sample
++# (death tournament) rather than the oldest
+ function reg_evol_cycle(
+     dataset::Dataset{T,L},
+     pop::P,
+@@ -44,7 +53,7 @@ function reg_evol_cycle(
+                 continue
+             end
+
+-            oldest = apply_custom_survival(pop, options)
++            oldest = _death_tournament(pop, options.tournament_selection_n)
+
+             @recorder begin
+                 if !haskey(record, "mutations")
+@@ -97,9 +106,9 @@ function reg_evol_cycle(
+                 continue
+             end
+
+-            # Find the oldest members to replace:
+-            oldest1 = apply_custom_survival(pop, options)
+-            oldest2 = apply_custom_survival(pop, options; exclude_indices=[oldest1])
++            # Find the worst members to replace (death tournament):
++            oldest1 = _death_tournament(pop, options.tournament_selection_n)
++            oldest2 = _death_tournament(pop, options.tournament_selection_n, [oldest1])
+
+             @recorder begin
+                 if !haskey(record, "mutations")
+
+
+====================================================================================================
+exp 7  |  382ec4bf  |  score 0.441667  |  score2 0.395000  |  [DISCARD]
+description: exp7: delete_node weight 0.369->2.0 to balance tree bloat. First eval 0.4417 (I_27_6 and III_15_12 to 1.0, I_24_6 0->0.333) but confirmation with 10 runs 0.395 — noise, doesn't hold. More deletion harms reliability.
+====================================================================================================
+
+commit 382ec4bfc9ae98e7d523cf463b828671f705e8b6
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Tue Apr 14 00:35:39 2026 -0400
+
+    exp7: increase delete_node weight 0.369->2.0 to balance tree bloat vs insert_node=2.44
+---
+ src/MutationWeights.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..804f3d5c 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -108,7 +108,7 @@ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+     rotate_tree::Float64 = 1.42
+     add_node::Float64 = 0.0771
+     insert_node::Float64 = 2.44
+-    delete_node::Float64 = 0.369
++    delete_node::Float64 = 2.0
+     simplify::Float64 = 0.00148
+     randomize::Float64 = 0.00695
+     do_nothing::Float64 = 0.431
+
+
+====================================================================================================
+exp 8  |  57c6f241  |  score 0.400000  |  score2 0.000000  |  [DISCARD]
+description: exp8: random 2nd crossover parent for diversity. Same net score 0.400 — III_15_12/I_27_6 go to 1.0 but I_13_4/I_44_4 both drop to 0.0. These pairs trade off inversely.
+====================================================================================================
+
+commit 57c6f241f8ad379ff7236f79fc8919340011c03e
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Tue Apr 14 01:06:59 2026 -0400
+
+    exp8: random second crossover parent for structural diversity in recombination
+---
+ src/RegularizedEvolution.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index ec4df43d..d4777e2f 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -80,7 +80,7 @@ function reg_evol_cycle(
+
+         else # Crossover
+             allstar1 = apply_custom_selection(pop, running_search_statistics, options)
+-            allstar2 = apply_custom_selection(pop, running_search_statistics, options)
++            allstar2 = pop.members[rand(1:pop.n)]  # random 2nd parent for structural diversity
+
+             crossover_recorder = RecordType()
+             baby1, baby2, crossover_accepted, tmp_num_evals = crossover_generation(
+
+
+====================================================================================================
+exp 9  |  d8704da2  |  score 0.383333  |  score2 0.000000  |  [DISCARD]
+description: exp9: rotate_tree 1.42->0.3. Hurt I_27_6 (0.667->0.333), I_13_4 (0.333->0). Rotation is important for escape; reducing it harms search.
+====================================================================================================
+
+commit d8704da2ac7eeac3f7806a942a9827e8d30b843f
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Tue Apr 14 01:19:24 2026 -0400
+
+    exp9: reduce rotate_tree weight 1.42->0.3 to reduce disruptive structural rotation
+---
+ src/MutationWeights.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..3c92a980 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -105,7 +105,7 @@ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+     mutate_operator::Float64 = 3.63
+     mutate_feature::Float64 = 0.1
+     swap_operands::Float64 = 0.00608
+-    rotate_tree::Float64 = 1.42
++    rotate_tree::Float64 = 0.3
+     add_node::Float64 = 0.0771
+     insert_node::Float64 = 2.44
+     delete_node::Float64 = 0.369
+
+
+====================================================================================================
+exp 10  |  94ca638e  |  score 0.450000  |  score2 0.385000  |  [DISCARD]
+description: exp10: additive constant restarts. First eval 0.450 (I_44_4 0.333->0.667, III_15_12/I_27_6 to 1.0) but 10-run confirmation 0.385 — noise, doesn't hold across seeds.
+====================================================================================================
+
+commit 94ca638e2199e7eb2e539a7f9fe298a890bfdbdc
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Tue Apr 14 01:31:03 2026 -0400
+
+    exp10: additive constant restarts x0+0.5*max(|x0|,1)*eps (fixes zero-constant exploration)
+---
+ src/ConstantOptimization.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 585a6ef7..733ca927 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -89,7 +89,7 @@ function _optimize_constants_inner(
+     # Try other initial conditions:
+     for _ in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+-        xt = @. x0 * (T(1) + T(1//2) * eps)
++        xt = @. x0 + T(1//2) * max(abs(x0), T(1)) * eps
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+
+
+====================================================================================================
+exp 11  |  2afac405  |  score 0.400000  |  score2 0.000000  |  [DISCARD]
+  description: exp11: parsimony smallest_freq 1->0.1.And improve meta-SR prompting. I_13_4/I_44_4 drop to 0.0.
+====================================================================================================
+
+commit 2afac405e652838081151da8ff1ec3724dd5c9bc
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Tue Apr 14 02:14:40 2026 -0400
+
+    exp11: adaptive parsimony smallest_frequency_allowed 1->0.1 for stronger complexity focusing
+---
+ src/AdaptiveParsimony.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/AdaptiveParsimony.jl b/src/AdaptiveParsimony.jl
+index f45891fa..273418a9 100644
+--- a/src/AdaptiveParsimony.jl
++++ b/src/AdaptiveParsimony.jl
+@@ -53,7 +53,7 @@ Reduce `running_search_statistics.frequencies` until it sums to
+ `window_size`.
+ """
+ function move_window!(running_search_statistics::RunningSearchStatistics)
+-    smallest_frequency_allowed = 1
++    smallest_frequency_allowed = 0.1
+     max_loops = 1000
+
+     frequencies = running_search_statistics.frequencies
+
+
+====================================================================================================
+exp 12  |  04b0583a  |  score 0.366667  |  score2 0.000000  |  [DISCARD]
+description: exp12: additive mutate_value (val+(factor-1)*max(|val|,1)) to fix near-zero stuck constants. I_13_4/I_44_4 both drop to 0.0 — additive perturbation too disruptive for small constants.
+====================================================================================================
+
+commit 04b0583a11ea7cb530e3f9b5a48b59556fe756f8
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Tue Apr 14 02:43:07 2026 -0400
+
+    exp12: fix mutate_value for near-zero constants (additive perturbation scaled by max(|val|,1))
+---
+ src/MutationFunctions.jl | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/MutationFunctions.jl b/src/MutationFunctions.jl
+index 3f46c879..886a23cb 100644
+--- a/src/MutationFunctions.jl
++++ b/src/MutationFunctions.jl
+@@ -144,7 +144,12 @@ function mutate_constant(
+ end
+
+ function mutate_value(rng::AbstractRNG, val::Number, temperature, options)
+-    return val * mutate_factor(typeof(val), temperature, options, rng)
++    factor = mutate_factor(typeof(val), temperature, options, rng)
++    # Use additive perturbation scaled by max(|val|, 1) to avoid getting
++    # stuck when val ≈ 0 (multiplicative perturbation leaves zeros unchanged).
++    # Equivalent to multiplicative when |val| >= 1.
++    scale = max(abs(val), one(typeof(val)))
++    return val + (factor - one(typeof(factor))) * scale
+ end
+
+ function mutate_factor(::Type{T}, temperature, options, rng) where {T<:Number}
+
+
+====================================================================================================
+exp 13  |  3e43250c  |  score 0.400000  |  score2 0.000000  |  [DISCARD]
+description: exp13: optimize mutation weight 0.0->0.1 for extra constant refinement. Same net 0.400 — I_13_4/I_44_4 drop to 0.0 but I_14_4 goes to 1.0 and I_24_6 to 0.333. Inverse trade-off pattern again.
+====================================================================================================
+
+commit 3e43250c9e03dd62c45beef0e631b89ec2d052e3
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Tue Apr 14 03:04:34 2026 -0400
+
+    exp13: enable optimize mutation weight 0.0->0.1 for extra constant refinement on promising expressions
+---
+ src/MutationWeights.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..1bc456e6 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -112,7 +112,7 @@ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+     simplify::Float64 = 0.00148
+     randomize::Float64 = 0.00695
+     do_nothing::Float64 = 0.431
+-    optimize::Float64 = 0.0
++    optimize::Float64 = 0.1
+     form_connection::Float64 = 0.5
+     break_connection::Float64 = 0.1
+     # Custom mutation slots (weights loaded from custom_mutations/config.toml)
+
