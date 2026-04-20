@@ -661,6 +661,7 @@ class OperatorBundle:
             },
             "score": self.score,
             "score_vector": self.score_vector,
+            "result_details": self.result_details,
             "best_hparams": self.best_hparams,
             "seeds_evaluated": self.seeds_evaluated,
         }
@@ -674,6 +675,7 @@ class OperatorBundle:
             operators=operators,
             score=d.get("score"),
             score_vector=d.get("score_vector"),
+            result_details=d.get("result_details"),
             best_hparams=d.get("best_hparams"),
             seeds_evaluated=d.get("seeds_evaluated", 0),
         )
@@ -690,6 +692,69 @@ class OperatorBundle:
 # =============================================================================
 # Baseline Loading (from previous evolve_pysr, hpo_pysr, or openevolve runs)
 # =============================================================================
+
+def load_resume_state(path: str) -> Dict[str, Any]:
+    """Load state from a prior evolve_pysr run so evolution can continue in a new output dir.
+
+    Accepts either a run directory or a run_data.json path. Reconstructs the last
+    generation's population, the all-time archive (dedup by display_name), the
+    stored baseline, and counters needed to keep wandb plots monotonic.
+    """
+    p = Path(path)
+    run_data_path = p / "run_data.json" if p.is_dir() else p
+    if not run_data_path.exists():
+        raise FileNotFoundError(f"No run_data.json found at: {run_data_path}")
+
+    with open(run_data_path) as f:
+        data = json.load(f)
+
+    gens = data.get("generations", [])
+    if not gens:
+        raise ValueError(f"No generations found in {run_data_path}")
+
+    last_gen_entry = gens[-1]
+    last_gen_num = last_gen_entry.get("generation", 0)
+
+    pop_dicts = last_gen_entry.get("population", [])
+    if not pop_dicts:
+        raise ValueError(f"Last generation has empty population in {run_data_path}")
+    population = [OperatorBundle.from_dict(b) for b in pop_dicts]
+
+    archive: List[OperatorBundle] = []
+    seen_names: set = set()
+    for gen_entry in gens:
+        for key in ("population", "offspring"):
+            for b_dict in gen_entry.get(key, []):
+                bundle = OperatorBundle.from_dict(b_dict)
+                name = bundle.display_name
+                if name not in seen_names:
+                    seen_names.add(name)
+                    archive.append(bundle)
+
+    eval_idx = 0
+    best_seen = float("-inf")
+    for gen_entry in gens:
+        for key in ("population", "offspring"):
+            for b_dict in gen_entry.get(key, []):
+                eval_idx += 1
+                s = b_dict.get("score")
+                if s is not None and s > best_seen:
+                    best_seen = s
+
+    baseline = data.get("baseline", {})
+    return {
+        "population": population,
+        "archive": archive,
+        "start_gen": last_gen_num + 1,
+        "baseline_score": baseline.get("avg_r2"),
+        "baseline_vector": baseline.get("r2_vector", []),
+        "prior_generations": gens,
+        "prior_config": data.get("config", {}),
+        "eval_idx": eval_idx,
+        "best_seen": best_seen if best_seen != float("-inf") else 0.0,
+        "source_path": str(run_data_path),
+    }
+
 
 def _load_baseline_from_run_data(path: Path, operator_type: Optional[str] = None) -> OperatorBundle:
     """Load best bundle from an evolve_pysr or hpo_pysr run_data.json."""
@@ -2084,6 +2149,7 @@ def run_bundle_evolution(
     racing: bool = False,
     hof: bool = False,
     max_concurrent_jobs: Optional[int] = None,
+    resume_state: Optional[Dict[str, Any]] = None,
 ) -> Tuple[OperatorBundle, Any, float]:
     """Run round-robin bundle evolution across multiple operator types.
 
@@ -2162,14 +2228,18 @@ def run_bundle_evolution(
         print("Hall of Fame enabled: survivors chosen from all-time archive by avg score across accumulated seeds")
 
     # All-time archive of every bundle ever evaluated (for --hof survivor pool).
-    # Dedup by object identity since racing updates bundles in place across generations.
+    # Dedup by display_name so resumed runs (deserialized bundles have fresh ids)
+    # and fresh runs both behave correctly; names like f"{func_name}_gen{gen}_{idx}"
+    # are unique per creation site, and racing updates bundles in place so the same
+    # display_name maps to the same python object.
     archive: List[OperatorBundle] = []
-    archive_ids: set = set()
+    archive_names: set = set()
 
     def _extend_archive(bundles: List[OperatorBundle]) -> None:
         for b in bundles:
-            if id(b) not in archive_ids:
-                archive_ids.add(id(b))
+            key = b.display_name
+            if key not in archive_names:
+                archive_names.add(key)
                 archive.append(b)
 
     if task_diverse_pop:
@@ -2192,36 +2262,57 @@ def run_bundle_evolution(
     )
 
     # Evaluate baseline (default operators, with HPO hparams if provided)
-    print("=" * 60)
-    print("Evaluating baseline (default operators)...")
-    print("=" * 60)
-    eval_baseline = OperatorBundle.create_default()
-    if baseline_bundle is not None and baseline_bundle.best_hparams:
-        eval_baseline.best_hparams = copy.deepcopy(baseline_bundle.best_hparams)
-        print(f"  Using {len(eval_baseline.best_hparams)} hparams from --baseline")
-    baseline_config = eval_baseline.to_pysr_config(pysr_kwargs)
-    baseline_results = _evaluate_configs_with_noise_map(
-        evaluator=evaluator,
-        configs=[baseline_config],
-        dataset_names=dataset_names,
-        seed=seed,
-        n_runs=n_runs,
-        target_noise_map=target_noise_map,
-        fitness_metric=fitness_metric,
-    )
-    baseline_score, baseline_vector, baseline_details = baseline_results[0]
-    eval_baseline.score = baseline_score
-    eval_baseline.score_vector = baseline_vector
-    eval_baseline.result_details = baseline_details
+    baseline_details: Optional[List[Dict]] = None
+    if resume_state is None:
+        print("=" * 60)
+        print("Evaluating baseline (default operators)...")
+        print("=" * 60)
+        eval_baseline = OperatorBundle.create_default()
+        if baseline_bundle is not None and baseline_bundle.best_hparams:
+            eval_baseline.best_hparams = copy.deepcopy(baseline_bundle.best_hparams)
+            print(f"  Using {len(eval_baseline.best_hparams)} hparams from --baseline")
+        baseline_config = eval_baseline.to_pysr_config(pysr_kwargs)
+        baseline_results = _evaluate_configs_with_noise_map(
+            evaluator=evaluator,
+            configs=[baseline_config],
+            dataset_names=dataset_names,
+            seed=seed,
+            n_runs=n_runs,
+            target_noise_map=target_noise_map,
+            fitness_metric=fitness_metric,
+        )
+        baseline_score, baseline_vector, baseline_details = baseline_results[0]
+        eval_baseline.score = baseline_score
+        eval_baseline.score_vector = baseline_vector
+        eval_baseline.result_details = baseline_details
 
-    solved_str = format_solved_str(baseline_details)
-    if n_runs > 1 and baseline_details:
-        per_run_avgs = compute_per_run_avgs(baseline_details, n_runs=n_runs, fitness_metric=fitness_metric)
-        runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-        print(f"Baseline avg {metric_label}: {baseline_score:.4f} [{runs_str}] {solved_str}")
+        solved_str = format_solved_str(baseline_details)
+        if n_runs > 1 and baseline_details:
+            per_run_avgs = compute_per_run_avgs(baseline_details, n_runs=n_runs, fitness_metric=fitness_metric)
+            runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
+            print(f"Baseline avg {metric_label}: {baseline_score:.4f} [{runs_str}] {solved_str}")
+        else:
+            print(f"Baseline avg {metric_label}: {baseline_score:.4f} {solved_str}")
+        logger.log_baseline(baseline_score, baseline_vector)
     else:
-        print(f"Baseline avg {metric_label}: {baseline_score:.4f} {solved_str}")
-    logger.log_baseline(baseline_score, baseline_vector)
+        baseline_score = resume_state["baseline_score"] or 0.0
+        baseline_vector = resume_state["baseline_vector"] or []
+        logger.log_baseline(baseline_score, baseline_vector)
+        print("=" * 60)
+        print(f"Resume: reusing baseline score {baseline_score:.4f} from {resume_state['source_path']}")
+        print("=" * 60)
+        if task_aware:
+            print("task_aware on resume: re-evaluating baseline to recover per-task details...")
+            eval_baseline = OperatorBundle.create_default()
+            if baseline_bundle is not None and baseline_bundle.best_hparams:
+                eval_baseline.best_hparams = copy.deepcopy(baseline_bundle.best_hparams)
+            baseline_config = eval_baseline.to_pysr_config(pysr_kwargs)
+            br = _evaluate_configs_with_noise_map(
+                evaluator=evaluator, configs=[baseline_config],
+                dataset_names=dataset_names, seed=seed, n_runs=n_runs,
+                target_noise_map=target_noise_map, fitness_metric=fitness_metric,
+            )
+            _, _, baseline_details = br[0]
 
     # Task-aware mutation setup: load ground-truth formulas and baseline solved set
     task_formulas: Dict[str, str] = {}
@@ -2243,169 +2334,195 @@ def run_bundle_evolution(
         wandb.log({"baseline_score": baseline_score, "generation": 0})
         log_cpu_usage(wandb_run)
 
-    # Generate initial population of bundles
-    # If a baseline_bundle is provided, include it and generate variations from it
-    print("\n" + "=" * 60)
-    print(f"Generating initial population ({population_size} bundles)...")
-    print(f"Operator types: {', '.join(operator_type_names)}")
-    if baseline_bundle:
-        baseline_types = [t for t, op in baseline_bundle.operators.items() if op is not None]
-        print(f"Seeding from baseline: {', '.join(baseline_types)}")
-    print("=" * 60)
-
-    population: List[OperatorBundle] = []
-
-    # Seed population slot 0 with the baseline bundle (unchanged)
-    if baseline_bundle:
-        seed_bundle = OperatorBundle(
-            operators={k: copy.deepcopy(v) for k, v in baseline_bundle.operators.items()},
-            best_hparams=copy.deepcopy(baseline_bundle.best_hparams) if baseline_bundle.best_hparams else None,
-        )
-        population.append(seed_bundle)
-        print(f"\nBundle 1/{population_size}: baseline (unchanged)")
-        for t in operator_type_names:
-            op = seed_bundle.get_operator(t)
-            print(f"  {t}: {op.name if op else 'default'}")
-
-    max_bundle_attempts = population_size * 2
-    bundle_attempts = 0
-    while len(population) < population_size and bundle_attempts < max_bundle_attempts:
-        bundle_idx = bundle_attempts
-        bundle_attempts += 1
-
-        # When we have a baseline, start each new bundle from a copy of it
-        # and generate variations via "refine" for types that have a baseline operator
+    if resume_state is not None:
+        # Skip initial population generation/evaluation; reuse prior state.
+        population = resume_state["population"]
+        population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
+        # Add population objects first so archive holds the live bundles
+        # (racing mutates them in place); older deserialized copies from
+        # resume_state["archive"] with matching display_name are then skipped.
+        _extend_archive(population)
+        _extend_archive(resume_state["archive"])
+        _eval_log_state["idx"] = resume_state["eval_idx"]
+        _eval_log_state["best"] = resume_state["best_seen"]
+        # Seed logger with prior history so run_data.json in the new dir is a full record.
+        logger.run_data["generations"] = list(resume_state["prior_generations"])
+        logger._save()
+        best = population[0]
+        start_gen = resume_state["start_gen"]
+        print("\n" + "=" * 60)
+        print(f"Resuming: start_gen={start_gen}, population={len(population)}, "
+              f"archive={len(archive)}, prior_gens={len(resume_state['prior_generations'])}")
+        print(f"  Current best: {best.display_name} (score: {best.score:.4f})")
+        print("=" * 60)
+        if wandb_run is not None:
+            import wandb
+            wandb.log({"best_score": best.score, "generation": start_gen - 1})
+    else:
+        start_gen = 1
+        # Generate initial population of bundles
+        # If a baseline_bundle is provided, include it and generate variations from it
+        print("\n" + "=" * 60)
+        print(f"Generating initial population ({population_size} bundles)...")
+        print(f"Operator types: {', '.join(operator_type_names)}")
         if baseline_bundle:
-            bundle = OperatorBundle(
+            baseline_types = [t for t, op in baseline_bundle.operators.items() if op is not None]
+            print(f"Seeding from baseline: {', '.join(baseline_types)}")
+        print("=" * 60)
+
+        population: List[OperatorBundle] = []
+
+        # Seed population slot 0 with the baseline bundle (unchanged)
+        if baseline_bundle:
+            seed_bundle = OperatorBundle(
                 operators={k: copy.deepcopy(v) for k, v in baseline_bundle.operators.items()},
                 best_hparams=copy.deepcopy(baseline_bundle.best_hparams) if baseline_bundle.best_hparams else None,
             )
-        else:
-            bundle = OperatorBundle.create_default()
+            population.append(seed_bundle)
+            print(f"\nBundle 1/{population_size}: baseline (unchanged)")
+            for t in operator_type_names:
+                op = seed_bundle.get_operator(t)
+                print(f"  {t}: {op.name if op else 'default'}")
 
-        n_generated = 0
-        # Sample a single operator type to vary for this bundle; keep the others at baseline.
-        type_to_vary = rng.choice(operator_type_names)
-        print(f"\nBundle {len(population) + 1}/{population_size} (attempt {bundle_idx + 1}): varying {type_to_vary}")
+        max_bundle_attempts = population_size * 2
+        bundle_attempts = 0
+        while len(population) < population_size and bundle_attempts < max_bundle_attempts:
+            bundle_idx = bundle_attempts
+            bundle_attempts += 1
 
-        for type_name in [type_to_vary]:
-            op_type = OPERATOR_TYPES[type_name]
-            reference = references[type_name]
-
-            # Always explore for initial population — no refine prompts.
-            baseline_op = baseline_bundle.get_operator(type_name) if baseline_bundle else None
-            mode = "explore"
-
-            # Try to generate a valid operator for this type
-            generated = False
-            for attempt in range(3):
-                code, func_name, selected_model = generate_operator_code(
-                    op_type=op_type,
-                    reference=reference,
-                    parent=baseline_op,
-                    model=model,
-                    model_ensemble=model_ensemble,
-                    mode=mode,
-                    variation_seed=bundle_idx * 100 + attempt,
-                    temperature=temperature,
-                    use_cache=use_cache,
-                    log_prompt_dir=prompts_log_dir,
-                    log_generation=0,
+            # When we have a baseline, start each new bundle from a copy of it
+            # and generate variations via "refine" for types that have a baseline operator
+            if baseline_bundle:
+                bundle = OperatorBundle(
+                    operators={k: copy.deepcopy(v) for k, v in baseline_bundle.operators.items()},
+                    best_hparams=copy.deepcopy(baseline_bundle.best_hparams) if baseline_bundle.best_hparams else None,
                 )
-                if not code or not func_name:
-                    continue
-
-                unique_name = f"{func_name}_init_{bundle_idx}"
-                code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
-
-                is_valid, error = validate_julia_code(unique_name, code, op_type)
-                append_validation_log(prompts_log_dir, op_type, mode, 0,
-                                      bundle_idx * 100 + attempt,
-                                      is_valid, error, unique_name)
-                if not is_valid:
-                    print(f"  {type_name}: validation failed (attempt {attempt + 1}): {error[:80]}...")
-                    continue
-
-                operator = op_type.create_operator(
-                    name=unique_name, code=code, generation=0,
-                    parent_name=baseline_op.name if baseline_op else None,
-                    mode=mode,
-                )
-                operator.model = selected_model
-                if baseline_op and baseline_op.weight is not None:
-                    operator.weight = baseline_op.weight
-                bundle = bundle.copy_with(type_name, operator)
-                print(f"  {type_name}: {unique_name} (model={selected_model})")
-                generated = True
-                n_generated += 1
-                break
-
-            if not generated:
-                # If we have a baseline op, keep it in the bundle rather than failing
-                if baseline_op:
-                    print(f"  {type_name}: keeping baseline ({baseline_op.name})")
-                    n_generated += 1  # baseline op counts
-                else:
-                    print(f"  {type_name}: failed to generate after 3 attempts")
-
-        if n_generated == 0:
-            print(f"  Skipping bundle (no operators generated)")
-            continue
-
-        population.append(bundle)
-
-    if not population:
-        raise RuntimeError("Failed to generate any valid bundles")
-
-    # Evaluate initial population
-    print("\n" + "=" * 60)
-    print(f"Evaluating initial population ({len(population)} bundles)...")
-    print("=" * 60)
-
-    try:
-        results = evaluate_bundles(
-            population, evaluator, dataset_names, pysr_kwargs, seed,
-            n_runs=n_runs, target_noise_map=target_noise_map,
-            fitness_metric=fitness_metric,
-        )
-        for bundle, (avg_score, score_vector, result_details) in zip(population, results):
-            bundle.score = avg_score
-            bundle.score_vector = score_vector
-            bundle.result_details = result_details
-            bundle.seeds_evaluated = n_runs
-            _log_bundle_eval(bundle, generation=0)
-            solved_str = format_solved_str(result_details)
-            if n_runs > 1 and result_details:
-                per_run_avgs = compute_per_run_avgs(result_details, n_runs=n_runs, fitness_metric=fitness_metric)
-                runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                print(f"  {bundle.display_name}: Avg {avg_score:.4f} [{runs_str}] {solved_str}")
             else:
-                print(f"  {bundle.display_name}: {avg_score:.4f} {solved_str}")
-    except Exception as e:
-        print(f"  Batch evaluation failed: {e}")
-        for bundle in population:
-            bundle.score = -1.0
-            bundle.score_vector = []
-            _log_bundle_eval(bundle, generation=0)
+                bundle = OperatorBundle.create_default()
 
-    population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
-    _extend_archive(population)
-    best = population[0]
-    print(f"\nBest initial bundle: {best.display_name} (score: {best.score:.4f})")
+            n_generated = 0
+            # Sample a single operator type to vary for this bundle; keep the others at baseline.
+            type_to_vary = rng.choice(operator_type_names)
+            print(f"\nBundle {len(population) + 1}/{population_size} (attempt {bundle_idx + 1}): varying {type_to_vary}")
 
-    if wandb_run is not None:
-        import wandb
-        wandb.log({"best_score": best.score, "generation": 0})
+            for type_name in [type_to_vary]:
+                op_type = OPERATOR_TYPES[type_name]
+                reference = references[type_name]
+
+                # Always explore for initial population — no refine prompts.
+                baseline_op = baseline_bundle.get_operator(type_name) if baseline_bundle else None
+                mode = "explore"
+
+                # Try to generate a valid operator for this type
+                generated = False
+                for attempt in range(3):
+                    code, func_name, selected_model = generate_operator_code(
+                        op_type=op_type,
+                        reference=reference,
+                        parent=baseline_op,
+                        model=model,
+                        model_ensemble=model_ensemble,
+                        mode=mode,
+                        variation_seed=bundle_idx * 100 + attempt,
+                        temperature=temperature,
+                        use_cache=use_cache,
+                        log_prompt_dir=prompts_log_dir,
+                        log_generation=0,
+                    )
+                    if not code or not func_name:
+                        continue
+
+                    unique_name = f"{func_name}_init_{bundle_idx}"
+                    code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
+
+                    is_valid, error = validate_julia_code(unique_name, code, op_type)
+                    append_validation_log(prompts_log_dir, op_type, mode, 0,
+                                          bundle_idx * 100 + attempt,
+                                          is_valid, error, unique_name)
+                    if not is_valid:
+                        print(f"  {type_name}: validation failed (attempt {attempt + 1}): {error[:80]}...")
+                        continue
+
+                    operator = op_type.create_operator(
+                        name=unique_name, code=code, generation=0,
+                        parent_name=baseline_op.name if baseline_op else None,
+                        mode=mode,
+                    )
+                    operator.model = selected_model
+                    if baseline_op and baseline_op.weight is not None:
+                        operator.weight = baseline_op.weight
+                    bundle = bundle.copy_with(type_name, operator)
+                    print(f"  {type_name}: {unique_name} (model={selected_model})")
+                    generated = True
+                    n_generated += 1
+                    break
+
+                if not generated:
+                    # If we have a baseline op, keep it in the bundle rather than failing
+                    if baseline_op:
+                        print(f"  {type_name}: keeping baseline ({baseline_op.name})")
+                        n_generated += 1  # baseline op counts
+                    else:
+                        print(f"  {type_name}: failed to generate after 3 attempts")
+
+            if n_generated == 0:
+                print(f"  Skipping bundle (no operators generated)")
+                continue
+
+            population.append(bundle)
+
+        if not population:
+            raise RuntimeError("Failed to generate any valid bundles")
+
+        # Evaluate initial population
+        print("\n" + "=" * 60)
+        print(f"Evaluating initial population ({len(population)} bundles)...")
+        print("=" * 60)
+
+        try:
+            results = evaluate_bundles(
+                population, evaluator, dataset_names, pysr_kwargs, seed,
+                n_runs=n_runs, target_noise_map=target_noise_map,
+                fitness_metric=fitness_metric,
+            )
+            for bundle, (avg_score, score_vector, result_details) in zip(population, results):
+                bundle.score = avg_score
+                bundle.score_vector = score_vector
+                bundle.result_details = result_details
+                bundle.seeds_evaluated = n_runs
+                _log_bundle_eval(bundle, generation=0)
+                solved_str = format_solved_str(result_details)
+                if n_runs > 1 and result_details:
+                    per_run_avgs = compute_per_run_avgs(result_details, n_runs=n_runs, fitness_metric=fitness_metric)
+                    runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
+                    print(f"  {bundle.display_name}: Avg {avg_score:.4f} [{runs_str}] {solved_str}")
+                else:
+                    print(f"  {bundle.display_name}: {avg_score:.4f} {solved_str}")
+        except Exception as e:
+            print(f"  Batch evaluation failed: {e}")
+            for bundle in population:
+                bundle.score = -1.0
+                bundle.score_vector = []
+                _log_bundle_eval(bundle, generation=0)
+
+        population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
+        _extend_archive(population)
+        best = population[0]
+        print(f"\nBest initial bundle: {best.display_name} (score: {best.score:.4f})")
+
+        if wandb_run is not None:
+            import wandb
+            wandb.log({"best_score": best.score, "generation": 0})
 
     # Evolution loop (round-robin across operator types)
-    for gen in range(1, n_generations + 1):
+    for gen in range(start_gen, start_gen + n_generations):
         # Round-robin: pick which operator type to evolve this generation
         current_type_name = operator_type_names[(gen - 1) % len(operator_type_names)]
         current_op_type = OPERATOR_TYPES[current_type_name]
         reference = references[current_type_name]
 
         print("\n" + "=" * 60)
-        print(f"Generation {gen}/{n_generations} — Evolving {current_type_name.upper()}")
+        print(f"Generation {gen}/{start_gen + n_generations - 1} — Evolving {current_type_name.upper()}")
         print("=" * 60)
 
         offspring_bundles: List[OperatorBundle] = []
@@ -2757,6 +2874,12 @@ def main():
                              "bundle ever evaluated, ranked by avg score across all accumulated "
                              "seeds. Requires --racing so scores remain comparable as seeds grow.")
 
+    parser.add_argument("--continue_from", type=str, default=None,
+                        help="Path to a prior evolve_pysr run dir (or run_data.json) to resume from. "
+                             "Writes to a new output dir; --generations N means N ADDITIONAL generations. "
+                             "Works for all variants (racing, hof, task_aware, task_diverse_pop, etc.). "
+                             "Config flags should match the prior run; mismatches are warned, not enforced.")
+
     parser.add_argument("--baseline", type=str, default=None,
                         help="Path to a baseline operator to seed the initial population. "
                              "Accepts: evolve_pysr output dir or run_data.json, "
@@ -2795,6 +2918,28 @@ def main():
     pysr_kwargs["max_evals"] = args.max_evals
     pysr_kwargs["timeout_in_seconds"] = args.timeout
 
+    # Load baseline if specified
+    baseline_bundle = None
+    if args.baseline:
+        baseline_bundle = load_baseline_bundle(
+            args.baseline,
+            operator_type=operator_type_names[0] if len(operator_type_names) == 1 else None,
+        )
+
+    # Load resume state if continuing from a prior run
+    resume_state = None
+    if args.continue_from:
+        resume_state = load_resume_state(args.continue_from)
+        prior_ops = resume_state["prior_config"].get("operator_types", [])
+        if prior_ops and list(prior_ops) != list(operator_type_names):
+            print(f"WARNING: operator_types differ from prior run: "
+                  f"prior={prior_ops}, now={operator_type_names}")
+        print(f"Resuming from {resume_state['source_path']}: "
+              f"start_gen={resume_state['start_gen']}, "
+              f"prior_gens={len(resume_state['prior_generations'])}, "
+              f"pop={len(resume_state['population'])}, "
+              f"archive={len(resume_state['archive'])}")
+
     common_kwargs = dict(
         n_generations=args.generations,
         population_size=args.population,
@@ -2827,15 +2972,8 @@ def main():
         task_aware_prob=args.task_aware_prob,
         racing=args.racing,
         hof=args.hof,
+        resume_state=resume_state,
     )
-
-    # Load baseline if specified
-    baseline_bundle = None
-    if args.baseline:
-        baseline_bundle = load_baseline_bundle(
-            args.baseline,
-            operator_type=operator_type_names[0] if len(operator_type_names) == 1 else None,
-        )
 
     if len(operator_type_names) > 1:
         print(f"Bundle evolution: {', '.join(operator_type_names)} (round-robin)")
@@ -2869,6 +3007,7 @@ def main():
         "task_aware_prob": args.task_aware_prob,
         "racing": args.racing,
         "hof": args.hof,
+        "continue_from": args.continue_from,
     }
     wandb_run = init_wandb(
         config=wandb_config,
