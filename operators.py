@@ -31,6 +31,13 @@ def _safe_sqrt(x):
     """PySR-like safe_sqrt: undefined for x < 0."""
     return np.where(x >= 0, np.sqrt(x), np.nan)
 
+def _safe_pow(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Protected power used when `^` is requested."""
+    base = np.clip(np.abs(x), 1e-12, 1e6)
+    exp = np.clip(y, -6.0, 6.0)
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        return np.power(base, exp)
+
 
 FUNCTION_SET = {
     # Binary operators
@@ -38,6 +45,7 @@ FUNCTION_SET = {
     '-': (lambda x, y: x - y, 2),
     '*': (lambda x, y: x * y, 2),
     '/': (_safe_div, 2),
+    '^': (_safe_pow, 2),
 
     # Unary operators
     'abs': (np.abs, 1),

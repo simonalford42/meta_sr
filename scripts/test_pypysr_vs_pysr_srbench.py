@@ -29,6 +29,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from evaluation import check_pysr_frontier_symbolic_match, check_pysr_symbolic_match
 from pypysr import PyPySRRegressor
+from parallel_eval_pysr import _remap_formula_variables
 from utils import load_dataset_names_from_split, load_srbench_dataset
 
 _REAL_PYSR_REGRESSOR = None
@@ -404,9 +405,29 @@ def main() -> int:
         if args.target_noise > 0:
             y_train = _add_noise(y_train, args.target_noise, seed=args.seed + 1000)
         var_names = [f"x{i}" for i in range(X.shape[1])]
+        ground_truth_for_match = formula or ""
+        if ground_truth_for_match:
+            try:
+                from evaluation import get_dataset_var_names
+
+                dataset_var_names = get_dataset_var_names(dataset)
+                if len(dataset_var_names) == X.shape[1]:
+                    ground_truth_for_match = _remap_formula_variables(
+                        ground_truth_for_match, dataset_var_names, var_names
+                    )
+            except Exception:
+                ground_truth_for_match = formula or ""
 
         pypysr_res = _evaluate_pypysr(
-            X_train, y_train, X_test, y_test, var_names, formula, args.max_evals, args.seed, args.max_size
+            X_train,
+            y_train,
+            X_test,
+            y_test,
+            var_names,
+            ground_truth_for_match,
+            args.max_evals,
+            args.seed,
+            args.max_size,
         )
         print(
             f"  PyPySR: success={pypysr_res.success}, "
@@ -419,7 +440,7 @@ def main() -> int:
             X_test,
             y_test,
             var_names,
-            formula,
+            ground_truth_for_match,
             args.max_evals,
             args.seed,
             args.max_size,

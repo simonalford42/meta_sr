@@ -178,3 +178,27 @@
       - `mean_pysr_r2=0.9712373591`
       - mean gap `-0.0028962442` (slight PyPySR advantage)
       - median gap `-0.0066169563`
+
+### Full train_hard-20 run at 1e6 evals (local 4-way parallel)
+- Command pattern:
+  - launched 20 one-task runs in parallel (`xargs -P 4`), each:
+    - `python scripts/test_pypysr_vs_pysr_srbench.py --split splits/tmp_single_<dataset>.txt --n-tasks 1 --max-evals 1000000 --seed 42 ...`
+- Aggregated outputs:
+  - `outputs/pypysr_vs_pysr_parallel_trainhard20_1e6_combined.csv`
+  - `outputs/pypysr_vs_pysr_parallel_trainhard20_1e6_summary.json`
+- Aggregate parity (20/20 successful for both methods):
+  - `mean_pypysr_r2 = 0.9879415177`
+  - `mean_pysr_r2 = 0.9912647384`
+  - mean gap (`PySR - PyPySR`) `= +0.0033232207`
+  - median gap (`PySR - PyPySR`) `= +0.0000007049`
+  - GT discovery rates:
+    - `pypysr_discovery_rate_gt = 0.0`
+    - `pysr_discovery_rate_gt = 0.0`
+- Largest positive gaps (PySR better):
+  - `feynman_test_14`: `+0.0575093654`
+  - `feynman_III_9_52`: `+0.0245213111`
+  - `feynman_I_11_19`: `+0.0095739174`
+- Largest negative gaps (PyPySR better):
+  - `feynman_test_9`: `-0.0228723753`
+  - `feynman_test_20`: `-0.0136217612`
+  - `strogatz_predprey2`: `-0.0032353220`

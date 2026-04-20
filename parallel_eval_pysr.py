@@ -182,7 +182,20 @@ def _build_pysr_cache_entry(
 
 def _import_pysr_regressor():
     """Import PySR from the repo checkout when available."""
-    pysr_repo = Path(__file__).resolve().parent / "PySR"
+    repo_root = Path(__file__).resolve().parent
+    local_juliapkg_project = repo_root / ".juliapkg_env"
+    local_julia_depot = repo_root / ".julia_depot"
+    local_juliapkg_project.mkdir(parents=True, exist_ok=True)
+    local_julia_depot.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", str(local_juliapkg_project))
+    os.environ.setdefault("JULIA_DEPOT_PATH", str(local_julia_depot))
+    os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
+    # A repo-level JULIA_PROJECT pointing at SymbolicRegression.jl breaks PySR's
+    # PythonCall environment resolution on SLURM workers.
+    if os.environ.get("JULIA_PROJECT", "").endswith("SymbolicRegression.jl"):
+        os.environ.pop("JULIA_PROJECT", None)
+
+    pysr_repo = repo_root / "PySR"
     if pysr_repo.exists() and str(pysr_repo) not in sys.path:
         sys.path.insert(0, str(pysr_repo))
 
@@ -1346,7 +1359,14 @@ export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export JULIA_NUM_THREADS=1
 
-{worker_env_exports}
+# Ensure Python can import project modules
+cd "$SLURM_SUBMIT_DIR"
+export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
+
+# Point juliacall/juliapkg at the repo-local PySR environment.
+export PYTHON_JULIAPKG_PROJECT="$SLURM_SUBMIT_DIR/.juliapkg_env"
+export JULIA_DEPOT_PATH="$SLURM_SUBMIT_DIR/.julia_depot"
+export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
 
 # Log which node this task is running on
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
@@ -1403,7 +1423,14 @@ export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export JULIA_NUM_THREADS=1
 
-{worker_env_exports}
+# Ensure Python can import project modules
+cd "$SLURM_SUBMIT_DIR"
+export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
+
+# Point juliacall/juliapkg at the repo-local PySR environment.
+export PYTHON_JULIAPKG_PROJECT="$SLURM_SUBMIT_DIR/.juliapkg_env"
+export JULIA_DEPOT_PATH="$SLURM_SUBMIT_DIR/.julia_depot"
+export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
 
 # Log which node this task is running on
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"

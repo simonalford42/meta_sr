@@ -295,10 +295,12 @@ class BaseSlurmEvaluator(ABC):
 
     def _submit_job(self, script_path: Path) -> str:
         """Submit SLURM job and return job ID."""
+        env = self._get_slurm_env()
         result = subprocess.run(
             ['sbatch', str(script_path)],
             capture_output=True,
             text=True,
+            env=env,
         )
 
         if result.returncode != 0:
@@ -312,12 +314,13 @@ class BaseSlurmEvaluator(ABC):
 
     def _cancel_job(self, job_id: str):
         """Cancel a SLURM job."""
-        _untrack_job(job_id)
+        env = self._get_slurm_env()
         try:
             result = subprocess.run(
                 ['scancel', job_id],
                 capture_output=True,
                 text=True,
+                env=env,
             )
             if result.returncode == 0:
                 print(f"    Cancelled job {job_id}")
@@ -328,10 +331,12 @@ class BaseSlurmEvaluator(ABC):
 
     def _get_job_status(self, job_id: str) -> str:
         """Get SLURM job status."""
+        env = self._get_slurm_env()
         result = subprocess.run(
             ['squeue', '-j', job_id, '-h', '-o', '%T'],
             capture_output=True,
             text=True,
+            env=env,
         )
 
         if result.returncode != 0 or not result.stdout.strip():
@@ -340,6 +345,7 @@ class BaseSlurmEvaluator(ABC):
                 ['sacct', '-j', job_id, '-n', '-o', 'State', '-P'],
                 capture_output=True,
                 text=True,
+                env=env,
             )
             states = result.stdout.strip().split('\n')
             if states:
@@ -347,6 +353,19 @@ class BaseSlurmEvaluator(ABC):
             return 'UNKNOWN'
 
         return result.stdout.strip()
+
+    def _get_slurm_env(self) -> Dict[str, str]:
+        """Return subprocess env for SLURM commands.
+
+        Some interactive environments export `SLURM_CONF` pointing to a path
+        that does not exist on login/submit hosts. In that case, unset it so
+        SLURM CLI falls back to its compiled/default config discovery.
+        """
+        env = os.environ.copy()
+        slurm_conf = env.get("SLURM_CONF")
+        if slurm_conf and not Path(slurm_conf).exists():
+            env.pop("SLURM_CONF", None)
+        return env
 
     def _wait_for_job(
         self,
