@@ -300,9 +300,53 @@ This experiment simulates the regime the user was asking about: *what if
 improvements are genuinely rare — most mutations give no signal, and only
 rare ones reach the informative part of the landscape?*
 
-The plot `smart_advantage_vs_plateau.png` shows the "best smart policy
-score" minus the "best fixed-N score" at each (σ, plateau). Positive =
-smart policies win. Three distinct regimes emerge.
+### Reading `plateau_per_policy.png`
+
+This plot shows, for each policy, how its final `true_of_declared_best`
+varies as a function of plateau. X-axis is plateau on a log scale (left =
+hard, right = easy, far right = ∞). Y-axis is true fitness of the declared
+best (higher = better, 0 = global optimum). One panel per σ.
+
+The curves have a conspicuous **V-shape** — performance first gets *worse*
+as plateau grows, then recovers:
+
+**Left side (plateau ≤ 5)**: The landscape is almost entirely flat — most
+candidates return the same clipped score of −plateau. There is no gradient
+to select on, so the EA makes no real progress. But because the declared-
+best is also bounded at −plateau, the Y-axis score looks artificially decent
+(e.g. −1 or −5). This is a ceiling artifact: the "good" score reflects the
+ceiling, not a good solution.
+
+**Middle (plateau ≈ 20, the dip)**: The ceiling is high enough that a few
+genuinely better solutions exist and are discoverable, but the *stakes* are
+high — the fitness gap between good and mediocre candidates is up to −20
+units. Under moderate noise (σ=5 or σ=20), selecting the wrong candidate
+based on a lucky noise spike carries a large true-fitness cost. This is the
+hardest regime: the payoff for finding real improvements is large, but the
+signal is buried.
+
+**Right side (plateau ≥ 100)**: The full Rastrigin landscape opens up —
+many distinct fitness levels, gradient everywhere. More chances to find
+improvements, and the cost of a wrong selection is smaller relative to the
+total range. All policies improve; racing policies still lead.
+
+**Where policies separate**: In the σ=20 panel, `race_k3` stays noticeably
+above the fixed-N cluster through the middle of the V. Racing helps exactly
+here — it accumulates extra evaluations on candidates that survive selection,
+so by the time the EA commits to a "best", the elite has a reliable score
+estimate. Fixed-N picks on the basis of a single draw and has no way to
+retroactively correct a lucky winner. At plateau=1 there is no signal for
+any policy to leverage; at plateau=∞ even fixed-N finds enough gradient to
+stay competitive.
+
+**σ=50 (rightmost panel)**: The separation is largest. `race_k3` stays
+substantially above the field because at very high noise, the confirmation
+from accumulated samples is the only thing preventing near-random selection.
+`fixed1` bottoms out badly throughout.
+
+The plot `smart_advantage_vs_plateau.png` summarises the same data more
+compactly: "best smart policy score" minus "best fixed-N score" at each
+(σ, plateau). Positive = smart policies win. Three distinct regimes emerge.
 
 ### Regime 1 — plateau ≤ 5: nothing works
 
