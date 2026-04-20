@@ -69,6 +69,9 @@ class PySRCacheEntry(Base):
     error = Column(Text, nullable=True)
     timed_out = Column(Boolean, default=False)
     runtime_seconds = Column(Float, default=0.0)
+    # JSON-encoded List[Dict] execution trace (HOF milestones). Nullable for
+    # entries written before this column existed.
+    execution_trace_json = Column(Text, nullable=True)
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -295,6 +298,12 @@ class PySRCacheDB:
                     "ALTER TABLE pysr_evaluations ADD COLUMN gt_match_score FLOAT"
                 ))
                 conn.commit()
+        if "execution_trace_json" not in columns:
+            with self.engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE pysr_evaluations ADD COLUMN execution_trace_json TEXT"
+                ))
+                conn.commit()
 
     def _make_config_hash(
         self,
@@ -332,6 +341,7 @@ class PySRCacheDB:
         target_noise: float = 0.0,
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
+        hof_n_steps: int = 0,
     ) -> str:
         """Create a deterministic hash key for the PySR evaluation request."""
         config_hash = self._make_config_hash(
@@ -348,6 +358,8 @@ class PySRCacheDB:
             "pysr_model_kwargs": pysr_model_kwargs,
             "target_noise": target_noise,
         }
+        if hof_n_steps > 0:
+            key_data["hof_n_steps"] = hof_n_steps
         key_str = json.dumps(key_data, sort_keys=True, ensure_ascii=True)
         return hashlib.sha256(key_str.encode()).hexdigest()
 
@@ -366,6 +378,7 @@ class PySRCacheDB:
         target_noise: float = 0.0,
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
+        hof_n_steps: int = 0,
     ) -> str:
         """Public wrapper for the deterministic request hash."""
         return self._make_cache_key(
@@ -382,6 +395,7 @@ class PySRCacheDB:
             target_noise=target_noise,
             custom_selection_code=custom_selection_code,
             custom_survival_code=custom_survival_code,
+            hof_n_steps=hof_n_steps,
         )
 
     def lookup(
@@ -399,12 +413,14 @@ class PySRCacheDB:
         target_noise: float = 0.0,
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
+        hof_n_steps: int = 0,
     ) -> Optional[Dict[str, Any]]:
         """Look up a cached PySR evaluation result. Returns None if not found."""
         request_hash = self._make_cache_key(
             mutation_weights, pysr_kwargs, dataset_name, seed, data_seed,
             max_samples, run_index, custom_mutation_code, allow_custom_mutations,
-            pysr_model_kwargs, target_noise, custom_selection_code, custom_survival_code
+            pysr_model_kwargs, target_noise, custom_selection_code, custom_survival_code,
+            hof_n_steps
         )
 
         stmt = select(
@@ -415,11 +431,18 @@ class PySRCacheDB:
             PySRCacheEntry.timed_out,
             PySRCacheEntry.runtime_seconds,
             PySRCacheEntry.gt_match_score,
+            PySRCacheEntry.execution_trace_json,
         ).where(PySRCacheEntry.request_hash == request_hash)
 
         with Session(self.engine) as session:
             result = session.execute(stmt).first()
             if result:
+                trace = None
+                if result[7]:
+                    try:
+                        trace = json.loads(result[7])
+                    except (ValueError, TypeError):
+                        trace = None
                 return {
                     "r2_score": result[0],
                     "best_equation": result[1],
@@ -428,6 +451,7 @@ class PySRCacheDB:
                     "timed_out": result[4],
                     "runtime_seconds": result[5],
                     "gt_match_score": result[6],
+                    "execution_trace": trace,
                 }
         return None
 
@@ -453,6 +477,8 @@ class PySRCacheDB:
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
         gt_match_score: Optional[float] = None,
+        execution_trace: Optional[List[Dict]] = None,
+        hof_n_steps: int = 0,
     ) -> None:
         """Store a PySR evaluation result in the cache."""
         config_hash = self._make_config_hash(
@@ -462,7 +488,8 @@ class PySRCacheDB:
         request_hash = self._make_cache_key(
             mutation_weights, pysr_kwargs, dataset_name, seed, data_seed,
             max_samples, run_index, custom_mutation_code, allow_custom_mutations,
-            pysr_model_kwargs, target_noise, custom_selection_code, custom_survival_code
+            pysr_model_kwargs, target_noise, custom_selection_code, custom_survival_code,
+            hof_n_steps
         )
 
         entry = PySRCacheEntry(
@@ -476,6 +503,7 @@ class PySRCacheDB:
             error=error,
             timed_out=timed_out,
             runtime_seconds=runtime_seconds,
+            execution_trace_json=json.dumps(execution_trace) if execution_trace else None,
             created_at=datetime.utcnow(),
         )
 
@@ -519,6 +547,7 @@ class PySRCacheDB:
                 error=entry.get("error"),
                 timed_out=entry.get("timed_out", False),
                 runtime_seconds=entry.get("runtime_seconds", 0.0),
+                execution_trace_json=entry.get("execution_trace_json"),
                 created_at=entry.get("created_at", datetime.utcnow()),
             ))
 

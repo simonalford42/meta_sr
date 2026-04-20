@@ -110,7 +110,7 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
 
 def _build_cache_identity(
     spec: "PySRTaskSpec",
-) -> Tuple[Dict[str, float], Dict[str, Any]]:
+) -> Tuple[Dict[str, float], Dict[str, Any], int]:
     """Build deterministic cache identity inputs for a task."""
     pysr_mutation_kwargs = {}
     for key, value in spec.mutation_weights.items():
@@ -122,7 +122,7 @@ def _build_cache_identity(
 
     model_kwargs = {**pysr_mutation_kwargs, **spec.pysr_kwargs}
     model_kwargs['random_state'] = spec.seed + spec.run_index
-    return pysr_mutation_kwargs, model_kwargs
+    return pysr_mutation_kwargs, model_kwargs, spec.hof_n_steps
 
 
 def _build_pysr_cache_entry(
@@ -136,7 +136,7 @@ def _build_pysr_cache_entry(
     if cache is None:
         raise RuntimeError("PySR cache is disabled")
 
-    pysr_mutation_kwargs, model_kwargs = _build_cache_identity(spec)
+    pysr_mutation_kwargs, model_kwargs, hof_n_steps = _build_cache_identity(spec)
     config_hash = cache.get_config_hash(
         mutation_weights=pysr_mutation_kwargs,
         pysr_kwargs=spec.pysr_kwargs,
@@ -159,6 +159,10 @@ def _build_pysr_cache_entry(
         target_noise=spec.target_noise,
         custom_selection_code=spec.custom_selection_code,
         custom_survival_code=spec.custom_survival_code,
+        hof_n_steps=hof_n_steps,
+    )
+    execution_trace_json = (
+        json.dumps(result.execution_trace) if result.execution_trace else None
     )
     return {
         "request_hash": request_hash,
@@ -171,6 +175,7 @@ def _build_pysr_cache_entry(
         "error": result.error,
         "timed_out": result.timed_out,
         "runtime_seconds": result.runtime_seconds,
+        "execution_trace_json": execution_trace_json,
     }
 
 
@@ -337,6 +342,104 @@ def add_noise(data, noise_level, seed=None):
     return data + rng.normal(0, noise_level * rms, size=data.shape)
 
 
+def _load_execution_trace(hof_csv_paths: List[str]) -> Optional[List[Dict]]:
+    """
+    Load and parse hall-of-fame CSV files produced by run_pysr_srbench into a
+    list of milestone records, each containing the milestone eval count, chunk
+    runtime, and the equations present in the HOF at that point.
+
+    Args:
+        hof_csv_paths: List of file paths to HOF CSV files written by
+                       run_pysr_srbench's run_pysr_with_hof_checkpoints().
+
+    Returns:
+        List of dicts with keys:
+            - milestone_evals (int)
+            - chunk_runtime (float)
+            - equations (list of dicts, one per HOF row at that milestone)
+        Returns None if no paths are provided or all files fail to parse.
+    """
+    import pandas as pd
+
+    if not hof_csv_paths:
+        return None
+
+    all_milestones: List[Dict] = []
+
+    for path in hof_csv_paths:
+        if not os.path.exists(path):
+            print(f"WARNING: HOF CSV not found: {path}", flush=True)
+            continue
+
+        try:
+            # The HOF CSV is written in append mode with comment lines between
+            # milestones ("# --- MILESTONE: N ---"). We need to split on those
+            # comment lines and parse each block separately.
+            with open(path, 'r') as f:
+                raw = f.read()
+
+            # Split into blocks on comment/blank lines; first block has the header
+            blocks = re.split(r'\n#[^\n]*\n', raw)
+            blocks = [b.strip() for b in blocks if b.strip()]
+
+            if not blocks:
+                continue
+
+            # The first block contains the CSV header
+            header_block = blocks[0]
+            header_lines = header_block.splitlines()
+            if not header_lines:
+                continue
+            header = header_lines[0]  # CSV column names
+
+            for block in blocks:
+                lines = block.splitlines()
+                # If this block doesn't start with the header, prepend it so
+                # pandas can parse it correctly
+                if not lines[0].startswith(header.split(',')[0]):
+                    block = header + '\n' + block
+
+                try:
+                    from io import StringIO
+                    df = pd.read_csv(StringIO(block))
+                except Exception as e:
+                    print(f"WARNING: Could not parse HOF block in {path}: {e}", flush=True)
+                    continue
+
+                if df.empty:
+                    continue
+
+                milestone_evals = int(df['milestone_evals'].iloc[0]) if 'milestone_evals' in df.columns else None
+                chunk_runtime = float(df['chunk_runtime'].iloc[0]) if 'chunk_runtime' in df.columns else None
+
+                # Drop the injected columns before storing equation rows
+                eq_cols = [c for c in df.columns if c not in ('milestone_evals', 'chunk_runtime')]
+                equations = df[eq_cols].to_dict(orient='records')
+
+                all_milestones.append({
+                    'milestone_evals': milestone_evals,
+                    'chunk_runtime': chunk_runtime,
+                    'equations': equations,
+                    'source_file': path,
+                })
+
+        except Exception as e:
+            print(f"WARNING: Failed to load HOF CSV {path}: {e}", flush=True)
+            continue
+
+    return all_milestones if all_milestones else None
+
+
+def _hof_csv_path(dataset_name: str, hof_results_dir: str = "results_pysr") -> str:
+    """
+    Return the canonical HOF CSV path for a given dataset name.
+
+    Convention: {hof_results_dir}/{dataset_name}_hof.csv
+    e.g. results_pysr/feynman_I_15_10_hof.csv
+    """
+    return os.path.join(hof_results_dir, f"{dataset_name}_hof.csv")
+
+
 @dataclass
 class PySRTaskSpec:
     """Specification for a single PySR evaluation task."""
@@ -354,6 +457,8 @@ class PySRTaskSpec:
     custom_selection_code: Optional[str] = None  # Julia code for custom selection operator
     custom_survival_code: Optional[str] = None  # Julia code for custom survival operator
     fitness_metric: str = "r2"  # 'r2' or 'gt'
+    hof_csv_paths: List[str] = field(default_factory=list)  # Paths to HOF CSVs from run_pysr_srbench
+    hof_n_steps: int = 0  # Number of HOF checkpoints to write during fit (0 = disabled)
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -378,7 +483,11 @@ class PySRTaskResult:
     run_index: int = 0
     timed_out: bool = False
     runtime_seconds: float = 0.0
-    num_evaluations: Optional[float] = None  # total PySR expression evaluations actually used (may be < max_evals if early stopped)
+    num_evaluations: Optional[float] = None
+    # Parsed hall-of-fame milestone records loaded from run_pysr_srbench HOF CSVs.
+    # Each entry is a dict with keys: milestone_evals, chunk_runtime, equations,
+    # source_file. None if no HOF CSVs were provided or all failed to parse.
+    execution_trace: Optional[List[Dict]] = None
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -387,16 +496,11 @@ class PySRTaskResult:
     @classmethod
     def from_json_dict(cls, d: Dict) -> 'PySRTaskResult':
         """Create from JSON dict."""
-        # Handle backward compatibility
-        if 'timed_out' not in d:
-            d = dict(d)
-            d['timed_out'] = False
-        if 'runtime_seconds' not in d:
-            d = dict(d)
-            d['runtime_seconds'] = 0.0
-        if 'num_evaluations' not in d:
-            d = dict(d)
-            d['num_evaluations'] = None
+        d = dict(d)
+        d.setdefault('timed_out', False)
+        d.setdefault('runtime_seconds', 0.0)
+        d.setdefault('num_evaluations', None)
+        d.setdefault('execution_trace', None)
         return cls(**d)
 
 
@@ -436,7 +540,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
     run_seed = spec.seed + spec.run_index
 
     # Build model kwargs once so execution and parent-side cache compaction share identity logic.
-    _, model_kwargs = _build_cache_identity(spec)
+    _, model_kwargs, _ = _build_cache_identity(spec)
 
     try:
         # Seed for dataset loading
@@ -517,7 +621,41 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
         t3 = _time.time()
         print(f"[{spec.dataset_name}] Starting PySR search: {X_train.shape[0]} train samples, {n_features} features", flush=True)
-        model.fit(X_train, y_train, variable_names=variable_names)
+
+        # Build HOF milestone list from spec. If hof_n_steps > 0 and max_evals is
+        # set in pysr_kwargs, we checkpoint the HOF at evenly-spaced eval counts so
+        # that _load_execution_trace() can read the trace back from disk.
+        hof_milestones: List[int] = []
+        if spec.hof_n_steps > 0:
+            max_evals = spec.pysr_kwargs.get("max_evals") or spec.pysr_kwargs.get("niterations")
+            if max_evals is not None:
+                hof_milestones = [
+                    int(round(max_evals * (i + 1) / spec.hof_n_steps))
+                    for i in range(spec.hof_n_steps)
+                ]
+
+        # Derive the HOF CSV path that run_pysr_with_hof_checkpoints() will write.
+        # This must match _hof_csv_path() so that hof_csv_paths stays consistent.
+        hof_csv_out = spec.hof_csv_paths[0] if spec.hof_csv_paths else _hof_csv_path(spec.dataset_name)
+        hof_results_dir = os.path.dirname(hof_csv_out) or "."
+
+        from run_pysr_srbench import run_pysr_with_hof_checkpoints
+        model = run_pysr_with_hof_checkpoints(
+            X_train, y_train,
+            feature_names=variable_names,
+            dataset_name=spec.dataset_name,
+            results_dir=hof_results_dir,
+            milestones=hof_milestones,
+            model=model,
+            seed=run_seed,
+            hof_path=hof_csv_out,
+        )
+
+        # Ensure hof_csv_paths reflects the file we just wrote (or tried to write)
+        # so _load_execution_trace() below finds it.
+        if hof_milestones and hof_csv_out not in spec.hof_csv_paths:
+            spec.hof_csv_paths = [hof_csv_out]
+
         t_search = _time.time() - t3
         num_evals_used = _get_pysr_num_evaluations(model)
         print(f"[{spec.dataset_name}] PySR search complete in {t_search:.1f}s (total: {_time.time() - start_time:.1f}s, num_evals={num_evals_used})", flush=True)
@@ -553,6 +691,17 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         r2 = 1 - (ss_res / (ss_tot + 1e-10))
         r2 = max(r2, 0)  # Clip negative R^2 to 0
 
+        # Load execution trace from HOF CSVs written by run_pysr_srbench.
+        # Skip entirely when HOF logging wasn't requested — otherwise we'd warn
+        # about a file that was never written.
+        execution_trace = None
+        if spec.hof_n_steps > 0:
+            execution_trace = _load_execution_trace(spec.hof_csv_paths)
+            if execution_trace is not None:
+                print(f"[{spec.dataset_name}] Loaded execution trace: {len(execution_trace)} milestone(s)", flush=True)
+            else:
+                print(f"[{spec.dataset_name}] No execution trace available (hof_csv_paths={spec.hof_csv_paths})", flush=True)
+
         runtime = _time.time() - start_time
         print(f"[{spec.dataset_name}] Done: R²={r2:.4f}, equation={best_equation}", flush=True)
 
@@ -567,6 +716,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             run_index=spec.run_index,
             runtime_seconds=runtime,
             num_evaluations=num_evals_used,
+            execution_trace=execution_trace,
         )
 
         return result
@@ -583,6 +733,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             error=f"Error: {str(e)}",
             run_index=spec.run_index,
             runtime_seconds=runtime,
+            execution_trace=None,
         )
 
         return result
@@ -644,6 +795,9 @@ def _aggregate_pysr_results(
                 all_equations = [r.best_equation for r in good_runs if r.best_equation]
                 errors = [r.error for r in all_run_results if r.error]
                 run_num_evals = [r.num_evaluations for r in good_runs]
+                # Collect execution traces across runs; omit None entries.
+                all_traces = [r.execution_trace for r in good_runs if r.execution_trace]
+
                 valid_num_evals = [n for n in run_num_evals if n is not None]
                 avg_num_evals = float(np.mean(valid_num_evals)) if valid_num_evals else None
 
@@ -661,6 +815,7 @@ def _aggregate_pysr_results(
                     "avg_num_evaluations": avg_num_evals,
                     "n_successful_runs": len(good_runs),
                     "n_total_runs": len(all_run_results),
+                    "execution_traces": all_traces,
                 })
             else:
                 # All runs for this (config, dataset) errored or are missing.
@@ -679,6 +834,7 @@ def _aggregate_pysr_results(
                     "avg_num_evaluations": None,
                     "n_successful_runs": 0,
                     "n_total_runs": len(all_run_results),
+                    "execution_traces": [],
                 })
 
         # Overall average is the mean of per-dataset averages over datasets
@@ -744,6 +900,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         julia_project: Optional[str] = None,
         python_juliapkg_project: Optional[str] = None,
         julia_depot_path: Optional[str] = None,
+        hof_results_dir: str= "results_pysr",
+        hof_n_steps: int = 0,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -774,6 +932,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         )
         self.julia_depot_path = julia_depot_path
         self._pending_cache_entries: List[Dict[str, Any]] = []
+        self.hof_results_dir = hof_results_dir
+        self.hof_n_steps = hof_n_steps
 
     def _build_worker_env_exports(self) -> str:
         """Build shell exports for PySR worker environment isolation."""
@@ -800,6 +960,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         target_noise_map: Optional[Dict[str, float]] = None,
         fitness_metric: str = "r2",
         run_index_start_per_config: Optional[List[int]] = None,
+        hof_csv_map: Optional[Dict[str, List[str]]] = None,
     ) -> List[Tuple[float, List[float], List[Dict]]]:
         """
         Evaluate PySR configurations via SLURM job array.
@@ -811,12 +972,16 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             n_runs: Number of runs per configuration per dataset
             target_noise_map: Optional dict mapping dataset_name -> noise level.
                               If provided, overrides self.target_noise for each dataset.
+            hof_csv_map: Optional dict mapping dataset_name -> list of HOF CSV
+                         file paths. When omitted, paths are derived automatically
+                         as {self.hof_results_dir}/{dataset_name}_hof.csv.
 
         Returns:
             List of (avg_r2, r2_vector, result_details) tuples, one per config
         """
         batch_dir = self._new_batch_dir()
         results_subdir = batch_dir / "results"
+        traces_batch_dir = Path(self.results_dir) / "traces" / batch_dir.name
 
         # Build task specs
         tasks = []
@@ -829,7 +994,23 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             for dataset_name in dataset_names:
                 # Use per-dataset noise if map provided, otherwise use evaluator default
                 noise = target_noise_map.get(dataset_name, self.target_noise) if target_noise_map else self.target_noise
-                for run_idx in range(run_start, run_start + n_runs):
+                for local_run_idx in range(n_runs):
+                    run_idx = run_start + local_run_idx
+                    # Resolve HOF CSV paths. Prefer explicit map. Otherwise use a
+                    # per-spec path inside the batch dir so concurrent bundles/runs
+                    # on the same dataset don't share (and pollute) a single file.
+                    if hof_csv_map is not None:
+                        mapped_paths = hof_csv_map.get(dataset_name, [])
+                        if len(mapped_paths) > local_run_idx:
+                            hof_csv_paths = [mapped_paths[local_run_idx]]
+                        else:
+                            hof_csv_paths = list(mapped_paths)
+                    else:
+                        # Unique subdir per spec under <run_dir>/traces/<batch>/ so
+                        # concurrent bundles/runs on the same dataset don't share
+                        # (and pollute) a single {dataset}_hof.csv file.
+                        per_spec_dir = traces_batch_dir / f"config{config_id:03d}_run{run_idx:02d}"
+                        hof_csv_paths = [str(per_spec_dir / f"{dataset_name}_hof.csv")]
                     tasks.append(PySRTaskSpec(
                         config_id=config_id,
                         dataset_name=dataset_name,
@@ -845,6 +1026,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         custom_selection_code=config.custom_selection_code,
                         custom_survival_code=config.custom_survival_code,
                         fitness_metric=fitness_metric,
+                        hof_csv_paths=hof_csv_paths,
+                        hof_n_steps=self.hof_n_steps,
                     ))
 
         n_tasks = len(tasks)
@@ -859,7 +1042,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 cache = get_pysr_cache()
                 if cache is not None:
                     for task_idx, task in enumerate(tasks):
-                        pysr_mutation_kwargs, model_kwargs = _build_cache_identity(task)
+                        pysr_mutation_kwargs, model_kwargs, hof_n_steps = _build_cache_identity(task)
 
                         cached = cache.lookup(
                             mutation_weights=pysr_mutation_kwargs,
@@ -875,9 +1058,17 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             target_noise=task.target_noise,
                             custom_selection_code=task.custom_selection_code,
                             custom_survival_code=task.custom_survival_code,
+                            hof_n_steps=hof_n_steps,
                         )
-                        if _has_usable_pysr_cached_result(cached):
-                            # Pre-write cached result to results directory
+                        cached_has_required_trace = (
+                            task.hof_n_steps <= 0
+                            or (cached is not None and bool(cached.get("execution_trace")))
+                        )
+                        if _has_usable_pysr_cached_result(cached) and cached_has_required_trace:
+                            # Execution trace is persisted in the cache alongside
+                            # the other result fields; None for entries written
+                            # before that column existed.
+                            execution_trace = cached.get("execution_trace")
                             # Handle potential None values from cache
                             r2_score = cached["r2_score"]
                             if r2_score is None:
@@ -896,6 +1087,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                                 run_index=task.run_index,
                                 timed_out=cached.get("timed_out", False),
                                 runtime_seconds=cached.get("runtime_seconds", 0.0),
+                                execution_trace=execution_trace,
                             )
                             result_file = results_subdir / f"task_{task_idx:06d}.json"
                             _write_json_atomic(result_file, cached_result.to_json_dict())
@@ -1545,6 +1737,9 @@ if __name__ == "__main__":
                        help='Run a quick local test')
     parser.add_argument('--dataset', type=str, default='feynman_I_6_2a',
                        help='Dataset for test mode')
+    parser.add_argument('--hof-csv', nargs='*', default=None,
+                        help='HOF CSV path(s) for test mode. If omitted, derived '
+                             'automatically as results_pysr/{dataset}_hof.csv')
 
     args = parser.parse_args()
 
@@ -1556,6 +1751,12 @@ if __name__ == "__main__":
         # Run a quick local test
         print("Running local PySR evaluation test...")
 
+        # Derive HOF CSV path from convention if not explicitly provided.
+        if args.hof_csv is not None:
+            hof_csv_paths = args.hof_csv
+        else:
+            hof_csv_paths = [_hof_csv_path(args.dataset)]
+
         task = PySRTaskSpec(
             config_id=0,
             dataset_name=args.dataset,
@@ -1565,6 +1766,7 @@ if __name__ == "__main__":
             data_seed=42,
             max_samples=200,
             run_index=0,
+            hof_csv_paths=hof_csv_paths,
         )
 
         init_worker(extra_env={'JULIA_NUM_THREADS': '1'})
@@ -1577,6 +1779,14 @@ if __name__ == "__main__":
         print(f"  Runtime: {result.runtime_seconds:.1f}s")
         if result.error:
             print(f"  Error: {result.error}")
+        if result.execution_trace:
+            print(f"  Execution trace: {len(result.execution_trace)} milestone(s)")
+            for m in result.execution_trace:
+                print(f"    milestone_evals={m['milestone_evals']}, "
+                      f"chunk_runtime={m['chunk_runtime']:.1f}s, "
+                      f"equations={len(m['equations'])}")
+        else:
+            print(f"  Execution trace: None")
     else:
         print("Use --worker to run as a SLURM job array worker")
         print("Use --test for a quick local test")

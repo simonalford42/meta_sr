@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import pickle
+import re
 import sys
 import time
 import traceback
@@ -294,6 +295,22 @@ def evaluate_run_dir(
             ckpt = load_hall_of_fame_info(run_dir)
             ckpt["checkpoint_error"] = checkpoint_error
 
+        # If load_dataset renamed conflicting features (e.g. gamma -> var_0)
+        # at fit time, a sidecar tells us the original names so resolution
+        # and symbolic-match comparisons use the dataset's true vars.
+        rename_sidecar = run_dir / "rename_map.json"
+        rename_map: dict[str, str] = {}
+        if rename_sidecar.exists():
+            try:
+                with open(rename_sidecar, "r") as f:
+                    sidecar = json.load(f)
+                rename_map = sidecar.get("rename_map") or {}
+                original_feature_names = sidecar.get("original_feature_names") or []
+                if rename_map and original_feature_names:
+                    ckpt["feature_names"] = list(original_feature_names)
+            except Exception as e:
+                print(f"Warning: failed to read {rename_sidecar}: {e}")
+
         if ckpt["feature_names"] is not None:
             dataset_name, resolve_error = resolve_dataset_name(ckpt, feature_map, json_summaries)
         else:
@@ -318,8 +335,19 @@ def evaluate_run_dir(
         best_idx = ckpt["best_idx"]
         df = ckpt["equations"]
 
+        # Reverse rename: PySR equations contain the renamed tokens
+        # (e.g. var_0); rewrite back to the originals (e.g. gamma) so that
+        # both sides of the symbolic match share variable names.
+        reverse_map = {v: k for k, v in rename_map.items()}
+        reverse_pattern = (
+            re.compile(r"\b(" + "|".join(re.escape(v) for v in reverse_map) + r")\b")
+            if reverse_map else None
+        )
+
         for df_index, row in df.iterrows():
             expr = str(row["equation"])
+            if reverse_pattern is not None:
+                expr = reverse_pattern.sub(lambda m: reverse_map[m.group(0)], expr)
 
             expr_start = time.perf_counter()
             match_result = check_pysr_symbolic_match(

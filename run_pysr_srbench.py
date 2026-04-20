@@ -18,13 +18,26 @@ Usage:
 
 import argparse
 import os
+import shutil
 import numpy as np
 import pandas as pd
 import json
 import time
 from pathlib import Path
 from pysr import PySRRegressor
-from evaluation import check_symbolic_match
+
+
+CONFLICTING_VAR_NAMES = {"gamma", "beta", "E", "I"}
+
+
+def _build_rename_map(feature_names):
+    """Return {original: renamed} for any feature names that conflict with
+    Julia/SR builtins (E, I) or special functions (beta, gamma)."""
+    rename_map = {}
+    for i, name in enumerate(feature_names):
+        if name in CONFLICTING_VAR_NAMES:
+            rename_map[name] = f"var_{i}"
+    return rename_map
 
 
 def add_noise(data, noise_level, seed=None):
@@ -81,12 +94,23 @@ def load_dataset(dataset_name, pmlb_path=None, max_samples=None, seed=42):
     df = pd.read_csv(dataset_path, sep='\t', compression='gzip')
 
     # Extract features and target
-    feature_names = [col for col in df.columns if col != 'target']
-    X = df[feature_names].values
+    original_feature_names = [col for col in df.columns if col != 'target']
+    X = df[original_feature_names].values
+
+    # Some feature names collide with Julia builtins (E, I) or SpecialFunctions
+    # (beta, gamma) and crash PySR. Rename them and remember the mapping so
+    # downstream symbolic-match checking can substitute back.
+    rename_map = _build_rename_map(original_feature_names)
+    feature_names = [rename_map.get(n, n) for n in original_feature_names]
+
     y = df['target'].values
 
     # Load metadata if available
-    metadata = {'dataset_name': dataset_name}
+    metadata = {
+        'dataset_name': dataset_name,
+        'original_feature_names': original_feature_names,
+        'rename_map': rename_map,
+    }
     if metadata_path.exists():
         try:
             import yaml
@@ -125,6 +149,63 @@ def get_cpu_count():
     return os.cpu_count() or 4
 
 
+def run_pysr_with_hof_checkpoints(
+    X_train, y_train,
+    feature_names,
+    dataset_name,
+    results_dir,
+    milestones,
+    model,
+    seed=42,
+    hof_path=None,
+):
+    """
+    Run PySR with HOF checkpoint logging at each milestone eval count.
+    Writes a fresh hall-of-fame CSV with one block per milestone. If milestones
+    is empty, runs a single fit with no HOF trace logging.
+    """
+    os.makedirs(results_dir, exist_ok=True)
+    hof_path = hof_path or os.path.join(results_dir, f"{dataset_name}_hof.csv")
+
+    # Only define a specific temp directory if we are doing milestone logging
+    if milestones:
+        pysr_output_dir = os.path.join(results_dir, f"pysr_tmp_{dataset_name}")
+        model.output_directory = pysr_output_dir
+        model.warm_start = True
+        if os.path.exists(hof_path):
+            os.remove(hof_path)
+
+    try:
+        if not milestones:
+            model.fit(X_train, y_train, variable_names=feature_names)
+        else:
+            for milestone in milestones:
+                start_chunk = time.time()
+
+                model.max_evals = milestone
+                model.fit(X_train, y_train, variable_names=feature_names)
+
+                chunk_time = time.time() - start_chunk
+
+                if model.equations_ is not None:
+                    df = model.equations_.copy()
+                    df.insert(0, "milestone_evals", milestone)
+                    df.insert(1, "chunk_runtime", round(chunk_time, 2))
+
+                    file_exists = os.path.isfile(hof_path)
+                    with open(hof_path, 'a') as f:
+                        if file_exists:
+                            f.write(f"\n# --- MILESTONE: {milestone} ---\n")
+                        df.to_csv(f, mode='a', index=False, header=not file_exists)
+    finally:
+        # Only attempt deletion if we explicitly created a directory
+        if milestones and model.output_directory and os.path.exists(model.output_directory):
+            print(f"Cleaning up temporary directory: {model.output_directory}")
+            shutil.rmtree(model.output_directory)
+
+    return model
+
+
 def run_pysr_on_dataset(
     dataset_name,
     max_samples=10000,
@@ -137,6 +218,7 @@ def run_pysr_on_dataset(
     verbose=True,
     max_evals=None,
     target_noise=0.0,
+    hof_n=3,
 ):
     """
     Run PySR on a single dataset.
@@ -153,11 +235,20 @@ def run_pysr_on_dataset(
         binary_operators: List of binary operators to use
         unary_operators: List of unary operators to use
         verbose: Print progress
+        max_evals: Total number of evaluations to reach
+        target_noise: Gaussian noise level for target
+        hof_n: Number of HOF checkpoints. If 0, no HOF trace logging.
 
     Returns:
         Dict with results
     """
     start_time = time.time()
+
+    # If hof_n is 0, milestones list is empty
+    if hof_n > 0 and max_evals is not None:
+        milestones = [int(round(max_evals * (i + 1) / hof_n)) for i in range(hof_n)]
+    else:
+        milestones = []
 
     if binary_operators is None:
         binary_operators = ["+", "-", "*", "/", "^"]
@@ -168,6 +259,8 @@ def run_pysr_on_dataset(
     if verbose:
         print(f"=" * 60)
         print(f"Running PySR on: {dataset_name}")
+        if milestones:
+            print(f"Milestones: {milestones}")
         print(f"=" * 60)
 
     # Load data
@@ -226,6 +319,7 @@ def run_pysr_on_dataset(
         # model-selection='score',
         populations=3*n_cpus,
         niterations=1000000000000,
+        warm_start=True,
         # population_size=100,
         max_evals=max_evals,
         early_stop_condition=1e-8,
@@ -266,7 +360,32 @@ def run_pysr_on_dataset(
         print(f"\nStarting PySR fit...")
 
     # Fit the model
-    model.fit(X_train, y_train, variable_names=feature_names)
+    # model.fit(X_train, y_train, variable_names=feature_names)
+
+    # Fit the model (with optional HOF milestone checkpointing)
+    hof_csv_path = os.path.join(results_dir, f"{dataset_name}_hof.csv")
+    model = run_pysr_with_hof_checkpoints(
+        X_train, y_train,
+        feature_names=feature_names,
+        dataset_name=dataset_name,
+        results_dir=results_dir,
+        milestones=milestones,
+        model=model,
+        seed=seed,
+        hof_path=hof_csv_path,
+    )
+
+    # Persist rename_map alongside checkpoint.pkl so downstream symbolic
+    # match checking can reverse the rename.
+    rename_map = metadata.get('rename_map') or {}
+    if rename_map and getattr(model, 'output_directory_', None) and getattr(model, 'run_id_', None):
+        run_dir = Path(model.output_directory_) / model.run_id_
+        run_dir.mkdir(parents=True, exist_ok=True)
+        with open(run_dir / 'rename_map.json', 'w') as f:
+            json.dump({
+                'rename_map': rename_map,
+                'original_feature_names': metadata.get('original_feature_names', []),
+            }, f, indent=2)
 
     fit_time = time.time() - start_time
 
@@ -293,6 +412,11 @@ def run_pysr_on_dataset(
         best_equation_str = str(best_eq)
 
     from parallel_eval_pysr import _get_pysr_num_evaluations
+    execution_trace = None
+    if milestones:
+        from parallel_eval_pysr import _load_execution_trace
+        execution_trace = _load_execution_trace([hof_csv_path])
+
     results = {
         'dataset': dataset_name,
         'test_mse': float(mse),
@@ -307,6 +431,11 @@ def run_pysr_on_dataset(
         'max_size': max_size,
         'target_noise': target_noise,
         'num_evaluations': _get_pysr_num_evaluations(model),
+        'milestones': milestones,
+        'execution_trace': execution_trace,
+        'execution_traces': [execution_trace] if execution_trace else [],
+        'rename_map': rename_map,
+        'original_feature_names': metadata.get('original_feature_names', []),
     }
 
     if verbose:
@@ -360,6 +489,8 @@ def main():
                     #    help='Maximum iterations')
     parser.add_argument('--max_evals', type=int, default=int(1e6),
                        help='Maximum evaluations')
+    parser.add_argument('--hof-n', type=int, default=3,
+                       help='Number of HOF checkpoints. If 0, no HOF trace file is saved.')
 
     # Output settings
     parser.add_argument('--results_dir', type=str, default='results_pysr',
@@ -404,9 +535,8 @@ def main():
                 max_evals=args.max_evals,
                 verbose=verbose,
                 target_noise=args.target_noise,
+                hof_n=args.hof_n,
             )
-
-            result = check_symbolic_match(results['best_equation'], )
 
             if verbose:
                 print(f"\nCompleted: {dataset_name}")
