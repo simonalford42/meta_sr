@@ -64,34 +64,39 @@ def main() -> int:
     )
     expected_source = (expected_sr_root / "src" / "SymbolicRegression.jl").resolve()
 
-    conda_prefix = os.environ.get("CONDA_PREFIX")
-    conda_julia_env = Path(conda_prefix).resolve() / "julia_env" if conda_prefix else None
+    default_juliapkg_project = (
+        Path(args.python_juliapkg_project).resolve()
+        if args.python_juliapkg_project
+        else (repo_root / ".juliapkg_env").resolve()
+    )
 
     # Prefer PYTHON_JULIAPKG_EXE (set when using juliaup), then the legacy
     # pyjuliapkg path, then fall back to the system julia.
     juliapkg_exe = os.environ.get("PYTHON_JULIAPKG_EXE")
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    legacy_conda_julia_env = Path(conda_prefix).resolve() / "julia_env" if conda_prefix else None
     legacy_conda_exe = (
-        conda_julia_env / "pyjuliapkg" / "install" / "bin" / "julia"
-        if conda_julia_env
+        legacy_conda_julia_env / "pyjuliapkg" / "install" / "bin" / "julia"
+        if legacy_conda_julia_env
         else None
     )
 
     if juliapkg_exe and Path(juliapkg_exe).exists():
         julia_exe = juliapkg_exe
-        julia_project = str(conda_julia_env) if conda_julia_env else str(local_project)
+        julia_project = str(default_juliapkg_project)
     elif legacy_conda_exe and legacy_conda_exe.exists():
         julia_exe = str(legacy_conda_exe)
-        julia_project = str(conda_julia_env)
+        julia_project = str(default_juliapkg_project)
     else:
         julia_exe = "julia"
-        julia_project = str(conda_julia_env) if (conda_julia_env and conda_julia_env.exists()) else str(local_project)
+        julia_project = str(default_juliapkg_project)
 
     env = os.environ.copy()
     env["JULIA_PROJECT"] = args.julia_project if args.julia_project else julia_project
     env["PYTHON_JULIAPKG_PROJECT"] = (
         args.python_juliapkg_project
         if args.python_juliapkg_project
-        else env.get("PYTHON_JULIAPKG_PROJECT", julia_project)
+        else str(default_juliapkg_project)
     )
     if args.julia_depot_path:
         env["JULIA_DEPOT_PATH"] = args.julia_depot_path

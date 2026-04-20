@@ -188,10 +188,10 @@ def _import_pysr_regressor():
     local_juliapkg_project.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", str(local_juliapkg_project))
     os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
-    # A repo-level JULIA_PROJECT pointing at SymbolicRegression.jl breaks PySR's
-    # PythonCall environment resolution on SLURM workers.
-    if os.environ.get("JULIA_PROJECT", "").endswith("SymbolicRegression.jl"):
-        os.environ.pop("JULIA_PROJECT", None)
+    # Let juliapkg choose the active Julia project from PYTHON_JULIAPKG_PROJECT.
+    # A pre-set JULIA_PROJECT can make PySR start in an environment without
+    # PythonCall and fail during Julia initialization.
+    os.environ.pop("JULIA_PROJECT", None)
 
     pysr_repo = repo_root / "PySR"
     if pysr_repo.exists() and str(pysr_repo) not in sys.path:
@@ -975,10 +975,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self.python_juliapkg_project = (
             str(Path(python_juliapkg_project).resolve())
             if python_juliapkg_project
-            else (
-                os.environ.get("PYTHON_JULIAPKG_PROJECT")
-                or str((self.repo_root / ".juliapkg_env").resolve())
-            )
+            else str((self.repo_root / ".juliapkg_env").resolve())
         )
         self.julia_depot_path = (
             str(Path(julia_depot_path).resolve())

@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-evals",
         type=int,
         default=int(5e5),
-        help="Max evaluations per dataset (default: 1e6)",
+        help="Max evaluations per dataset (default: 5e5)",
     )
     parser.add_argument(
         "--partition",
@@ -194,7 +194,7 @@ def main() -> int:
     print(f"JULIA_PROJECT:   unset in workers")
     print(
         "PYTHON_JULIAPKG_PROJECT: "
-        f"{args.python_juliapkg_project or os.environ.get('PYTHON_JULIAPKG_PROJECT') or '(repo-local default)'}"
+        f"{args.python_juliapkg_project or str((Path(args.repo_root) / '.juliapkg_env').resolve())}"
     )
     print(
         "JULIA_DEPOT_PATH: "
