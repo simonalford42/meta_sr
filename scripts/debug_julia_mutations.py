@@ -31,14 +31,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from evolve_pysr import (
+from operator_types import (
     JuliaOperator,
     OPERATOR_TYPES,
     generate_operator_code,
     validate_julia_code,
-    evaluate_baseline,
-    evaluate_operators,
 )
+from evolve_pysr import evaluate_baseline
+# NOTE: `evaluate_operators` was removed upstream; any call below will fail.
 from parallel_eval_pysr import (
     PySRSlurmEvaluator,
     get_default_pysr_kwargs,

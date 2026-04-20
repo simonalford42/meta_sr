@@ -17,7 +17,7 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from evolve_pysr import (
+from operator_types import (
     OPERATOR_TYPES,
     generate_operator_code,
     validate_julia_code,

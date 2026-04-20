@@ -335,7 +335,7 @@ def _build_trial_config(
 
     Returns None if code injection produces invalid code.
     """
-    from evolve_pysr import validate_julia_code, OPERATOR_TYPES
+    from operator_types import validate_julia_code, OPERATOR_TYPES
 
     mutation_weights = get_default_mutation_weights()
     config_kwargs = {}
@@ -510,7 +510,7 @@ def tune_bundle(
                 print(f"    Warning: Could not enqueue initial trial: {e}")
 
     # Step 4: Run n_trials
-    from evolve_pysr import _evaluate_configs_with_noise_map
+    from evolution_helpers import _evaluate_configs_with_noise_map
 
     best_score = bundle.score if bundle.score is not None else float('-inf')
     best_base_params = None

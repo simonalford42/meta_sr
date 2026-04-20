@@ -1315,7 +1315,7 @@ def main():
     # Load baseline operator if specified
     baseline_bundle = None
     if args.baseline:
-        from evolve_pysr import load_baseline_bundle
+        from baseline_loader import load_baseline_bundle
         baseline_bundle = load_baseline_bundle(args.baseline)
 
     # Load prior trials from JSON as fallback (for runs predating DB persistence)

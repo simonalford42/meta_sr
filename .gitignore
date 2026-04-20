@@ -19,3 +19,4 @@ runs
 wandb
 .julia_depot/
 .juliapkg_env/
+openevolve_noise_exp/outputs

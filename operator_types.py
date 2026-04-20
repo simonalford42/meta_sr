@@ -110,22 +110,6 @@ def extract_function_name(code: str) -> str:
         return match.group(1)
     return ""
 
-def pre_validate_julia_syntax(code: str) -> Tuple[bool, str]:
-    """Pre-validate Julia code for common LLM-generated syntax errors."""
-    named_tuple_pattern = r'\(\s*(\w+)\s*=\s*[^,)]+\s*,\s*\1\s*='
-    if re.search(named_tuple_pattern, code):
-        return False, "Repeated field name in named tuple (e.g., (left=x, left=y) should be (left=x, right=y))"
-
-    invalid_catch_pattern = r'\bcatch\s+(\d+[\d.eE+-]*|[^;\s\w])'
-    if re.search(invalid_catch_pattern, code):
-        return False, "Invalid try-catch syntax: use 'catch; ...' or 'catch e; ...' not 'catch <value>'"
-
-    const_in_func_pattern = r'^[ \t]+const\s+'
-    if re.search(const_in_func_pattern, code, re.MULTILINE):
-        return False, "Cannot use 'const' inside function body (Julia syntax error)"
-
-    return True, ""
-
 _BRAINSTORM_INSTRUCTION = (
     "The SR algorithm failed to discover the ground-truth equation for this task. "
     "Examine how the Pareto front of best equations evolved over the course of the search, "
@@ -466,157 +450,6 @@ Your task is to COMBINE ideas from two mutation operators into a new one.
 ## Output Format
 Return ONLY the new Julia function code, nothing else.
 Give it a new descriptive name.
-Do not include markdown code blocks or explanations.
-"""
-
-    def build_task_aware_explore_prompt(
-        self,
-        reference: str,
-        unsolved_tasks_text: str,
-        variation_seed: int = 0,
-    ) -> str:
-        ideas = [
-            "Pattern-based: Insert common mathematical patterns (e.g., polynomial terms, trig identities)",
-            "Structure-aware: Target specific tree structures for modification",
-            "Simplification-focused: Identify and simplify redundant patterns",
-            "Feature-focused: Encourage using underutilized input variables",
-            "Constant-aware: Smart constant insertion or modification",
-            "Depth-balancing: Rebalance tree depth for better search",
-            "Symmetry-aware: Detect and exploit symmetric patterns",
-            "Gradient-guided: Use loss gradient information to guide changes",
-        ]
-        selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
-        ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
-
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to create a NEW custom mutation operator for PySR/SymbolicRegression.jl.
-The mutation should help discover better symbolic expressions — in particular, it should
-help PySR reach the kinds of structures appearing in the unsolved target equations below,
-which neither the baseline nor the current population has managed to discover.
-
-## Reference: Existing Mutations and API
-{reference}
-
-## Unsolved target equation(s) (for inspiration only — do NOT hard-code)
-{unsolved_tasks_text}
-
-Think about what structural moves (e.g. inserting particular subexpressions, rewriting
-patterns, exploring certain operators or constants) would make it likelier for a search
-using this mutation to discover expressions of that form. Then design a mutation whose
-proposals bias the search toward such structures while remaining a general operator.
-
-## Requirements
-1. Create a NOVEL mutation that does something different from existing mutations.
-2. Do NOT hard-code the target equations — the mutation must be a general operator
-   useful across many symbolic regression problems.
-3. Use proper Julia syntax and the available API.
-
-## Ideas to consider (pick one or invent your own):
-{ideas_text}
-
-## Output Format
-Return ONLY the Julia function code, nothing else. The function should be named descriptively.
-Do not include markdown code blocks or explanations.
-
-Example format:
-function my_mutation_name(
-    tree::N,
-    options,
-    nfeatures::Int,
-    rng::AbstractRNG,
-) where {{T,N<:AbstractExpressionNode{{T}}}}
-    # Implementation
-    return tree
-end
-"""
-
-    def build_task_aware_crossover_prompt(
-        self,
-        p1_code: str,
-        p2_code: str,
-        reference: str,
-        p1_tasks_text: str,
-        p2_tasks_text: str,
-    ) -> str:
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to COMBINE two mutation operators so that the resulting operator can solve
-BOTH of the complementary task sets below. Each parent already solves a different subset
-of tasks (that the baseline cannot solve). Your job is to synthesize a new mutation that
-generalizes so it can help the search reach both target equations.
-
-## Parent Mutation 1 (solves these tasks the other parent and baseline do not)
-```julia
-{p1_code}
-```
-
-Ground-truth equations Parent 1 solves (that Parent 2 / baseline do not):
-{p1_tasks_text}
-
-## Parent Mutation 2 (solves these tasks the other parent and baseline do not)
-```julia
-{p2_code}
-```
-
-Ground-truth equations Parent 2 solves (that Parent 1 / baseline do not):
-{p2_tasks_text}
-
-## Reference: Mutations API
-{reference}
-
-## Requirements
-1. Create a NEW mutation that combines the best ideas from both parents so it can help
-   PySR discover the kinds of structures present in BOTH task sets above.
-2. Do NOT hard-code the target equations — the mutation must be a general operator that
-   works across many symbolic regression problems. Use the equations only as inspiration
-   for the structural moves your mutation should make available.
-3. Don't just concatenate — synthesize a coherent new approach.
-4. Use proper Julia syntax and the available API.
-
-## Output Format
-Return ONLY the new Julia function code, nothing else.
-Give it a new descriptive name.
-Do not include markdown code blocks or explanations.
-"""
-
-    def build_task_aware_refine_prompt(
-        self,
-        parent_code: str,
-        reference: str,
-        unsolved_tasks_text: str,
-    ) -> str:
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to IMPROVE an existing custom mutation operator for PySR so that it can
-help the search solve specific target equations it has so far FAILED to discover.
-
-## Parent Mutation Code
-```julia
-{parent_code}
-```
-
-## Unsolved target equation(s)
-The parent mutation has not helped PySR discover these ground-truth equations yet:
-{unsolved_tasks_text}
-
-Think about what structural moves (e.g. inserting particular subexpressions, rewriting
-patterns, exploring certain operators or constants) would make it likelier for a
-search using this mutation to reach expressions of that form. Then modify the mutation
-to make those moves more likely.
-
-## Reference: Mutations API
-{reference}
-
-## Requirements
-1. Do NOT hard-code the target equation — the mutation must remain a general operator
-   useful across many problems. Use the target equation only as motivation.
-2. Keep the core idea of the parent but bias it toward the structures above.
-3. Use proper Julia syntax.
-
-## Output Format
-Return ONLY the improved Julia function code, nothing else.
-Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
 Do not include markdown code blocks or explanations.
 """
 
@@ -977,10 +810,6 @@ OPERATOR_TYPES: Dict[str, OperatorType] = {
 
 def validate_julia_code(name: str, code: str, op_type: OperatorType) -> Tuple[bool, str]:
     """Validate Julia operator code by attempting to load it and smoke-testing it."""
-    is_valid, error = pre_validate_julia_syntax(code)
-    if not is_valid:
-        return False, error
-
     try:
         from juliacall import Main as jl
 
@@ -1100,22 +929,10 @@ def generate_operator_code(
 ) -> Tuple[str, str, str]:
     """Generate new Julia operator code using an LLM.
 
-    For task-aware modes, `task_info` should supply:
-      - mode="task_refine": {"unsolved_tasks_text": "..."}
-      - mode="task_crossover": {"p1_tasks_text": "...", "p2_tasks_text": "..."}
-
     Returns (code, func_name, selected_model).
     """
     if mode == "explore":
         prompt = op_type.build_explore_prompt(reference, variation_seed)
-    elif mode == "task_explore":
-        if not hasattr(op_type, "build_task_aware_explore_prompt"):
-            raise ValueError(f"task_explore not supported for operator type {op_type.name}")
-        if not task_info or "unsolved_tasks_text" not in task_info:
-            raise ValueError("task_explore mode requires task_info['unsolved_tasks_text']")
-        prompt = op_type.build_task_aware_explore_prompt(
-            reference, task_info["unsolved_tasks_text"], variation_seed,
-        )
     elif mode == "refine":
         if parent is None:
             raise ValueError("refine mode requires a parent")
@@ -1124,27 +941,6 @@ def generate_operator_code(
         if parent is None or parent2 is None:
             raise ValueError("crossover mode requires two parents")
         prompt = op_type.build_crossover_prompt(parent.code, parent2.code, reference)
-    elif mode == "task_refine":
-        if parent is None:
-            raise ValueError("task_refine mode requires a parent")
-        if not hasattr(op_type, "build_task_aware_refine_prompt"):
-            raise ValueError(f"task_refine not supported for operator type {op_type.name}")
-        if not task_info or "unsolved_tasks_text" not in task_info:
-            raise ValueError("task_refine mode requires task_info['unsolved_tasks_text']")
-        prompt = op_type.build_task_aware_refine_prompt(
-            parent.code, reference, task_info["unsolved_tasks_text"],
-        )
-    elif mode == "task_crossover":
-        if parent is None or parent2 is None:
-            raise ValueError("task_crossover mode requires two parents")
-        if not hasattr(op_type, "build_task_aware_crossover_prompt"):
-            raise ValueError(f"task_crossover not supported for operator type {op_type.name}")
-        if not task_info or "p1_tasks_text" not in task_info or "p2_tasks_text" not in task_info:
-            raise ValueError("task_crossover mode requires task_info['p1_tasks_text'] and ['p2_tasks_text']")
-        prompt = op_type.build_task_aware_crossover_prompt(
-            parent.code, parent2.code, reference,
-            task_info["p1_tasks_text"], task_info["p2_tasks_text"],
-        )
     else:
         raise ValueError(f"Unknown mode: {mode}")
 

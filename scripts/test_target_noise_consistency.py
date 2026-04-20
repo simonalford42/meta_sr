@@ -27,7 +27,7 @@ SEED = 42
 
 
 def test_evolve_pysr_matches_reference():
-    from evolve_pysr import _stable_target_noise, _build_target_noise_map, TARGET_NOISE_LEVELS
+    from evolution_helpers import _stable_target_noise, _build_target_noise_map, TARGET_NOISE_LEVELS
 
     assert TARGET_NOISE_LEVELS == NOISE_LEVELS
 

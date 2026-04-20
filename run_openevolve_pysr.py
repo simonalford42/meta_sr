@@ -328,7 +328,7 @@ def main() -> int:
     # Load baseline and generate seeded initial program if specified
     baseline_bundle = None
     if args.baseline:
-        from evolve_pysr import load_baseline_bundle
+        from baseline_loader import load_baseline_bundle
         baseline_bundle = load_baseline_bundle(
             args.baseline,
             operator_type=args.operator_type if args.operator_type != "bundle" else None,

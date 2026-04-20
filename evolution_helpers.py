@@ -228,52 +228,6 @@ def load_task_formulas(dataset_names: List[str]) -> Dict[str, str]:
         formulas[name] = formula
     return formulas
 
-def select_complementary_parents(
-    population: list,
-    baseline_solved: set,
-    rng: random.Random,
-) -> Optional[Tuple[Any, Any, List[int], List[int]]]:
-    """Find two population members with complementary solved-task sets.
-
-    Returns (p1, p2, p1_unique, p2_unique) where p1_unique are task indices
-    solved by p1 but not by p2 and not by baseline (and vice versa).
-    Returns None if no complementary pair exists.
-    """
-    candidates = [
-        (m, set(get_solved_tasks(getattr(m, "result_details", None))))
-        for m in population
-    ]
-
-    pairs: List[Tuple[Any, Any, List[int], List[int]]] = []
-    for i in range(len(candidates)):
-        for j in range(i + 1, len(candidates)):
-            m1, s1 = candidates[i]
-            m2, s2 = candidates[j]
-            p1_unique = sorted((s1 - s2) - baseline_solved)
-            p2_unique = sorted((s2 - s1) - baseline_solved)
-            if p1_unique and p2_unique:
-                pairs.append((m1, m2, p1_unique, p2_unique))
-
-    if not pairs:
-        return None
-    return rng.choice(pairs)
-
-def select_unsolved_task_for_parent(
-    parent: Any,
-    dataset_names: List[str],
-    task_formulas: Dict[str, str],
-    rng: random.Random,
-) -> Optional[int]:
-    """Return a task index that `parent` has not solved and for which we have a formula."""
-    solved = set(get_solved_tasks(getattr(parent, "result_details", None)))
-    unsolved = [
-        i for i, name in enumerate(dataset_names)
-        if i not in solved and task_formulas.get(name, "")
-    ]
-    if not unsolved:
-        return None
-    return rng.choice(unsolved)
-
 def _detail_has_trace(detail: Optional[Dict]) -> bool:
     if not detail:
         return False
@@ -286,7 +240,7 @@ def select_unsolved_task_with_trace(
     task_formulas: Dict[str, str],
     rng: random.Random,
 ) -> Optional[int]:
-    """Like select_unsolved_task_for_parent but also requires a non-empty execution trace."""
+    """Return an unsolved task index (by `parent`) that has a recorded execution trace."""
     details = getattr(parent, "result_details", None) or []
     solved = set(get_solved_tasks(details))
     candidates = []
@@ -338,58 +292,6 @@ def format_pareto_trace_for_task(
             lines.append(f"  c={cplx:>3}  loss={loss:.4g}   {equation}")
 
     return "\n".join(lines)
-
-def select_unsolved_tasks_for_population(
-    population: list,
-    baseline_solved: set,
-    dataset_names: List[str],
-    task_formulas: Dict[str, str],
-    rng: random.Random,
-    n: int = 2,
-) -> List[int]:
-    """Pick task indices unsolved by baseline, preferring ones no population member solves.
-
-    Returns up to `n` task indices with available ground-truth formulas.
-    """
-    pop_solved: set = set()
-    for m in population:
-        pop_solved |= set(get_solved_tasks(getattr(m, "result_details", None)))
-
-    def has_formula(idx: int) -> bool:
-        return idx < len(dataset_names) and bool(task_formulas.get(dataset_names[idx], ""))
-
-    n_tasks = len(dataset_names)
-    # Preferred: unsolved by baseline AND unsolved by entire population
-    frontier_unsolved = [
-        i for i in range(n_tasks)
-        if i not in baseline_solved and i not in pop_solved and has_formula(i)
-    ]
-    # Fallback: unsolved by baseline (population may have solved it)
-    baseline_unsolved = [
-        i for i in range(n_tasks)
-        if i not in baseline_solved and has_formula(i)
-    ]
-
-    pool = frontier_unsolved if frontier_unsolved else baseline_unsolved
-    if not pool:
-        return []
-    rng.shuffle(pool)
-    return pool[:n]
-
-def format_task_list(
-    task_indices: List[int],
-    dataset_names: List[str],
-    task_formulas: Dict[str, str],
-    max_tasks: int = 3,
-) -> str:
-    """Format a list of (dataset_name, formula) entries for inclusion in an LLM prompt."""
-    entries = []
-    for idx in task_indices[:max_tasks]:
-        name = dataset_names[idx] if idx < len(dataset_names) else f"task_{idx}"
-        formula = task_formulas.get(name, "")
-        if formula:
-            entries.append(f"- `{name}`: y = {formula}")
-    return "\n".join(entries)
 
 def select_survivors(population: list, offspring: list, population_size: int) -> list:
     """Select best individuals from population + offspring."""
@@ -453,5 +355,21 @@ def select_survivors_diverse(
     print(f"  [diverse] Population: {len(frontier_list)} "
           f"(frontier: {len(frontier)}, backfill: {len(frontier_list) - len(frontier)}, "
           f"tasks covered: {n_tasks_covered}/{len(dataset_names)})")
+
+    frontier_ids = set(frontier.keys())
+    union_covered: set = set()
+    for c in frontier_list:
+        solved = set(get_solved_tasks(getattr(c, "result_details", None)))
+        union_covered |= solved
+        role = "frontier" if id(c) in frontier_ids else "backfill"
+        solved_str = (
+            f"[{','.join(str(i) for i in sorted(solved))}]" if solved else "[]"
+        )
+        score_str = f"{c.score:.4f}" if c.score is not None else "nan"
+        print(f"    [{role}] {c.display_name}: score={score_str} "
+              f"covers {len(solved)}/{len(dataset_names)} {solved_str}")
+    uncovered = [i for i in range(len(dataset_names)) if i not in union_covered]
+    if uncovered:
+        print(f"  [diverse] uncovered tasks: {uncovered}")
 
     return frontier_list

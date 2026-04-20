@@ -1,0 +1,35 @@
+# Base config for noise sweep experiments.
+# max_iterations is set per-run via --iterations CLI flag.
+max_iterations: 60
+checkpoint_interval: 10
+
+llm:
+  primary_model: "openai/gpt-5-mini"
+  primary_model_weight: 0.8
+  secondary_model: "openai/gpt-5-nano"
+  secondary_model_weight: 0.2
+  api_base: "https://openrouter.ai/api/v1"
+  temperature: 0.7
+  max_tokens: 16000
+  timeout: 120
+
+prompt:
+  system_message: "You are an expert programmer specializing in optimization algorithms. Your task is to improve a function minimization algorithm to find the global minimum of a complex function with many local minima. The function is f(x, y) = sin(x) * cos(y) + sin(x*y) + (x^2 + y^2)/20. Focus on improving the search_algorithm function to reliably find the global minimum, escaping local minima that might trap simple algorithms. NOTE: the returned score is the average of NUM_TRIALS independent algorithm runs and may contain i.i.d. Gaussian noise per trial."
+
+database:
+  population_size: 50
+  archive_size: 20
+  num_islands: 3
+  elite_selection_ratio: 0.2
+  exploitation_ratio: 0.7
+  similarity_threshold: 0.99
+
+evaluator:
+  timeout: 120
+  # Disable cascade — in our noise study we want all programs graded at full N_trials
+  # so the noise is consistent across candidates at each setting.
+  cascade_evaluation: false
+  parallel_evaluations: 3
+
+diff_based_evolution: true
+max_code_length: 20000

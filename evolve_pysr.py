@@ -26,74 +26,44 @@ import copy
 import json
 import random
 import sys
-from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from completions import chat_completion, get_content
 from wandb_utils import init_wandb, log_wandb_summary, log_cpu_usage, finish_wandb
 from parallel_eval_pysr import (
-    PySRConfig,
     PySRSlurmEvaluator,
-    get_default_mutation_weights,
     get_default_pysr_kwargs,
 )
 from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log, resolve_run_dir
 
-# Re-export everything that callers currently import from evolve_pysr, so
-# run_openevolve_pysr.py, hpo_pysr.py, hpo_evolve_pysr.py, autoresearch_sr/prepare.py,
-# scripts/sample_operators.py, scripts/debug_julia_mutations.py, and
-# scripts/test_target_noise_consistency.py keep working without edits.
-from operator_types import (  # noqa: F401 (re-exported)
+from operator_types import (
     ModelEnsemble,
-    extract_julia_code,
-    extract_function_name,
-    pre_validate_julia_syntax,
     JuliaOperator,
     OperatorBundle,
     OperatorType,
-    MutationOperatorType,
-    SurvivalOperatorType,
-    SelectionOperatorType,
     OPERATOR_TYPES,
     validate_julia_code,
-    smoke_test_operator,
     append_validation_log,
-    smoke_test_bundle,
     generate_operator_code,
-    _BRAINSTORM_INSTRUCTION,
 )
-from baseline_loader import (  # noqa: F401
+from baseline_loader import (
     load_resume_state,
-    _load_baseline_from_run_data,
-    _load_baseline_from_openevolve,
-    _load_baseline_from_hpo,
-    _load_baseline_from_julia,
     load_baseline_bundle,
 )
-from evolution_helpers import (  # noqa: F401
+from evolution_helpers import (
     TARGET_NOISE_LEVELS,
-    _stable_target_noise,
     _build_target_noise_map,
     _evaluate_configs_with_noise_map,
     compute_per_run_avgs,
-    merge_result_details,
-    recompute_aggregate,
     apply_racing_results,
     select_parent,
-    get_solved_tasks,
     format_solved_str,
     load_task_formulas,
-    select_complementary_parents,
-    select_unsolved_task_for_parent,
-    _detail_has_trace,
     select_unsolved_task_with_trace,
     format_pareto_trace_for_task,
-    select_unsolved_tasks_for_population,
-    format_task_list,
     select_survivors,
     select_survivors_diverse,
 )
@@ -289,8 +259,6 @@ def run_bundle_evolution(
     baseline_bundle: Optional[OperatorBundle] = None,
     wandb_run: Optional[Any] = None,
     task_diverse_pop: bool = False,
-    task_aware: bool = False,
-    task_aware_prob: float = 0.5,
     racing: bool = False,
     hof: bool = False,
     max_concurrent_jobs: Optional[int] = None,
@@ -452,30 +420,10 @@ def run_bundle_evolution(
         print("=" * 60)
         print(f"Resume: reusing baseline score {baseline_score:.4f} from {resume_state['source_path']}")
         print("=" * 60)
-        if task_aware:
-            print("task_aware on resume: re-evaluating baseline to recover per-task details...")
-            eval_baseline = OperatorBundle.create_default()
-            if baseline_bundle is not None and baseline_bundle.best_hparams:
-                eval_baseline.best_hparams = copy.deepcopy(baseline_bundle.best_hparams)
-            baseline_config = eval_baseline.to_pysr_config(pysr_kwargs)
-            br = _evaluate_configs_with_noise_map(
-                evaluator=evaluator, configs=[baseline_config],
-                dataset_names=dataset_names, seed=seed, n_runs=n_runs,
-                target_noise_map=target_noise_map, fitness_metric=fitness_metric,
-            )
-            _, _, baseline_details = br[0]
-
-    # Task-aware mutation setup: load ground-truth formulas and baseline solved set
+    # Execution feedback setup: load ground-truth formulas for trace rendering.
     task_formulas: Dict[str, str] = {}
-    baseline_solved: set = set()
-    if task_aware or execution_feedback_n > 0:
+    if execution_feedback_n > 0:
         task_formulas = load_task_formulas(dataset_names)
-        baseline_solved = set(get_solved_tasks(baseline_details))
-    if task_aware:
-        n_with_formula = sum(1 for f in task_formulas.values() if f)
-        print(f"Task-aware mutation enabled (prob={task_aware_prob}): "
-              f"{n_with_formula}/{len(dataset_names)} tasks have ground-truth formulas; "
-              f"baseline solves {len(baseline_solved)} tasks")
 
     # Directory for logged prompts (first few generations only)
     prompts_log_dir = Path(output_dir) / "prompts"
@@ -681,8 +629,6 @@ def run_bundle_evolution(
         offspring_attempts = 0
         max_offspring_attempts = n_offspring * 3
 
-        use_task_aware_this_gen = bool(task_aware) and current_type_name == "mutation"
-
         while len(offspring_bundles) < n_offspring and offspring_attempts < max_offspring_attempts:
             offspring_attempts += 1
 
@@ -691,83 +637,18 @@ def run_bundle_evolution(
             parent_op = parent_bundle.get_operator(current_type_name)
             task_info: Optional[Dict[str, str]] = None
 
-            # Choose mode: if parent has no custom operator for this type, explore
+            # Choose mode: if parent has no custom operator for this type, explore.
+            # Otherwise 3:1 refine:explore bias. (Crossover currently disabled.)
             if parent_op is None:
                 mode = "explore"
                 parent = None
                 parent2 = None
             else:
-                # Crossover disabled for now — mutation only. 3:1 refine:explore bias.
                 mode = rng.choice(["explore", "refine", "refine", "refine"])
-                if mode == "explore":
-                    parent = None
-                    parent2 = None
-                    if use_task_aware_this_gen and rng.random() < task_aware_prob:
-                        task_idxs = select_unsolved_tasks_for_population(
-                            population, baseline_solved, dataset_names, task_formulas, rng, n=2,
-                        )
-                        if task_idxs:
-                            text = format_task_list(
-                                task_idxs, dataset_names, task_formulas, max_tasks=2,
-                            )
-                            if text:
-                                task_info = {"unsolved_tasks_text": text}
-                                mode = "task_explore"
-                elif mode == "refine":
-                    parent = parent_op
-                    parent2 = None
-                    if use_task_aware_this_gen and rng.random() < task_aware_prob:
-                        task_idx = select_unsolved_task_for_parent(
-                            parent_bundle, dataset_names, task_formulas, rng,
-                        )
-                        if task_idx is not None:
-                            task_info = {
-                                "unsolved_tasks_text": format_task_list(
-                                    [task_idx], dataset_names, task_formulas, max_tasks=1,
-                                ),
-                            }
-                            mode = "task_refine"
-                else:  # crossover
-                    parent = parent_op
-                    # Find a second parent from a different bundle
-                    other_candidates = [b for b in population if b != parent_bundle]
-                    if not other_candidates:
-                        # Only one bundle in population, fall back to refine
-                        mode = "refine"
-                        parent2 = None
-                    else:
-                        other_bundle = select_parent(other_candidates, rng)
-                        parent2 = other_bundle.get_operator(current_type_name)
-                        if parent2 is None:
-                            # Other parent has no custom operator, fall back to refine
-                            mode = "refine"
-                            parent2 = None
+                parent = parent_op if mode == "refine" else None
+                parent2 = None
 
-                    if (mode == "crossover" and use_task_aware_this_gen
-                            and rng.random() < task_aware_prob):
-                        picked = select_complementary_parents(
-                            population, baseline_solved, rng,
-                        )
-                        if picked is not None:
-                            pb1, pb2, p1_unique, p2_unique = picked
-                            op1 = pb1.get_operator(current_type_name)
-                            op2 = pb2.get_operator(current_type_name)
-                            if op1 is not None and op2 is not None:
-                                p1_text = format_task_list(p1_unique, dataset_names, task_formulas)
-                                p2_text = format_task_list(p2_unique, dataset_names, task_formulas)
-                                if p1_text and p2_text:
-                                    parent_bundle = pb1
-                                    parent = op1
-                                    parent2 = op2
-                                    task_info = {
-                                        "p1_tasks_text": p1_text,
-                                        "p2_tasks_text": p2_text,
-                                    }
-                                    mode = "task_crossover"
-
-            # If HOF traces are being recorded, attach an unsolved-task trace
-            # to task_info so the LLM gets execution feedback regardless of
-            # which operator type or mode we're in.
+            # Attach execution-trace feedback for an unsolved task, if available.
             if execution_feedback_n > 0 and rng.random() < execution_feedback_prob:
                 trace_idx = select_unsolved_task_with_trace(
                     parent_bundle, dataset_names, task_formulas, rng,
@@ -1023,12 +904,6 @@ def main():
     parser.add_argument("--task_diverse_pop", action="store_true",
                         help="Use task-diverse population selection: keep the best solver for each task, "
                              "allowing population to grow up to #tasks. Requires fitness_metric=gt.")
-    parser.add_argument("--task_aware", action="store_true",
-                        help="Enable task-aware mutation/crossover: when evolving mutations, "
-                             "sometimes pick parents with complementary solved-task sets (crossover) "
-                             "or feed unsolved ground-truth equations to refine (mutation).")
-    parser.add_argument("--task_aware_prob", type=float, default=0.5,
-                        help="Probability of using task-aware variant when --task_aware is set.")
     parser.add_argument("--racing", action="store_true",
                         help="Racing population maintenance: each generation, re-evaluate "
                              "current population members on n_runs fresh seeds (beyond what "
@@ -1043,7 +918,7 @@ def main():
     parser.add_argument("--continue_from", type=str, default=None,
                         help="Path to a prior evolve_pysr run dir (or run_data.json) to resume from. "
                              "Writes to a new output dir; --generations N means N ADDITIONAL generations. "
-                             "Works for all variants (racing, hof, task_aware, task_diverse_pop, etc.). "
+                             "Works for all variants (racing, hof, task_diverse_pop, etc.). "
                              "Config flags should match the prior run; mismatches are warned, not enforced.")
 
     parser.add_argument("--baseline", type=str, default=None,
@@ -1139,8 +1014,6 @@ def main():
         python_juliapkg_project=args.python_juliapkg_project,
         julia_depot_path=args.julia_depot_path,
         task_diverse_pop=args.task_diverse_pop,
-        task_aware=args.task_aware,
-        task_aware_prob=args.task_aware_prob,
         racing=args.racing,
         hof=args.hof,
         resume_state=resume_state,
@@ -1176,8 +1049,6 @@ def main():
         "baseline": args.baseline,
         "no_cache": args.no_cache,
         "task_diverse_pop": args.task_diverse_pop,
-        "task_aware": args.task_aware,
-        "task_aware_prob": args.task_aware_prob,
         "racing": args.racing,
         "hof": args.hof,
         "exec_feedback_n": args.exec_feedback_n,
