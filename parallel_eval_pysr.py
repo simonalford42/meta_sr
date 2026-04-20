@@ -48,6 +48,7 @@ _TRANSIENT_PYSR_ERROR_SNIPPETS = (
     "resource temporarily unavailable",
     "database is locked",
     "julia has exited",
+    "pythoncall.jl did not start properly",
     "process terminated",
     "process exited",
 )
@@ -184,16 +185,13 @@ def _import_pysr_regressor():
     """Import PySR from the repo checkout when available."""
     repo_root = Path(__file__).resolve().parent
     local_juliapkg_project = repo_root / ".juliapkg_env"
-    local_julia_depot = repo_root / ".julia_depot"
     local_juliapkg_project.mkdir(parents=True, exist_ok=True)
-    local_julia_depot.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", str(local_juliapkg_project))
-    os.environ.setdefault("JULIA_DEPOT_PATH", str(local_julia_depot))
     os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
-    # A repo-level JULIA_PROJECT pointing at SymbolicRegression.jl breaks PySR's
-    # PythonCall environment resolution on SLURM workers.
-    if os.environ.get("JULIA_PROJECT", "").endswith("SymbolicRegression.jl"):
-        os.environ.pop("JULIA_PROJECT", None)
+    # Let juliapkg choose the active Julia project from PYTHON_JULIAPKG_PROJECT.
+    # A pre-set JULIA_PROJECT can make PySR start in an environment without
+    # PythonCall and fail during Julia initialization.
+    os.environ.pop("JULIA_PROJECT", None)
 
     pysr_repo = repo_root / "PySR"
     if pysr_repo.exists() and str(pysr_repo) not in sys.path:
@@ -977,9 +975,13 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self.python_juliapkg_project = (
             str(Path(python_juliapkg_project).resolve())
             if python_juliapkg_project
-            else None
+            else str((self.repo_root / ".juliapkg_env").resolve())
         )
-        self.julia_depot_path = julia_depot_path
+        self.julia_depot_path = (
+            str(Path(julia_depot_path).resolve())
+            if julia_depot_path
+            else os.environ.get("JULIA_DEPOT_PATH")
+        )
         self._pending_cache_entries: List[Dict[str, Any]] = []
         self.hof_results_dir = hof_results_dir
         self.hof_n_steps = hof_n_steps
@@ -991,13 +993,15 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             f'cd "{self.repo_root}"',
             f'export PYTHONPATH="{self.repo_root}:$PYTHONPATH"',
             "",
-            "# Point Julia to the selected SymbolicRegression.jl environment",
-            f'export JULIA_PROJECT="{self.julia_project}"',
+            "# Point juliacall/juliapkg at an explicit PySR environment.",
+            "# Do not set JULIA_PROJECT to SymbolicRegression.jl; that prevents",
+            "# PythonCall from being resolved when PySR starts Julia.",
+            "unset JULIA_PROJECT",
+            f'export PYTHON_JULIAPKG_PROJECT="{self.python_juliapkg_project}"',
+            "export PYTHON_JULIACALL_HANDLE_SIGNALS=yes",
         ]
-        if self.python_juliapkg_project:
-            lines.append(f'export PYTHON_JULIAPKG_PROJECT="{self.python_juliapkg_project}"')
         if self.julia_depot_path:
-            lines.append(f'export JULIA_DEPOT_PATH="{self.julia_depot_path}"')
+            lines.insert(-1, f'export JULIA_DEPOT_PATH="{self.julia_depot_path}"')
         return "\n".join(lines)
 
     def evaluate_configs(
@@ -1215,6 +1219,16 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 print(f"  Retrying {len(failed_indices)} failed tasks "
                       f"(attempt {retry_count}/{self.max_retries})...")
 
+                # Remove stale failure placeholders before submitting retries.
+                # Retry wait logic uses result-file presence as completion, so
+                # leaving old files makes retries appear to finish immediately.
+                for idx in failed_indices:
+                    stale_result = results_subdir / f"task_{idx:06d}.json"
+                    try:
+                        stale_result.unlink()
+                    except FileNotFoundError:
+                        pass
+
                 original_use_cache = self.use_cache
                 self.use_cache = use_cache_for_run
                 # Chunk retries the same way as the initial submission so that
@@ -1261,6 +1275,16 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
 
         self._queue_results_for_cache(tasks, results)
         self.flush_pending_cache()
+
+        error_counts: Dict[str, int] = {}
+        for result in results:
+            if result.error:
+                error_counts[result.error] = error_counts.get(result.error, 0) + 1
+        if error_counts:
+            n_errors = sum(error_counts.values())
+            print(f"  WARNING: {n_errors}/{len(results)} PySR tasks returned errors")
+            for error, count in sorted(error_counts.items(), key=lambda item: -item[1])[:3]:
+                print(f"    {count}x {error}")
 
         # Save combined results
         combined_file = batch_dir / "combined.json"
@@ -1359,14 +1383,7 @@ export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export JULIA_NUM_THREADS=1
 
-# Ensure Python can import project modules
-cd "$SLURM_SUBMIT_DIR"
-export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
-
-# Point juliacall/juliapkg at the repo-local PySR environment.
-export PYTHON_JULIAPKG_PROJECT="$SLURM_SUBMIT_DIR/.juliapkg_env"
-export JULIA_DEPOT_PATH="$SLURM_SUBMIT_DIR/.julia_depot"
-export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+{worker_env_exports}
 
 # Log which node this task is running on
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
@@ -1423,14 +1440,7 @@ export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export JULIA_NUM_THREADS=1
 
-# Ensure Python can import project modules
-cd "$SLURM_SUBMIT_DIR"
-export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
-
-# Point juliacall/juliapkg at the repo-local PySR environment.
-export PYTHON_JULIAPKG_PROJECT="$SLURM_SUBMIT_DIR/.juliapkg_env"
-export JULIA_DEPOT_PATH="$SLURM_SUBMIT_DIR/.julia_depot"
-export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+{worker_env_exports}
 
 # Log which node this task is running on
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"

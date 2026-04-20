@@ -1,6 +1,10 @@
+# MiniSR vs. PySR baseline comparison on full SRBench (130 datasets × 3 seeds × 2 engines).
+# Driver runs under run.sh on a login/compute node and submits its own sub-arrays via SLURM.
+sbatch -J minisr_vs_pysr run.sh compare_minisr_vs_pysr.py --split splits/srbench_all.txt --n-runs 3
+
 # 4/20
-sbatch -J exec run.sh evolve_pysr.py --operator_type all --generations 10 --population 5 --offspring 20 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt --exec_feedback_n 3
-sbatch -J racing run.sh evolve_pysr.py --operator_type all --generations 60 --population 5 --offspring 5 --n-runs 2 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing --exec_feedback_n 3
+# sbatch -J exec run.sh evolve_pysr.py --operator_type all --generations 10 --population 5 --offspring 20 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt --exec_feedback_n 3
+# sbatch -J racing run.sh evolve_pysr.py --operator_type all --generations 60 --population 5 --offspring 5 --n-runs 2 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing --exec_feedback_n 3
 
 
 # 4/18

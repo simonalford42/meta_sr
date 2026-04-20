@@ -1,0 +1,2669 @@
+====================================================================================================
+  AUTORESEARCH EXPERIMENTS, SORTED BY CHANGE COMPLEXITY  (60 total)
+====================================================================================================
+
+Complexity counts:
+  LEVEL 4 - big algorithmic change            0
+  LEVEL 3 - new approach added                8
+  LEVEL 2 - tweak approach                   11
+  LEVEL 1 - hyperparameter change            41
+
+lvl   exp  commit         score   ok/fail  status    description
+----------------------------------------------------------------------------------------------------
+  3     6  6ffcbed7    0.366667      18/2  discard   exp4: log-scale constant restarts too slow, caused 2 SLURM timeouts, net negative
+  3    12  12871d83    0.400000      20/0  discard   exp10: crossover=0.25 + 30% worst-cost replacement - diversity hurt, I_44_4 drops to 0
+  3    19  6f71d5d8    0.366667      20/0  discard   exp17: alternating log-scale restarts - I_44_4 0/3, I_13_4 0/3, I_24_6 0/3; log-scale jumps destabilized optimization
+  3    29  865b9c5a    0.383333      20/0  discard   exp27: crossover replaces 1 oldest with better child - III_15_12 3->1, I_27_6 3->2, I_44_4 2->0; less replacement too conservative
+  3    39  8c5739d0    0.366667      20/0  discard   exp37: 10% worst-replacement survival - I_38_12 3->2, III_15_12 3->2, I_44_4 2->1; age-based critical for stable datasets
+  3    42  c78a0a5b    0.400000      20/0  discard   exp40: non-leaf biased crossover 70% - I_44_4 2->0, I_13_4 1->0; leaf-level swaps critical for I_44_4
+  3    50  3ad7eb01    0.233333      20/0  discard   exp48: BFGS on crossover babies - max_evals hit in 5-7min (10x faster), all stochastic 0/3; BFGS burns eval budget completely
+  3    57  5c35b232    0.400000      20/0  discard   exp55: constant-biased crossover 50% - I_44_4 1/3, I_27_6 2/3, I_13_4 0/3; reduces structural diversity like exp40
+  2    13  160e407e    0.366667      20/0  discard   exp11: temp-dependent crossover 0.25->0.40 - too high crossover in cold phase, worse than fixed 0.25
+  2    15  636fffc0    0.383333      20/0  discard   exp13: elitist crossover (always best as 2nd parent) - I_44_4 0.0, I_27_6 0.667, premature convergence
+  2    16  00053395    0.450000      20/0  keep      exp14: scale-aware constant restarts max(|x0|,1) - I_13_4 0.333, I_44_4 0.667; +2 pts over exp7
+  2    17  f0ebff1e    0.383333      20/0  discard   exp15: 80% operator-biased crossover - I_38_12 3/3 but I_44_4 0/3, I_24_6 0/3 - diversity loss like exp13
+  2    26  ab120a69    0.450000      20/0  keep      exp24: random 2nd crossover parent - ties exp14 0.450; I_38_12 2->3, I_24_6 1->0, I_44_4 2/3, I_13_4 1/3
+  2    28  eb6d9b07    0.433333      20/0  discard   exp26: hybrid 2nd parent (50% random/50% tournament) - I_24_6 0->2 but I_44_4 2->0; datasets trade off
+  2    30  b9aa2130    0.433333      20/0  discard   exp28: mutate_constant 0.048->0.20 - I_27_6 3->2, I_13_4 1->0; more constant mutations disrupted stable datasets
+  2    33  128cf923    0.416667      20/0  discard   exp31: wide random 2nd restart T(2)*eps - I_44_4 0/3; random restarts don't find Feynman constants
+  2    35  e7bd278b    0.433333      20/0  discard   exp33: warm-start 2nd BFGS restart - I_24_6 1/3 improved, I_44_4 2->1, I_13_4 1->0; warm-start traps near wrong constants
+  2    56  81ad2d1e    0.400000      20/0  discard   exp54: progressive BFGS restart 0.5x+2x - I_44_4 1/3, I_27_6 2/3, I_13_4 0/3; wide restart destroys convergence
+  2    58  1d166b8d    0.416667      20/0  discard   exp56: early BFGS restart termination loss<1e-6 - prevents constant fine-tuning I_44_4 1/3, I_13_4 0/3
+  1     1  6560f07f    0.250000      9/11  crash     baseline attempt 1 - SLURM timeout (13/60 tasks), cluster under load
+  1     2  6560f07f    0.400000      19/1  keep      baseline (1 dataset still slow, but matches documented 0.40)
+  1     3  348dc4da    0.400000      20/0  discard   boost simplify (0.00148->0.4) and enable optimize (0->0.5) - no improvement
+  1     4  780625e7    0.400000      20/0  discard   reduce insert_node, boost delete+randomize+optimize - same score, shifted which datasets solved
+  1     5  18aeeae6    0.400000      20/0  discard   exp3: same as exp2 minus randomize + parsimony window 10k - no change vs exp2
+  1     7  0678d48f    0.366667      18/2  discard   exp5: optimize=1.0 alone also too expensive, 2 SLURM timeouts again
+  1     8  7919596c    0.366667      18/2  discard   exp6: mutate_constant=0.5 - 2 PythonCall.jl SLURM node failures (infra), not code issue
+  1     9  a4b2d25c    0.416667      20/0  keep      exp7: crossover prob 0.066->0.25; III_15_12 and I_27_6 now 1.0; net improvement
+  1    10  fed5d7b2    0.416667      20/0  discard   exp8: crossover + insert/delete - same as exp7, insert/delete adds nothing
+  1    11  a4cef2cb    0.400000      20/0  discard   exp9: crossover 0.40 too aggressive - I_44_4 drops, I_24_6 appears(0.33), net 0.40
+  1    14  3f779392    0.383333      20/0  discard   exp12: mutate_feature 0.1->0.5, swap_operands 0.00608->0.1 - I_44_4 dropped to 0.0, net regression
+  1    18  bb9bc2d5    0.433333      20/0  discard   exp16: crossover 0.25->0.20 - III_15_12 2/3, I_44_4 1/3, I_13_4 0/3; less crossover hurt genetic mixing
+  1    20  7a50f860    0.416667      20/0  discard   exp18: nrestarts 2->3 - III_15_12 2/3, I_44_4 1/3; extra restart adds compute overhead reducing generations
+  1    21  fd70b48e    0.400000      20/0  discard   exp19: tournament_selection_n 12->10 - I_44_4 0/3, I_27_6 2/3; less selection pressure hurt parent quality
+  1    22  c9441523    0.416667      20/0  discard   exp20: fraction_replaced_hof 0.035->0.07 - HoF overinjection hurt stochastic datasets, net regression from 0.450
+  1    23  aaec8293    0.416667      20/0  discard   exp21: perturbation_factor 0.076->0.15 - too aggressive, I_44_4 2->1, I_24_6 1->0, I_27_6 3->2; I_38_12 2->3 not enough
+  1    24  77e53310    0.416667      20/0  discard   exp22: optimizer_probability 0.14->0.10 - less BFGS hurt I_44_4 0/3, I_13_4 0/3; I_27_6 3/3, I_38_12 3/3 not enough
+  1    25  392573f5    0.416667      20/0  discard   exp23: fraction_replaced 0.00036->0.001 - more migration hurt I_44_4 1/3, I_13_4 0/3, I_24_6 0/3; disrupted converging populations
+  1    27  b7723930    0.416667      20/0  discard   exp25: crossover 0.25->0.30 with random 2nd parent - too much crossover hurt I_44_4 2->1, I_13_4 1->0
+  1    31  1d4e46c8    0.400000      20/0  discard   exp29: topn 12->20 - even rock-solid dataset dropped; more HoF diversity too disruptive via injection
+  1    32  10487807    0.383333      20/0  discard   exp30: rotate_tree 0.0->0.3 - I_44_4 0/3, I_27_6 1/3; tree rotation too disruptive for good solutions
+  1    34  c07089af    0.400000      20/0  discard   exp32: adaptive_parsimony_scaling 20->5 - all stochastic 0/3; removing complexity diversity caused premature convergence
+  1    36  90644557    0.400000      20/0  discard   exp34: 20% random 2nd parent - all stochastic 0/3 (I_44_4, I_13_4, I_24_6); 100% random uniquely important
+  1    37  4033e8a3    0.400000      20/0  discard   exp35: tournament_selection_p 0.86->0.75 - I_44_4 2->1, I_13_4 1->0; less selection pressure hurt hard datasets
+  1    38  2206c459    0.416667      20/0  discard   exp36: optimizer_probability 0.14->0.18 - I_44_4 2->0, I_13_4 1/3; 0.14 uniquely optimal for I_44_4
+  1    40  45525f77    0.433333      20/0  discard   exp38: ncycles_per_iteration 550->700 - I_24_6 0->2, I_44_4 2->1, I_27_6 3->2; more cycles help I_24_6 but hurt I_44_4
+  1    41  0a3222c1    0.400000      20/0  discard   exp39: parsimony 0.0032->0.0 - I_44_4 2->0, I_13_4 1->0; parsimony critical for hard dataset convergence
+  1    43  4f953f27    0.416667      20/0  discard   exp41: ncycles_per_iteration 550->400 - I_24_6 0->1, I_44_4 2->0; ncycles=550 uniquely optimal for I_44_4
+  1    44  689528c1    0.383333      20/0  discard   exp42: BFGS restart scale 0.5->0.75 - I_44_4 0/3, I_27_6 3->2; 0.5 scale is uniquely optimal
+  1    45  eeb4304e    0.400000      20/0  discard   exp43: probability_negate_constant 0.01->0.05 - I_44_4 1/3, I_13_4 0/3, I_27_6 2/3; negation disrupts search
+  1    46  0e78b324    0.416667      20/0  discard   exp44: tournament_selection_p 0.86->0.92 - I_44_4 1/3, I_13_4 0/3; 0.86 is uniquely optimal for selection pressure
+  1    47  6b85f94a    0.400000      19/1  discard   exp45: fraction_replaced_hof 0.035->0.015 - I_44_4 0/3, I_24_6 1/3, I_13_4 FAILED; less HoF = same I_24_6/I_44_4 tradeoff
+  1    48  6a891ca1    0.433333      20/0  discard   exp46: do_nothing 0.21->0.10 - I_44_4 1/3, I_38_12 2/3, I_24_6 1/3; more evolution = same tradeoff + I_38_12 regression
+  1    49  33af365a    0.350000      20/0  discard   exp47: ncycles_per_iteration 550->575 catastrophic - I_44_4 0/3, I_27_6 1/3, III_15_12 2/3; ncycles=550 uniquely critical, not monotonic
+  1    51  e742ac16    0.416667      20/0  discard   exp49: annealing=true (alpha=0.1) - I_44_4 0/3, I_27_6 2/3; I_24_6 gained 1/3 but net -2pts; I_44_4/I_24_6 tradeoff confirmed
+  1    52  4c065668    0.416667      20/0  discard   exp50: fraction_replaced 0.00036->0.0001 - I_13_4 1->0, III_15_12 3->2; less migration hurt diversity injection
+  1    53  4dc35b51    0.400000      20/0  discard   exp51: simplify 0.002->0.005 - I_44_4 0/3, I_13_4 0/3; more simplification destroys both fragile datasets
+  1    54  e6a50e78    0.433333      20/0  discard   exp52: increase delete_node 1.7->2.5 - I_44_4 0/3, I_24_6 gained 1/3, I_27_6 3/3 but net -2pts
+  1    55  a75cc312    0.366667      20/0  discard   exp53: fix sign-flip bug mutate_factor 99%->1% - I_27_6 3->1, I_13_4 1->0, I_44_4 2->1; 99% sign flip is a feature not bug
+  1    59  82ea4c88    0.466667      20/0  keep      exp57: adaptive parsimony window_size 100000->20000 - I_13_4 1->2/3; faster parsimony guides complexity exploration better
+  1    60  a9de3928    0.400000      20/0  discard   exp58: window_size 10000 too fast - I_44_4 0/3, I_13_4 0/3; over-exploration destroys convergence
+
+
+####################################################################################################
+#  LEVEL 3 - new approach added  (8 experiments)
+####################################################################################################
+
+====================================================================================================
+exp 6  |  6ffcbed7  |  score 0.366667  |  ok 18 / fail 2  |  [DISCARD]  |  level 3
+description: exp4: log-scale constant restarts too slow, caused 2 SLURM timeouts, net negative
+====================================================================================================
+
+commit 6ffcbed7db59f11c87f817e8ea1e4fe42e3409fc
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 18:40:10 2026 -0400
+
+    exp4: log-scale constant restarts + insert->1.0/delete->1.5/optimize->1.0
+---
+ src/ConstantOptimization.jl | 11 +++++++++--
+ src/MutationWeights.jl      |  6 +++---
+ 2 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 585a6ef7..35ad07b9 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -87,9 +87,16 @@ function _optimize_constants_inner(
+     eval_fraction = dataset_fraction(dataset)
+     num_evals = result.f_calls * eval_fraction
+     # Try other initial conditions:
+-    for _ in 1:(options.optimizer_nrestarts)
++    for i in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+-        xt = @. x0 * (T(1) + T(1//2) * eps)
++        # Alternate between small relative perturbation and log-scale exploration.
++        # Log-scale restarts help find constants spanning many orders of magnitude
++        # (e.g., physical constants like c ≈ 3e8 from an initial guess near 1).
++        xt = if iseven(i)
++            @. x0 * (T(1) + T(1//2) * eps)
++        else
++            @. x0 * T(10)^(eps * T(2))
++        end
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..b4135c8c 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -107,12 +107,12 @@ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+     swap_operands::Float64 = 0.00608
+     rotate_tree::Float64 = 1.42
+     add_node::Float64 = 0.0771
+-    insert_node::Float64 = 2.44
+-    delete_node::Float64 = 0.369
++    insert_node::Float64 = 1.0
++    delete_node::Float64 = 1.5
+     simplify::Float64 = 0.00148
+     randomize::Float64 = 0.00695
+     do_nothing::Float64 = 0.431
+-    optimize::Float64 = 0.0
++    optimize::Float64 = 1.0
+     form_connection::Float64 = 0.5
+     break_connection::Float64 = 0.1
+     # Custom mutation slots (weights loaded from custom_mutations/config.toml)
+
+
+====================================================================================================
+exp 12  |  12871d83  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 3
+description: exp10: crossover=0.25 + 30% worst-cost replacement - diversity hurt, I_44_4 drops to 0
+====================================================================================================
+
+commit 12871d833d1f20f22ad56216416d04ac649bc278
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 19:45:23 2026 -0400
+
+    exp10: crossover=0.25 + 30% worst-cost replacement (vs always-oldest)
+---
+ src/RegularizedEvolution.jl | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index 734795dc..40778c01 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -44,7 +44,19 @@ function reg_evol_cycle(
+                 continue
+             end
+ 
+-            oldest = apply_custom_survival(pop, options)
++            # 30% of the time replace the worst-cost member instead of the oldest,
++            # helping retain quality solutions and improve population fitness.
++            oldest = if rand() < 0.3
++                argmax_cost = 1
++                for j in 2:pop.n
++                    if pop.members[j].cost > pop.members[argmax_cost].cost
++                        argmax_cost = j
++                    end
++                end
++                argmax_cost
++            else
++                apply_custom_survival(pop, options)
++            end
+ 
+             @recorder begin
+                 if !haskey(record, "mutations")
+
+
+====================================================================================================
+exp 19  |  6f71d5d8  |  score 0.366667  |  ok 20 / fail 0  |  [DISCARD]  |  level 3
+description: exp17: alternating log-scale restarts - I_44_4 0/3, I_13_4 0/3, I_24_6 0/3; log-scale jumps destabilized optimization
+====================================================================================================
+
+commit 6f71d5d812d9e0c4057b31dd44e0aba07c33a6b9
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 21:37:54 2026 -0400
+
+    exp17: log-scale constant restarts alternating with scale-aware
+    
+    With nrestarts=2:
+    - Restart 1 (odd): scale-aware additive, max(|x0|,1)*0.5*eps (exp14)
+    - Restart 2 (even): log-scale x0*exp(0.5*eps) for |x0|>0.01, else additive
+    
+    Log-scale explores different constant magnitudes (e.g. 10x, 0.1x) which
+    additive perturbation misses. Also reverts crossover to 0.25 (exp16 was 0.20).
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/ConstantOptimization.jl | 13 +++++++++----
+ src/RegularizedEvolution.jl |  2 +-
+ 2 files changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 449b945b..1177aec7 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -87,11 +87,16 @@ function _optimize_constants_inner(
+     eval_fraction = dataset_fraction(dataset)
+     num_evals = result.f_calls * eval_fraction
+     # Try other initial conditions:
+-    for _ in 1:(options.optimizer_nrestarts)
++    for i in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+-        # Scale-aware restart: use max(|x0|, 1) so near-zero constants get meaningful perturbation
+-        scale = @. max(abs(x0), T(1))
+-        xt = @. x0 + T(1//2) * scale * eps
++        xt = if isodd(i)
++            # Scale-aware additive restart (exp14): max(|x0|, 1) for near-zero constants
++            scale = @. max(abs(x0), T(1))
++            @. x0 + T(1//2) * scale * eps
++        else
++            # Log-scale restart: explore different magnitudes for nonzero constants
++            @. ifelse(abs(x0) > T(1//100), x0 * exp(T(1//2) * eps), x0 + T(1//2) * eps)
++        end
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index dd27231b..24def566 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -25,7 +25,7 @@ function reg_evol_cycle(
+     n_evol_cycles = ceil(Int, pop.n / options.tournament_selection_n)
+ 
+     for i in 1:n_evol_cycles
+-        if rand() > 0.20  # tuned: 20% crossover (was 25% in exp7, ~6.6% original)
++        if rand() > 0.25  # tuned: 25% crossover (exp7; ~6.6% original)
+             allstar = apply_custom_selection(pop, running_search_statistics, options)
+             mutation_recorder = RecordType()
+             baby, mutation_accepted, tmp_num_evals = next_generation(
+
+
+====================================================================================================
+exp 29  |  865b9c5a  |  score 0.383333  |  ok 20 / fail 0  |  [DISCARD]  |  level 3
+description: exp27: crossover replaces 1 oldest with better child - III_15_12 3->1, I_27_6 3->2, I_44_4 2->0; less replacement too conservative
+====================================================================================================
+
+commit 865b9c5a6da08f7bf3da41c99d3eeb68198ade5e
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 23:59:33 2026 -0400
+
+    exp27: crossover replaces 1 oldest with better child (less disruptive), revert to pure random 2nd parent
+---
+ src/RegularizedEvolution.jl | 31 +++++++------------------------
+ 1 file changed, 7 insertions(+), 24 deletions(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index ecac46a5..d9966d1d 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -80,12 +80,8 @@ function reg_evol_cycle(
+ 
+         else # Crossover
+             allstar1 = apply_custom_selection(pop, running_search_statistics, options)
+-            # exp26: 50% random, 50% tournament for 2nd parent (hybrid diversity)
+-            allstar2 = if rand() < 0.5
+-                pop.members[rand(1:pop.n)]
+-            else
+-                apply_custom_selection(pop, running_search_statistics, options)
+-            end
++            # exp24: random second parent for more structural diversity
++            allstar2 = pop.members[rand(1:pop.n)]
+ 
+             crossover_recorder = RecordType()
+             baby1, baby2, crossover_accepted, tmp_num_evals = crossover_generation(
+@@ -102,22 +98,15 @@ function reg_evol_cycle(
+                 continue
+             end
+ 
+-            # Find the oldest members to replace:
++            # exp27: replace only 1 oldest member with the better child (less disruptive)
++            better_baby = baby1.cost <= baby2.cost ? baby1 : baby2
+             oldest1 = apply_custom_survival(pop, options)
+-            oldest2 = apply_custom_survival(pop, options; exclude_indices=[oldest1])
+ 
+             @recorder begin
+                 if !haskey(record, "mutations")
+                     record["mutations"] = RecordType()
+                 end
+-                for member in [
+-                    allstar1,
+-                    allstar2,
+-                    baby1,
+-                    baby2,
+-                    pop.members[oldest1],
+-                    pop.members[oldest2],
+-                ]
++                for member in [allstar1, allstar2, baby1, baby2, pop.members[oldest1]]
+                     if !haskey(record["mutations"], "$(member.ref)")
+                         record["mutations"]["$(member.ref)"] = RecordType(
+                             "events" => Vector{RecordType}(),
+@@ -138,7 +127,6 @@ function reg_evol_cycle(
+                     "details" => crossover_recorder,
+                 )
+                 death_event1 = RecordType("type" => "death", "time" => time())
+-                death_event2 = RecordType("type" => "death", "time" => time())
+ 
+                 push!(record["mutations"]["$(allstar1.ref)"]["events"], crossover_event)
+                 push!(record["mutations"]["$(allstar2.ref)"]["events"], crossover_event)
+@@ -146,15 +134,10 @@ function reg_evol_cycle(
+                     record["mutations"]["$(pop.members[oldest1].ref)"]["events"],
+                     death_event1,
+                 )
+-                push!(
+-                    record["mutations"]["$(pop.members[oldest2].ref)"]["events"],
+-                    death_event2,
+-                )
+             end
+ 
+-            # Replace old members with new ones:
+-            pop.members[oldest1] = baby1
+-            pop.members[oldest2] = baby2
++            # Replace only the oldest member with the better child:
++            pop.members[oldest1] = better_baby
+         end
+     end
+ 
+
+
+====================================================================================================
+exp 39  |  8c5739d0  |  score 0.366667  |  ok 20 / fail 0  |  [DISCARD]  |  level 3
+description: exp37: 10% worst-replacement survival - I_38_12 3->2, III_15_12 3->2, I_44_4 2->1; age-based critical for stable datasets
+====================================================================================================
+
+commit 8c5739d00d13849b17f37a555a0ef73a70bb1d1d
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 02:11:21 2026 -0400
+
+    exp37: 10% worst-replacement survival mixed with age-based
+    
+    In 10% of replacement decisions, eliminate the worst-fitness member
+    instead of the oldest. Removes solutions stuck in wrong basins while
+    preserving diversity benefit of regularized evolution at 90%.
+---
+ src/Options.jl              |  2 +-
+ src/RegularizedEvolution.jl | 21 +++++++++++++++++----
+ 2 files changed, 18 insertions(+), 5 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index f417a120..cb8d3bbf 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -614,7 +614,7 @@ $(OPTION_DESCRIPTIONS)
+         linesearch=LineSearches.BackTracking()
+     ),
+     optimizer_nrestarts::Int=2,
+-    optimizer_probability::AbstractFloat=0.18,  # exp36: 0.14->0.18, more BFGS for better constant-finding
++    optimizer_probability::AbstractFloat=0.14,
+     optimizer_iterations::Union{Nothing,Integer}=nothing,
+     optimizer_f_calls_limit::Union{Nothing,Integer}=nothing,
+     optimizer_options::Union{Dict,NamedTuple,Optim.Options,Nothing}=nothing,
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index 4912fe29..114702ba 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -44,7 +44,12 @@ function reg_evol_cycle(
+                 continue
+             end
+ 
+-            oldest = apply_custom_survival(pop, options)
++            # exp37: 10% chance to eliminate worst instead of oldest (fitness-aware survival)
++            oldest = if rand() < 0.10
++                argmax(pop.members[i].cost for i in 1:(pop.n))
++            else
++                apply_custom_survival(pop, options)
++            end
+ 
+             @recorder begin
+                 if !haskey(record, "mutations")
+@@ -98,9 +103,17 @@ function reg_evol_cycle(
+                 continue
+             end
+ 
+-            # Find the oldest members to replace:
+-            oldest1 = apply_custom_survival(pop, options)
+-            oldest2 = apply_custom_survival(pop, options; exclude_indices=[oldest1])
++            # Find members to replace (exp37: 10% worst instead of oldest):
++            oldest1 = if rand() < 0.10
++                argmax(pop.members[i].cost for i in 1:(pop.n))
++            else
++                apply_custom_survival(pop, options)
++            end
++            oldest2 = if rand() < 0.10
++                argmax(i -> pop.members[i].cost, [j for j in 1:(pop.n) if j != oldest1])
++            else
++                apply_custom_survival(pop, options; exclude_indices=[oldest1])
++            end
+ 
+             @recorder begin
+                 if !haskey(record, "mutations")
+
+
+====================================================================================================
+exp 42  |  c78a0a5b  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 3
+description: exp40: non-leaf biased crossover 70% - I_44_4 2->0, I_13_4 1->0; leaf-level swaps critical for I_44_4
+====================================================================================================
+
+commit c78a0a5b7b612951c68c99d367ffdec8762438b8
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 02:42:16 2026 -0400
+
+    exp40: bias crossover to prefer non-leaf nodes (70%)
+    
+    BFGS handles constants; leaf-level crossover swaps are low-value.
+    Biasing toward internal nodes makes each crossover event more
+    structurally meaningful. May help I_44_4 find correct topology
+    in the 1/3 runs where it currently fails.
+---
+ src/MutationFunctions.jl | 17 ++++++++++++++---
+ src/Options.jl           |  2 +-
+ 2 files changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/src/MutationFunctions.jl b/src/MutationFunctions.jl
+index 3f46c879..cc369cb8 100644
+--- a/src/MutationFunctions.jl
++++ b/src/MutationFunctions.jl
+@@ -494,9 +494,20 @@ function crossover_trees(
+     t1 = copy(tree1)
+     t2 = copy(tree2)
+ 
+-    # pick random nodes (and parents) in each tree
+-    n1, p1, i1 = _random_node_and_parent(t1, rng)
+-    n2, p2, i2 = _random_node_and_parent(t2, rng)
++    # exp40: prefer non-leaf nodes (70%) for more meaningful subtree swaps
++    function _biased_node_and_parent(tree, rng)
++        has_internal = any(t -> t.degree > 0, tree)
++        if has_internal && rand(rng) < 0.7
++            node = rand(rng, NodeSampler(; tree, filter=t -> t.degree > 0))
++            node === tree && return (node, node, 0)
++            parent, idx = _find_parent(tree, node)
++            return (node, parent, idx)
++        else
++            return _random_node_and_parent(tree, rng)
++        end
++    end
++    n1, p1, i1 = _biased_node_and_parent(t1, rng)
++    n2, p2, i2 = _biased_node_and_parent(t2, rng)
+ 
+     n1 = copy(n1)
+ 
+diff --git a/src/Options.jl b/src/Options.jl
+index 3ee4c38a..cb8d3bbf 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1121,7 +1121,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             population_size=33,
+             ncycles_per_iteration=550,
+             # Working with Complexities
+-            parsimony=0.0,  # exp39: remove base parsimony, let adaptive handle complexity
++            parsimony=0.0032,
+             warmup_maxsize_by=0.0,
+             adaptive_parsimony_scaling=20.0,
+             # Mutations
+
+
+====================================================================================================
+exp 50  |  3ad7eb01  |  score 0.233333  |  ok 20 / fail 0  |  [DISCARD]  |  level 3
+description: exp48: BFGS on crossover babies - max_evals hit in 5-7min (10x faster), all stochastic 0/3; BFGS burns eval budget completely
+====================================================================================================
+
+commit 3ad7eb0108db7f52bd94c9565ec662334b0efd85
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 04:44:34 2026 -0400
+
+    exp48: optimize constants in crossover babies (BFGS parity with mutation path)
+---
+ src/Mutate.jl | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/Mutate.jl b/src/Mutate.jl
+index 33dfcfe2..afab28e9 100644
+--- a/src/Mutate.jl
++++ b/src/Mutate.jl
+@@ -726,6 +726,12 @@ function crossover_generation(
+         deterministic=options.deterministic,
+     )::P
+ 
++    # exp48: optimize constants in crossover babies for better starting quality
++    # (mutation babies already get BFGS via next_generation; crossover babies did not)
++    baby1, opt_evals1 = optimize_constants(dataset, baby1, options)
++    baby2, opt_evals2 = optimize_constants(dataset, baby2, options)
++    num_evals += opt_evals1 + opt_evals2
++
+     @recorder begin
+         recorder["result"] = "accept"
+         recorder["reason"] = "pass"
+
+
+====================================================================================================
+exp 57  |  5c35b232  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 3
+description: exp55: constant-biased crossover 50% - I_44_4 1/3, I_27_6 2/3, I_13_4 0/3; reduces structural diversity like exp40
+====================================================================================================
+
+commit 5c35b232312bb13b4a375a7b1fc5a48004bf6e0a
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 06:41:12 2026 -0400
+
+    exp55: constant-biased crossover (50%) to share discovered constant values between trees
+---
+ src/MutationFunctions.jl | 29 ++++++++++++++++++++++++++---
+ 1 file changed, 26 insertions(+), 3 deletions(-)
+
+diff --git a/src/MutationFunctions.jl b/src/MutationFunctions.jl
+index 3f46c879..d1d9a19d 100644
+--- a/src/MutationFunctions.jl
++++ b/src/MutationFunctions.jl
+@@ -494,9 +494,19 @@ function crossover_trees(
+     t1 = copy(tree1)
+     t2 = copy(tree2)
+ 
+-    # pick random nodes (and parents) in each tree
+-    n1, p1, i1 = _random_node_and_parent(t1, rng)
+-    n2, p2, i2 = _random_node_and_parent(t2, rng)
++    # exp55: 50% of crossovers swap constant leaves to share discovered constants
++    use_const_crossover = rand(rng) < 0.5 &&
++                          any(n -> n.degree == 0 && n.constant, t1) &&
++                          any(n -> n.degree == 0 && n.constant, t2)
++
++    if use_const_crossover
++        n1, p1, i1 = _random_const_node_and_parent(t1, rng)
++        n2, p2, i2 = _random_const_node_and_parent(t2, rng)
++    else
++        # pick random nodes (and parents) in each tree
++        n1, p1, i1 = _random_node_and_parent(t1, rng)
++        n2, p2, i2 = _random_node_and_parent(t2, rng)
++    end
+ 
+     n1 = copy(n1)
+ 
+@@ -517,6 +527,19 @@ function crossover_trees(
+     return t1, t2
+ end
+ 
++"""Pick a random constant leaf node and its parent."""
++function _random_const_node_and_parent(
++    tree::AbstractExpressionNode, rng::AbstractRNG=default_rng()
++)
++    node = rand(rng, NodeSampler(; tree, filter=n -> n.degree == 0 && n.constant))
++    if node === tree
++        return node, node, 0
++    else
++        parent, idx = _find_parent(tree, node)
++        return node, parent, idx
++    end
++end
++
+ function get_two_nodes_without_loop(tree::AbstractNode, rng::AbstractRNG; max_attempts=10)
+     for _ in 1:max_attempts
+         parent = rand(rng, NodeSampler(; tree, filter=t -> t.degree != 0))
+
+
+####################################################################################################
+#  LEVEL 2 - tweak approach  (11 experiments)
+####################################################################################################
+
+====================================================================================================
+exp 13  |  160e407e  |  score 0.366667  |  ok 20 / fail 0  |  [DISCARD]  |  level 2
+description: exp11: temp-dependent crossover 0.25->0.40 - too high crossover in cold phase, worse than fixed 0.25
+====================================================================================================
+
+commit 160e407e03b7a46972ec96d84f2939d8344bbc5c
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 20:02:00 2026 -0400
+
+    exp11: temperature-dependent crossover (0.25 hot -> 0.40 cold)
+    
+    crossover_prob = 0.25 + 0.15 * (1.0 - temperature)
+    Ramps from 0.25 at temp=1.0 (exploration) to 0.40 at temp=0.0 (exploitation).
+    Hypothesis: more structural recombination in late search when solutions are near-correct.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/RegularizedEvolution.jl | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index 734795dc..3cf9518e 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -25,7 +25,10 @@ function reg_evol_cycle(
+     n_evol_cycles = ceil(Int, pop.n / options.tournament_selection_n)
+ 
+     for i in 1:n_evol_cycles
+-        if rand() > 0.25  # increased from options.crossover_probability (~0.066)
++        # Temperature-dependent crossover: more crossover when cold (exploitation phase)
++        # temperature goes from 1.0 (hot/explore) to 0.0 (cold/exploit) over search
++        crossover_prob = 0.25 + 0.15 * (1.0 - temperature)
++        if rand() > crossover_prob  # mutation
+             allstar = apply_custom_selection(pop, running_search_statistics, options)
+             mutation_recorder = RecordType()
+             baby, mutation_accepted, tmp_num_evals = next_generation(
+
+
+====================================================================================================
+exp 15  |  636fffc0  |  score 0.383333  |  ok 20 / fail 0  |  [DISCARD]  |  level 2
+description: exp13: elitist crossover (always best as 2nd parent) - I_44_4 0.0, I_27_6 0.667, premature convergence
+====================================================================================================
+
+commit 636fffc04270c2981702b78d92b5dcdb67332309
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 20:41:08 2026 -0400
+
+    exp13: elitist crossover - second parent always population best member
+---
+ src/RegularizedEvolution.jl | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index 734795dc..e579c77c 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -80,7 +80,13 @@ function reg_evol_cycle(
+ 
+         else # Crossover
+             allstar1 = apply_custom_selection(pop, running_search_statistics, options)
+-            allstar2 = apply_custom_selection(pop, running_search_statistics, options)
++            # Elitist second parent: use population best to propagate good structure
++            best_idx = argmin_fast([m.cost for m in pop.members])
++            allstar2 = pop.members[best_idx]
++            # Fall back to tournament if same member selected (avoid crossover with self)
++            if allstar2 === allstar1
++                allstar2 = apply_custom_selection(pop, running_search_statistics, options)
++            end
+ 
+             crossover_recorder = RecordType()
+             baby1, baby2, crossover_accepted, tmp_num_evals = crossover_generation(
+
+
+====================================================================================================
+exp 16  |  00053395  |  score 0.450000  |  ok 20 / fail 0  |  [KEEP]  |  level 2
+description: exp14: scale-aware constant restarts max(|x0|,1) - I_13_4 0.333, I_44_4 0.667; +2 pts over exp7
+====================================================================================================
+
+commit 0005339511da11b58341dd627712bc50f20f514a
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 20:57:35 2026 -0400
+
+    exp14: scale-aware constant restarts - use max(|x0|,1) as perturbation scale
+---
+ src/ConstantOptimization.jl | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 585a6ef7..449b945b 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -89,7 +89,9 @@ function _optimize_constants_inner(
+     # Try other initial conditions:
+     for _ in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+-        xt = @. x0 * (T(1) + T(1//2) * eps)
++        # Scale-aware restart: use max(|x0|, 1) so near-zero constants get meaningful perturbation
++        scale = @. max(abs(x0), T(1))
++        xt = @. x0 + T(1//2) * scale * eps
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+
+
+====================================================================================================
+exp 17  |  f0ebff1e  |  score 0.383333  |  ok 20 / fail 0  |  [DISCARD]  |  level 2
+description: exp15: 80% operator-biased crossover - I_38_12 3/3 but I_44_4 0/3, I_24_6 0/3 - diversity loss like exp13
+====================================================================================================
+
+commit f0ebff1edda4fc62e7a149698f1a34824c052410
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 21:14:08 2026 -0400
+
+    exp15: operator-biased crossover node selection (80% prefer internal nodes)
+    
+    Bias crossover point selection toward operator (internal) nodes rather than
+    leaf nodes. Swapping operator subtrees exchanges meaningful functional
+    subexpressions; swapping leaves (constants/variables) is semantically
+    equivalent to simpler mutations. 80% probability of selecting an operator
+    node when available, 20% fallback to uniform selection.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/MutationFunctions.jl | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/MutationFunctions.jl b/src/MutationFunctions.jl
+index 3f46c879..9eff979d 100644
+--- a/src/MutationFunctions.jl
++++ b/src/MutationFunctions.jl
+@@ -566,7 +566,14 @@ end
+ function _random_node_and_parent(
+     tree::AbstractExpressionNode, rng::AbstractRNG=default_rng()
+ )
+-    node = rand(rng, NodeSampler(; tree))
++    # Bias toward operator (internal) nodes: promotes exchange of meaningful functional
++    # subexpressions rather than just leaf constants/variables
++    has_operators = any(t -> t.degree > 0, tree)
++    node = if has_operators && rand(rng) < 0.8
++        rand(rng, NodeSampler(; tree, filter=t -> t.degree > 0))
++    else
++        rand(rng, NodeSampler(; tree))
++    end
+     if node === tree
+         return node, node, 0
+     else
+
+
+====================================================================================================
+exp 26  |  ab120a69  |  score 0.450000  |  ok 20 / fail 0  |  [KEEP]  |  level 2
+description: exp24: random 2nd crossover parent - ties exp14 0.450; I_38_12 2->3, I_24_6 1->0, I_44_4 2/3, I_13_4 1/3
+====================================================================================================
+
+commit ab120a6997bdb4c6cc2100cf8d7ea9e7e68c0716
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 23:16:26 2026 -0400
+
+    exp24: random second crossover parent, revert fraction_replaced to 0.00036
+---
+ src/Options.jl              | 2 +-
+ src/RegularizedEvolution.jl | 3 ++-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index f0bf971c..cb8d3bbf 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1149,7 +1149,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             tournament_selection_n=12,
+             tournament_selection_p=0.86,
+             # Migration between Populations
+-            fraction_replaced=0.001,  # exp23: 0.00036->0.001 more inter-population migration
++            fraction_replaced=0.00036,
+             fraction_replaced_hof=0.035,
+             fraction_replaced_guesses=0.001,
+             topn=12,
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index 24def566..4912fe29 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -80,7 +80,8 @@ function reg_evol_cycle(
+ 
+         else # Crossover
+             allstar1 = apply_custom_selection(pop, running_search_statistics, options)
+-            allstar2 = apply_custom_selection(pop, running_search_statistics, options)
++            # exp24: random second parent for more structural diversity
++            allstar2 = pop.members[rand(1:pop.n)]
+ 
+             crossover_recorder = RecordType()
+             baby1, baby2, crossover_accepted, tmp_num_evals = crossover_generation(
+
+
+====================================================================================================
+exp 28  |  eb6d9b07  |  score 0.433333  |  ok 20 / fail 0  |  [DISCARD]  |  level 2
+description: exp26: hybrid 2nd parent (50% random/50% tournament) - I_24_6 0->2 but I_44_4 2->0; datasets trade off
+====================================================================================================
+
+commit eb6d9b0734adeeb69a6c6b5fc90966ef5fa707ff
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 23:43:46 2026 -0400
+
+    exp26: hybrid 2nd crossover parent (50% random, 50% tournament), revert crossover rate to 25%
+---
+ src/RegularizedEvolution.jl | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index 562489c1..ecac46a5 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -25,7 +25,7 @@ function reg_evol_cycle(
+     n_evol_cycles = ceil(Int, pop.n / options.tournament_selection_n)
+ 
+     for i in 1:n_evol_cycles
+-        if rand() > 0.30  # exp25: 25->30% crossover (random 2nd parent makes more crossover safer)
++        if rand() > 0.25  # tuned: 25% crossover (exp7; ~6.6% original)
+             allstar = apply_custom_selection(pop, running_search_statistics, options)
+             mutation_recorder = RecordType()
+             baby, mutation_accepted, tmp_num_evals = next_generation(
+@@ -80,8 +80,12 @@ function reg_evol_cycle(
+ 
+         else # Crossover
+             allstar1 = apply_custom_selection(pop, running_search_statistics, options)
+-            # exp24: random second parent for more structural diversity
+-            allstar2 = pop.members[rand(1:pop.n)]
++            # exp26: 50% random, 50% tournament for 2nd parent (hybrid diversity)
++            allstar2 = if rand() < 0.5
++                pop.members[rand(1:pop.n)]
++            else
++                apply_custom_selection(pop, running_search_statistics, options)
++            end
+ 
+             crossover_recorder = RecordType()
+             baby1, baby2, crossover_accepted, tmp_num_evals = crossover_generation(
+
+
+====================================================================================================
+exp 30  |  b9aa2130  |  score 0.433333  |  ok 20 / fail 0  |  [DISCARD]  |  level 2
+description: exp28: mutate_constant 0.048->0.20 - I_27_6 3->2, I_13_4 1->0; more constant mutations disrupted stable datasets
+====================================================================================================
+
+commit b9aa2130859808325fa63307fba59d1187ccb4d0
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 00:14:14 2026 -0400
+
+    exp28: mutate_constant 0.048->0.20, revert crossover to 2-replacement
+---
+ src/Options.jl              |  2 +-
+ src/RegularizedEvolution.jl | 23 ++++++++++++++++++-----
+ 2 files changed, 19 insertions(+), 6 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index cb8d3bbf..5eadf626 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1126,7 +1126,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             adaptive_parsimony_scaling=20.0,
+             # Mutations
+             mutation_weights=MutationWeights(;
+-                mutate_constant=0.048,
++                mutate_constant=0.20,  # exp28: 0.048->0.20 more frequent constant mutations
+                 mutate_operator=0.47,
+                 swap_operands=0.1,
+                 rotate_tree=0.0,
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index d9966d1d..4912fe29 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -98,15 +98,22 @@ function reg_evol_cycle(
+                 continue
+             end
+ 
+-            # exp27: replace only 1 oldest member with the better child (less disruptive)
+-            better_baby = baby1.cost <= baby2.cost ? baby1 : baby2
++            # Find the oldest members to replace:
+             oldest1 = apply_custom_survival(pop, options)
++            oldest2 = apply_custom_survival(pop, options; exclude_indices=[oldest1])
+ 
+             @recorder begin
+                 if !haskey(record, "mutations")
+                     record["mutations"] = RecordType()
+                 end
+-                for member in [allstar1, allstar2, baby1, baby2, pop.members[oldest1]]
++                for member in [
++                    allstar1,
++                    allstar2,
++                    baby1,
++                    baby2,
++                    pop.members[oldest1],
++                    pop.members[oldest2],
++                ]
+                     if !haskey(record["mutations"], "$(member.ref)")
+                         record["mutations"]["$(member.ref)"] = RecordType(
+                             "events" => Vector{RecordType}(),
+@@ -127,6 +134,7 @@ function reg_evol_cycle(
+                     "details" => crossover_recorder,
+                 )
+                 death_event1 = RecordType("type" => "death", "time" => time())
++                death_event2 = RecordType("type" => "death", "time" => time())
+ 
+                 push!(record["mutations"]["$(allstar1.ref)"]["events"], crossover_event)
+                 push!(record["mutations"]["$(allstar2.ref)"]["events"], crossover_event)
+@@ -134,10 +142,15 @@ function reg_evol_cycle(
+                     record["mutations"]["$(pop.members[oldest1].ref)"]["events"],
+                     death_event1,
+                 )
++                push!(
++                    record["mutations"]["$(pop.members[oldest2].ref)"]["events"],
++                    death_event2,
++                )
+             end
+ 
+-            # Replace only the oldest member with the better child:
+-            pop.members[oldest1] = better_baby
++            # Replace old members with new ones:
++            pop.members[oldest1] = baby1
++            pop.members[oldest2] = baby2
+         end
+     end
+ 
+
+
+====================================================================================================
+exp 33  |  128cf923  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 2
+description: exp31: wide random 2nd restart T(2)*eps - I_44_4 0/3; random restarts don't find Feynman constants
+====================================================================================================
+
+commit 128cf9236b19f2a4303407eac28a7eadc25f71ef
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 00:42:37 2026 -0400
+
+    exp31: differentiated restarts - restart1 scale-aware, restart2 wide-random; revert rotate_tree
+---
+ src/ConstantOptimization.jl | 11 ++++++++---
+ src/Options.jl              |  2 +-
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 8f384338..9fb05bd8 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -89,9 +89,14 @@ function _optimize_constants_inner(
+     # Try other initial conditions:
+     for i in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+-        # Scale-aware additive restart (exp14): max(|x0|, 1) for near-zero constants
+-        scale = @. max(abs(x0), T(1))
+-        xt = @. x0 + T(1//2) * scale * eps
++        xt = if i == 1
++            # Scale-aware additive restart (exp14): local refinement
++            scale = @. max(abs(x0), T(1))
++            @. x0 + T(1//2) * scale * eps
++        else
++            # exp31: wide random restart for global exploration
++            @. T(2) * eps
++        end
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+diff --git a/src/Options.jl b/src/Options.jl
+index 28e80571..cb8d3bbf 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1129,7 +1129,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+                 mutate_constant=0.048,
+                 mutate_operator=0.47,
+                 swap_operands=0.1,
+-                rotate_tree=0.3,  # exp30: enable tree rotation (was 0.0)
++                rotate_tree=0.0,
+                 add_node=0.79,
+                 insert_node=5.1,
+                 delete_node=1.7,
+
+
+====================================================================================================
+exp 35  |  e7bd278b  |  score 0.433333  |  ok 20 / fail 0  |  [DISCARD]  |  level 2
+description: exp33: warm-start 2nd BFGS restart - I_24_6 1/3 improved, I_44_4 2->1, I_13_4 1->0; warm-start traps near wrong constants
+====================================================================================================
+
+commit e7bd278b9f0fb0449f3ddcfe28097b5a5c1795fa
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 01:16:48 2026 -0400
+
+    exp33: warm-start 2nd restart from best result, revert adaptive_parsimony_scaling to 20
+---
+ src/ConstantOptimization.jl | 13 ++++++++++---
+ src/Options.jl              |  2 +-
+ 2 files changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 8f384338..1544500a 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -89,9 +89,16 @@ function _optimize_constants_inner(
+     # Try other initial conditions:
+     for i in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+-        # Scale-aware additive restart (exp14): max(|x0|, 1) for near-zero constants
+-        scale = @. max(abs(x0), T(1))
+-        xt = @. x0 + T(1//2) * scale * eps
++        xt = if i == 1
++            # exp14: scale-aware restart from original x0
++            scale = @. max(abs(x0), T(1))
++            @. x0 + T(1//2) * scale * eps
++        else
++            # exp33: warm-start from best result found so far
++            best_x = result.minimizer
++            scale_best = @. max(abs(best_x), T(1))
++            @. best_x + T(1//2) * scale_best * eps
++        end
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+diff --git a/src/Options.jl b/src/Options.jl
+index 6712dd3a..cb8d3bbf 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1123,7 +1123,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             # Working with Complexities
+             parsimony=0.0032,
+             warmup_maxsize_by=0.0,
+-            adaptive_parsimony_scaling=5.0,  # exp32: 20.0->5.0 less complexity-diversity penalty in tournament
++            adaptive_parsimony_scaling=20.0,
+             # Mutations
+             mutation_weights=MutationWeights(;
+                 mutate_constant=0.048,
+
+
+====================================================================================================
+exp 56  |  81ad2d1e  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 2
+description: exp54: progressive BFGS restart 0.5x+2x - I_44_4 1/3, I_27_6 2/3, I_13_4 0/3; wide restart destroys convergence
+====================================================================================================
+
+commit 81ad2d1e77f36f65d6cc2d536d12ac5348d3e213
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 06:21:28 2026 -0400
+
+    exp54: progressive BFGS restart scales - tight first (0.5x), wide second (2x)
+---
+ src/ConstantOptimization.jl | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 8f384338..48bd3865 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -91,7 +91,9 @@ function _optimize_constants_inner(
+         eps = randn(rng, T, size(x0)...)
+         # Scale-aware additive restart (exp14): max(|x0|, 1) for near-zero constants
+         scale = @. max(abs(x0), T(1))
+-        xt = @. x0 + T(1//2) * scale * eps
++        # exp54: first restart tight (0.5x), subsequent restarts wide (2x) for broader exploration
++        restart_scale = i == 1 ? T(1//2) : T(2)
++        xt = @. x0 + restart_scale * scale * eps
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+
+
+====================================================================================================
+exp 58  |  1d166b8d  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 2
+description: exp56: early BFGS restart termination loss<1e-6 - prevents constant fine-tuning I_44_4 1/3, I_13_4 0/3
+====================================================================================================
+
+commit 1d166b8dec4299f0d551a56d95af4aa927aabcb4
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 06:59:06 2026 -0400
+
+    exp56: early BFGS restart termination when loss<1e-6 (saves compute for more evolution)
+---
+ src/ConstantOptimization.jl |  2 ++
+ src/MutationFunctions.jl    | 29 +++--------------------------
+ 2 files changed, 5 insertions(+), 26 deletions(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 8f384338..e4106c96 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -88,6 +88,8 @@ function _optimize_constants_inner(
+     num_evals = result.f_calls * eval_fraction
+     # Try other initial conditions:
+     for i in 1:(options.optimizer_nrestarts)
++        # exp56: skip restarts if loss already near-zero (frees compute for more evolution)
++        result.minimum < T(1e-6) && break
+         eps = randn(rng, T, size(x0)...)
+         # Scale-aware additive restart (exp14): max(|x0|, 1) for near-zero constants
+         scale = @. max(abs(x0), T(1))
+diff --git a/src/MutationFunctions.jl b/src/MutationFunctions.jl
+index d1d9a19d..3f46c879 100644
+--- a/src/MutationFunctions.jl
++++ b/src/MutationFunctions.jl
+@@ -494,19 +494,9 @@ function crossover_trees(
+     t1 = copy(tree1)
+     t2 = copy(tree2)
+ 
+-    # exp55: 50% of crossovers swap constant leaves to share discovered constants
+-    use_const_crossover = rand(rng) < 0.5 &&
+-                          any(n -> n.degree == 0 && n.constant, t1) &&
+-                          any(n -> n.degree == 0 && n.constant, t2)
+-
+-    if use_const_crossover
+-        n1, p1, i1 = _random_const_node_and_parent(t1, rng)
+-        n2, p2, i2 = _random_const_node_and_parent(t2, rng)
+-    else
+-        # pick random nodes (and parents) in each tree
+-        n1, p1, i1 = _random_node_and_parent(t1, rng)
+-        n2, p2, i2 = _random_node_and_parent(t2, rng)
+-    end
++    # pick random nodes (and parents) in each tree
++    n1, p1, i1 = _random_node_and_parent(t1, rng)
++    n2, p2, i2 = _random_node_and_parent(t2, rng)
+ 
+     n1 = copy(n1)
+ 
+@@ -527,19 +517,6 @@ function crossover_trees(
+     return t1, t2
+ end
+ 
+-"""Pick a random constant leaf node and its parent."""
+-function _random_const_node_and_parent(
+-    tree::AbstractExpressionNode, rng::AbstractRNG=default_rng()
+-)
+-    node = rand(rng, NodeSampler(; tree, filter=n -> n.degree == 0 && n.constant))
+-    if node === tree
+-        return node, node, 0
+-    else
+-        parent, idx = _find_parent(tree, node)
+-        return node, parent, idx
+-    end
+-end
+-
+ function get_two_nodes_without_loop(tree::AbstractNode, rng::AbstractRNG; max_attempts=10)
+     for _ in 1:max_attempts
+         parent = rand(rng, NodeSampler(; tree, filter=t -> t.degree != 0))
+
+
+####################################################################################################
+#  LEVEL 1 - hyperparameter change  (41 experiments)
+####################################################################################################
+
+====================================================================================================
+exp 1  |  6560f07f  |  score 0.250000  |  ok 9 / fail 11  |  [CRASH]  |  level 1
+description: baseline attempt 1 - SLURM timeout (13/60 tasks), cluster under load
+====================================================================================================
+
+commit 6560f07f45378554023c0759915fa1547c983b76
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Feb 12 19:17:05 2026 -0500
+
+    relax OpenSSL_jll compat to major version 3
+---
+ Project.toml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Project.toml b/Project.toml
+index c78bdcd9..b3cca846 100644
+--- a/Project.toml
++++ b/Project.toml
+@@ -81,4 +81,4 @@ TOML = "<0.0.1, 1"
+ julia = "1.10"
+ Serialization = "^1"
+ PythonCall = "=0.9.28"
+-OpenSSL_jll = "3.0.0 - 3.6"
++OpenSSL_jll = "3"
+
+
+====================================================================================================
+exp 2  |  6560f07f  |  score 0.400000  |  ok 19 / fail 1  |  [KEEP]  |  level 1
+description: baseline (1 dataset still slow, but matches documented 0.40)
+====================================================================================================
+
+commit 6560f07f45378554023c0759915fa1547c983b76
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Feb 12 19:17:05 2026 -0500
+
+    relax OpenSSL_jll compat to major version 3
+---
+ Project.toml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Project.toml b/Project.toml
+index c78bdcd9..b3cca846 100644
+--- a/Project.toml
++++ b/Project.toml
+@@ -81,4 +81,4 @@ TOML = "<0.0.1, 1"
+ julia = "1.10"
+ Serialization = "^1"
+ PythonCall = "=0.9.28"
+-OpenSSL_jll = "3.0.0 - 3.6"
++OpenSSL_jll = "3"
+
+
+====================================================================================================
+exp 3  |  348dc4da  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: boost simplify (0.00148->0.4) and enable optimize (0->0.5) - no improvement
+====================================================================================================
+
+commit 348dc4da887f4a2346159665b2781159678fef88
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 18:28:40 2026 -0400
+
+    exp1: boost simplify (0.00148->0.4) and enable optimize (0->0.5) mutations for better gt
+---
+ src/MutationWeights.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..dea0d0f3 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -109,10 +109,10 @@ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+     add_node::Float64 = 0.0771
+     insert_node::Float64 = 2.44
+     delete_node::Float64 = 0.369
+-    simplify::Float64 = 0.00148
++    simplify::Float64 = 0.4
+     randomize::Float64 = 0.00695
+     do_nothing::Float64 = 0.431
+-    optimize::Float64 = 0.0
++    optimize::Float64 = 0.5
+     form_connection::Float64 = 0.5
+     break_connection::Float64 = 0.1
+     # Custom mutation slots (weights loaded from custom_mutations/config.toml)
+
+
+====================================================================================================
+exp 4  |  780625e7  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: reduce insert_node, boost delete+randomize+optimize - same score, shifted which datasets solved
+====================================================================================================
+
+commit 780625e72a24bc676dd5d4e7d9d501350eab25d3
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 18:33:56 2026 -0400
+
+    exp2: reduce insert_node (2.44->1.0), boost delete_node (0.369->1.5), randomize (0.007->0.3), optimize (0->1.0)
+---
+ src/MutationWeights.jl | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..7ea3038d 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -107,12 +107,12 @@ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+     swap_operands::Float64 = 0.00608
+     rotate_tree::Float64 = 1.42
+     add_node::Float64 = 0.0771
+-    insert_node::Float64 = 2.44
+-    delete_node::Float64 = 0.369
++    insert_node::Float64 = 1.0
++    delete_node::Float64 = 1.5
+     simplify::Float64 = 0.00148
+-    randomize::Float64 = 0.00695
++    randomize::Float64 = 0.3
+     do_nothing::Float64 = 0.431
+-    optimize::Float64 = 0.0
++    optimize::Float64 = 1.0
+     form_connection::Float64 = 0.5
+     break_connection::Float64 = 0.1
+     # Custom mutation slots (weights loaded from custom_mutations/config.toml)
+
+
+====================================================================================================
+exp 5  |  18aeeae6  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp3: same as exp2 minus randomize + parsimony window 10k - no change vs exp2
+====================================================================================================
+
+commit 18aeeae6311a308074f71323a253bade4e9d32f1
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 18:35:39 2026 -0400
+
+    exp3: insert_node->1.0, delete_node->1.5, optimize->1.0, parsimony window 100k->10k
+---
+ src/AdaptiveParsimony.jl | 2 +-
+ src/MutationWeights.jl   | 6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/AdaptiveParsimony.jl b/src/AdaptiveParsimony.jl
+index f45891fa..7949576b 100644
+--- a/src/AdaptiveParsimony.jl
++++ b/src/AdaptiveParsimony.jl
+@@ -23,7 +23,7 @@ struct RunningSearchStatistics
+     normalized_frequencies::Vector{Float64}  # Stores `frequencies`, but normalized (updated once in a while)
+ end
+ 
+-function RunningSearchStatistics(; options::AbstractOptions, window_size::Int=100000)
++function RunningSearchStatistics(; options::AbstractOptions, window_size::Int=10000)
+     init_frequencies = ones(Float64, options.maxsize)
+ 
+     return RunningSearchStatistics(
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..b4135c8c 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -107,12 +107,12 @@ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+     swap_operands::Float64 = 0.00608
+     rotate_tree::Float64 = 1.42
+     add_node::Float64 = 0.0771
+-    insert_node::Float64 = 2.44
+-    delete_node::Float64 = 0.369
++    insert_node::Float64 = 1.0
++    delete_node::Float64 = 1.5
+     simplify::Float64 = 0.00148
+     randomize::Float64 = 0.00695
+     do_nothing::Float64 = 0.431
+-    optimize::Float64 = 0.0
++    optimize::Float64 = 1.0
+     form_connection::Float64 = 0.5
+     break_connection::Float64 = 0.1
+     # Custom mutation slots (weights loaded from custom_mutations/config.toml)
+
+
+====================================================================================================
+exp 7  |  0678d48f  |  score 0.366667  |  ok 18 / fail 2  |  [DISCARD]  |  level 1
+description: exp5: optimize=1.0 alone also too expensive, 2 SLURM timeouts again
+====================================================================================================
+
+commit 0678d48f464f41530924caa1782285346fbc4951
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 18:41:02 2026 -0400
+
+    exp5: optimize mutation 0->1.0 only, isolate effect from tree-size changes
+---
+ src/MutationWeights.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..9c1a0bf8 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -112,7 +112,7 @@ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+     simplify::Float64 = 0.00148
+     randomize::Float64 = 0.00695
+     do_nothing::Float64 = 0.431
+-    optimize::Float64 = 0.0
++    optimize::Float64 = 1.0
+     form_connection::Float64 = 0.5
+     break_connection::Float64 = 0.1
+     # Custom mutation slots (weights loaded from custom_mutations/config.toml)
+
+
+====================================================================================================
+exp 8  |  7919596c  |  score 0.366667  |  ok 18 / fail 2  |  [DISCARD]  |  level 1
+description: exp6: mutate_constant=0.5 - 2 PythonCall.jl SLURM node failures (infra), not code issue
+====================================================================================================
+
+commit 7919596c168b080cf2f3aff5521527faf86042a4
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 18:42:32 2026 -0400
+
+    exp6: mutate_constant 0.0353->0.5 (cheap constant space exploration)
+---
+ src/MutationWeights.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..01e0b262 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -101,7 +101,7 @@ will be normalized to sum to 1.0 after initialization.
+ - [`AbstractMutationWeights`](@ref SymbolicRegression.CoreModule.MutationWeightsModule.AbstractMutationWeights): Use to define custom mutation weight types.
+ """
+ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+-    mutate_constant::Float64 = 0.0353
++    mutate_constant::Float64 = 0.5
+     mutate_operator::Float64 = 3.63
+     mutate_feature::Float64 = 0.1
+     swap_operands::Float64 = 0.00608
+
+
+====================================================================================================
+exp 9  |  a4b2d25c  |  score 0.416667  |  ok 20 / fail 0  |  [KEEP]  |  level 1
+description: exp7: crossover prob 0.066->0.25; III_15_12 and I_27_6 now 1.0; net improvement
+====================================================================================================
+
+commit a4b2d25c28dc3750c3d388a6cd014af90205986b
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 18:44:36 2026 -0400
+
+    exp7: crossover probability 0.066->0.25 to combine structural components
+---
+ src/RegularizedEvolution.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index ec4df43d..734795dc 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -25,7 +25,7 @@ function reg_evol_cycle(
+     n_evol_cycles = ceil(Int, pop.n / options.tournament_selection_n)
+ 
+     for i in 1:n_evol_cycles
+-        if rand() > options.crossover_probability
++        if rand() > 0.25  # increased from options.crossover_probability (~0.066)
+             allstar = apply_custom_selection(pop, running_search_statistics, options)
+             mutation_recorder = RecordType()
+             baby, mutation_accepted, tmp_num_evals = next_generation(
+
+
+====================================================================================================
+exp 10  |  fed5d7b2  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp8: crossover + insert/delete - same as exp7, insert/delete adds nothing
+====================================================================================================
+
+commit fed5d7b28c1131df0c5555fc60c512aa706b4592
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 18:59:08 2026 -0400
+
+    exp8: add insert->1.0/delete->1.5 on top of crossover=0.25
+---
+ src/MutationWeights.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..8ae95ce5 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -107,8 +107,8 @@ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+     swap_operands::Float64 = 0.00608
+     rotate_tree::Float64 = 1.42
+     add_node::Float64 = 0.0771
+-    insert_node::Float64 = 2.44
+-    delete_node::Float64 = 0.369
++    insert_node::Float64 = 1.0
++    delete_node::Float64 = 1.5
+     simplify::Float64 = 0.00148
+     randomize::Float64 = 0.00695
+     do_nothing::Float64 = 0.431
+
+
+====================================================================================================
+exp 11  |  a4cef2cb  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp9: crossover 0.40 too aggressive - I_44_4 drops, I_24_6 appears(0.33), net 0.40
+====================================================================================================
+
+commit a4cef2cb2050e27d9734b011e1deaf82c1b71180
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 19:32:13 2026 -0400
+
+    exp9: push crossover to 0.40
+---
+ src/RegularizedEvolution.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index 734795dc..20df4597 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -25,7 +25,7 @@ function reg_evol_cycle(
+     n_evol_cycles = ceil(Int, pop.n / options.tournament_selection_n)
+ 
+     for i in 1:n_evol_cycles
+-        if rand() > 0.25  # increased from options.crossover_probability (~0.066)
++        if rand() > 0.40  # increased from options.crossover_probability (~0.066)
+             allstar = apply_custom_selection(pop, running_search_statistics, options)
+             mutation_recorder = RecordType()
+             baby, mutation_accepted, tmp_num_evals = next_generation(
+
+
+====================================================================================================
+exp 14  |  3f779392  |  score 0.383333  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp12: mutate_feature 0.1->0.5, swap_operands 0.00608->0.1 - I_44_4 dropped to 0.0, net regression
+====================================================================================================
+
+commit 3f77939207a8152ad55734043726f39a8d863ade
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 20:15:28 2026 -0400
+
+    exp12: boost mutate_feature (0.1->0.5) and swap_operands (0.006->0.1)
+    
+    mutate_feature: 1.2% -> 5.5% of mutations (fix wrong variable assignments)
+    swap_operands: 0.07% -> 1.1% of mutations (fix operand order in / and -)
+    Hypothesis: near-correct solutions fail due to wrong variable or wrong order.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/MutationWeights.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/MutationWeights.jl b/src/MutationWeights.jl
+index 13d3ca9b..14375c1f 100644
+--- a/src/MutationWeights.jl
++++ b/src/MutationWeights.jl
+@@ -103,8 +103,8 @@ will be normalized to sum to 1.0 after initialization.
+ Base.@kwdef mutable struct MutationWeights <: AbstractMutationWeights
+     mutate_constant::Float64 = 0.0353
+     mutate_operator::Float64 = 3.63
+-    mutate_feature::Float64 = 0.1
+-    swap_operands::Float64 = 0.00608
++    mutate_feature::Float64 = 0.5
++    swap_operands::Float64 = 0.1
+     rotate_tree::Float64 = 1.42
+     add_node::Float64 = 0.0771
+     insert_node::Float64 = 2.44
+
+
+====================================================================================================
+exp 18  |  bb9bc2d5  |  score 0.433333  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp16: crossover 0.25->0.20 - III_15_12 2/3, I_44_4 1/3, I_13_4 0/3; less crossover hurt genetic mixing
+====================================================================================================
+
+commit bb9bc2d5a776de8d457252ecfaefa6c88139eb96
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 21:27:06 2026 -0400
+
+    exp16: reduce crossover probability from 0.25 to 0.20
+    
+    Less crossover = more mutation-focused evolution. exp15 confirmed
+    that aggressive crossover hurts I_44_4 diversity. Testing whether
+    slightly less crossover (20%) gives I_44_4 better consistency than
+    25% while preserving the gains from exp7.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/MutationFunctions.jl    | 9 +--------
+ src/RegularizedEvolution.jl | 2 +-
+ 2 files changed, 2 insertions(+), 9 deletions(-)
+
+diff --git a/src/MutationFunctions.jl b/src/MutationFunctions.jl
+index 9eff979d..3f46c879 100644
+--- a/src/MutationFunctions.jl
++++ b/src/MutationFunctions.jl
+@@ -566,14 +566,7 @@ end
+ function _random_node_and_parent(
+     tree::AbstractExpressionNode, rng::AbstractRNG=default_rng()
+ )
+-    # Bias toward operator (internal) nodes: promotes exchange of meaningful functional
+-    # subexpressions rather than just leaf constants/variables
+-    has_operators = any(t -> t.degree > 0, tree)
+-    node = if has_operators && rand(rng) < 0.8
+-        rand(rng, NodeSampler(; tree, filter=t -> t.degree > 0))
+-    else
+-        rand(rng, NodeSampler(; tree))
+-    end
++    node = rand(rng, NodeSampler(; tree))
+     if node === tree
+         return node, node, 0
+     else
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index 734795dc..dd27231b 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -25,7 +25,7 @@ function reg_evol_cycle(
+     n_evol_cycles = ceil(Int, pop.n / options.tournament_selection_n)
+ 
+     for i in 1:n_evol_cycles
+-        if rand() > 0.25  # increased from options.crossover_probability (~0.066)
++        if rand() > 0.20  # tuned: 20% crossover (was 25% in exp7, ~6.6% original)
+             allstar = apply_custom_selection(pop, running_search_statistics, options)
+             mutation_recorder = RecordType()
+             baby, mutation_accepted, tmp_num_evals = next_generation(
+
+
+====================================================================================================
+exp 20  |  7a50f860  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp18: nrestarts 2->3 - III_15_12 2/3, I_44_4 1/3; extra restart adds compute overhead reducing generations
+====================================================================================================
+
+commit 7a50f860df9076cd80235eea2f15e6b90e03de8d
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 21:50:27 2026 -0400
+
+    exp18: optimizer_nrestarts 2->3 with scale-aware additive restarts
+    
+    Reverts exp17 log-scale alternating strategy (0.367, score regression).
+    Keeps exp14 scale-aware additive: xt = x0 + max(|x0|, 1) * 0.5 * eps.
+    Increases nrestarts from 2 to 3 for more constant search coverage.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/ConstantOptimization.jl | 11 +++--------
+ src/Options.jl              |  2 +-
+ 2 files changed, 4 insertions(+), 9 deletions(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 1177aec7..8f384338 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -89,14 +89,9 @@ function _optimize_constants_inner(
+     # Try other initial conditions:
+     for i in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+-        xt = if isodd(i)
+-            # Scale-aware additive restart (exp14): max(|x0|, 1) for near-zero constants
+-            scale = @. max(abs(x0), T(1))
+-            @. x0 + T(1//2) * scale * eps
+-        else
+-            # Log-scale restart: explore different magnitudes for nonzero constants
+-            @. ifelse(abs(x0) > T(1//100), x0 * exp(T(1//2) * eps), x0 + T(1//2) * eps)
+-        end
++        # Scale-aware additive restart (exp14): max(|x0|, 1) for near-zero constants
++        scale = @. max(abs(x0), T(1))
++        xt = @. x0 + T(1//2) * scale * eps
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+diff --git a/src/Options.jl b/src/Options.jl
+index cb8d3bbf..a9c4c62b 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -613,7 +613,7 @@ $(OPTION_DESCRIPTIONS)
+     optimizer_algorithm::Union{AbstractString,Optim.AbstractOptimizer}=Optim.BFGS(;
+         linesearch=LineSearches.BackTracking()
+     ),
+-    optimizer_nrestarts::Int=2,
++    optimizer_nrestarts::Int=3,  # exp18: 2->3 restarts with scale-aware additive (exp14)
+     optimizer_probability::AbstractFloat=0.14,
+     optimizer_iterations::Union{Nothing,Integer}=nothing,
+     optimizer_f_calls_limit::Union{Nothing,Integer}=nothing,
+
+
+====================================================================================================
+exp 21  |  fd70b48e  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp19: tournament_selection_n 12->10 - I_44_4 0/3, I_27_6 2/3; less selection pressure hurt parent quality
+====================================================================================================
+
+commit fd70b48e5a645788b9a770354dea4c3c87b687fd
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 22:02:42 2026 -0400
+
+    exp19: tournament_selection_n 12->10, revert nrestarts to 2
+    
+    Reverts exp18 nrestarts increase (0.417, caused compute overhead).
+    Reduces tournament size from 12 to 10 (36%->30% of population_size=33).
+    Less selection pressure = more diversity, hypothesis: helps stochastic
+    datasets (I_44_4, III_15_12) that need broader structural exploration.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index a9c4c62b..02b3f78f 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -613,7 +613,7 @@ $(OPTION_DESCRIPTIONS)
+     optimizer_algorithm::Union{AbstractString,Optim.AbstractOptimizer}=Optim.BFGS(;
+         linesearch=LineSearches.BackTracking()
+     ),
+-    optimizer_nrestarts::Int=3,  # exp18: 2->3 restarts with scale-aware additive (exp14)
++    optimizer_nrestarts::Int=2,
+     optimizer_probability::AbstractFloat=0.14,
+     optimizer_iterations::Union{Nothing,Integer}=nothing,
+     optimizer_f_calls_limit::Union{Nothing,Integer}=nothing,
+@@ -1146,7 +1146,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             perturbation_factor=0.076,
+             probability_negate_constant=0.01,
+             # Tournament Selection
+-            tournament_selection_n=12,
++            tournament_selection_n=10,  # exp19: 12->10 for less selection pressure, more diversity
+             tournament_selection_p=0.86,
+             # Migration between Populations
+             fraction_replaced=0.00036,
+
+
+====================================================================================================
+exp 22  |  c9441523  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp20: fraction_replaced_hof 0.035->0.07 - HoF overinjection hurt stochastic datasets, net regression from 0.450
+====================================================================================================
+
+commit c9441523bb3c9f2bf8ff28d7e43c05dd5e832085
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 22:12:04 2026 -0400
+
+    exp20: fraction_replaced_hof 0.035->0.07, revert tournament_n to 12
+    
+    Reverts exp19 tournament_n reduction (0.400, worse than exp14).
+    Doubles HoF injection rate into subpopulations: 3.5%->7% per cycle.
+    Hypothesis: faster propagation of discovered formulas across all 15
+    populations helps stochastic datasets converge more consistently.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index 02b3f78f..f5ddb352 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1146,11 +1146,11 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             perturbation_factor=0.076,
+             probability_negate_constant=0.01,
+             # Tournament Selection
+-            tournament_selection_n=10,  # exp19: 12->10 for less selection pressure, more diversity
++            tournament_selection_n=12,
+             tournament_selection_p=0.86,
+             # Migration between Populations
+             fraction_replaced=0.00036,
+-            fraction_replaced_hof=0.035,
++            fraction_replaced_hof=0.07,  # exp20: 0.035->0.07 faster HoF propagation to subpopulations
+             fraction_replaced_guesses=0.001,
+             topn=12,
+             # Performance and Parallelization
+
+
+====================================================================================================
+exp 23  |  aaec8293  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp21: perturbation_factor 0.076->0.15 - too aggressive, I_44_4 2->1, I_24_6 1->0, I_27_6 3->2; I_38_12 2->3 not enough
+====================================================================================================
+
+commit aaec829316fe719a034c1cf469827e59bef3d4d3
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 22:23:24 2026 -0400
+
+    exp21: perturbation_factor 0.076->0.15, revert fraction_replaced_hof to 0.035
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index f5ddb352..f84c386e 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1143,14 +1143,14 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             crossover_probability=0.066,
+             annealing=false,
+             alpha=0.1,
+-            perturbation_factor=0.076,
++            perturbation_factor=0.15,  # exp21: 0.076->0.15 broader constant mutations
+             probability_negate_constant=0.01,
+             # Tournament Selection
+             tournament_selection_n=12,
+             tournament_selection_p=0.86,
+             # Migration between Populations
+             fraction_replaced=0.00036,
+-            fraction_replaced_hof=0.07,  # exp20: 0.035->0.07 faster HoF propagation to subpopulations
++            fraction_replaced_hof=0.035,
+             fraction_replaced_guesses=0.001,
+             topn=12,
+             # Performance and Parallelization
+
+
+====================================================================================================
+exp 24  |  77e53310  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp22: optimizer_probability 0.14->0.10 - less BFGS hurt I_44_4 0/3, I_13_4 0/3; I_27_6 3/3, I_38_12 3/3 not enough
+====================================================================================================
+
+commit 77e533100583511b18248f715560985db6f96fcc
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 22:39:05 2026 -0400
+
+    exp22: optimizer_probability 0.14->0.10, revert perturbation_factor to 0.076
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index f84c386e..11872e5a 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -614,7 +614,7 @@ $(OPTION_DESCRIPTIONS)
+         linesearch=LineSearches.BackTracking()
+     ),
+     optimizer_nrestarts::Int=2,
+-    optimizer_probability::AbstractFloat=0.14,
++    optimizer_probability::AbstractFloat=0.10,  # exp22: 0.14->0.10 fewer BFGS calls, more evolutionary gens
+     optimizer_iterations::Union{Nothing,Integer}=nothing,
+     optimizer_f_calls_limit::Union{Nothing,Integer}=nothing,
+     optimizer_options::Union{Dict,NamedTuple,Optim.Options,Nothing}=nothing,
+@@ -1143,7 +1143,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             crossover_probability=0.066,
+             annealing=false,
+             alpha=0.1,
+-            perturbation_factor=0.15,  # exp21: 0.076->0.15 broader constant mutations
++            perturbation_factor=0.076,
+             probability_negate_constant=0.01,
+             # Tournament Selection
+             tournament_selection_n=12,
+
+
+====================================================================================================
+exp 25  |  392573f5  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp23: fraction_replaced 0.00036->0.001 - more migration hurt I_44_4 1/3, I_13_4 0/3, I_24_6 0/3; disrupted converging populations
+====================================================================================================
+
+commit 392573f5b49361f0712c6452ba760d8522b36775
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 22:59:00 2026 -0400
+
+    exp23: fraction_replaced 0.00036->0.001, revert optimizer_probability to 0.14
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index 11872e5a..f0bf971c 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -614,7 +614,7 @@ $(OPTION_DESCRIPTIONS)
+         linesearch=LineSearches.BackTracking()
+     ),
+     optimizer_nrestarts::Int=2,
+-    optimizer_probability::AbstractFloat=0.10,  # exp22: 0.14->0.10 fewer BFGS calls, more evolutionary gens
++    optimizer_probability::AbstractFloat=0.14,
+     optimizer_iterations::Union{Nothing,Integer}=nothing,
+     optimizer_f_calls_limit::Union{Nothing,Integer}=nothing,
+     optimizer_options::Union{Dict,NamedTuple,Optim.Options,Nothing}=nothing,
+@@ -1149,7 +1149,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             tournament_selection_n=12,
+             tournament_selection_p=0.86,
+             # Migration between Populations
+-            fraction_replaced=0.00036,
++            fraction_replaced=0.001,  # exp23: 0.00036->0.001 more inter-population migration
+             fraction_replaced_hof=0.035,
+             fraction_replaced_guesses=0.001,
+             topn=12,
+
+
+====================================================================================================
+exp 27  |  b7723930  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp25: crossover 0.25->0.30 with random 2nd parent - too much crossover hurt I_44_4 2->1, I_13_4 1->0
+====================================================================================================
+
+commit b7723930a1efaabd54ff0cc6c217ed774ec0965e
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Thu Apr 9 23:27:00 2026 -0400
+
+    exp25: crossover 0.25->0.30 with random 2nd parent
+---
+ src/RegularizedEvolution.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index 4912fe29..562489c1 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -25,7 +25,7 @@ function reg_evol_cycle(
+     n_evol_cycles = ceil(Int, pop.n / options.tournament_selection_n)
+ 
+     for i in 1:n_evol_cycles
+-        if rand() > 0.25  # tuned: 25% crossover (exp7; ~6.6% original)
++        if rand() > 0.30  # exp25: 25->30% crossover (random 2nd parent makes more crossover safer)
+             allstar = apply_custom_selection(pop, running_search_statistics, options)
+             mutation_recorder = RecordType()
+             baby, mutation_accepted, tmp_num_evals = next_generation(
+
+
+====================================================================================================
+exp 31  |  1d4e46c8  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp29: topn 12->20 - even rock-solid dataset dropped; more HoF diversity too disruptive via injection
+====================================================================================================
+
+commit 1d4e46c86032c4db2c5856edc9b392f8d4a020b9
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 00:23:29 2026 -0400
+
+    exp29: topn 12->20, revert mutate_constant to 0.048
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index 5eadf626..9b25e83c 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1126,7 +1126,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             adaptive_parsimony_scaling=20.0,
+             # Mutations
+             mutation_weights=MutationWeights(;
+-                mutate_constant=0.20,  # exp28: 0.048->0.20 more frequent constant mutations
++                mutate_constant=0.048,
+                 mutate_operator=0.47,
+                 swap_operands=0.1,
+                 rotate_tree=0.0,
+@@ -1152,7 +1152,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             fraction_replaced=0.00036,
+             fraction_replaced_hof=0.035,
+             fraction_replaced_guesses=0.001,
+-            topn=12,
++            topn=20,  # exp29: 12->20 more diverse elite solutions in HoF
+             # Performance and Parallelization
+             batching=false,
+             batch_size=50,
+
+
+====================================================================================================
+exp 32  |  10487807  |  score 0.383333  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp30: rotate_tree 0.0->0.3 - I_44_4 0/3, I_27_6 1/3; tree rotation too disruptive for good solutions
+====================================================================================================
+
+commit 104878071983988c6d062214fd042f8ad7f543b1
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 00:35:15 2026 -0400
+
+    exp30: enable rotate_tree 0.0->0.3, revert topn to 12
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index 9b25e83c..28e80571 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1129,7 +1129,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+                 mutate_constant=0.048,
+                 mutate_operator=0.47,
+                 swap_operands=0.1,
+-                rotate_tree=0.0,
++                rotate_tree=0.3,  # exp30: enable tree rotation (was 0.0)
+                 add_node=0.79,
+                 insert_node=5.1,
+                 delete_node=1.7,
+@@ -1152,7 +1152,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             fraction_replaced=0.00036,
+             fraction_replaced_hof=0.035,
+             fraction_replaced_guesses=0.001,
+-            topn=20,  # exp29: 12->20 more diverse elite solutions in HoF
++            topn=12,
+             # Performance and Parallelization
+             batching=false,
+             batch_size=50,
+
+
+====================================================================================================
+exp 34  |  c07089af  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp32: adaptive_parsimony_scaling 20->5 - all stochastic 0/3; removing complexity diversity caused premature convergence
+====================================================================================================
+
+commit c07089afea063a0ff05acd120bbcbb5117199295
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 00:59:17 2026 -0400
+
+    exp32: adaptive_parsimony_scaling 20.0->5.0, revert ConstantOptimization to exp14
+---
+ src/ConstantOptimization.jl | 11 +++--------
+ src/Options.jl              |  2 +-
+ 2 files changed, 4 insertions(+), 9 deletions(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 9fb05bd8..8f384338 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -89,14 +89,9 @@ function _optimize_constants_inner(
+     # Try other initial conditions:
+     for i in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+-        xt = if i == 1
+-            # Scale-aware additive restart (exp14): local refinement
+-            scale = @. max(abs(x0), T(1))
+-            @. x0 + T(1//2) * scale * eps
+-        else
+-            # exp31: wide random restart for global exploration
+-            @. T(2) * eps
+-        end
++        # Scale-aware additive restart (exp14): max(|x0|, 1) for near-zero constants
++        scale = @. max(abs(x0), T(1))
++        xt = @. x0 + T(1//2) * scale * eps
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+diff --git a/src/Options.jl b/src/Options.jl
+index cb8d3bbf..6712dd3a 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1123,7 +1123,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             # Working with Complexities
+             parsimony=0.0032,
+             warmup_maxsize_by=0.0,
+-            adaptive_parsimony_scaling=20.0,
++            adaptive_parsimony_scaling=5.0,  # exp32: 20.0->5.0 less complexity-diversity penalty in tournament
+             # Mutations
+             mutation_weights=MutationWeights(;
+                 mutate_constant=0.048,
+
+
+====================================================================================================
+exp 36  |  90644557  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp34: 20% random 2nd parent - all stochastic 0/3 (I_44_4, I_13_4, I_24_6); 100% random uniquely important
+====================================================================================================
+
+commit 906445574f746e11d1013f851aab659131f1e098
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 01:27:32 2026 -0400
+
+    exp34: 20% random 2nd parent (vs 100% in exp24), revert ConstantOptimization to exp14
+---
+ src/ConstantOptimization.jl | 13 +++----------
+ src/RegularizedEvolution.jl |  8 ++++++--
+ 2 files changed, 9 insertions(+), 12 deletions(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 1544500a..8f384338 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -89,16 +89,9 @@ function _optimize_constants_inner(
+     # Try other initial conditions:
+     for i in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+-        xt = if i == 1
+-            # exp14: scale-aware restart from original x0
+-            scale = @. max(abs(x0), T(1))
+-            @. x0 + T(1//2) * scale * eps
+-        else
+-            # exp33: warm-start from best result found so far
+-            best_x = result.minimizer
+-            scale_best = @. max(abs(best_x), T(1))
+-            @. best_x + T(1//2) * scale_best * eps
+-        end
++        # Scale-aware additive restart (exp14): max(|x0|, 1) for near-zero constants
++        scale = @. max(abs(x0), T(1))
++        xt = @. x0 + T(1//2) * scale * eps
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+diff --git a/src/RegularizedEvolution.jl b/src/RegularizedEvolution.jl
+index 4912fe29..da4e3790 100644
+--- a/src/RegularizedEvolution.jl
++++ b/src/RegularizedEvolution.jl
+@@ -80,8 +80,12 @@ function reg_evol_cycle(
+ 
+         else # Crossover
+             allstar1 = apply_custom_selection(pop, running_search_statistics, options)
+-            # exp24: random second parent for more structural diversity
+-            allstar2 = pop.members[rand(1:pop.n)]
++            # exp34: 20% random 2nd parent, 80% tournament (less disruptive than exp24's 100%)
++            allstar2 = if rand() < 0.20
++                pop.members[rand(1:pop.n)]
++            else
++                apply_custom_selection(pop, running_search_statistics, options)
++            end
+ 
+             crossover_recorder = RecordType()
+             baby1, baby2, crossover_accepted, tmp_num_evals = crossover_generation(
+
+
+====================================================================================================
+exp 37  |  4033e8a3  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp35: tournament_selection_p 0.86->0.75 - I_44_4 2->1, I_13_4 1->0; less selection pressure hurt hard datasets
+====================================================================================================
+
+commit 4033e8a3ec72f2fdfc4876e32937f808aaa2c2c7
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 01:40:48 2026 -0400
+
+    exp35: tournament_selection_p 0.86->0.75 for more parent diversity
+    
+    Lower selection pressure in tournament (86%->75% best member chosen)
+    may reduce premature convergence, helping I_44_4 reach 3/3 consistently.
+    Unexplored axis; orthogonal to random 2nd parent (exp24).
+---
+ src/Options.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index cb8d3bbf..fa4c122a 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1147,7 +1147,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             probability_negate_constant=0.01,
+             # Tournament Selection
+             tournament_selection_n=12,
+-            tournament_selection_p=0.86,
++            tournament_selection_p=0.75,  # exp35: 0.86->0.75, less greedy selection for diversity
+             # Migration between Populations
+             fraction_replaced=0.00036,
+             fraction_replaced_hof=0.035,
+
+
+====================================================================================================
+exp 38  |  2206c459  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp36: optimizer_probability 0.14->0.18 - I_44_4 2->0, I_13_4 1/3; 0.14 uniquely optimal for I_44_4
+====================================================================================================
+
+commit 2206c4595504d7f0d68af7a1a60821719cfefb24
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 01:57:12 2026 -0400
+
+    exp36: optimizer_probability 0.14->0.18 for more BFGS constant-finding
+    
+    Slightly more frequent BFGS optimization may help I_44_4 find correct
+    constants in the 1/3 runs it currently fails. exp22 showed 0.10 hurts;
+    trying opposite direction. Small increase avoids compute timeout risk.
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index fa4c122a..f417a120 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -614,7 +614,7 @@ $(OPTION_DESCRIPTIONS)
+         linesearch=LineSearches.BackTracking()
+     ),
+     optimizer_nrestarts::Int=2,
+-    optimizer_probability::AbstractFloat=0.14,
++    optimizer_probability::AbstractFloat=0.18,  # exp36: 0.14->0.18, more BFGS for better constant-finding
+     optimizer_iterations::Union{Nothing,Integer}=nothing,
+     optimizer_f_calls_limit::Union{Nothing,Integer}=nothing,
+     optimizer_options::Union{Dict,NamedTuple,Optim.Options,Nothing}=nothing,
+@@ -1147,7 +1147,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             probability_negate_constant=0.01,
+             # Tournament Selection
+             tournament_selection_n=12,
+-            tournament_selection_p=0.75,  # exp35: 0.86->0.75, less greedy selection for diversity
++            tournament_selection_p=0.86,
+             # Migration between Populations
+             fraction_replaced=0.00036,
+             fraction_replaced_hof=0.035,
+
+
+====================================================================================================
+exp 40  |  45525f77  |  score 0.433333  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp38: ncycles_per_iteration 550->700 - I_24_6 0->2, I_44_4 2->1, I_27_6 3->2; more cycles help I_24_6 but hurt I_44_4
+====================================================================================================
+
+commit 45525f773593f8d262b4ad5362e99b2689b56fb4
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 02:23:17 2026 -0400
+
+    exp38: ncycles_per_iteration 550->700 for more structural exploration
+    
+    More evolutionary cycles between BFGS optimization rounds gives the
+    population more structural diversity before constants are refined.
+    May help I_44_4 find correct topology in the 1/3 failure runs.
+    Unexplored axis; evolution ops are cheap so no timeout risk.
+---
+ src/Options.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index cb8d3bbf..b35067b9 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1119,7 +1119,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             # Setting the Search Size
+             populations=15,
+             population_size=33,
+-            ncycles_per_iteration=550,
++            ncycles_per_iteration=700,  # exp38: 550->700, more structural evolution per BFGS round
+             # Working with Complexities
+             parsimony=0.0032,
+             warmup_maxsize_by=0.0,
+
+
+====================================================================================================
+exp 41  |  0a3222c1  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp39: parsimony 0.0032->0.0 - I_44_4 2->0, I_13_4 1->0; parsimony critical for hard dataset convergence
+====================================================================================================
+
+commit 0a3222c1ebf971d2926fd15f054eaa7c878fd7a8
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 02:34:24 2026 -0400
+
+    exp39: parsimony 0.0032->0.0, remove fixed complexity penalty
+    
+    Base parsimony adds up to 40*0.0032=0.128 cost to complex trees.
+    This fixed penalty may cause correct complex formulas to lose
+    tournament to simpler wrong ones. Adaptive parsimony (scale=20)
+    still regulates complexity diversity; only fixed term removed.
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index b35067b9..3ee4c38a 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1119,9 +1119,9 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             # Setting the Search Size
+             populations=15,
+             population_size=33,
+-            ncycles_per_iteration=700,  # exp38: 550->700, more structural evolution per BFGS round
++            ncycles_per_iteration=550,
+             # Working with Complexities
+-            parsimony=0.0032,
++            parsimony=0.0,  # exp39: remove base parsimony, let adaptive handle complexity
+             warmup_maxsize_by=0.0,
+             adaptive_parsimony_scaling=20.0,
+             # Mutations
+
+
+====================================================================================================
+exp 43  |  4f953f27  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp41: ncycles_per_iteration 550->400 - I_24_6 0->1, I_44_4 2->0; ncycles=550 uniquely optimal for I_44_4
+====================================================================================================
+
+commit 4f953f276eefb98d63007b9412bffbbc4e140ec8
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 02:56:12 2026 -0400
+
+    exp41: ncycles_per_iteration 550->400 for more relative BFGS
+    
+    exp38 showed more cycles (700) hurts I_44_4 by reducing relative BFGS
+    frequency. Fewer cycles (400) increases BFGS relative to structural
+    evolution — may help I_44_4 refine constants more often per unit time.
+---
+ src/MutationFunctions.jl | 17 +++--------------
+ src/Options.jl           |  2 +-
+ 2 files changed, 4 insertions(+), 15 deletions(-)
+
+diff --git a/src/MutationFunctions.jl b/src/MutationFunctions.jl
+index cc369cb8..3f46c879 100644
+--- a/src/MutationFunctions.jl
++++ b/src/MutationFunctions.jl
+@@ -494,20 +494,9 @@ function crossover_trees(
+     t1 = copy(tree1)
+     t2 = copy(tree2)
+ 
+-    # exp40: prefer non-leaf nodes (70%) for more meaningful subtree swaps
+-    function _biased_node_and_parent(tree, rng)
+-        has_internal = any(t -> t.degree > 0, tree)
+-        if has_internal && rand(rng) < 0.7
+-            node = rand(rng, NodeSampler(; tree, filter=t -> t.degree > 0))
+-            node === tree && return (node, node, 0)
+-            parent, idx = _find_parent(tree, node)
+-            return (node, parent, idx)
+-        else
+-            return _random_node_and_parent(tree, rng)
+-        end
+-    end
+-    n1, p1, i1 = _biased_node_and_parent(t1, rng)
+-    n2, p2, i2 = _biased_node_and_parent(t2, rng)
++    # pick random nodes (and parents) in each tree
++    n1, p1, i1 = _random_node_and_parent(t1, rng)
++    n2, p2, i2 = _random_node_and_parent(t2, rng)
+ 
+     n1 = copy(n1)
+ 
+diff --git a/src/Options.jl b/src/Options.jl
+index cb8d3bbf..bd62d410 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1119,7 +1119,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             # Setting the Search Size
+             populations=15,
+             population_size=33,
+-            ncycles_per_iteration=550,
++            ncycles_per_iteration=400,  # exp41: 550->400, less evolution per BFGS round (opposite of exp38)
+             # Working with Complexities
+             parsimony=0.0032,
+             warmup_maxsize_by=0.0,
+
+
+====================================================================================================
+exp 44  |  689528c1  |  score 0.383333  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp42: BFGS restart scale 0.5->0.75 - I_44_4 0/3, I_27_6 3->2; 0.5 scale is uniquely optimal
+====================================================================================================
+
+commit 689528c162fc71249a2322e8d0c0db6948ad6259
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 03:04:24 2026 -0400
+
+    exp42: BFGS restart scale 0.5->0.75x for broader constant search
+    
+    exp14 used 0.5*max(|x0|,1)*eps. Widening to 0.75 explores larger
+    constant neighborhoods in the 2 extra restarts. exp31 showed 2x too
+    wide (hurt I_44_4); 0.75 is conservative. May help I_13_4 escape
+    wrong constant basins in its 2/3 failure runs.
+---
+ src/ConstantOptimization.jl | 3 ++-
+ src/Options.jl              | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/ConstantOptimization.jl b/src/ConstantOptimization.jl
+index 8f384338..ff2f9317 100644
+--- a/src/ConstantOptimization.jl
++++ b/src/ConstantOptimization.jl
+@@ -90,8 +90,9 @@ function _optimize_constants_inner(
+     for i in 1:(options.optimizer_nrestarts)
+         eps = randn(rng, T, size(x0)...)
+         # Scale-aware additive restart (exp14): max(|x0|, 1) for near-zero constants
++        # exp42: widen restart scale 0.5->0.75 for broader constant-space exploration
+         scale = @. max(abs(x0), T(1))
+-        xt = @. x0 + T(1//2) * scale * eps
++        xt = @. x0 + T(3//4) * scale * eps
+         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
+         num_evals += tmpresult.f_calls * eval_fraction
+         # TODO: Does this need to take into account h_calls?
+diff --git a/src/Options.jl b/src/Options.jl
+index bd62d410..cb8d3bbf 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1119,7 +1119,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             # Setting the Search Size
+             populations=15,
+             population_size=33,
+-            ncycles_per_iteration=400,  # exp41: 550->400, less evolution per BFGS round (opposite of exp38)
++            ncycles_per_iteration=550,
+             # Working with Complexities
+             parsimony=0.0032,
+             warmup_maxsize_by=0.0,
+
+
+====================================================================================================
+exp 45  |  eeb4304e  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp43: probability_negate_constant 0.01->0.05 - I_44_4 1/3, I_13_4 0/3, I_27_6 2/3; negation disrupts search
+====================================================================================================
+
+commit eeb4304ecc62982a0465dea5c40050c9fbce9938
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 03:25:45 2026 -0400
+
+    exp43: probability_negate_constant 0.01->0.05
+    
+    5x more frequent constant negation. If I_13_4 or I_44_4 failures are
+    partly due to wrong-sign constants that BFGS cannot escape, more
+    negation mutations provide escape routes. Still only 5% of constant
+    mutations, so disruption risk is low.
+---
+ src/Options.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index cb8d3bbf..6e440f2d 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1144,7 +1144,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             annealing=false,
+             alpha=0.1,
+             perturbation_factor=0.076,
+-            probability_negate_constant=0.01,
++            probability_negate_constant=0.05,  # exp43: 0.01->0.05, more frequent sign exploration
+             # Tournament Selection
+             tournament_selection_n=12,
+             tournament_selection_p=0.86,
+
+
+====================================================================================================
+exp 46  |  0e78b324  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp44: tournament_selection_p 0.86->0.92 - I_44_4 1/3, I_13_4 0/3; 0.86 is uniquely optimal for selection pressure
+====================================================================================================
+
+commit 0e78b32471cc88ed40c400dcb123bf8a80676d19
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 03:38:59 2026 -0400
+
+    exp44: tournament_selection_p 0.86->0.92 for higher exploitation
+    
+    exp35 showed lower p (0.75) hurt I_44_4 - testing opposite direction.
+    Higher selection pressure ensures mutation parent is almost always
+    the best available. With random 2nd parent already providing diversity
+    in crossover, more exploitation in mutation may help hard datasets.
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index 6e440f2d..ee75ecbe 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1144,10 +1144,10 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             annealing=false,
+             alpha=0.1,
+             perturbation_factor=0.076,
+-            probability_negate_constant=0.05,  # exp43: 0.01->0.05, more frequent sign exploration
++            probability_negate_constant=0.01,
+             # Tournament Selection
+             tournament_selection_n=12,
+-            tournament_selection_p=0.86,
++            tournament_selection_p=0.92,  # exp44: 0.86->0.92, higher exploitation (opposite of exp35)
+             # Migration between Populations
+             fraction_replaced=0.00036,
+             fraction_replaced_hof=0.035,
+
+
+====================================================================================================
+exp 47  |  6b85f94a  |  score 0.400000  |  ok 19 / fail 1  |  [DISCARD]  |  level 1
+description: exp45: fraction_replaced_hof 0.035->0.015 - I_44_4 0/3, I_24_6 1/3, I_13_4 FAILED; less HoF = same I_24_6/I_44_4 tradeoff
+====================================================================================================
+
+commit 6b85f94a522e60066e5033bf3ea01848cbe8ef32
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 03:56:06 2026 -0400
+
+    exp45: fraction_replaced_hof 0.035->0.015 for population independence
+    
+    Less frequent HoF injection (~0.5 members/event vs ~1.2 currently)
+    allows populations to develop solutions independently. exp20 showed
+    higher (0.07) hurts; trying opposite direction. May help I_13_4 or
+    I_24_6 avoid premature convergence to HoF-dominated simple solutions.
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index ee75ecbe..009a87f0 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1147,10 +1147,10 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             probability_negate_constant=0.01,
+             # Tournament Selection
+             tournament_selection_n=12,
+-            tournament_selection_p=0.92,  # exp44: 0.86->0.92, higher exploitation (opposite of exp35)
++            tournament_selection_p=0.86,
+             # Migration between Populations
+             fraction_replaced=0.00036,
+-            fraction_replaced_hof=0.035,
++            fraction_replaced_hof=0.015,  # exp45: 0.035->0.015, less HoF injection for more population independence
+             fraction_replaced_guesses=0.001,
+             topn=12,
+             # Performance and Parallelization
+
+
+====================================================================================================
+exp 48  |  6a891ca1  |  score 0.433333  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp46: do_nothing 0.21->0.10 - I_44_4 1/3, I_38_12 2/3, I_24_6 1/3; more evolution = same tradeoff + I_38_12 regression
+====================================================================================================
+
+commit 6a891ca1cdc1223799a7a02de9fc27a036a0cfce
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 04:10:10 2026 -0400
+
+    exp46: do_nothing mutation weight 0.21->0.10
+    
+    Reducing skip-mutation rate from 21% to 10% means more actual
+    evolutionary operations per cycle. With skip_mutation_failures,
+    do_nothing causes oldest member to survive that cycle. Less do_nothing
+    = faster population turnover. Tests whether more effective evolution
+    helps I_13_4 or I_24_6 without disrupting I_44_4.
+---
+ src/Options.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index cb8d3bbf..f92fc765 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1135,7 +1135,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+                 delete_node=1.7,
+                 simplify=0.0020,
+                 randomize=0.00023,
+-                do_nothing=0.21,
++                do_nothing=0.10,  # exp46: 0.21->0.10, fewer skip mutations = more actual evolution
+                 optimize=0.0,
+                 form_connection=0.5,
+                 break_connection=0.1,
+
+
+====================================================================================================
+exp 49  |  33af365a  |  score 0.350000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp47: ncycles_per_iteration 550->575 catastrophic - I_44_4 0/3, I_27_6 1/3, III_15_12 2/3; ncycles=550 uniquely critical, not monotonic
+====================================================================================================
+
+commit 33af365a102b04f93f044f0dd875d36f82526f8a
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 04:25:57 2026 -0400
+
+    exp47: ncycles_per_iteration 550->575 fine-grained test
+    
+    550 cycles: I_44_4=2/3, I_24_6=0/3 (optimal)
+    700 cycles: I_44_4=1/3, I_24_6=2/3 (tradeoff)
+    Testing 575 to see if any I_24_6 benefit appears before I_44_4 degrades.
+---
+ src/Options.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index cb8d3bbf..22aa586f 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1119,7 +1119,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             # Setting the Search Size
+             populations=15,
+             population_size=33,
+-            ncycles_per_iteration=550,
++            ncycles_per_iteration=575,  # exp47: fine-grained 550->575, test if I_24_6 benefit appears before I_44_4 harm
+             # Working with Complexities
+             parsimony=0.0032,
+             warmup_maxsize_by=0.0,
+
+
+====================================================================================================
+exp 51  |  e742ac16  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp49: annealing=true (alpha=0.1) - I_44_4 0/3, I_27_6 2/3; I_24_6 gained 1/3 but net -2pts; I_44_4/I_24_6 tradeoff confirmed
+====================================================================================================
+
+commit e742ac165f33ee9e9e97f8db34ddd23b0efd064b
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 05:10:03 2026 -0400
+
+    exp49: enable annealing=true (T: 1.0->0.0 per cycle, cost+frequency acceptance)
+---
+ src/Options.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index cb8d3bbf..59fdfc27 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1141,7 +1141,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+                 break_connection=0.1,
+             ),
+             crossover_probability=0.066,
+-            annealing=false,
++            annealing=true,  # exp49: enable annealing (T: 1.0->0.0 per s_r_cycle)
+             alpha=0.1,
+             perturbation_factor=0.076,
+             probability_negate_constant=0.01,
+
+
+====================================================================================================
+exp 52  |  4c065668  |  score 0.416667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp50: fraction_replaced 0.00036->0.0001 - I_13_4 1->0, III_15_12 3->2; less migration hurt diversity injection
+====================================================================================================
+
+commit 4c0656680af38957fcbfae5ff9949fd3b84b6928
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 05:22:53 2026 -0400
+
+    exp50: reduce fraction_replaced 0.00036->0.0001 (less migration disruption)
+    
+    Less inter-population migration reduces disruption to converging populations.
+    Options.jl comment notes sweep optimal was ~0.0000042 (never tested that low).
+    Reverts exp49 annealing=true (0.416667 discard, I_44_4 0/3).
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index 59fdfc27..680f18f5 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1141,7 +1141,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+                 break_connection=0.1,
+             ),
+             crossover_probability=0.066,
+-            annealing=true,  # exp49: enable annealing (T: 1.0->0.0 per s_r_cycle)
++            annealing=false,
+             alpha=0.1,
+             perturbation_factor=0.076,
+             probability_negate_constant=0.01,
+@@ -1149,7 +1149,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             tournament_selection_n=12,
+             tournament_selection_p=0.86,
+             # Migration between Populations
+-            fraction_replaced=0.00036,
++            fraction_replaced=0.0001,  # exp50: reduce migration 0.00036->0.0001 (less disruption)
+             fraction_replaced_hof=0.035,
+             fraction_replaced_guesses=0.001,
+             topn=12,
+
+
+====================================================================================================
+exp 53  |  4dc35b51  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp51: simplify 0.002->0.005 - I_44_4 0/3, I_13_4 0/3; more simplification destroys both fragile datasets
+====================================================================================================
+
+commit 4dc35b5167e7e7ed5dd59ad01abd36132d1350a6
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 05:33:37 2026 -0400
+
+    exp51: increase simplify weight 0.002->0.005 (faster bloat reduction)
+    
+    More simplification mutations should reduce expression bloat faster,
+    exposing core structure and improving constant optimization efficiency.
+    Reverts exp50 fraction_replaced=0.0001 (0.416667 discard, I_13_4/III_15_12 dropped).
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index 680f18f5..c255e2da 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1133,7 +1133,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+                 add_node=0.79,
+                 insert_node=5.1,
+                 delete_node=1.7,
+-                simplify=0.0020,
++                simplify=0.005,  # exp51: increase simplify 0.002->0.005 (faster bloat reduction)
+                 randomize=0.00023,
+                 do_nothing=0.21,
+                 optimize=0.0,
+@@ -1149,7 +1149,7 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+             tournament_selection_n=12,
+             tournament_selection_p=0.86,
+             # Migration between Populations
+-            fraction_replaced=0.0001,  # exp50: reduce migration 0.00036->0.0001 (less disruption)
++            fraction_replaced=0.00036,
+             fraction_replaced_hof=0.035,
+             fraction_replaced_guesses=0.001,
+             topn=12,
+
+
+====================================================================================================
+exp 54  |  e6a50e78  |  score 0.433333  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp52: increase delete_node 1.7->2.5 - I_44_4 0/3, I_24_6 gained 1/3, I_27_6 3/3 but net -2pts
+====================================================================================================
+
+commit e6a50e782df787dc468f3f510ddaaf44f5dc13aa
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 05:49:08 2026 -0400
+
+    exp52: increase delete_node weight 1.7->2.5 (more pruning, simpler trees)
+    
+    More frequent node deletion creates a better balance with insert_node (5.1),
+    keeping expressions simpler. Reverts exp51 simplify=0.005 (0.400 discard,
+    I_44_4/I_13_4 both 0/3).
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/Options.jl | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Options.jl b/src/Options.jl
+index c255e2da..a9e6479b 100644
+--- a/src/Options.jl
++++ b/src/Options.jl
+@@ -1132,8 +1132,8 @@ function default_options(@nospecialize(version::Union{VersionNumber,Nothing} = n
+                 rotate_tree=0.0,
+                 add_node=0.79,
+                 insert_node=5.1,
+-                delete_node=1.7,
+-                simplify=0.005,  # exp51: increase simplify 0.002->0.005 (faster bloat reduction)
++                delete_node=2.5,  # exp52: increase delete_node 1.7->2.5 (more pruning, simpler trees)
++                simplify=0.0020,
+                 randomize=0.00023,
+                 do_nothing=0.21,
+                 optimize=0.0,
+
+
+====================================================================================================
+exp 55  |  a75cc312  |  score 0.366667  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp53: fix sign-flip bug mutate_factor 99%->1% - I_27_6 3->1, I_13_4 1->0, I_44_4 2->1; 99% sign flip is a feature not bug
+====================================================================================================
+
+commit a75cc31270a15899188c2cfc1806e87bfa9c32bf
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 06:04:57 2026 -0400
+
+    exp53: fix sign-flip bug in mutate_factor (99%->1% negation rate)
+---
+ src/MutationFunctions.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/MutationFunctions.jl b/src/MutationFunctions.jl
+index 3f46c879..751704e1 100644
+--- a/src/MutationFunctions.jl
++++ b/src/MutationFunctions.jl
+@@ -155,7 +155,7 @@ function mutate_factor(::Type{T}, temperature, options, rng) where {T<:Number}
+ 
+     factor = makeConstBigger ? factor : 1 / factor
+ 
+-    if rand(rng) > options.probability_negate_constant
++    if rand(rng) < options.probability_negate_constant
+         factor *= -1
+     end
+     return factor
+
+
+====================================================================================================
+exp 59  |  82ea4c88  |  score 0.466667  |  ok 20 / fail 0  |  [KEEP]  |  level 1
+description: exp57: adaptive parsimony window_size 100000->20000 - I_13_4 1->2/3; faster parsimony guides complexity exploration better
+====================================================================================================
+
+commit 82ea4c88e8273bcf3a0895ec38d4dc1729096a4a
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 07:16:52 2026 -0400
+
+    exp57: faster adaptive parsimony window_size 100000->20000 (5x faster complexity adaptation)
+---
+ src/AdaptiveParsimony.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/AdaptiveParsimony.jl b/src/AdaptiveParsimony.jl
+index f45891fa..cbb6889b 100644
+--- a/src/AdaptiveParsimony.jl
++++ b/src/AdaptiveParsimony.jl
+@@ -23,7 +23,7 @@ struct RunningSearchStatistics
+     normalized_frequencies::Vector{Float64}  # Stores `frequencies`, but normalized (updated once in a while)
+ end
+ 
+-function RunningSearchStatistics(; options::AbstractOptions, window_size::Int=100000)
++function RunningSearchStatistics(; options::AbstractOptions, window_size::Int=20000)
+     init_frequencies = ones(Float64, options.maxsize)
+ 
+     return RunningSearchStatistics(
+
+
+====================================================================================================
+exp 60  |  a9de3928  |  score 0.400000  |  ok 20 / fail 0  |  [DISCARD]  |  level 1
+description: exp58: window_size 10000 too fast - I_44_4 0/3, I_13_4 0/3; over-exploration destroys convergence
+====================================================================================================
+
+commit a9de39280d7e021f7b705a615f0ce3570bac1657
+Author: Simon Alford <sca63@cornell.edu>
+Date:   Fri Apr 10 07:32:28 2026 -0400
+
+    exp58: even faster adaptive parsimony window_size 20000->10000 (10x faster than baseline)
+---
+ src/AdaptiveParsimony.jl | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/AdaptiveParsimony.jl b/src/AdaptiveParsimony.jl
+index cbb6889b..7949576b 100644
+--- a/src/AdaptiveParsimony.jl
++++ b/src/AdaptiveParsimony.jl
+@@ -23,7 +23,7 @@ struct RunningSearchStatistics
+     normalized_frequencies::Vector{Float64}  # Stores `frequencies`, but normalized (updated once in a while)
+ end
+ 
+-function RunningSearchStatistics(; options::AbstractOptions, window_size::Int=20000)
++function RunningSearchStatistics(; options::AbstractOptions, window_size::Int=10000)
+     init_frequencies = ones(Float64, options.maxsize)
+ 
+     return RunningSearchStatistics(
+

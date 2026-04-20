@@ -324,6 +324,7 @@ class BaseSlurmEvaluator(ABC):
             )
             if result.returncode == 0:
                 print(f"    Cancelled job {job_id}")
+                _untrack_job(job_id)
             else:
                 print(f"    WARNING: Failed to cancel job {job_id}: {result.stderr}")
         except Exception as e:

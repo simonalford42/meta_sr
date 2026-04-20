@@ -12,15 +12,20 @@ conda activate meta_sr
 
 echo "Installing Python dependencies..."
 uv pip install -r requirements.txt
+uv pip install -e ./PySR
 
-echo "Initializing PySR (installs Julia — this may take several minutes)..."
-python -c "from pysr import PySRRegressor; print('PySR OK')"
+mkdir -p "$CONDA_PREFIX/etc/conda/activate.d"
+echo 'export PYTHON_JULIAPKG_EXE="$(julia +1.10 -e "print(joinpath(Sys.BINDIR, \"julia\"))")"' \
+  > "$CONDA_PREFIX/etc/conda/activate.d/julia.sh"
+export PYTHON_JULIAPKG_EXE="$(julia +1.10 -e "print(joinpath(Sys.BINDIR, \"julia\"))")"
+
+echo "Initializing PySR (installs Julia - this may take several minutes)..."
+python scripts/prepare_pysr_julia_env.py
+python scripts/verify_local_symbolicregression.py
 
 echo ""
 echo "=== Environment setup complete ==="
 echo ""
 echo "Next steps:"
-echo "  1. Install the custom SymbolicRegression.jl fork:"
-echo '     JULIA_PROJECT=~/.conda/envs/meta_sr/julia_env julia -e '"'"'using Pkg; Pkg.develop(path="SymbolicRegression.jl")'"'"''
-echo "  2. Set your OpenRouter API key:"
+echo "  1. Set your OpenRouter API key:"
 echo '     export OPENROUTER_API_KEY="your-key-here"'

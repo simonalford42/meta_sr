@@ -19,10 +19,10 @@ cd meta_sr
 
 ### 2. Create conda environment and install dependencies
 
-Important: use a dedicated conda environment per clone of this repo.
-If you want to run two copies of `meta_sr` side-by-side (for example, one
-baseline repo and one sandbox repo for an agent-loop baseline), create two
-different conda envs so their Julia package environments are isolated.
+You can use one conda environment for multiple clones of this repo. PySR SLURM
+workers default to a checkout-local Julia package environment at
+`<repo>/.juliapkg_env`, so two clones do not rewrite the same Julia project
+when they run at the same time.
 
 Prerequisites:
 - [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
@@ -40,18 +40,11 @@ uv pip install -r requirements.txt
 uv pip install -e ./PySR
 ```
 
-If you are setting up a second clone for isolation testing or an agent-loop
-baseline, use a second environment name, e.g.:
-
-```bash
-conda create -n meta_sr_agentloop python=3.10 -y
-conda activate meta_sr_agentloop
-conda install -c conda-forge git-lfs -y
-git lfs install
-git submodule update --init --recursive srbench SymbolicRegression.jl PySR
-uv pip install -r requirements.txt
-uv pip install -e ./PySR
-```
+For a second clone using the same conda environment, activate `meta_sr` in that
+clone, initialize the submodules, and run the PySR prepare/verify step below.
+You do not need a second conda environment. A separate environment is only
+useful if you want fully independent Python package installs while editing both
+checkouts.
 
 ### 3. Set up Julia
 
@@ -62,24 +55,23 @@ juliaup add 1.10
 ```
 
 Then pin juliapkg to use Julia 1.10 (otherwise it auto-picks the newest version,
-which may be incompatible), and set a Julia package environment for this specific
-conda env. The commands below create an activation script that:
+which may be incompatible). The commands below create an activation script that:
 
 - sets `PYTHON_JULIAPKG_EXE` to the Julia 1.10 binary path each time the conda env is activated
-- sets `PYTHON_JULIAPKG_PROJECT` to `$CONDA_PREFIX/julia_env`, so each conda env gets its own Julia package environment
 
 ```bash
 mkdir -p "$CONDA_PREFIX/etc/conda/activate.d"
 echo 'export PYTHON_JULIAPKG_EXE="$(julia +1.10 -e "print(joinpath(Sys.BINDIR, \"julia\"))")"' \
   > "$CONDA_PREFIX/etc/conda/activate.d/julia.sh"
-echo 'export PYTHON_JULIAPKG_PROJECT="$CONDA_PREFIX/julia_env"' \
-  >> "$CONDA_PREFIX/etc/conda/activate.d/julia.sh"
 conda deactivate && conda activate meta_sr
 ```
 
-This setup is what makes multiple `meta_sr` clones isolate cleanly when each
-clone uses its own conda env. The Julia executable can be shared, but the Julia
-package environment should be separate.
+Do not set `PYTHON_JULIAPKG_PROJECT` globally in your shell or conda activation
+script for normal runs. The repo's PySR SLURM evaluator sets it to
+`<repo>/.juliapkg_env` for each checkout. If you already have an old activation
+script that sets `PYTHON_JULIAPKG_PROJECT=$CONDA_PREFIX/julia_env`, it does not
+need to be removed for SLURM runs, but the setup and verify commands below use
+the checkout-local project explicitly.
 
 Do not use conda's Julia. Use the shared `juliaup` Julia binary via
 `PYTHON_JULIAPKG_EXE` as above.
@@ -99,18 +91,19 @@ Alternatively (outside the Ellis cluster), the datasets are available here: http
 
 ### 5. Initialize PySR and verify
 
-This installs Julia packages (including the local `SymbolicRegression.jl` fork) into `$CONDA_PREFIX/julia_env`. Takes a few minutes the first time.
+This installs Julia packages (including the local `SymbolicRegression.jl` fork)
+into this checkout's `.juliapkg_env`. Takes a few minutes the first time.
 
 ```bash
-python -c "from pysr import PySRRegressor; print('PySR OK')"
+python scripts/prepare_pysr_julia_env.py
 python scripts/verify_local_symbolicregression.py
 ```
 
 The verify script should end with `PASS: Local SymbolicRegression.jl was loaded`.
 
-If you have multiple `meta_sr` clones, run this verify command once in each clone
-after activating that clone's conda env. Each clone should report its own local
-`SymbolicRegression.jl` path.
+If you have multiple `meta_sr` clones, run these commands once in each clone.
+Each clone should report its own local `SymbolicRegression.jl` path and its own
+`PYTHON_JULIAPKG_PROJECT_ENV=<that clone>/.juliapkg_env`.
 
 ### 6. Set up OpenRouter API key
 
@@ -124,31 +117,28 @@ export OPENROUTER_API_KEY="your-key-here"
 
 ### 7. Installation final check (PySR + SRBench + SLURM)
 
-Run a small SLURM-backed PySR check on the first 20 datasets from `splits/train_hard.txt`:
+Run a small SLURM-backed PySR check on the first datasets from `splits/train_small.txt`:
 
 ```bash
 python scripts/test_pysr_srbench_slurm.py
 ```
 
 This test:
-- runs 20 SRBench tasks via the `PySRSlurmEvaluator` SLURM interface
-- uses `max_evals=1e6` per task
+- runs up to 20 SRBench tasks via the `PySRSlurmEvaluator` SLURM interface
+- uses `max_evals=5e5` per task
 - verifies every task produced a successful result
 - prints the average `R^2` across tasks
 
 Expected result:
 - `Final check status: PASS`
-- average `R^2` should be around `0.98-0.99`
+- average `R^2` depends on the split and `max_evals`, but every task should
+  complete without PySR startup errors.
 
 ## Running Two Clones In Isolation
 
 If you want to run a baseline workflow and a sandbox workflow simultaneously
 (for example `evolve_pysr.py` in one clone and an agent-loop baseline in another),
-use:
-
-- one clone per workflow
-- one conda env per clone
-- one `PYTHON_JULIAPKG_PROJECT` per conda env
+use one clone per workflow. A separate conda env is optional.
 
 Example layout:
 
@@ -157,19 +147,32 @@ Example layout:
 /path/to/meta_sr_agentloop
 ```
 
-Recommended envs:
+Each checkout gets its own PySR Julia project by default:
 
 ```text
-meta_sr
-meta_sr_agentloop
+/path/to/meta_sr/.juliapkg_env
+/path/to/meta_sr_agentloop/.juliapkg_env
 ```
 
-The PySR/SLURM utilities in this repo can also be pointed at an explicit repo
-root / Julia project when needed. For example:
+The Julia executable and downloaded package depot can be shared. Do not manually
+export a shared `PYTHON_JULIAPKG_PROJECT` for both clones unless you explicitly
+want them to share one manifest.
+
+The PySR/SLURM utilities can also be pointed at an explicit repo root / Julia
+project when needed. For example:
 
 ```bash
 python evolve_pysr.py --operator_type mutation --repo-root /path/to/meta_sr_agentloop
 python scripts/test_pysr_srbench_slurm.py --repo-root /path/to/meta_sr_agentloop
+```
+
+For a fully explicit isolated run:
+
+```bash
+python evolve_pysr.py \
+  --operator_type mutation \
+  --repo-root /path/to/meta_sr_agentloop \
+  --python-juliapkg-project /path/to/meta_sr_agentloop/.juliapkg_env
 ```
 
 ## Project Structure

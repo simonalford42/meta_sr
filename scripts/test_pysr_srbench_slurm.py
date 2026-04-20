@@ -9,6 +9,7 @@ verifies each task succeeded, and reports average R^2 and GT solve rate.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -75,8 +76,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-evals",
         type=int,
-        default=int(1e6),
-        help="Max evaluations per dataset (default: 1e6)",
+        default=int(5e5),
+        help="Max evaluations per dataset (default: 5e5)",
     )
     parser.add_argument(
         "--partition",
@@ -149,7 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--julia-project",
         type=str,
         default=None,
-        help="Explicit JULIA_PROJECT path (default: <repo-root>/SymbolicRegression.jl).",
+        help="Legacy override retained for compatibility; PySR workers unset JULIA_PROJECT.",
     )
     parser.add_argument(
         "--python-juliapkg-project",
@@ -190,9 +191,15 @@ def main() -> int:
     print("Use cache:       False")
     print(f"Fitness metric:  {args.fitness_metric}")
     print(f"Repo root:       {args.repo_root}")
-    print(f"JULIA_PROJECT:   {args.julia_project or str(Path(args.repo_root) / 'SymbolicRegression.jl')}")
-    print(f"PYTHON_JULIAPKG_PROJECT: {args.python_juliapkg_project or '(default)'}")
-    print(f"JULIA_DEPOT_PATH: {args.julia_depot_path or '(default)'}")
+    print(f"JULIA_PROJECT:   unset in workers")
+    print(
+        "PYTHON_JULIAPKG_PROJECT: "
+        f"{args.python_juliapkg_project or str((Path(args.repo_root) / '.juliapkg_env').resolve())}"
+    )
+    print(
+        "JULIA_DEPOT_PATH: "
+        f"{args.julia_depot_path or os.environ.get('JULIA_DEPOT_PATH') or '(Julia default)'}"
+    )
 
     max_samples = None if args.max_samples is not None and args.max_samples <= 0 else args.max_samples
 
@@ -217,7 +224,7 @@ def main() -> int:
         job_timeout=args.job_timeout,
         use_cache=False,
         repo_root=args.repo_root,
-        julia_project=args.julia_project or str((Path(args.repo_root) / "SymbolicRegression.jl").resolve()),
+        julia_project=args.julia_project,
         python_juliapkg_project=args.python_juliapkg_project,
         julia_depot_path=args.julia_depot_path,
     )

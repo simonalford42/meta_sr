@@ -357,6 +357,12 @@ class PyPySRSlurmEvaluator(BaseSlurmEvaluator):
                 f"  Retrying {len(failed_indices)} failed tasks "
                 f"(attempt {retry_count}/{self.max_retries})..."
             )
+            for idx in failed_indices:
+                stale_result = results_subdir / f"task_{idx:06d}.json"
+                try:
+                    stale_result.unlink()
+                except FileNotFoundError:
+                    pass
             retry_job_script = self._create_retry_job_script(
                 batch_dir, failed_indices, retry_count
             )
