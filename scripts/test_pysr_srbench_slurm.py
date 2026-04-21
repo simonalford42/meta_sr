@@ -146,24 +146,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=str(REPO_ROOT),
         help="Repo root containing PySR and SymbolicRegression.jl (default: current repo root).",
     )
-    parser.add_argument(
-        "--julia-project",
-        type=str,
-        default=None,
-        help="Legacy override retained for compatibility; PySR workers unset JULIA_PROJECT.",
-    )
-    parser.add_argument(
-        "--python-juliapkg-project",
-        type=str,
-        default=None,
-        help="Optional PYTHON_JULIAPKG_PROJECT for isolated PySR environments.",
-    )
-    parser.add_argument(
-        "--julia-depot-path",
-        type=str,
-        default=None,
-        help="Optional JULIA_DEPOT_PATH override.",
-    )
     return parser
 
 
@@ -194,11 +176,11 @@ def main() -> int:
     print(f"JULIA_PROJECT:   unset in workers")
     print(
         "PYTHON_JULIAPKG_PROJECT: "
-        f"{args.python_juliapkg_project or str((Path(args.repo_root) / '.juliapkg_env').resolve())}"
+        f"{(Path(args.repo_root) / '.juliapkg_env').resolve()}"
     )
     print(
         "JULIA_DEPOT_PATH: "
-        f"{args.julia_depot_path or os.environ.get('JULIA_DEPOT_PATH') or '(Julia default)'}"
+        f"{os.environ.get('JULIA_DEPOT_PATH') or '(Julia default)'}"
     )
 
     max_samples = None if args.max_samples is not None and args.max_samples <= 0 else args.max_samples
@@ -224,9 +206,6 @@ def main() -> int:
         job_timeout=args.job_timeout,
         use_cache=False,
         repo_root=args.repo_root,
-        julia_project=args.julia_project,
-        python_juliapkg_project=args.python_juliapkg_project,
-        julia_depot_path=args.julia_depot_path,
     )
 
     run_results = evaluator.evaluate_configs(

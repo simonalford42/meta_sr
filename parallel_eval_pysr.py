@@ -21,6 +21,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
 from slurm_eval import BaseSlurmEvaluator, init_worker, _untrack_job
+from julia_env import configure_juliapkg_project
 
 
 _TRANSIENT_PYSR_ERROR_SNIPPETS = (
@@ -184,14 +185,7 @@ def _build_pysr_cache_entry(
 def _import_pysr_regressor():
     """Import PySR from the repo checkout when available."""
     repo_root = Path(__file__).resolve().parent
-    local_juliapkg_project = repo_root / ".juliapkg_env"
-    local_juliapkg_project.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", str(local_juliapkg_project))
-    os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
-    # Let juliapkg choose the active Julia project from PYTHON_JULIAPKG_PROJECT.
-    # A pre-set JULIA_PROJECT can make PySR start in an environment without
-    # PythonCall and fail during Julia initialization.
-    os.environ.pop("JULIA_PROJECT", None)
+    configure_juliapkg_project(repo_root)
 
     pysr_repo = repo_root / "PySR"
     if pysr_repo.exists() and str(pysr_repo) not in sys.path:
@@ -944,9 +938,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         use_cache: bool = True,
         target_noise: float = 0.0,
         repo_root: Optional[str] = None,
-        julia_project: Optional[str] = None,
-        python_juliapkg_project: Optional[str] = None,
-        julia_depot_path: Optional[str] = None,
         hof_results_dir: str= "results_pysr",
         hof_n_steps: int = 0,
     ):
@@ -971,17 +962,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self.total_sr_evals = 0
         self.total_sr_cached = 0
         self.repo_root = Path(repo_root).resolve() if repo_root else Path.cwd().resolve()
-        self.julia_project = str(Path(julia_project).resolve()) if julia_project else str((self.repo_root / "SymbolicRegression.jl").resolve())
-        self.python_juliapkg_project = (
-            str(Path(python_juliapkg_project).resolve())
-            if python_juliapkg_project
-            else str((self.repo_root / ".juliapkg_env").resolve())
-        )
-        self.julia_depot_path = (
-            str(Path(julia_depot_path).resolve())
-            if julia_depot_path
-            else os.environ.get("JULIA_DEPOT_PATH")
-        )
         self._pending_cache_entries: List[Dict[str, Any]] = []
         self.hof_results_dir = hof_results_dir
         self.hof_n_steps = hof_n_steps
@@ -993,15 +973,13 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             f'cd "{self.repo_root}"',
             f'export PYTHONPATH="{self.repo_root}:$PYTHONPATH"',
             "",
-            "# Point juliacall/juliapkg at an explicit PySR environment.",
+            "# Point juliacall/juliapkg at this checkout's Julia project.",
             "# Do not set JULIA_PROJECT to SymbolicRegression.jl; that prevents",
             "# PythonCall from being resolved when PySR starts Julia.",
             "unset JULIA_PROJECT",
-            f'export PYTHON_JULIAPKG_PROJECT="{self.python_juliapkg_project}"',
+            f'export PYTHON_JULIAPKG_PROJECT="{self.repo_root}/.juliapkg_env"',
             "export PYTHON_JULIACALL_HANDLE_SIGNALS=yes",
         ]
-        if self.julia_depot_path:
-            lines.insert(-1, f'export JULIA_DEPOT_PATH="{self.julia_depot_path}"')
         return "\n".join(lines)
 
     def evaluate_configs(

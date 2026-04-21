@@ -248,9 +248,6 @@ with tempfile.TemporaryDirectory() as tmpdir:
         use_cache=False,
         max_concurrent_jobs=5,
         repo_root="/tmp/meta_sr_sandbox",
-        julia_project="/tmp/meta_sr_sandbox/SymbolicRegression.jl",
-        python_juliapkg_project="/tmp/meta_sr_sandbox/.julia_env",
-        julia_depot_path="/tmp/shared_julia_depot",
     )
     pysr_batch_dir = pysr_eval._new_batch_dir()
     (pysr_batch_dir / "tasks.json").write_text("[]")
@@ -263,9 +260,10 @@ with tempfile.TemporaryDirectory() as tmpdir:
     assert "JULIA_NUM_THREADS=1" in pysr_script_content, "Script should set Julia threads"
     assert "0-2%5" in pysr_script_content, "Script should have array spec with concurrency limit"
     assert 'cd "/tmp/meta_sr_sandbox"' in pysr_script_content, "PySR script should cd to explicit repo_root"
-    assert 'export JULIA_PROJECT="/tmp/meta_sr_sandbox/SymbolicRegression.jl"' in pysr_script_content, "PySR script should set explicit JULIA_PROJECT"
-    assert 'export PYTHON_JULIAPKG_PROJECT="/tmp/meta_sr_sandbox/.julia_env"' in pysr_script_content, "PySR script should set explicit PYTHON_JULIAPKG_PROJECT"
-    assert 'export JULIA_DEPOT_PATH="/tmp/shared_julia_depot"' in pysr_script_content, "PySR script should optionally set JULIA_DEPOT_PATH"
+    assert "unset JULIA_PROJECT" in pysr_script_content, "PySR script should unset JULIA_PROJECT"
+    assert 'export JULIA_PROJECT=' not in pysr_script_content, "PySR script should NOT export JULIA_PROJECT"
+    assert 'export PYTHON_JULIAPKG_PROJECT="/tmp/meta_sr_sandbox/.juliapkg_env"' in pysr_script_content, "PySR script should set PYTHON_JULIAPKG_PROJECT to <repo_root>/.juliapkg_env"
+    assert 'export JULIA_DEPOT_PATH=' not in pysr_script_content, "PySR script should NOT export JULIA_DEPOT_PATH (Julia default wins)"
     print("✓ PySR job script generated correctly")
     print(f"  --no-cache present: {'--no-cache' in pysr_script_content}")
     print(f"  JULIA_NUM_THREADS present: {'JULIA_NUM_THREADS' in pysr_script_content}")

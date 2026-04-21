@@ -26,28 +26,10 @@ def parse_args() -> argparse.Namespace:
         help="Repo root containing SymbolicRegression.jl (default: this repo root).",
     )
     parser.add_argument(
-        "--julia-project",
-        type=str,
-        default=None,
-        help="Explicit Julia project path to activate.",
-    )
-    parser.add_argument(
         "--expected-symbolicregression-root",
         type=str,
         default=None,
         help="Expected SymbolicRegression.jl root to be loaded (default: <repo-root>/SymbolicRegression.jl).",
-    )
-    parser.add_argument(
-        "--python-juliapkg-project",
-        type=str,
-        default=None,
-        help="Explicit PYTHON_JULIAPKG_PROJECT to use.",
-    )
-    parser.add_argument(
-        "--julia-depot-path",
-        type=str,
-        default=None,
-        help="Optional JULIA_DEPOT_PATH to use for this verification.",
     )
     return parser.parse_args()
 
@@ -56,19 +38,13 @@ def main() -> int:
     args = parse_args()
 
     repo_root = Path(args.repo_root).resolve() if args.repo_root else Path(__file__).resolve().parent.parent
-    local_project = Path(args.julia_project).resolve() if args.julia_project else (repo_root / "SymbolicRegression.jl").resolve()
+    juliapkg_project = (repo_root / ".juliapkg_env").resolve()
     expected_sr_root = (
         Path(args.expected_symbolicregression_root).resolve()
         if args.expected_symbolicregression_root
         else (repo_root / "SymbolicRegression.jl").resolve()
     )
     expected_source = (expected_sr_root / "src" / "SymbolicRegression.jl").resolve()
-
-    default_juliapkg_project = (
-        Path(args.python_juliapkg_project).resolve()
-        if args.python_juliapkg_project
-        else (repo_root / ".juliapkg_env").resolve()
-    )
 
     # Prefer PYTHON_JULIAPKG_EXE (set when using juliaup), then the legacy
     # pyjuliapkg path, then fall back to the system julia.
@@ -83,23 +59,14 @@ def main() -> int:
 
     if juliapkg_exe and Path(juliapkg_exe).exists():
         julia_exe = juliapkg_exe
-        julia_project = str(default_juliapkg_project)
     elif legacy_conda_exe and legacy_conda_exe.exists():
         julia_exe = str(legacy_conda_exe)
-        julia_project = str(default_juliapkg_project)
     else:
         julia_exe = "julia"
-        julia_project = str(default_juliapkg_project)
 
     env = os.environ.copy()
-    env["JULIA_PROJECT"] = args.julia_project if args.julia_project else julia_project
-    env["PYTHON_JULIAPKG_PROJECT"] = (
-        args.python_juliapkg_project
-        if args.python_juliapkg_project
-        else str(default_juliapkg_project)
-    )
-    if args.julia_depot_path:
-        env["JULIA_DEPOT_PATH"] = args.julia_depot_path
+    env["JULIA_PROJECT"] = str(juliapkg_project)
+    env["PYTHON_JULIAPKG_PROJECT"] = str(juliapkg_project)
     env["SYMBOLICREGRESSION_DEBUG_IMPORT"] = "1"
 
     julia_code = (

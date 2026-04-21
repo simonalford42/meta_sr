@@ -35,7 +35,6 @@ FITNESS_METRIC = "gt"
 MAX_EVALS = 1_000_000
 MAX_SAMPLES = 1000
 SANDBOX_ROOT = "/home/sca63/meta_sr_agent_loop"
-JULIA_PROJECT = f"{SANDBOX_ROOT}/SymbolicRegression.jl"
 PARTITION = "default_partition"
 TIME_LIMIT = "04:00:00"
 MEM_PER_CPU = "8G"
@@ -81,7 +80,6 @@ def main():
         job_timeout=JOB_TIMEOUT,
         use_cache=True,
         repo_root=SANDBOX_ROOT,
-        julia_project=JULIA_PROJECT,
     )
 
     print(f"Evaluating sandbox at {SANDBOX_ROOT}")

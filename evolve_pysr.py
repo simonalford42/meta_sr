@@ -253,9 +253,6 @@ def run_bundle_evolution(
     fitness_metric: str = "gt",
     hp_tuning_trials: int = 0,
     repo_root: Optional[str] = None,
-    julia_project: Optional[str] = None,
-    python_juliapkg_project: Optional[str] = None,
-    julia_depot_path: Optional[str] = None,
     baseline_bundle: Optional[OperatorBundle] = None,
     wandb_run: Optional[Any] = None,
     task_diverse_pop: bool = False,
@@ -326,9 +323,6 @@ def run_bundle_evolution(
         "random_target_noise": random_target_noise,
         "fitness_metric": fitness_metric,
         "repo_root": repo_root,
-        "julia_project": julia_project,
-        "python_juliapkg_project": python_juliapkg_project,
-        "julia_depot_path": julia_depot_path,
         "task_diverse_pop": task_diverse_pop,
         "racing": racing,
         "hof": hof,
@@ -373,9 +367,6 @@ def run_bundle_evolution(
         max_concurrent_jobs=max_concurrent_jobs,
         target_noise=target_noise,
         repo_root=repo_root,
-        julia_project=julia_project,
-        python_juliapkg_project=python_juliapkg_project,
-        julia_depot_path=julia_depot_path,
         hof_n_steps=execution_feedback_n,
         use_cache=use_cache,
     )
@@ -892,12 +883,6 @@ def main():
                              "None = no limit.")
     parser.add_argument("--repo-root", type=str, default=str(Path(__file__).resolve().parent),
                         help="Repo root containing PySR and SymbolicRegression.jl.")
-    parser.add_argument("--julia-project", type=str, default=None,
-                        help="Explicit JULIA_PROJECT path (default: <repo-root>/SymbolicRegression.jl).")
-    parser.add_argument("--python-juliapkg-project", type=str, default=None,
-                        help="Optional PYTHON_JULIAPKG_PROJECT for an isolated Julia package environment.")
-    parser.add_argument("--julia-depot-path", type=str, default=None,
-                        help="Optional JULIA_DEPOT_PATH override.")
 
     parser.add_argument("--output_dir", type=str, default=None)
     parser.add_argument("--no-cache", action="store_true")
@@ -1010,9 +995,6 @@ def main():
         fitness_metric=args.fitness_metric,
         hp_tuning_trials=args.hp_tuning_trials,
         repo_root=args.repo_root,
-        julia_project=args.julia_project or str((Path(args.repo_root) / "SymbolicRegression.jl").resolve()),
-        python_juliapkg_project=args.python_juliapkg_project,
-        julia_depot_path=args.julia_depot_path,
         task_diverse_pop=args.task_diverse_pop,
         racing=args.racing,
         hof=args.hof,

@@ -67,11 +67,10 @@ conda deactivate && conda activate meta_sr
 ```
 
 Do not set `PYTHON_JULIAPKG_PROJECT` globally in your shell or conda activation
-script for normal runs. The repo's PySR SLURM evaluator sets it to
-`<repo>/.juliapkg_env` for each checkout. If you already have an old activation
-script that sets `PYTHON_JULIAPKG_PROJECT=$CONDA_PREFIX/julia_env`, it does not
-need to be removed for SLURM runs, but the setup and verify commands below use
-the checkout-local project explicitly.
+script. The repo's PySR SLURM evaluator, `mini_pysr`, and `run_pysr_srbench.py`
+all pin `PYTHON_JULIAPKG_PROJECT=<repo>/.juliapkg_env` for each checkout via the
+shared `julia_env.configure_juliapkg_project` helper. A stale global export can
+leak into direct-run scripts and point Julia at the wrong environment.
 
 Do not use conda's Julia. Use the shared `juliaup` Julia binary via
 `PYTHON_JULIAPKG_EXE` as above.
@@ -158,22 +157,17 @@ The Julia executable and downloaded package depot can be shared. Do not manually
 export a shared `PYTHON_JULIAPKG_PROJECT` for both clones unless you explicitly
 want them to share one manifest.
 
-The PySR/SLURM utilities can also be pointed at an explicit repo root / Julia
-project when needed. For example:
+The PySR/SLURM utilities can also be pointed at an explicit repo root when
+needed. For example:
 
 ```bash
 python evolve_pysr.py --operator_type mutation --repo-root /path/to/meta_sr_agentloop
 python scripts/test_pysr_srbench_slurm.py --repo-root /path/to/meta_sr_agentloop
 ```
 
-For a fully explicit isolated run:
-
-```bash
-python evolve_pysr.py \
-  --operator_type mutation \
-  --repo-root /path/to/meta_sr_agentloop \
-  --python-juliapkg-project /path/to/meta_sr_agentloop/.juliapkg_env
-```
+Each checkout's workers pin `PYTHON_JULIAPKG_PROJECT` to `<repo-root>/.juliapkg_env`
+automatically; `JULIA_PROJECT` is always unset before PySR/juliacall start, and
+`JULIA_DEPOT_PATH` is left at Julia's default (`~/.julia`, safe to share).
 
 ## Project Structure
 
@@ -249,12 +243,8 @@ This workflow uses OpenEvolve to mutate a Python EVOLVE-BLOCK that contains:
 The OpenEvolve evaluator then validates the Julia mutation and reuses the existing
 `PySRSlurmEvaluator` SRBench pipeline for scoring.
 
-For isolated sandbox runs, `evolve_pysr.py` and the PySR SLURM test script also accept:
-
-- `--repo-root`
-- `--julia-project`
-- `--python-juliapkg-project`
-- `--julia-depot-path`
+For isolated sandbox runs, `evolve_pysr.py` and the PySR SLURM test script
+accept `--repo-root` to point at a different checkout.
 
 You can also target custom selection or survival operators:
 

@@ -19,12 +19,20 @@ Usage:
 import argparse
 import os
 import shutil
+import sys
 import numpy as np
 import pandas as pd
 import json
 import time
 from pathlib import Path
-from pysr import PySRRegressor
+
+_REPO_ROOT = Path(__file__).resolve().parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from julia_env import configure_juliapkg_project
+configure_juliapkg_project(_REPO_ROOT)
+
+from pysr import PySRRegressor  # noqa: E402  (must come after juliapkg setup)
 
 
 CONFLICTING_VAR_NAMES = {"gamma", "beta", "E", "I"}

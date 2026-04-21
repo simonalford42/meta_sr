@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from mini_pypysr_utils import calculate_scores, idx_model_selection
+from julia_env import configure_juliapkg_project
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -23,18 +24,7 @@ def _init_julia():
     if _JL is not None and _LOADED:
         return _JL
 
-    local_juliapkg_project = REPO_ROOT / ".juliapkg_env"
-    local_juliapkg_project.mkdir(parents=True, exist_ok=True)
-
-    # Match the PySR SLURM worker setup: pin the Julia project for this
-    # checkout, but let Julia use its normal depot/cache unless explicitly set
-    # by the caller. Inherited PYTHON_JULIAPKG_PROJECT values can point at a
-    # stale conda env and break local MiniSR tests.
-    os.environ["PYTHON_JULIAPKG_PROJECT"] = str(local_juliapkg_project)
-    os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
-    os.environ.pop("JULIA_PROJECT", None)
-    if os.environ.get("JULIA_DEPOT_PATH") == str(REPO_ROOT / ".julia_depot"):
-        os.environ.pop("JULIA_DEPOT_PATH", None)
+    configure_juliapkg_project(REPO_ROOT)
 
     pysr_repo = REPO_ROOT / "PySR"
     if pysr_repo.exists() and str(pysr_repo) not in sys.path:
