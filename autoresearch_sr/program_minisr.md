@@ -42,11 +42,14 @@ To set up a new experiment, work with the user to:
    The branch `AR_minisr/<tag>` must not already exist.
 2. **Create the branch**:
    `git -C /home/sca63/meta_sr_agent_loop checkout -b autoresearch_sr/<tag>`.
+   Also create a matching branch inside the SymbolicRegression submodule:
+   `git -C /home/sca63/meta_sr_agent_loop/SymbolicRegression.jl checkout -b autoresearch_sr/<tag>`.
 3. **Read the in-scope files**:
    - `program_minisr.md` — these instructions.
    - `evaluate_minisr.py` — fixed evaluation harness. Do not modify.
    - `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src/MiniSR.jl` — the
-     one file you edit.
+     one file you edit. This is the file Julia loads through the
+     SymbolicRegression package.
 4. **Create the run directory**: `mkdir -p runs/<tag>` inside `autoresearch_sr/`.
    All per-run artifacts (`results.tsv`, `run.log`, `run2.log`) live there —
    this keeps prior runs (e.g. `runs/apr9`, `runs/apr13`) isolated.
@@ -59,8 +62,8 @@ Each experiment evaluates symbolic regression performance on SRBench benchmarks
 via SLURM. Evaluations take ~5–10 minutes depending on cluster load.
 
 **What you CAN do:**
-- Edit `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src/MiniSR.jl`. Any
-  change inside this file is fair game — mutation weights, mutation operators,
+- Edit `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src/MiniSR.jl`.
+  Any change inside this file is fair game — mutation weights, mutation operators,
   selection, survival, constant optimization, parsimony, the main loop.
 
 **What you CANNOT do:**
@@ -133,8 +136,10 @@ already excludes `runs/`).
 LOOP FOREVER:
 
 1. Look at current git state.
-2. Edit `SymbolicRegression.jl/src/MiniSR.jl` with an experimental idea.
-3. `git add SymbolicRegression.jl/src/MiniSR.jl && git commit -m ...`.
+2. Edit `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src/MiniSR.jl`
+   with an experimental idea.
+3. Commit the real file inside the SymbolicRegression submodule:
+   `git -C ../SymbolicRegression.jl add src/MiniSR.jl && git -C ../SymbolicRegression.jl commit -m ...`.
 4. Run: `python evaluate_minisr.py --n-runs 3 > runs/<tag>/run.log 2>&1`.
 5. Read the score: `grep "^score:" runs/<tag>/run.log`.
 6. Empty grep → the run crashed. Use `tail -n 50 runs/<tag>/run.log` to
@@ -143,8 +148,12 @@ LOOP FOREVER:
    `python evaluate_minisr.py --seed 528 --n-runs 10 > runs/<tag>/run2.log 2>&1`.
    (Do this for the baseline too.)
 8. Append a row to `runs/<tag>/results.tsv`.
-9. If the confirmation run also beats the previous best, advance the branch.
-10. Otherwise `git reset --hard HEAD~1` to revert MiniSR.jl to the prior commit.
+9. If the confirmation run also beats the previous best, keep the
+   SymbolicRegression submodule commit. If you also need the outer repo to
+   record that exact submodule revision, run
+   `git -C .. add SymbolicRegression.jl && git -C .. commit -m ...`.
+10. Otherwise `git -C ../SymbolicRegression.jl reset --hard HEAD~1` to revert
+    MiniSR.jl to the prior commit.
 
 **NEVER STOP**: Once the loop begins, do NOT ask the human whether to continue.
 Run until you are manually interrupted. If you run out of ideas, think harder,

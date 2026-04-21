@@ -78,6 +78,7 @@ def main():
         max_retries=2,
         job_timeout=JOB_TIMEOUT,
         use_cache=False,  # MiniSR.jl edits aren't part of the cache key
+        repo_root=SANDBOX_ROOT,
     )
 
     print(f"Evaluating MiniSR.jl at {SANDBOX_ROOT}/SymbolicRegression.jl/src/MiniSR.jl")

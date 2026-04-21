@@ -569,11 +569,22 @@ class BaseSlurmEvaluator(ABC):
         return directives
 
     def _new_batch_dir(self) -> Path:
-        """Create and return a new batch directory."""
-        batch_id = f"eval_{self._batch_counter:04d}"
-        self._batch_counter += 1
-        batch_dir = self.slurm_dir / batch_id
-        batch_dir.mkdir(parents=True, exist_ok=True)
+        """Create and return a fresh batch directory.
+
+        Evaluators are often run as short-lived scripts, so _batch_counter
+        restarts at zero on each process. Never reuse an existing eval_XXXX
+        directory; stale task result JSONs would otherwise be counted as
+        completions for a newly submitted SLURM array.
+        """
+        while True:
+            batch_id = f"eval_{self._batch_counter:04d}"
+            self._batch_counter += 1
+            batch_dir = self.slurm_dir / batch_id
+            try:
+                batch_dir.mkdir(parents=True, exist_ok=False)
+                break
+            except FileExistsError:
+                continue
         (batch_dir / "results").mkdir(exist_ok=True)
         (batch_dir / "logs").mkdir(exist_ok=True)
         return batch_dir

@@ -68,10 +68,15 @@ class MiniSRTaskResult:
 def _evaluate_minisr_task(spec: MiniSRTaskSpec) -> MiniSRTaskResult:
     import time as _time
     import random as _rnd
-    from utils import load_srbench_dataset
-    from mini_pysr import PyPySRRegressor as MiniSRRegressor
 
     start_time = _time.time()
+
+    def _elapsed() -> float:
+        return _time.time() - start_time
+
+    def _log(message: str) -> None:
+        print(f"[{spec.dataset_name}] {message} (elapsed={_elapsed():.1f}s)", flush=True)
+
     run_seed = spec.seed + spec.run_index
 
     minisr_mutation_kwargs = {}
@@ -83,9 +88,25 @@ def _evaluate_minisr_task(spec: MiniSRTaskSpec) -> MiniSRTaskResult:
     model_kwargs["random_state"] = run_seed
 
     try:
+        max_evals = model_kwargs.get("max_evals")
+        max_samples = spec.max_samples if spec.max_samples is not None else "all"
+        _log(
+            f"Task setup: run_seed={run_seed}, max_evals={max_evals}, "
+            f"max_samples={max_samples}"
+        )
+
+        t_phase = _time.time()
+        from utils import load_srbench_dataset
+        _log(f"Imported dataset loader in {_time.time() - t_phase:.1f}s")
+
+        t_phase = _time.time()
         np.random.seed(spec.data_seed)
         _rnd.seed(spec.data_seed)
         X, y, ground_truth_formula = load_srbench_dataset(spec.dataset_name, max_samples=spec.max_samples)
+        _log(
+            f"Dataset loaded in {_time.time() - t_phase:.1f}s: "
+            f"X={X.shape}, y={y.shape}"
+        )
 
         np.random.seed(run_seed)
         _rnd.seed(run_seed)
@@ -101,10 +122,12 @@ def _evaluate_minisr_task(spec: MiniSRTaskSpec) -> MiniSRTaskResult:
         if spec.target_noise > 0:
             noise_seed = run_seed + 1000
             y_train = add_noise(y_train, spec.target_noise, seed=noise_seed)
+            _log(f"Applied target noise={spec.target_noise}")
 
         n_features = X_train.shape[1]
         variable_names = [f"x{i}" for i in range(n_features)]
         ground_truth_for_match = ground_truth_formula
+        t_phase = _time.time()
         try:
             from evaluation import get_dataset_var_names
             dataset_var_names = get_dataset_var_names(spec.dataset_name)
@@ -112,18 +135,35 @@ def _evaluate_minisr_task(spec: MiniSRTaskSpec) -> MiniSRTaskResult:
                 ground_truth_for_match = _remap_formula_variables(
                     ground_truth_formula, dataset_var_names, variable_names
                 )
+            _log(f"Ground truth remapped in {_time.time() - t_phase:.1f}s")
         except Exception:
+            _log(f"Ground truth remap skipped/failed after {_time.time() - t_phase:.1f}s")
             ground_truth_for_match = ground_truth_formula
 
+        t_phase = _time.time()
+        _log("Loading MiniSR Python/Julia wrapper")
+        from mini_pysr import PyPySRRegressor as MiniSRRegressor
+        _log(f"MiniSR wrapper loaded in {_time.time() - t_phase:.1f}s")
+
         model = MiniSRRegressor(**model_kwargs)
+
+        t_search = _time.time()
+        _log(
+            f"Starting MiniSR search: train={X_train.shape}, "
+            f"features={n_features}, max_evals={max_evals}"
+        )
         model.fit(X_train, y_train, variable_names=variable_names)
+        _log(f"Finished MiniSR search in {_time.time() - t_search:.1f}s")
 
         best = model.get_best()
         best_equation = str(best["equation"]) if best is not None else None
         best_loss = float(best["loss"]) if best is not None else float("inf")
         n_evals = int(getattr(model, "n_evals_", -1))
+        _log(f"Best extracted: loss={best_loss:.6g}, n_evals={n_evals}")
 
         gt_match_score = None
+        t_phase = _time.time()
+        _log("Starting GT symbolic match")
         try:
             from evaluation import check_pysr_frontier_symbolic_match
             gt_match_result = check_pysr_frontier_symbolic_match(
@@ -134,7 +174,18 @@ def _evaluate_minisr_task(spec: MiniSRTaskSpec) -> MiniSRTaskResult:
                 timeout_seconds_per_expression=3,
             )
             gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
-        except Exception:
+            _log(
+                f"Finished GT symbolic match in {_time.time() - t_phase:.1f}s: "
+                f"match={gt_match_score}, checked={gt_match_result.get('checked_count')}, "
+                f"timeouts={gt_match_result.get('timeouts')}"
+            )
+        except Exception as match_error:
+            print(
+                f"[{spec.dataset_name}] WARNING: GT symbolic match failed: "
+                f"{type(match_error).__name__}: {match_error}",
+                flush=True,
+            )
+            _log(f"Finished GT symbolic match with failure in {_time.time() - t_phase:.1f}s")
             gt_match_score = 0.0
 
         def _safe_predict(df_row):
@@ -150,6 +201,8 @@ def _evaluate_minisr_task(spec: MiniSRTaskSpec) -> MiniSRTaskResult:
             })
             return eval(expr, {"__builtins__": {}}, ns)
 
+        t_phase = _time.time()
+        _log("Starting validation R2 evaluation")
         try:
             y_pred = np.asarray(_safe_predict(best), dtype=float)
             if y_pred.shape != y_val.shape:
@@ -163,6 +216,8 @@ def _evaluate_minisr_task(spec: MiniSRTaskSpec) -> MiniSRTaskResult:
         ss_tot = np.sum((y_val - np.mean(y_val)) ** 2)
         r2 = 1 - (ss_res / (ss_tot + 1e-10))
         r2 = max(float(r2), 0.0)
+        _log(f"Finished validation R2 in {_time.time() - t_phase:.1f}s: r2={r2:.6g}")
+        _log(f"Task complete: total={_elapsed():.1f}s")
 
         return MiniSRTaskResult(
             config_id=spec.config_id,
@@ -275,6 +330,8 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
         target_noise: float = 0.0,
         warm_start: bool = True,
         warm_start_timeout: Optional[float] = None,
+        repo_root: Optional[str] = None,
+        python_juliapkg_project: Optional[str] = None,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -296,6 +353,12 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
         self.target_noise = target_noise
         self.warm_start = warm_start
         self.warm_start_timeout = warm_start_timeout
+        self.repo_root = Path(repo_root).resolve() if repo_root else Path(__file__).resolve().parent
+        self.python_juliapkg_project = (
+            str(Path(python_juliapkg_project).resolve())
+            if python_juliapkg_project
+            else str((self.repo_root / ".juliapkg_env").resolve())
+        )
 
     def evaluate_configs(
         self,
@@ -507,10 +570,10 @@ export NUMEXPR_NUM_THREADS=1
 export JULIA_NUM_THREADS=1
 
 cd "$SLURM_SUBMIT_DIR"
-export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
+export PYTHONPATH="{self.repo_root}:$SLURM_SUBMIT_DIR:$PYTHONPATH"
 
 unset JULIA_PROJECT
-export PYTHON_JULIAPKG_PROJECT="$SLURM_SUBMIT_DIR/.juliapkg_env"
+export PYTHON_JULIAPKG_PROJECT="{self.python_juliapkg_project}"
 export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
 
 echo "MiniSR warmstart running on node: $(hostname)"
@@ -596,11 +659,11 @@ export NUMEXPR_NUM_THREADS=1
 export JULIA_NUM_THREADS=1
 
 cd "$SLURM_SUBMIT_DIR"
-export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
+export PYTHONPATH="{self.repo_root}:$SLURM_SUBMIT_DIR:$PYTHONPATH"
 
 # Point juliacall/juliapkg at the repo-local Julia environment (same as parallel_eval_pysr).
 unset JULIA_PROJECT
-export PYTHON_JULIAPKG_PROJECT="$SLURM_SUBMIT_DIR/.juliapkg_env"
+export PYTHON_JULIAPKG_PROJECT="{self.python_juliapkg_project}"
 export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
 
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
