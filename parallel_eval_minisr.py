@@ -6,6 +6,7 @@ uses a SLURM job script modeled on parallel_eval_pysr.py so that juliacall can
 find the repo-local Julia environment on worker nodes.
 """
 import json
+import time
 import traceback
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
@@ -13,7 +14,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 import sys
 
-from slurm_eval import BaseSlurmEvaluator, init_worker
+from slurm_eval import BaseSlurmEvaluator, init_worker, _untrack_job
 from parallel_eval_pysr import add_noise, _remap_formula_variables
 
 
@@ -268,9 +269,12 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
         constraint: Optional[str] = None,
         bad_nodes_file: Optional[str] = "caches/bad_nodes.txt",
         max_concurrent_jobs: Optional[int] = None,
-        job_timeout: Optional[float] = 600.0,
+        job_timeout: Optional[float] = None,
+        stall_timeout: Optional[float] = None,
         use_cache: bool = False,
         target_noise: float = 0.0,
+        warm_start: bool = True,
+        warm_start_timeout: Optional[float] = None,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -286,9 +290,12 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
             bad_nodes_file=bad_nodes_file,
             max_concurrent_jobs=max_concurrent_jobs,
             job_timeout=job_timeout,
+            stall_timeout=stall_timeout,
             use_cache=use_cache,
         )
         self.target_noise = target_noise
+        self.warm_start = warm_start
+        self.warm_start_timeout = warm_start_timeout
 
     def evaluate_configs(
         self,
@@ -334,6 +341,9 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
         tasks_file = batch_dir / "tasks.json"
         with open(tasks_file, "w") as f:
             json.dump([t.to_json_dict() for t in tasks], f)
+
+        if self.warm_start:
+            self._run_warmstart(batch_dir)
 
         job_script = self._create_job_script(batch_dir, n_tasks)
         job_id = self._submit_job(job_script)
@@ -409,6 +419,148 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
             log_prefix=f"retry{retry_num}_task",
         )
 
+    def _run_warmstart(self, batch_dir: Path) -> None:
+        warmstart_script = self._create_warmstart_script(batch_dir)
+        logs_dir = batch_dir / "logs"
+        print("  MiniSR warmstart: loading Julia/MiniSR before array submission")
+        job_id = self._submit_job(warmstart_script)
+        print(f"    Submitted warmstart job: {job_id}")
+        print(f"    Log: {logs_dir / 'warmstart.out'}")
+        if not self._wait_for_warmstart_job(job_id):
+            raise RuntimeError(
+                "MiniSR warmstart failed; refusing to launch the full array. "
+                f"Check {logs_dir / 'warmstart.out'} and {logs_dir / 'warmstart.err'}"
+            )
+
+    def _wait_for_warmstart_job(self, job_id: str) -> bool:
+        start_time = time.time()
+        terminal_states = {"FAILED", "CANCELLED", "TIMEOUT"}
+        poll_interval = 5
+        last_report_time = start_time
+        unknown_since: Optional[float] = None
+
+        while True:
+            raw_status = self._get_job_status(job_id)
+            status = raw_status.split()[0] if raw_status else "UNKNOWN"
+            now = time.time()
+            elapsed = now - start_time
+
+            if status == "COMPLETED":
+                _untrack_job(job_id)
+                print(f"    Warmstart completed in {elapsed:.1f}s")
+                return True
+
+            if status == "UNKNOWN":
+                if unknown_since is None:
+                    unknown_since = now
+                if now - unknown_since > 60:
+                    _untrack_job(job_id)
+                    print(f"    WARNING: Warmstart job {job_id} status stayed UNKNOWN")
+                    return False
+            else:
+                unknown_since = None
+
+            if status in terminal_states:
+                _untrack_job(job_id)
+                print(f"    WARNING: Warmstart job {job_id} ended with status {raw_status}")
+                return False
+
+            if self.warm_start_timeout is not None and elapsed > self.warm_start_timeout:
+                print(
+                    f"    TIMEOUT: Warmstart job {job_id} exceeded "
+                    f"{self.warm_start_timeout}s"
+                )
+                self._cancel_job(job_id)
+                return False
+
+            if now - last_report_time > 60:
+                print(
+                    f"    Warmstart status: {raw_status} "
+                    f"({elapsed:.0f}s elapsed)"
+                )
+                last_report_time = now
+
+            time.sleep(poll_interval)
+
+    def _create_warmstart_script(self, batch_dir: Path) -> Path:
+        abs_batch = batch_dir.resolve()
+        logs_dir = abs_batch / "logs"
+        optional_directives = self._get_optional_directives()
+
+        script_content = f"""#!/bin/bash
+#SBATCH --job-name=minisr_warmstart
+#SBATCH --output={logs_dir}/warmstart.out
+#SBATCH --error={logs_dir}/warmstart.err
+#SBATCH --time={self.time_limit}
+#SBATCH --cpus-per-task=1
+#SBATCH --mem-per-cpu={self.mem_per_cpu}
+#SBATCH --partition={self.partition}
+{optional_directives}
+source {self.conda_sh_path}
+conda activate {self.conda_env_name}
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export JULIA_NUM_THREADS=1
+
+cd "$SLURM_SUBMIT_DIR"
+export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
+
+unset JULIA_PROJECT
+export PYTHON_JULIAPKG_PROJECT="$SLURM_SUBMIT_DIR/.juliapkg_env"
+export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+
+echo "MiniSR warmstart running on node: $(hostname)"
+
+python -u - <<'PY'
+import time
+import numpy as np
+
+t0 = time.time()
+from mini_pysr import _init_julia, PyPySRRegressor
+
+_init_julia()
+print(f"MiniSR Julia load warmstart complete in {{time.time() - t0:.1f}}s", flush=True)
+
+# Run a tiny fit through the same Python wrapper the array tasks use. This
+# catches environment/dependency problems before the full job array fans out.
+X = np.linspace(-1.0, 1.0, 16).reshape(-1, 1)
+y = X[:, 0] ** 2
+
+t1 = time.time()
+model = PyPySRRegressor(
+    binary_operators=["+", "-", "*", "/"],
+    unary_operators=["square"],
+    niterations=1_000_000_000,
+    populations=1,
+    population_size=16,
+    max_evals=64,
+    maxsize=8,
+    maxdepth=4,
+    tournament_selection_n=5,
+    topn=5,
+    should_optimize_constants=True,
+    optimize_probability=0.25,
+    optimizer_iterations=1,
+    optimizer_nrestarts=1,
+    optimizer_f_calls_limit=20,
+    migration=False,
+    hof_migration=False,
+    random_state=0,
+)
+model.fit(X, y, variable_names=["x0"])
+print(f"MiniSR tiny-fit warmstart complete in {{time.time() - t1:.1f}}s", flush=True)
+print(f"MiniSR warmstart complete in {{time.time() - t0:.1f}}s", flush=True)
+PY
+"""
+        script_path = abs_batch / "warmstart.sh"
+        with open(script_path, "w") as f:
+            f.write(script_content)
+        return script_path
+
     def _write_script(
         self,
         batch_dir: Path,
@@ -447,8 +599,8 @@ cd "$SLURM_SUBMIT_DIR"
 export PYTHONPATH="$SLURM_SUBMIT_DIR:$PYTHONPATH"
 
 # Point juliacall/juliapkg at the repo-local Julia environment (same as parallel_eval_pysr).
+unset JULIA_PROJECT
 export PYTHON_JULIAPKG_PROJECT="$SLURM_SUBMIT_DIR/.juliapkg_env"
-export JULIA_DEPOT_PATH="$SLURM_SUBMIT_DIR/.julia_depot"
 export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
 
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"

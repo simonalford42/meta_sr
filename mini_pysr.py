@@ -15,20 +15,26 @@ from mini_pypysr_utils import calculate_scores, idx_model_selection
 REPO_ROOT = Path(__file__).resolve().parent
 _JL = None
 _LOADED = False
+_MINISR = None
 
 
 def _init_julia():
-    global _JL, _LOADED
+    global _JL, _LOADED, _MINISR
     if _JL is not None and _LOADED:
         return _JL
 
     local_juliapkg_project = REPO_ROOT / ".juliapkg_env"
-    local_julia_depot = REPO_ROOT / ".julia_depot"
     local_juliapkg_project.mkdir(parents=True, exist_ok=True)
-    local_julia_depot.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", str(local_juliapkg_project))
-    os.environ.setdefault("JULIA_DEPOT_PATH", str(local_julia_depot))
+
+    # Match the PySR SLURM worker setup: pin the Julia project for this
+    # checkout, but let Julia use its normal depot/cache unless explicitly set
+    # by the caller. Inherited PYTHON_JULIAPKG_PROJECT values can point at a
+    # stale conda env and break local MiniSR tests.
+    os.environ["PYTHON_JULIAPKG_PROJECT"] = str(local_juliapkg_project)
     os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
+    os.environ.pop("JULIA_PROJECT", None)
+    if os.environ.get("JULIA_DEPOT_PATH") == str(REPO_ROOT / ".julia_depot"):
+        os.environ.pop("JULIA_DEPOT_PATH", None)
 
     pysr_repo = REPO_ROOT / "PySR"
     if pysr_repo.exists() and str(pysr_repo) not in sys.path:
@@ -60,7 +66,8 @@ def _init_julia():
 
     if not _LOADED:
         jl.seval("using PythonCall")
-        jl.include(str(REPO_ROOT / "SymbolicRegression.jl" / "src" / "MiniSR.jl"))
+        jl.seval("using SymbolicRegression")
+        _MINISR = jl.seval("SymbolicRegression.MiniSR")
         _LOADED = True
     _JL = jl
     return _JL
@@ -207,7 +214,8 @@ class PyPySRRegressor:
         *,
         variable_names: Sequence[str] | None = None,
     ) -> "PyPySRRegressor":
-        jl = _init_julia()
+        _init_julia()
+        minisr = _MINISR
 
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=float).reshape(-1)
@@ -215,7 +223,7 @@ class PyPySRRegressor:
             variable_names = [f"x{i}" for i in range(X.shape[1])]
         variable_names = list(variable_names)
 
-        result = jl.MiniSR.fit_mini_sr(
+        result = minisr.fit_mini_sr(
             X, y, variable_names,
             population_size=self.population_size,
             populations=self.populations,

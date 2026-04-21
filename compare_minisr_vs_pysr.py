@@ -48,7 +48,9 @@ DEFAULT_MAX_SAMPLES = 1000
 PARTITION = "default_partition"
 TIME_LIMIT = "04:00:00"
 MEM_PER_CPU = "8G"
-JOB_TIMEOUT = 600.0
+PYSR_JOB_TIMEOUT = 600.0
+MINISR_JOB_TIMEOUT = None
+MINISR_STALL_TIMEOUT = None
 
 
 def _per_seed_averages(result_details: List[Dict], n_runs: int) -> List[float]:
@@ -97,7 +99,7 @@ def _run_pysr(
         dataset_max_samples=max_samples,
         data_seed=seed,
         max_retries=2,
-        job_timeout=JOB_TIMEOUT,
+        job_timeout=PYSR_JOB_TIMEOUT,
         use_cache=True,
         repo_root=str(REPO_ROOT),
         julia_project=str(REPO_ROOT / "SymbolicRegression.jl"),
@@ -131,7 +133,8 @@ def _run_minisr(
         dataset_max_samples=max_samples,
         data_seed=seed,
         max_retries=2,
-        job_timeout=JOB_TIMEOUT,
+        job_timeout=MINISR_JOB_TIMEOUT,
+        stall_timeout=MINISR_STALL_TIMEOUT,
         use_cache=False,
     )
     return evaluator.evaluate_configs(
