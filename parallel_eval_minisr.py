@@ -330,6 +330,8 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
         target_noise: float = 0.0,
         warm_start: bool = True,
         warm_start_timeout: Optional[float] = None,
+        repo_root: Optional[str] = None,
+        python_juliapkg_project: Optional[str] = None,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -351,7 +353,12 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
         self.target_noise = target_noise
         self.warm_start = warm_start
         self.warm_start_timeout = warm_start_timeout
-        self.repo_root = Path(__file__).resolve().parent
+        self.repo_root = Path(repo_root).resolve() if repo_root else Path(__file__).resolve().parent
+        self.python_juliapkg_project = (
+            str(Path(python_juliapkg_project).resolve())
+            if python_juliapkg_project
+            else str((self.repo_root / ".juliapkg_env").resolve())
+        )
 
     def evaluate_configs(
         self,
@@ -566,11 +573,11 @@ cd "$SLURM_SUBMIT_DIR"
 export PYTHONPATH="{self.repo_root}:$SLURM_SUBMIT_DIR:$PYTHONPATH"
 
 unset JULIA_PROJECT
+<<<<<<< HEAD
 export PYTHON_JULIAPKG_PROJECT="{self.repo_root}/.juliapkg_env"
-export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
-
+=======
+export PYTHON_JULIAPKG_PROJECT="{self.python_juliapkg_project}"
 echo "MiniSR warmstart running on node: $(hostname)"
-
 python -u - <<'PY'
 import time
 import numpy as np
@@ -656,7 +663,11 @@ export PYTHONPATH="{self.repo_root}:$SLURM_SUBMIT_DIR:$PYTHONPATH"
 
 # Point juliacall/juliapkg at the repo-local Julia environment (same as parallel_eval_pysr).
 unset JULIA_PROJECT
+<<<<<<< HEAD
 export PYTHON_JULIAPKG_PROJECT="{self.repo_root}/.juliapkg_env"
+=======
+export PYTHON_JULIAPKG_PROJECT="{self.python_juliapkg_project}"
+>>>>>>> autoresearch_sr/apr20c
 export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
 
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
