@@ -30,6 +30,7 @@ class MiniSRTaskSpec:
     run_index: int = 0
     target_noise: float = 0.0
     fitness_metric: str = "r2"
+    log_file: Optional[str] = None
 
     def to_json_dict(self) -> Dict:
         return asdict(self)
@@ -86,6 +87,8 @@ def _evaluate_minisr_task(spec: MiniSRTaskSpec) -> MiniSRTaskResult:
         minisr_mutation_kwargs[key] = value
     model_kwargs = {**minisr_mutation_kwargs, **spec.minisr_kwargs}
     model_kwargs["random_state"] = run_seed
+    if spec.log_file is not None:
+        model_kwargs["log_file"] = spec.log_file
 
     try:
         max_evals = model_kwargs.get("max_evals")
@@ -265,11 +268,17 @@ def _aggregate_minisr_results(
         for dataset_name in dataset_names:
             runs = grouped.get((config_id, dataset_name))
             if runs:
-                r2s = [r.r2_score if r.r2_score is not None else -1.0 for r in runs]
-                gts = [r.gt_match_score if r.gt_match_score is not None else 0.0 for r in runs]
+                runs_sorted = sorted(runs, key=lambda r: r.run_index)
+                r2s = [r.r2_score if r.r2_score is not None else -1.0 for r in runs_sorted]
+                gts = [r.gt_match_score if r.gt_match_score is not None else 0.0 for r in runs_sorted]
+                losses = [
+                    r.best_loss if r.best_loss is not None and np.isfinite(r.best_loss) else float("inf")
+                    for r in runs_sorted
+                ]
+                best_eqs = [r.best_equation for r in runs_sorted]
                 scores = gts if fitness_metric == "gt" else r2s
                 score_vector.append(float(np.mean(scores)))
-                evals = [r.n_evals for r in runs if r.n_evals is not None]
+                evals = [r.n_evals for r in runs_sorted if r.n_evals is not None]
                 details.append({
                     "dataset": dataset_name,
                     "avg_r2": float(np.mean(r2s)),
@@ -277,8 +286,10 @@ def _aggregate_minisr_results(
                     "avg_n_evals": float(np.mean(evals)) if evals else None,
                     "run_r2_scores": r2s,
                     "run_gt_scores": gts,
-                    "best_equations": [r.best_equation for r in runs if r.best_equation],
-                    "errors": [r.error for r in runs if r.error] or None,
+                    "run_losses": losses,
+                    "run_best_equations": best_eqs,
+                    "best_equations": [eq for eq in best_eqs if eq],
+                    "errors": [r.error for r in runs_sorted if r.error] or None,
                 })
             else:
                 score_vector.append(0.0 if fitness_metric == "gt" else -1.0)
@@ -289,6 +300,8 @@ def _aggregate_minisr_results(
                     "avg_n_evals": None,
                     "run_r2_scores": [],
                     "run_gt_scores": [],
+                    "run_losses": [],
+                    "run_best_equations": [],
                     "best_equations": [],
                     "errors": ["No results found"],
                 })

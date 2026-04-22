@@ -7,10 +7,10 @@ This file is READ-ONLY for the agent.
 
 Usage:
     python evaluate_minisr.py > run.log 2>&1
-    python evaluate_minisr.py --seed 43 --n-runs 10 > run2.log 2>&1
 """
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -26,22 +26,54 @@ from parallel_eval_minisr import (
 )
 from utils import load_dataset_names_from_split
 
+PMLB_DATASETS_PATH = META_SR_ROOT / "pmlb" / "datasets"
+
+
+def _load_gt_formula(dataset_name: str) -> str:
+    """Read the ground-truth formula from pmlb metadata.yaml (cheap, no data load)."""
+    metadata_path = PMLB_DATASETS_PATH / dataset_name / "metadata.yaml"
+    if not metadata_path.exists():
+        return ""
+    try:
+        import yaml
+        with open(metadata_path, "r") as f:
+            metadata = yaml.safe_load(f)
+    except Exception:
+        return ""
+    desc = metadata.get("description", "") if isinstance(metadata, dict) else ""
+    for line in desc.split("\n"):
+        line = line.strip()
+        if "=" in line and not line.startswith("#") and " in [" not in line and " in (" not in line:
+            return line.split("=", 1)[1].strip()
+    return ""
+
+
+def _fmt_loss(x) -> str:
+    if x is None:
+        return "n/a"
+    try:
+        xf = float(x)
+    except (TypeError, ValueError):
+        return "n/a"
+    if not math.isfinite(xf):
+        return "inf" if xf > 0 else "-inf"
+    return f"{xf:.3g}"
+
 # ---------------------------------------------------------------------------
 # Hardcoded settings (mirror evaluate.py)
 # ---------------------------------------------------------------------------
 
 SPLIT = "../splits/barely_unsolvable.txt"
 DEFAULT_SEED = 42
-DEFAULT_N_RUNS = 3
+DEFAULT_N_RUNS = 10
 FITNESS_METRIC = "gt"
-# MAX_EVALS = 1_000_000
-MAX_EVALS = 50_000
+MAX_EVALS = 1_000_000
 MAX_SAMPLES = 1000
 SANDBOX_ROOT = "/home/sca63/meta_sr_agent_loop"
 PARTITION = "default_partition"
 TIME_LIMIT = "04:00:00"
 MEM_PER_CPU = "8G"
-JOB_TIMEOUT = 1000.0
+JOB_TIMEOUT = 1500.0
 
 
 def parse_args():
@@ -117,12 +149,32 @@ def main():
             detail.get("run_gt_scores", []) if FITNESS_METRIC == "gt"
             else detail.get("run_r2_scores", [])
         ) > 0
+        gt_formula = _load_gt_formula(ds)
+        gt_label = f"  [GT: {gt_formula}]" if gt_formula else ""
         if has_errors or not has_scores:
             datasets_fail += 1
-            print(f"  {ds}: {ds_score} [FAILED]")
+            print(f"  {ds}: {ds_score} [FAILED]{gt_label}")
         else:
             datasets_ok += 1
-            print(f"  {ds}: {ds_score}")
+            print(f"  {ds}: {ds_score}{gt_label}")
+
+        # Per-run breakdown: run index, GT match, R², best loss, discovered equation.
+        gt_scores = detail.get("run_gt_scores", []) or []
+        r2_scores = detail.get("run_r2_scores", []) or []
+        losses = detail.get("run_losses", []) or []
+        eqs = detail.get("run_best_equations", []) or []
+        n_runs_seen = max(len(gt_scores), len(r2_scores), len(losses), len(eqs))
+        for i in range(n_runs_seen):
+            gt = gt_scores[i] if i < len(gt_scores) else None
+            r2 = r2_scores[i] if i < len(r2_scores) else None
+            loss = losses[i] if i < len(losses) else None
+            eq = eqs[i] if i < len(eqs) else None
+            match_str = "True " if (gt is not None and gt >= 0.5) else "False"
+            r2_str = f"{float(r2):.3f}" if r2 is not None else "n/a"
+            eq_str = eq if eq else "<none>"
+            print(
+                f"    run {i}: match={match_str} r2={r2_str} loss={_fmt_loss(loss)} eq={eq_str}"
+            )
 
     print(f"\n---")
     print(f"score:         {avg_score:.6f}")

@@ -1,95 +1,125 @@
 # autoresearch_sr (MiniSR mode)
 
-This is an experiment in having an LLM autonomously improve symbolic
-regression by editing a single self-contained Julia file: **`MiniSR.jl`**.
+We are having an LLM autonomously discover better symbolic
+regression algorithms by editing a single self-contained Julia file:
+**`MiniSR.jl`**.
 
-The goal is to discover novel algorithms and optimizations that improve PySR's
-ability to recover the correct ground-truth formula on SRBench tasks, under a
-fixed budget of expression evaluations per search.
+The goal is to find algorithms that recover the correct ground-truth formula on
+SRBench tasks more reliably than PySR does, under a fixed budget of expression
+evaluations per search. PySR is a mature, well-tuned evolutionary SR library;
+incremental tweaks to its core loop (mutation weights, selection pressure,
+parsimony coefficients, etc.) are unlikely to beat it by much, because that's
+exactly the design space its authors have already explored.
 
-PySR is a mature, highly performant symbolic regression library. To focus
-experimentation on its "core loop," we reimplemented it as `MiniSR.jl` — the
-same search loop, with all the surrounding bells and whistles stripped away.
+`MiniSR.jl` starts out as a stripped-down reimplementation of PySR's search
+loop. You should stay inside the evolutionary-search paradigm — populations of
+expressions evolving under mutation and selection — but treat the *management*
+of that evolution as open for redesign. PySR's answer to "how do we run an
+evolutionary search well" is a handful of specific commitments: an **island
+model** of **regularized (age-based) evolution**, **tournament selection over a
+parsimony-weighted scalar cost**, and a **complexity-keyed hall of fame** that
+doubles as the Pareto frontier. Those choices drive most of its behavior, and
+we want you to ask what *other* answers to that question might work better.
 
-We want you to experiment with novel algorithmic variants: new heuristics,
-search strategies, techniques for managing exploration vs exploitation,
-candidate diversity and strength, and so on.
+Concretely, the interesting design space is how the evolutionary search is
+*organized and steered*: how diversity is maintained, how selection pressure is
+applied, how the population is structured, how "good" is defined beyond
+loss + complexity. Some directions worth considering (non-exhaustive):
+quality-diversity / MAP-Elites-style archives indexed by behavioral or
+structural descriptors; novelty search or novelty-weighted selection;
+age-layered populations (ALPS); fitness sharing or explicit niching;
+co-evolution of subexpressions; multi-objective selection on axes beyond
+(loss, complexity); adaptive operator selection driven by recent success.
+Prefer changes that rethink *how the evolutionary search is managed* over
+changes that adjust *how hard existing knobs are turned*.
 
-For example, you might:
-- tweak mutation or introduce a new survival operator;
-- change how the hall of fame is stored to encourage exploration or to
-  optimize expression structure;
-- weight the search by operator complexity;
-- redesign evolution to co-learn a PCFG that guides the search;
-- add logging and study execution traces of failed tasks to hypothesize fixes
-  based on where the search goes off the rails;
-- add random restarts for diversity, or tune the search to "complete" right
-  as the max-evals budget runs out.
-- tune hyperparameters to improve a promising idea.
+The design space also extends beyond classical evolutionary techniques. You
+could make mutations *data-aware* — proposing edits based on X, y, or where
+residuals are largest, rather than sampling operators and subtrees blindly.
+You could fit a small PCFG or other cheap model online from recent successes
+and use it to bias subtree generation. You could train a lightweight
+predictor to screen candidates before full evaluation, stretching the
+budget. You could redesign the loss itself to reward structural signal, not
+just numerical fit. The proposal distribution, the candidate filter, and the
+scoring function are all places where a bit of learned or data-driven signal
+could replace uniform randomness.
 
 Anything is fair game. Your singular goal is to raise the GT solve rate of
 `MiniSR.jl`.
 
-This is an experiment to have the LLM autonomously improve symbolic regression by
-editing a single self-contained Julia file: **`MiniSR.jl`**.
-
 
 ## Setup
 
-To set up a new experiment, work with the user to:
+To set up a new run:
 
-1. **Agree on a run tag**: propose a tag based on today's date (e.g. `apr20`).
+1. **Decide on a run tag**: create a tag based on today's date (e.g. `apr20`).
    The branch `AR_minisr/<tag>` must not already exist.
 2. **Create the branch**:
-   `git -C /home/sca63/meta_sr_agent_loop checkout -b autoresearch_sr/<tag>`.
+   `git -C /home/sca63/meta_sr_agent_loop checkout -b AR_minisr/<tag>`.
    Also create a matching branch inside the SymbolicRegression submodule:
-   `git -C /home/sca63/meta_sr_agent_loop/SymbolicRegression.jl checkout -b autoresearch_sr/<tag>`.
+   `git -C /home/sca63/meta_sr_agent_loop/SymbolicRegression.jl checkout -b AR_minisr/<tag>`.
 3. **Read the in-scope files**:
    - `program_minisr.md` — these instructions.
    - `evaluate_minisr.py` — fixed evaluation harness. Do not modify.
+   - `inspect_one.py` — script for testing ideas before evaluation.
    - `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src/MiniSR.jl` — the
      one file you edit. This is the file Julia loads through the
      SymbolicRegression package.
 4. **Create the run directory**: `mkdir -p runs/<tag>` inside `autoresearch_sr/`.
-   All per-run artifacts (`results.tsv`, `run.log`, `run2.log`) live there —
-   this keeps prior runs (e.g. `runs/apr9`, `runs/apr13`) isolated.
+   All per-run artifacts live there.
    Initialize `runs/<tag>/results.tsv` with just the header row.
-5. **Confirm and go**: Confirm setup looks good.
 
 ## Experimentation
 
-Each experiment evaluates symbolic regression performance on SRBench benchmarks
-via SLURM. Evaluations take ~5–10 minutes depending on cluster load.
+**Terminology** (used consistently throughout):
+- **Run**: a single session tied to a tag, set up once (see above) and looping
+  experiments until interrupted. One branch per run.
+- **Experiment**: one proposed change to `MiniSR.jl` that gets fully evaluated
+  with `evaluate_minisr.py`. Each experiment has an `<exp_num>`, a row in
+  `results.tsv`, and a directory `runs/<tag>/<exp_num>/` holding its artifacts.
+- **Mini-experiment**: sandbox testing using `inspect_one.py` or your own
+  scratch scripts to probe an idea before committing to a full evaluation. Not
+  logged in `results.tsv`; summarized in the parent experiment's `exp_summary.md`.
+- **Evaluation**: the act of running `evaluate_minisr.py`. Exactly one per
+  experiment.
+- **Baseline**: the evaluation of unmodified `MiniSR.jl` at the start of a run.
+  Always the first experiment (`<exp_num> = 1`); gives the score to beat.
+
+Each step of the run consists of a period of experimentation followed by a
+proposed change to MiniSR.jl to evaluate. During experimentation, you can reason
+about MiniSR.jl's behavior, hypothesize strategies for improvement, run
+mini-experiments to test ideas, look through execution traces for insights,
+or anything else to assist you in determining how to improve MiniSR.jl performance.
+Once you've explored and tested ideas, you can finalize a change to MiniSR.jl
+and then evaluate it with `evaluate_minisr.py`.
+
+`evaluate_minisr.py` evaluates 10 seeds of MiniSR.jl on a suite of 20 medium
+difficulty tasks (listed in `../splits/barely_unsolvable.txt`). Evaluation should
+take ~5-15 minutes depending on cluster load, but could take longer.
+Evaluation is noisy: the final score is averaged solve rate over all seeds and datasets.
 
 **What you CAN do:**
 - Edit `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src/MiniSR.jl`.
-  Any change inside this file is fair game — mutation weights, mutation operators,
-  selection, survival, constant optimization, parsimony, the main loop.
+  Any change inside this file is fair game.
+- Edit `inspect_one.py` to support mini-experiments.
+- Create scripts of your own for debugging, hypothesis testing, and
+  experimentation. Place them inside `runs/<tag>/<exp_num>/` if they're
+  specific to one experiment, or under `autoresearch_sr/` if they're reused
+  across experiments.
+- Write to `runs/<tag>/results.tsv` and to `runs/<tag>/<exp_num>/` (including
+  `evaluate.log`, `exp_summary.md`, and any mini-experiment artifacts) — these
+  are expected outputs, not "edits".
 
 **What you CANNOT do:**
 - Modify `evaluate_minisr.py`. It is read-only.
 - Modify `program_minisr.md`. These instructions are fixed.
-- Modify any other file in `SymbolicRegression.jl/` or elsewhere in the repo.
 
 **The goal is simple: get the highest score.** The metric is `gt` (ground-truth
 match rate — fraction of datasets where the discovered equation matches the
 true formula). Higher is better.
 
-**Evaluation is noisy.** `evaluate_minisr.py` runs multiple seeds internally
-(see `n_runs` in the output) and reports the averaged score. Every apparent
-improvement is re-evaluated with a different seed before being accepted (see
-the loop below).
-
-**Experiment with both ambitious algorithmic changes and smaller tweaks.**
-Think on a scale from 1 to 4: 1 = tweak a hyperparameter, 2 = tweak an
-approach, 3 = experiment with a new approach, 4 = large change to part of the
-algorithm. Roughly balance across the scale.
-
-**Simplicity criterion**: All else being equal, simpler is better. In addition
-to adding complexity to improve performance, you can also experiment with
-removing complexity and keeping the removal if performance does not decrease.
-
-**The first run**: always establish the baseline before making any edits.
+**First experiment**: always establish the baseline (evaluation of unmodified
+`MiniSR.jl`) before making any edits, so you know the score to beat.
 
 ## Output format
 
@@ -100,60 +130,106 @@ datasets:      20
 datasets_ok:   20
 datasets_fail: 0
 metric:        gt
-n_runs:        3
+n_runs:        10
 ---
 ```
 
-Extract the metric with: `grep "^score:" run.log`
+Extract the metric with: `grep "^score:" runs/<tag>/<exp_num>/evaluate.log`
+
+The per-dataset block printed just above the summary shows, for each dataset:
+the ground-truth formula (`[GT: ...]`) and for each seed the match flag, R²,
+best loss, and the best discovered equation. Example line pair:
+
+```
+  feynman_I_18_4: 0.333  [GT: (m1*r1+m2*r2)/(m1+m2)]
+    run 0: match=False r2=0.998 loss=4.2e-05 eq=...
+    run 1: match=True  r2=1.000 loss=1.1e-08 eq=...
+```
+
+Use this to see which datasets found the truth vs which got stuck on a lookalike.
+
+## Inspecting datasets and runs
+
+The benchmark is the 20 datasets in `../splits/barely_unsolvable.txt`. For any
+dataset, the ground-truth formula and feature/variable ranges are in
+`../pmlb/datasets/<dataset_name>/metadata.yaml` (under `description`).
+
+### Running MiniSR on a single dataset (interactive debugging)
+
+Use `inspect_one.py` to run MiniSR locally on one dataset, see the full
+Pareto frontier, and get detailed symbolic-match info for the best equation.
+This should be useful for experimentation and testing hypotheses.
+
+```
+python inspect_one.py --dataset feynman_I_13_4 --n-runs 3 --max-evals 200000 --log-hof
+```
 
 ## Dataset health check
 
-All datasets should succeed on every run. If `datasets_fail > 0`, your edit
-likely broke MiniSR on certain inputs. Do NOT accept a "higher score" that
+All datasets should succeed on every evaluation. If `datasets_fail > 0`, your
+edit likely broke MiniSR on certain inputs. Do NOT accept a "higher score" that
 came from fewer datasets succeeding — debug or discard.
 
 ## Logging results
 
-Log each experiment to `runs/<tag>/results.tsv` (tab-separated). Header + 6
+Logging will occur in two ways. A summary of the results will be put into
+`runs/<tag>/results.tsv`, while fuller logging will go in `runs/<tag>/<exp_num>/`.
+
+### Logging results.tsv
+Log each experiment to `runs/<tag>/results.tsv` (tab-separated). Header + 5
 columns:
 
 ```
-exp	commit	score	score2	status	description
+exp	commit	score	status	description
 ```
 
 1. experiment number (1, 2, 3, …)
 2. short git commit hash
-3. first evaluation score (0.000000 on crash)
-4. second evaluation score (0.000000 if none attempted)
-5. status: `keep`, `discard`, or `crash`
-6. 1–3 sentence description
+3. evaluation score (0.000000 on crash)
+4. status: `keep`, `discard`, or `crash`
+5. 1–3 sentence description
 
 Do not commit `results.tsv` — leave it untracked (the outer repo's `.gitignore`
 already excludes `runs/`).
+
+
+### Logging everything else
+In `runs/<tag>/<exp_num>/` should be the following:
+- `evaluate.log`: evaluation log from running `evaluate_minisr.py`.
+- `exp_summary.md`: markdown file containing (1) reasoning behind change,
+(2) diff of the change, (3) a list of "mini-experiments" run during this experiment,
+(4) conclusion after the change.
+- Any additional files showing results of "mini-experiments" run during this experiment.
 
 ## The experiment loop
 
 LOOP FOREVER:
 
-1. Look at current git state.
-2. Edit `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src/MiniSR.jl`
-   with an experimental idea.
-3. Commit the real file inside the SymbolicRegression submodule:
+1. Look at current git state, and create a new folder for the next experiment:
+   `mkdir -p runs/<tag>/<exp_num>/`.
+2. Reason about what to try next. Hypothesize ideas, then run mini-experiments
+   to probe them — small test scripts, `inspect_one.py`, examining previous
+   output traces, etc.
+3. Once you have a promising change you'd like to fully evaluate, commit
+   `MiniSR.jl`:
    `git -C ../SymbolicRegression.jl add src/MiniSR.jl && git -C ../SymbolicRegression.jl commit -m ...`.
-4. Run: `python evaluate_minisr.py --n-runs 3 > runs/<tag>/run.log 2>&1`.
-5. Read the score: `grep "^score:" runs/<tag>/run.log`.
-6. Empty grep → the run crashed. Use `tail -n 50 runs/<tag>/run.log` to
-   diagnose. Fix trivial mistakes; give up on fundamentally broken ideas.
-7. If the score improved, rerun with a fresh seed and 10 samples:
-   `python evaluate_minisr.py --seed 528 --n-runs 10 > runs/<tag>/run2.log 2>&1`.
-   (Do this for the baseline too.)
-8. Append a row to `runs/<tag>/results.tsv`.
-9. If the confirmation run also beats the previous best, keep the
-   SymbolicRegression submodule commit. If you also need the outer repo to
+4. Run the evaluation:
+   `python evaluate_minisr.py > runs/<tag>/<exp_num>/evaluate.log 2>&1`. As
+   an agent, "sleep" until the evaluation is complete. Do not monitor logs
+   while evaluation is running; wait until the job is completely finished
+   to inspect it and come to conclusions.
+5. Read the score: `grep "^score:" runs/<tag>/<exp_num>/evaluate.log`. Empty
+   grep → the evaluation crashed. Read the log to diagnose. Fix trivial
+   mistakes; give up on fundamentally broken ideas.
+6. If the evaluation beats the previous best **and** `datasets_fail == 0`, keep
+   the SymbolicRegression submodule commit. If you also need the outer repo to
    record that exact submodule revision, run
    `git -C .. add SymbolicRegression.jl && git -C .. commit -m ...`.
-10. Otherwise `git -C ../SymbolicRegression.jl reset --hard HEAD~1` to revert
-    MiniSR.jl to the prior commit.
+7. Otherwise `git -C ../SymbolicRegression.jl reset --hard HEAD~1` to revert
+   MiniSR.jl to the prior commit.
+8. Write `runs/<tag>/<exp_num>/exp_summary.md` with (1) reasoning behind the
+   change, (2) diff of the change, (3) the mini-experiments you ran, (4) the
+   conclusion. In addition, append a row to `runs/<tag>/results.tsv`.
 
 **NEVER STOP**: Once the loop begins, do NOT ask the human whether to continue.
 Run until you are manually interrupted. If you run out of ideas, think harder,
