@@ -1,18 +1,12 @@
 """
-Single-task MiniSR inspection tool for interactive debugging.
+Single-task MiniSR runner for interactive debugging.
 
 Runs MiniSR locally (no SLURM) on one dataset, printing the full Pareto frontier
 and ground-truth symbolic-match details. Optionally dumps a JSONL log of the
 HOF evolution across cycles for after-the-fact inspection.
 
 Usage:
-    python tools/inspect_one.py --dataset feynman_I_18_4
-    python tools/inspect_one.py --dataset feynman_I_13_4 --log-hof --max-evals 100000
-    python tools/inspect_one.py --dataset feynman_I_18_4 --n-runs 3
-
-Parallelism: run multiple invocations in the background (e.g.
-`python tools/inspect_one.py --dataset A & python tools/inspect_one.py --dataset B`)
-rather than adding a SLURM flag to this script.
+    python run_minisr.py --dataset feynman_I_13_4 --log-hof --max-evals 100000
 """
 from __future__ import annotations
 
@@ -23,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-AUTORESEARCH_DIR = Path(__file__).resolve().parent.parent
+AUTORESEARCH_DIR = Path(__file__).resolve().parent
 META_SR_ROOT = AUTORESEARCH_DIR.parent
 if str(META_SR_ROOT) not in sys.path:
     sys.path.insert(0, str(META_SR_ROOT))
@@ -53,6 +47,9 @@ def parse_args() -> argparse.Namespace:
                         help="Write HOF progression JSONL to ./minisr_hof_<dataset>_<seed>.jsonl")
     parser.add_argument("--log-dir", type=str, default=".",
                         help="Directory for HOF log files when --log-hof is set (default: CWD)")
+    parser.add_argument("--log-snapshots", type=int, default=100,
+                        help="Target # of HOF snapshots written across the search "
+                             "(evenly spaced cycles, default: 100)")
     return parser.parse_args()
 
 
@@ -62,6 +59,7 @@ def _run_one(
     max_evals: int,
     max_samples: int,
     log_file: Optional[str],
+    log_snapshots: int,
 ) -> Dict[str, Any]:
     """Run MiniSR on one dataset+seed, return a dict with full frontier + match info."""
     import random as _rnd
@@ -112,6 +110,7 @@ def _run_one(
     }
     model_kwargs = {**weight_kwargs, **minisr_kwargs}
     model_kwargs["random_state"] = seed
+    model_kwargs["log_snapshots"] = log_snapshots
     if log_file is not None:
         model_kwargs["log_file"] = log_file
 
@@ -253,6 +252,7 @@ def main() -> int:
                 max_evals=args.max_evals,
                 max_samples=args.max_samples,
                 log_file=log_file,
+                log_snapshots=args.log_snapshots,
             )
         )
 

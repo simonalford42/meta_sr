@@ -128,6 +128,7 @@ class PyPySRRegressor:
         weight_custom_mutation_4: float = 0.0,
         weight_custom_mutation_5: float = 0.0,
         log_file: str | None = None,
+        log_snapshots: int = 100,
     ) -> None:
         if any(
             op is not None
@@ -178,6 +179,7 @@ class PyPySRRegressor:
         self.optimizer_f_calls_limit = optimizer_f_calls_limit
         self.random_state = random_state
         self.log_file = log_file
+        self.log_snapshots = log_snapshots
         self.mutation_weights = {
             "add_node": weight_add_node,
             "insert_node": weight_insert_node,
@@ -256,6 +258,7 @@ class PyPySRRegressor:
             nested_constraints=dict(self.nested_constraints or {}),
             random_state=int(self.random_state),
             log_file=self.log_file if self.log_file is not None else "",
+            log_snapshots=int(self.log_snapshots),
         )
         self.n_evals_ = int(result["n_evals"])
 

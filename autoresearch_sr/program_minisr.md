@@ -61,7 +61,7 @@ To set up a new run:
 3. **Read the in-scope files**:
    - `program_minisr.md` — these instructions.
    - `evaluate_minisr.py` — fixed evaluation harness. Do not modify.
-   - `inspect_one.py` — script for testing ideas before evaluation.
+   - `run_minisr.py` — script for testing ideas before evaluation.
    - `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src/MiniSR.jl` — the
      one file you edit. This is the file Julia loads through the
      SymbolicRegression package.
@@ -77,7 +77,7 @@ To set up a new run:
 - **Experiment**: one proposed change to `MiniSR.jl` that gets fully evaluated
   with `evaluate_minisr.py`. Each experiment has an `<exp_num>`, a row in
   `results.tsv`, and a directory `runs/<tag>/<exp_num>/` holding its artifacts.
-- **Mini-experiment**: sandbox testing using `inspect_one.py` or your own
+- **Mini-experiment**: sandbox testing using `run_minisr.py` or your own
   scratch scripts to probe an idea before committing to a full evaluation. Not
   logged in `results.tsv`; summarized in the parent experiment's `exp_summary.md`.
 - **Evaluation**: the act of running `evaluate_minisr.py`. Exactly one per
@@ -101,7 +101,7 @@ Evaluation is noisy: the final score is averaged solve rate over all seeds and d
 **What you CAN do:**
 - Edit `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src/MiniSR.jl`.
   Any change inside this file is fair game.
-- Edit `inspect_one.py` to support mini-experiments.
+- Edit `run_minisr.py` to support mini-experiments.
 - Create scripts of your own for debugging, hypothesis testing, and
   experimentation. Place them inside `runs/<tag>/<exp_num>/` if they're
   specific to one experiment, or under `autoresearch_sr/` if they're reused
@@ -156,12 +156,12 @@ dataset, the ground-truth formula and feature/variable ranges are in
 
 ### Running MiniSR on a single dataset (interactive debugging)
 
-Use `inspect_one.py` to run MiniSR locally on one dataset, see the full
+Use `run_minisr.py` to run MiniSR locally on one dataset, see the full
 Pareto frontier, and get detailed symbolic-match info for the best equation.
 This should be useful for experimentation and testing hypotheses.
 
 ```
-python inspect_one.py --dataset feynman_I_13_4 --n-runs 3 --max-evals 200000 --log-hof
+python run_minisr.py --dataset feynman_I_13_4 --n-runs 3 --max-evals 200000 --log-hof
 ```
 
 ## Dataset health check
@@ -208,7 +208,7 @@ LOOP FOREVER:
 1. Look at current git state, and create a new folder for the next experiment:
    `mkdir -p runs/<tag>/<exp_num>/`.
 2. Reason about what to try next. Hypothesize ideas, then run mini-experiments
-   to probe them — small test scripts, `inspect_one.py`, examining previous
+   to probe them — small test scripts, `run_minisr.py`, examining previous
    output traces, etc.
 3. Once you have a promising change you'd like to fully evaluate, commit
    `MiniSR.jl`:
