@@ -48,7 +48,7 @@ DEFAULT_BASE_HPO_PARAMS = [
 ]
 
 # Julia-adapted version of the hyperparameter identification prompt
-JULIA_HPARAM_IDENTIFICATION_PROMPT = """You are analyzing a Julia operator function used within PySR (SymbolicRegression.jl), an evolutionary symbolic regression system. Your task is to identify tunable hyperparameters in the operator code.
+JULIA_HPARAM_IDENTIFICATION_PROMPT = """You are analyzing a Julia operator function used within PySR (SymbolicRegression.jl), an evolutionary symbolic regression system. Your task is to identify the SINGLE most important tunable hyperparameter in the operator code.
 
 ## Context: PySR / SymbolicRegression.jl
 
@@ -67,9 +67,9 @@ PySR evolves mathematical expressions (expression trees) to fit data using:
 
 ## Your Task
 
-Identify ALL numeric constants and thresholds in this Julia code that could be tuned to improve performance. These are the "hyperparameters" of this operator.
+Pick the ONE numeric constant in this Julia code that most influences operator behavior and is most worth tuning. Only one — the single most important. Prefer parameters that control the core behavior of the operator (tournament size, selection pressure, key probability/threshold, dominant multiplier) over cosmetic or safety-clamp values.
 
-For each hyperparameter, provide:
+Provide:
 1. `name`: A descriptive name (snake_case)
 2. `line_pattern`: The exact code snippet containing the value (for string matching/replacement)
 3. `current_value`: The current numeric value in the code (must be a literal number, not a variable)
@@ -82,15 +82,15 @@ For each hyperparameter, provide:
 
 ## Guidelines
 
-- **Include**: probabilities (0-1), thresholds, multipliers, exponents, size limits, counts, penalty weights, temperature values
-- **Exclude**: loop indices, array indices, string constants, variable references
+- **Eligible**: probabilities (0-1), thresholds, multipliers, exponents, size limits, counts, penalty weights, temperature values
+- **Ineligible**: loop indices, array indices, string constants, variable references
 - Be conservative with ranges — suggest reasonable bounds based on the parameter's role
 - For probabilities, use min=0.0, max=1.0
 - For small positive values (e.g., 0.001 to 1.0), consider log_scale=true
 
 ## Output Format
 
-Return a JSON array. Example:
+Return a JSON array with exactly ONE element (the most important hyperparameter). Example:
 ```json
 [
     {{
@@ -107,7 +107,7 @@ Return a JSON array. Example:
 ]
 ```
 
-If there are no tunable hyperparameters, return: `[]`
+If there are no tunable hyperparameters in this code, return: `[]`
 
 Return ONLY the JSON array, no additional text."""
 
@@ -123,7 +123,12 @@ def identify_julia_hparams(
     llm_temperature: float = 0.0,
 ) -> List[HyperparameterSpec]:
     """
-    Use LLM to identify tunable hyperparameters in Julia operator code.
+    Use LLM to identify the single most important tunable hyperparameter in Julia
+    operator code.
+
+    Returns a list with at most one HyperparameterSpec (the most important param,
+    per the LLM). If the LLM returns multiple, only the first valid one is kept.
+    The list shape is preserved for compatibility with the rest of the HPO pipeline.
 
     Args:
         code: Julia source code of the operator
@@ -132,7 +137,7 @@ def identify_julia_hparams(
         llm_temperature: Temperature for LLM
 
     Returns:
-        List of HyperparameterSpec objects (with line_pattern attribute set)
+        List of HyperparameterSpec with 0 or 1 element (line_pattern attribute set).
     """
     prompt = JULIA_HPARAM_IDENTIFICATION_PROMPT.format(
         code=code,
@@ -175,13 +180,11 @@ def identify_julia_hparams(
             spec.line_pattern = hp.get("line_pattern", "")
             specs.append(spec)
 
-        # Filter invalid specs
-        filtered = []
+        # Filter invalid specs, then keep only the first (most important) one.
         for spec in specs:
             line_pattern = getattr(spec, 'line_pattern', '')
             if not line_pattern:
                 continue
-            # Validate numeric values
             try:
                 if spec.param_type == "int":
                     int(spec.current_value)
@@ -192,9 +195,9 @@ def identify_julia_hparams(
                         continue
             except (ValueError, TypeError):
                 continue
-            filtered.append(spec)
+            return [spec]
 
-        return filtered
+        return []
 
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         print(f"  Warning: Failed to parse hyperparameter response: {e}")
@@ -390,46 +393,45 @@ def _build_trial_config(
     )
 
 
-def tune_bundle(
+class _HpoBundlePlan:
+    """All state needed to apply HPO trial results back to one bundle.
+
+    Produced by `_prepare_hpo_plan`, consumed by `_apply_hpo_results`. Carries
+    the Optuna study so we can `tell()` scores after the batch returns, the
+    operator hparam specs used for code injection, and the pending trial list
+    aligned with a flat list of configs.
+    """
+    __slots__ = (
+        "bundle", "study", "op_hparams", "pending", "verbose",
+        "n_trials", "label",
+    )
+
+    def __init__(self, bundle, study, op_hparams, pending, verbose, n_trials, label):
+        self.bundle = bundle
+        self.study = study
+        self.op_hparams = op_hparams
+        self.pending = pending  # list of (trial_idx, trial, base_params, op_params)
+        self.verbose = verbose
+        self.n_trials = n_trials
+        self.label = label
+
+
+def _prepare_hpo_plan(
     bundle,  # OperatorBundle
-    evaluator: PySRSlurmEvaluator,
-    dataset_names: List[str],
     pysr_kwargs: Dict,
     operator_type_names: List[str],
     n_trials: int,
     seed: int,
     output_dir: str,
-    model: str = "openai/gpt-5-mini",
-    n_runs: int = 1,
-    target_noise_map: Optional[Dict[str, float]] = None,
-    fitness_metric: str = "gt",
-    base_hpo_params: Optional[List[str]] = None,
-    verbose: bool = True,
-) -> Tuple[Any, float]:  # Returns (OperatorBundle, best_score)
-    """
-    Run HPO trials on a single bundle.
+    model: str,
+    base_hpo_params: Optional[List[str]],
+    verbose: bool,
+) -> Tuple[Optional[_HpoBundlePlan], List]:
+    """Identify hparams, open the Optuna study, sample n_trials worth of configs.
 
-    Tunes both operator-specific hparams (in Julia code) and base PySR hparams.
-    Uses a persistent Optuna study (SQLite) so tuning can resume across generations.
-
-    Args:
-        bundle: The OperatorBundle to tune
-        evaluator: PySRSlurmEvaluator for running evaluations
-        dataset_names: Datasets to evaluate on
-        pysr_kwargs: Base PySR configuration
-        operator_type_names: Which operator types are in play
-        n_trials: Number of new Optuna trials to run
-        seed: Random seed
-        output_dir: Directory for Optuna study storage
-        model: LLM model for hparam identification
-        n_runs: Number of runs per config per dataset
-        target_noise_map: Per-dataset noise levels
-        fitness_metric: "r2" or "gt"
-        base_hpo_params: Base PySR params to tune (None = defaults)
-        verbose: Print progress
-
-    Returns:
-        (updated_bundle, best_score): Bundle with best hparams applied, and best score
+    Returns (plan, configs). If the bundle has no tunable params, plan is None
+    and configs is empty. Otherwise configs is aligned with plan.pending and
+    ready to feed into evaluator.evaluate_configs(all_bundles_combined).
     """
     if optuna is None:
         raise ImportError("optuna is required for HPO. Install with: pip install optuna")
@@ -454,7 +456,7 @@ def tune_bundle(
     if total_params == 0:
         if verbose:
             print("    No hyperparameters to tune")
-        return bundle, bundle.score if bundle.score is not None else float('-inf')
+        return None, []
 
     if verbose:
         print(f"    Tuning {total_params} params "
@@ -466,7 +468,6 @@ def tune_bundle(
     study_dir = Path(output_dir) / "hp_studies"
     study_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use a sanitized bundle name for the study
     study_name = bundle.display_name.replace(" | ", "_").replace(" ", "_")
     db_path = study_dir / f"{study_name}.db"
     storage = f"sqlite:///{db_path}"
@@ -483,10 +484,8 @@ def tune_bundle(
     # Enqueue initial trial with current values if study is fresh
     if len(study.trials) == 0:
         initial_params = {}
-        # Base params: use current pysr_kwargs values or defaults
         for name, spec in base_search_space.items():
             if spec.kind == "categorical" or spec.kind == "bool":
-                # For categorical, find the label matching the default
                 choice_map = dict(spec.choices)
                 reverse_map = {v: k for k, v in choice_map.items()}
                 default_label = reverse_map.get(spec.default)
@@ -496,29 +495,22 @@ def tune_bundle(
                     initial_params[name] = spec.choices[0][0]
             else:
                 initial_params[name] = spec.default
-
-        # Operator-specific params: use current values
         for op_type, specs in op_hparams.items():
             for hp in specs:
-                param_name = f"op_{op_type}__{hp.name}"
-                initial_params[param_name] = hp.current_value
-
+                initial_params[f"op_{op_type}__{hp.name}"] = hp.current_value
         try:
             study.enqueue_trial(initial_params)
         except Exception as e:
             if verbose:
                 print(f"    Warning: Could not enqueue initial trial: {e}")
 
-    # Step 4: Run n_trials
-    from evolution_helpers import _evaluate_configs_with_noise_map
-
-    best_score = bundle.score if bundle.score is not None else float('-inf')
-    best_base_params = None
-    best_op_params = None
-
+    # Step 4: Sample all n_trials up-front. Trials that fail at param-sampling
+    # or config-build time are told(-inf) immediately and dropped; the rest go
+    # into `pending` and will be batch-evaluated later.
+    pending: List[Tuple[int, Any, Any, Any]] = []
+    configs: List = []
     for trial_idx in range(n_trials):
         trial = study.ask()
-
         try:
             base_params, op_params = _sample_trial_params(
                 trial, base_search_space, op_hparams
@@ -528,78 +520,138 @@ def tune_bundle(
             if verbose:
                 print(f"    Trial {trial_idx + 1}: param sampling failed: {e}")
             continue
-
         config = _build_trial_config(
             bundle, base_params, op_params, op_hparams, pysr_kwargs
         )
-
         if config is None:
             study.tell(trial, float('-inf'))
             if verbose:
                 print(f"    Trial {trial_idx + 1}: config build failed")
             continue
+        pending.append((trial_idx, trial, base_params, op_params))
+        configs.append(config)
 
+    plan = _HpoBundlePlan(
+        bundle=bundle, study=study, op_hparams=op_hparams,
+        pending=pending, verbose=verbose, n_trials=n_trials,
+        label=bundle.display_name,
+    )
+    return plan, configs
+
+
+def _apply_hpo_results(
+    plan: _HpoBundlePlan,
+    trial_results: List[Optional[Tuple[float, List[float], List[Dict]]]],
+) -> float:
+    """Tell results back to the study, apply the best params to the bundle.
+
+    trial_results is aligned with plan.pending; entries may be None (e.g. when
+    the SLURM batch as a whole failed), in which case the trial is told(-inf).
+    Returns the bundle's new best score.
+    """
+    bundle = plan.bundle
+    starting_score = bundle.score if bundle.score is not None else float('-inf')
+    best_score = starting_score
+    best_trial_score = float('-inf')
+    best_base_params = None
+    best_op_params = None
+
+    for (trial_idx, trial, base_params, op_params), res in zip(plan.pending, trial_results):
+        if res is None:
+            plan.study.tell(trial, float('-inf'))
+            continue
+        avg_score = res[0]
+        score = avg_score if avg_score is not None else float('-inf')
+        plan.study.tell(trial, score)
+        if score > best_trial_score:
+            best_trial_score = score
+        if score > best_score:
+            best_score = score
+            best_base_params = base_params
+            best_op_params = op_params
+
+    if best_base_params is not None:
+        all_best = dict(best_base_params)
+        if best_op_params:
+            for op_type, params in best_op_params.items():
+                for hp_name, val in params.items():
+                    all_best[f"op_{op_type}__{hp_name}"] = val
+        bundle.best_hparams = all_best
+
+        if best_op_params:
+            for op_type, params in best_op_params.items():
+                op = bundle.operators.get(op_type)
+                if op is None or op_type not in plan.op_hparams:
+                    continue
+                new_code = inject_hyperparameters(
+                    op.code, plan.op_hparams[op_type], params
+                )
+                op.code = new_code
+                for spec_dict in (op.hp_specs or []):
+                    if spec_dict["name"] in params:
+                        spec_dict["current_value"] = params[spec_dict["name"]]
+        bundle.score = best_score
+        if plan.verbose:
+            print(f"    [{plan.label}] HPO improvement found: best trial {best_trial_score:.4f} vs og {starting_score:.4f} ({best_trial_score - starting_score:+.4f})")
+    else:
+        if plan.verbose:
+            trial_str = f"{best_trial_score:.4f}" if best_trial_score > float('-inf') else "n/a"
+            print(f"    [{plan.label}] HPO no improvement: best trial {trial_str} vs og {starting_score:.4f}")
+
+    return best_score
+
+
+def tune_bundle(
+    bundle,  # OperatorBundle
+    evaluator: PySRSlurmEvaluator,
+    dataset_names: List[str],
+    pysr_kwargs: Dict,
+    operator_type_names: List[str],
+    n_trials: int,
+    seed: int,
+    output_dir: str,
+    model: str = "openai/gpt-5-mini",
+    n_runs: int = 1,
+    target_noise_map: Optional[Dict[str, float]] = None,
+    fitness_metric: str = "gt",
+    base_hpo_params: Optional[List[str]] = None,
+    verbose: bool = True,
+) -> Tuple[Any, float]:  # Returns (OperatorBundle, best_score)
+    """Single-bundle HPO: prepare plan, batch-submit trials, apply results.
+
+    Multi-bundle callers should use `tune_population` instead — it merges
+    every bundle's trials into one SLURM batch.
+    """
+    from evolution_helpers import _evaluate_configs_with_noise_map
+
+    plan, configs = _prepare_hpo_plan(
+        bundle, pysr_kwargs, operator_type_names, n_trials, seed,
+        output_dir, model, base_hpo_params, verbose,
+    )
+    if plan is None:
+        return bundle, bundle.score if bundle.score is not None else float('-inf')
+
+    trial_results: List[Optional[Tuple[float, List[float], List[Dict]]]]
+    if configs:
         try:
-            results = _evaluate_configs_with_noise_map(
+            raw = _evaluate_configs_with_noise_map(
                 evaluator=evaluator,
-                configs=[config],
+                configs=configs,
                 dataset_names=dataset_names,
                 seed=seed,
                 n_runs=n_runs,
                 target_noise_map=target_noise_map,
                 fitness_metric=fitness_metric,
             )
-            score = results[0][0]  # avg score
+            trial_results = list(raw)
         except Exception as e:
-            score = float('-inf')
             if verbose:
-                print(f"    Trial {trial_idx + 1}: evaluation failed: {e}")
-
-        study.tell(trial, score)
-
-        if verbose:
-            print(f"    Trial {trial_idx + 1}/{n_trials}: score={score:.4f}")
-
-        if score > best_score:
-            best_score = score
-            best_base_params = base_params
-            best_op_params = op_params
-
-    # Step 5: Apply best params to bundle
-    if best_base_params is not None:
-        # Merge best base params + operator hparam values into best_hparams
-        all_best = dict(best_base_params)
-        # Also store operator-specific param values for reference
-        if best_op_params:
-            for op_type, params in best_op_params.items():
-                for hp_name, val in params.items():
-                    all_best[f"op_{op_type}__{hp_name}"] = val
-
-        bundle.best_hparams = all_best
-
-        # Inject best operator hparams into operator code
-        if best_op_params:
-            for op_type, params in best_op_params.items():
-                op = bundle.operators.get(op_type)
-                if op is None or op_type not in op_hparams:
-                    continue
-                new_code = inject_hyperparameters(
-                    op.code, op_hparams[op_type], params
-                )
-                op.code = new_code
-                # Update hp_specs to reflect new current values
-                for spec_dict in (op.hp_specs or []):
-                    if spec_dict["name"] in params:
-                        spec_dict["current_value"] = params[spec_dict["name"]]
-
-        bundle.score = best_score
-
-        if verbose:
-            print(f"    HPO improved score to {best_score:.4f}")
+                print(f"    Batch trial evaluation failed: {e}")
+            trial_results = [None] * len(plan.pending)
     else:
-        if verbose:
-            print(f"    HPO did not improve score (best: {best_score:.4f})")
+        trial_results = []
 
+    best_score = _apply_hpo_results(plan, trial_results)
     return bundle, best_score
 
 
@@ -619,36 +671,75 @@ def tune_population(
     base_hpo_params: Optional[List[str]] = None,
     verbose: bool = True,
 ) -> List:  # Returns List[OperatorBundle]
+    """HPO-tune every bundle in parallel in one SLURM submission.
+
+    We prepare an Optuna plan for every bundle (sampling trials + building
+    configs), concatenate every bundle's configs into one flat list, submit
+    the full (pop_size * n_trials) config batch as a SINGLE
+    evaluate_configs call, and finally scatter the results back to each
+    bundle's plan and apply the best params. Bundles whose trials are
+    totally independent are tuned in parallel on the cluster.
+
+    Returns the same population list, tunes bundles in place, and resorts
+    by score.
     """
-    Run HPO tuning on each bundle in the population.
+    from evolution_helpers import _evaluate_configs_with_noise_map
 
-    Args:
-        population: List of OperatorBundles to tune
-        (other args same as tune_bundle)
+    print(f"\n  HPO tuning: {n_trials} trials per bundle, {len(population)} bundles "
+          f"(all submitted as one SLURM batch)")
 
-    Returns:
-        Updated population (same list, modified in-place), re-sorted by score
-    """
-    print(f"\n  HPO tuning: {n_trials} trials per bundle, {len(population)} bundles")
-
+    # Phase 1: per-bundle prepare
+    plans: List[Optional[_HpoBundlePlan]] = []
+    all_configs: List = []
+    # backrefs[k] = (bundle_index_in_plans, local_pending_index_in_that_plan)
+    backrefs: List[Tuple[int, int]] = []
     for i, bundle in enumerate(population):
         print(f"\n  Bundle {i + 1}/{len(population)}: {bundle.display_name}")
-        tune_bundle(
-            bundle=bundle,
-            evaluator=evaluator,
-            dataset_names=dataset_names,
-            pysr_kwargs=pysr_kwargs,
-            operator_type_names=operator_type_names,
-            n_trials=n_trials,
-            seed=seed,
-            output_dir=output_dir,
-            model=model,
-            n_runs=n_runs,
-            target_noise_map=target_noise_map,
-            fitness_metric=fitness_metric,
-            base_hpo_params=base_hpo_params,
-            verbose=verbose,
+        plan, configs = _prepare_hpo_plan(
+            bundle, pysr_kwargs, operator_type_names, n_trials, seed,
+            output_dir, model, base_hpo_params, verbose,
         )
+        plans.append(plan)
+        if plan is None:
+            continue
+        for local_idx, cfg in enumerate(configs):
+            all_configs.append(cfg)
+            backrefs.append((i, local_idx))
+
+    # Phase 2: one SLURM submission with every trial from every bundle
+    per_bundle_results: List[List[Optional[Tuple[float, List[float], List[Dict]]]]] = [
+        ([None] * len(p.pending)) if p is not None else [] for p in plans
+    ]
+
+    if all_configs:
+        n_bundles_active = sum(1 for p in plans if p is not None)
+        print(
+            f"\n  Evaluating {len(all_configs)} HPO trials across "
+            f"{n_bundles_active} bundles in one SLURM batch..."
+        )
+        try:
+            raw = _evaluate_configs_with_noise_map(
+                evaluator=evaluator,
+                configs=all_configs,
+                dataset_names=dataset_names,
+                seed=seed,
+                n_runs=n_runs,
+                target_noise_map=target_noise_map,
+                fitness_metric=fitness_metric,
+            )
+            for res_idx, (plan_idx, local_idx) in enumerate(backrefs):
+                per_bundle_results[plan_idx][local_idx] = raw[res_idx]
+        except Exception as e:
+            print(f"    Batch HPO evaluation failed: {e}")
+            # Leave per_bundle_results entries as None so _apply_hpo_results
+            # records these trials as -inf and the studies stay consistent.
+
+    # Phase 3: per-bundle apply
+    for i, plan in enumerate(plans):
+        if plan is None:
+            continue
+        _apply_hpo_results(plan, per_bundle_results[i])
+
     # Re-sort by score
     population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
     return population

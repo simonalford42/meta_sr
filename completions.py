@@ -27,10 +27,11 @@ Usage:
 import os
 import json
 import hashlib
+import threading
 import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Any, Optional
+from typing import Callable, List, Dict, Any, Optional
 
 from sqlalchemy import Column, Integer, String, Float, Text, create_engine, select
 from sqlalchemy.engine.base import Engine
@@ -174,23 +175,61 @@ _usage = {
     "num_cached_calls": 0,
 }
 
+# Thread-safe usage updates + callbacks fired after each update (for live logging).
+_usage_lock = threading.Lock()
+_usage_callbacks: List[Callable[[Dict[str, Any]], None]] = []
+
+
+def register_usage_callback(fn: Callable[[Dict[str, Any]], None]) -> None:
+    """Register a callback fired (with a usage snapshot) after each API or cache hit."""
+    with _usage_lock:
+        if fn not in _usage_callbacks:
+            _usage_callbacks.append(fn)
+
+
+def unregister_usage_callback(fn: Callable[[Dict[str, Any]], None]) -> None:
+    """Remove a previously-registered usage callback (no-op if absent)."""
+    with _usage_lock:
+        if fn in _usage_callbacks:
+            _usage_callbacks.remove(fn)
+
+
+def clear_usage_callbacks() -> None:
+    """Remove all usage callbacks."""
+    with _usage_lock:
+        _usage_callbacks.clear()
+
+
+def _fire_usage_callbacks() -> None:
+    """Snapshot usage under the lock, then invoke callbacks outside the lock."""
+    with _usage_lock:
+        snapshot = _usage.copy()
+        callbacks = list(_usage_callbacks)
+    for cb in callbacks:
+        try:
+            cb(snapshot)
+        except Exception as e:
+            print(f"  WARNING: usage callback {cb!r} failed: {e}")
+
 
 def reset_usage():
     """Reset the global usage tracker"""
     global _usage
-    _usage = {
-        "total_cost": 0.0,
-        "total_tokens": 0,
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "num_calls": 0,
-        "num_cached_calls": 0,
-    }
+    with _usage_lock:
+        _usage = {
+            "total_cost": 0.0,
+            "total_tokens": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "num_calls": 0,
+            "num_cached_calls": 0,
+        }
 
 
 def get_usage() -> Dict[str, Any]:
     """Get current usage statistics"""
-    return _usage.copy()
+    with _usage_lock:
+        return _usage.copy()
 
 def print_usage():
     """Print current usage summary"""
@@ -265,7 +304,9 @@ def chat_completion(
             # All samples cached, reconstruct response
             cached_choices.sort(key=lambda x: x[0])
             print(f"      [API] cached (no API call)")
-            _usage["num_cached_calls"] += 1
+            with _usage_lock:
+                _usage["num_cached_calls"] += 1
+            _fire_usage_callbacks()
             return {
                 'choices': [choice for _, choice in cached_choices],
                 'model': model,
@@ -284,7 +325,9 @@ def chat_completion(
         cached_response = _cache.lookup(model, messages, temperature, max_tokens, cache_kwargs)
         if cached_response is not None:
             print(f"      [API] cached (no API call)")
-            _usage["num_cached_calls"] += 1
+            with _usage_lock:
+                _usage["num_cached_calls"] += 1
+            _fire_usage_callbacks()
             return cached_response
 
     if api_key is None:
@@ -367,12 +410,14 @@ def chat_completion(
             # Track usage
             if "usage" in data:
                 usage = data["usage"]
-                _usage["num_calls"] += 1
-                _usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
-                _usage["completion_tokens"] += usage.get("completion_tokens", 0)
-                _usage["total_tokens"] += usage.get("total_tokens", 0)
-                if "cost" in usage:
-                    _usage["total_cost"] += usage["cost"]
+                with _usage_lock:
+                    _usage["num_calls"] += 1
+                    _usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                    _usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                    _usage["total_tokens"] += usage.get("total_tokens", 0)
+                    if "cost" in usage:
+                        _usage["total_cost"] += usage["cost"]
+                _fire_usage_callbacks()
 
             # Store in cache
             if use_cache:

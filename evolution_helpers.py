@@ -201,6 +201,117 @@ def format_solved_str(result_details: Optional[List[Dict]]) -> str:
     indices_str = ",".join(str(i) for i in solved)
     return f"solved {len(solved)}/{n_tasks} [{indices_str}]"
 
+
+def format_errors_str(result_details: Optional[List[Dict]]) -> str:
+    """Format errored-run info for printing, e.g. 'errs 12/100'. Empty when clean."""
+    if not result_details:
+        return ""
+    n_total = sum(int(d.get("n_total_runs", 0) or 0) for d in result_details)
+    n_good = sum(int(d.get("n_successful_runs", 0) or 0) for d in result_details)
+    n_err = n_total - n_good
+    if n_err <= 0:
+        return ""
+    return f"errs {n_err}/{n_total}"
+
+
+def _compute_per_task_best(
+    bundles: List, n_tasks: int,
+) -> List[Optional[Tuple[Any, int, int]]]:
+    """For each task, return the bundle with the most solves on that task.
+
+    Entry is (bundle, n_solved, n_total) when at least one run solved the
+    task, else None. Ties break by overall bundle score.
+    """
+    best: List[Optional[Tuple[Any, int, int]]] = [None] * n_tasks
+    for task_idx in range(n_tasks):
+        best_b = None
+        best_solved = 0
+        best_total = 0
+        for c in bundles:
+            rd = getattr(c, "result_details", None)
+            if not rd or task_idx >= len(rd):
+                continue
+            detail = rd[task_idx] or {}
+            run_gt = detail.get("run_gt_scores", []) or []
+            if not run_gt:
+                continue
+            n_solved = sum(1 for g in run_gt if g >= 1.0)
+            if n_solved == 0:
+                continue
+            if (
+                n_solved > best_solved
+                or (
+                    n_solved == best_solved
+                    and best_b is not None
+                    and (c.score or -1) > (best_b.score or -1)
+                )
+            ):
+                best_b = c
+                best_solved = n_solved
+                best_total = len(run_gt)
+        if best_b is not None and best_solved > 0:
+            best[task_idx] = (best_b, best_solved, best_total)
+    return best
+
+
+def format_population_summary(
+    bundles: List,
+    dataset_names: List[str],
+    role_for: Optional[Any] = None,  # Callable[[bundle], str] or None
+    header: Optional[str] = None,
+) -> str:
+    """Describe a population as score + the tasks each bundle is best at.
+
+    For each task in `dataset_names`, find the bundle solving the most runs
+    (tie-break by overall score). Invert that mapping so each bundle's line
+    lists the task indices it leads on, with per-task solved/total counts.
+    Appends `per-task best avg: ...`, the mean over tasks of the winning
+    bundle's solve rate (tasks with no solver contribute 0).
+    """
+    if not bundles or not dataset_names:
+        return ""
+    n_tasks = len(dataset_names)
+
+    best_per_task = _compute_per_task_best(bundles, n_tasks)
+
+    tasks_per_bundle: Dict[int, List[Tuple[int, int, int]]] = {}
+    for task_idx, rec in enumerate(best_per_task):
+        if rec is None:
+            continue
+        b, ns, nt = rec
+        tasks_per_bundle.setdefault(id(b), []).append((task_idx, ns, nt))
+
+    lines: List[str] = []
+    if header:
+        lines.append(header)
+    for c in bundles:
+        role = role_for(c) if role_for else ""
+        role_prefix = f"[{role}] " if role else ""
+        score_str = f"{c.score:.4f}" if c.score is not None else "nan"
+        best_list = tasks_per_bundle.get(id(c), [])
+        if best_list:
+            best_str = ", ".join(f"{t} ({ns}/{nt})" for (t, ns, nt) in best_list)
+            lines.append(
+                f"    {role_prefix}{c.display_name}: score={score_str} "
+                f"best for tasks {best_str}"
+            )
+        else:
+            lines.append(f"    {role_prefix}{c.display_name}: score={score_str}")
+
+    total_rate = 0.0
+    for rec in best_per_task:
+        if rec is None:
+            continue
+        _, ns, nt = rec
+        if nt > 0:
+            total_rate += ns / nt
+    avg_best = total_rate / n_tasks if n_tasks > 0 else 0.0
+    n_tasks_covered = sum(1 for rec in best_per_task if rec is not None)
+    lines.append(
+        f"  per-task best avg: {avg_best:.4f} (covered {n_tasks_covered}/{n_tasks})"
+    )
+    return "\n".join(lines)
+
 def load_task_formulas(dataset_names: List[str]) -> Dict[str, str]:
     """Load ground-truth formulas for each dataset by reading only metadata.yaml.
 
@@ -306,9 +417,10 @@ def select_survivors_diverse(
 ) -> list:
     """Task-diverse survivor selection.
 
-    For each task, if any candidate solves it (any run with gt >= 1.0),
-    keep the solver with the highest overall score. Then backfill with
-    top-scoring candidates until we reach min_population_size.
+    For each task, pick the candidate that solves the most runs on that task
+    (count of run_gt_scores >= 1.0), breaking ties by highest overall score.
+    Candidates with zero solved runs on a task are not selected for that task.
+    Then backfill with top-scoring candidates until we reach min_population_size.
 
     Population can grow up to len(dataset_names) but never shrinks below
     min_population_size.
@@ -317,18 +429,27 @@ def select_survivors_diverse(
     scored = [m for m in combined if m.score is not None]
     scored.sort(key=lambda m: m.score, reverse=True)
 
-    # Step 1: For each task, find the best solver
+    # Step 1: For each task, find the candidate solving the most runs
+    # (tie-break by overall score, already pre-sorted descending).
     frontier: Dict[int, Any] = {}  # candidate id -> candidate (use id to dedup)
     for task_idx in range(len(dataset_names)):
         best_solver = None
+        best_n_solved = 0
         for candidate in scored:
             rd = getattr(candidate, "result_details", None)
             if not rd or task_idx >= len(rd):
                 continue
             run_gt = rd[task_idx].get("run_gt_scores", [])
-            if any(g >= 1.0 for g in run_gt):
-                if best_solver is None or candidate.score > best_solver.score:
-                    best_solver = candidate
+            n_solved = sum(1 for g in run_gt if g >= 1.0)
+            if n_solved == 0:
+                continue
+            if n_solved > best_n_solved or (
+                n_solved == best_n_solved
+                and best_solver is not None
+                and candidate.score > best_solver.score
+            ):
+                best_solver = candidate
+                best_n_solved = n_solved
         if best_solver is not None:
             frontier[id(best_solver)] = best_solver
 
@@ -344,31 +465,23 @@ def select_survivors_diverse(
             if len(frontier_list) >= min_population_size:
                 break
 
-    n_tasks_covered = sum(
-        1 for task_idx in range(len(dataset_names))
-        if any(
-            any(g >= 1.0 for g in getattr(c, "result_details", [{}])[task_idx].get("run_gt_scores", []))
-            for c in frontier_list
-            if getattr(c, "result_details", None) and task_idx < len(getattr(c, "result_details", []))
-        )
-    )
-    print(f"  [diverse] Population: {len(frontier_list)} "
-          f"(frontier: {len(frontier)}, backfill: {len(frontier_list) - len(frontier)}, "
-          f"tasks covered: {n_tasks_covered}/{len(dataset_names)})")
-
     frontier_ids = set(frontier.keys())
-    union_covered: set = set()
-    for c in frontier_list:
-        solved = set(get_solved_tasks(getattr(c, "result_details", None)))
-        union_covered |= solved
-        role = "frontier" if id(c) in frontier_ids else "backfill"
-        solved_str = (
-            f"[{','.join(str(i) for i in sorted(solved))}]" if solved else "[]"
-        )
-        score_str = f"{c.score:.4f}" if c.score is not None else "nan"
-        print(f"    [{role}] {c.display_name}: score={score_str} "
-              f"covers {len(solved)}/{len(dataset_names)} {solved_str}")
-    uncovered = [i for i in range(len(dataset_names)) if i not in union_covered]
+
+    def _role_for(c):
+        return "frontier" if id(c) in frontier_ids else "backfill"
+
+    print(f"  [diverse] Population: {len(frontier_list)} "
+          f"(frontier: {len(frontier)}, backfill: {len(frontier_list) - len(frontier)})")
+    summary = format_population_summary(
+        frontier_list, dataset_names, role_for=_role_for,
+    )
+    if summary:
+        print(summary)
+
+    # Report tasks no bundle in the population can solve — useful for spotting
+    # systematic gaps in the meta-search.
+    best_per_task = _compute_per_task_best(frontier_list, len(dataset_names))
+    uncovered = [i for i, rec in enumerate(best_per_task) if rec is None]
     if uncovered:
         print(f"  [diverse] uncovered tasks: {uncovered}")
 

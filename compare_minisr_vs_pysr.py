@@ -102,7 +102,6 @@ def _run_pysr(
         job_timeout=PYSR_JOB_TIMEOUT,
         use_cache=True,
         repo_root=str(REPO_ROOT),
-        julia_project=str(REPO_ROOT / "SymbolicRegression.jl"),
     )
     return evaluator.evaluate_configs(
         [config], dataset_names, seed=seed, n_runs=n_runs,

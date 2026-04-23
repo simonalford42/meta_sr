@@ -9,7 +9,7 @@ Usage:
     python evolve_pysr.py --operator_type mutation --split splits/train.txt --generations 20
     python evolve_pysr.py --operator_type survival --split splits/train_hard.txt --generations 20
     python evolve_pysr.py --operator_type selection --split splits/train_hard.txt --generations 20
-    python evolve_pysr.py --operator_type all --generations 30  # joint round-robin evolution
+    python evolve_pysr.py --operator_type all --generations 30  # joint evolution, offspring split per gen
     python evolve_pysr.py --operator_type mutation,survival --generations 20  # subset
 
 Most of the previously-inline helpers now live in:
@@ -26,6 +26,8 @@ import copy
 import json
 import random
 import sys
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -38,6 +40,7 @@ from parallel_eval_pysr import (
     get_default_pysr_kwargs,
 )
 from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log, resolve_run_dir
+from julia_env import warmup_julia
 
 from operator_types import (
     ModelEnsemble,
@@ -53,6 +56,35 @@ from baseline_loader import (
     load_resume_state,
     load_baseline_bundle,
 )
+MODEL_ENSEMBLE_PRESETS: Dict[str, str] = {
+    "cheap": (
+        "openai/gpt-5.4-mini:0.20,"
+        "openai/gpt-5.4-nano:0.30,"
+        "google/gemini-3.1-flash-lite-preview:0.25,"
+        "x-ai/grok-4.1-fast:0.25"
+    ),
+    "medium": (
+        "openai/gpt-5.4-mini:0.30,"
+        "google/gemini-3-flash-preview:0.25,"
+        "anthropic/claude-sonnet-4.6:0.25,"
+        "x-ai/grok-4.20:0.20"
+    ),
+    "best": (
+        "anthropic/claude-opus-4.7:0.25,"
+        "openai/gpt-5.4:0.25,"
+        "google/gemini-3.1-pro-preview:0.25,"
+        "x-ai/grok-4.20:0.25"
+    ),
+}
+
+
+def resolve_models_arg(value: str) -> str:
+    """Map a --models preset name to its ensemble string, or return as-is."""
+    if value in MODEL_ENSEMBLE_PRESETS:
+        return MODEL_ENSEMBLE_PRESETS[value]
+    return value
+
+
 from evolution_helpers import (
     TARGET_NOISE_LEVELS,
     _build_target_noise_map,
@@ -61,12 +93,26 @@ from evolution_helpers import (
     apply_racing_results,
     select_parent,
     format_solved_str,
+    format_errors_str,
+    format_population_summary,
     load_task_formulas,
     select_unsolved_task_with_trace,
     format_pareto_trace_for_task,
     select_survivors,
     select_survivors_diverse,
 )
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    """Format a duration in a human-friendly way: '3.4s', '1m 12s', '1h 23m'."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    if seconds < 3600:
+        m, s = divmod(int(seconds), 60)
+        return f"{m}m {s}s"
+    h, rem = divmod(int(seconds), 3600)
+    m = rem // 60
+    return f"{h}h {m}m"
 
 def evaluate_bundles(
     bundles: List[OperatorBundle],
@@ -95,6 +141,110 @@ def evaluate_bundles(
         fitness_metric=fitness_metric,
         run_index_start_per_config=run_index_start_per_config,
     )
+
+
+def _submit_bundle_blocking(
+    bundle: OperatorBundle,
+    evaluator: PySRSlurmEvaluator,
+    dataset_names: List[str],
+    pysr_kwargs: Dict,
+    seed: int,
+    n_runs: int,
+    target_noise_map: Optional[Dict[str, float]],
+    fitness_metric: str,
+    run_index_start: int = 0,
+):
+    """Synchronously submit one bundle's SLURM eval. Returns the handle or None.
+
+    Intended to be handed to a ThreadPoolExecutor so the sbatch + cache
+    pre-filter runs off the main thread and doesn't block LLM generation.
+    """
+    try:
+        return evaluator.submit_configs(
+            [bundle.to_pysr_config(pysr_kwargs)],
+            dataset_names,
+            seed=seed,
+            n_runs=n_runs,
+            target_noise_map=target_noise_map,
+            fitness_metric=fitness_metric,
+            run_index_start_per_config=[run_index_start],
+        )
+    except Exception as e:
+        print(f"  Submit failed for {bundle.display_name}: {e}")
+        return None
+
+
+def submit_bundle_future(
+    executor: ThreadPoolExecutor,
+    bundle: OperatorBundle,
+    evaluator: PySRSlurmEvaluator,
+    dataset_names: List[str],
+    pysr_kwargs: Dict,
+    seed: int,
+    n_runs: int,
+    target_noise_map: Optional[Dict[str, float]],
+    fitness_metric: str,
+    run_index_start: int = 0,
+) -> "Future":
+    """Submit the actual sbatch on a background thread; return the Future.
+
+    The caller continues immediately and can generate the next candidate while
+    the background thread builds task specs, pre-filters the cache, and runs
+    sbatch. Resolve the future later with `.result()` to get the batch handle
+    (or None if submission failed).
+    """
+    return executor.submit(
+        _submit_bundle_blocking,
+        bundle, evaluator, dataset_names, pysr_kwargs,
+        seed, n_runs, target_noise_map, fitness_metric, run_index_start,
+    )
+
+
+def collect_bundle_futures(
+    evaluator: PySRSlurmEvaluator,
+    bundle_futures: List[Tuple[OperatorBundle, "Future"]],
+    n_runs: int,
+) -> List[Tuple[OperatorBundle, Tuple[float, List[float], List[Dict]]]]:
+    """Resolve submit futures, wait on all batches together, return per-bundle results.
+
+    Returns a list of (bundle, result) pairs aligned with the input order. A
+    failure placeholder (-1.0, [], []) is used whenever submission failed or
+    the batch returned no result for a bundle.
+    """
+    # Resolve every submit future first — these should already be done by now
+    # if generation took longer than the sbatch call, but block on any still
+    # in flight so we have a complete list of handles before waiting.
+    bundles_in_order: List[OperatorBundle] = []
+    handles_in_order: List[Any] = []  # PySRBatchHandle or None
+    for bundle, fut in bundle_futures:
+        bundles_in_order.append(bundle)
+        try:
+            handles_in_order.append(fut.result())
+        except Exception as e:
+            print(f"  Submit future raised for {bundle.display_name}: {e}")
+            handles_in_order.append(None)
+
+    valid_idx = [i for i, h in enumerate(handles_in_order) if h is not None]
+    valid_handles = [handles_in_order[i] for i in valid_idx]
+    if valid_handles:
+        try:
+            per_batch_results = evaluator.collect_batches(valid_handles)
+        except Exception as e:
+            print(f"  collect_batches failed: {e}")
+            per_batch_results = [[] for _ in valid_handles]
+    else:
+        per_batch_results = []
+
+    # Fold valid batch results back into the original order; missing / failed
+    # entries get a placeholder so the caller can still mark that bundle.
+    pairs: List[Tuple[OperatorBundle, Tuple[float, List[float], List[Dict]]]] = []
+    result_by_idx: Dict[int, Tuple[float, List[float], List[Dict]]] = {}
+    for slot, res_list in zip(valid_idx, per_batch_results):
+        if res_list:
+            result_by_idx[slot] = res_list[0]
+    for i, bundle in enumerate(bundles_in_order):
+        pairs.append((bundle, result_by_idx.get(i, (-1.0, [], []))))
+    return pairs
 
 def evaluate_baseline(
     op_type: OperatorType,
@@ -252,6 +402,7 @@ def run_bundle_evolution(
     random_target_noise: bool = False,
     fitness_metric: str = "gt",
     hp_tuning_trials: int = 0,
+    hpo_n_runs: Optional[int] = None,
     repo_root: Optional[str] = None,
     baseline_bundle: Optional[OperatorBundle] = None,
     wandb_run: Optional[Any] = None,
@@ -263,11 +414,12 @@ def run_bundle_evolution(
     execution_feedback_n: int = 0,
     execution_feedback_prob: float = 0.75,
 ) -> Tuple[OperatorBundle, Any, float]:
-    """Run round-robin bundle evolution across multiple operator types.
+    """Run bundle evolution across multiple operator types.
 
-    Each generation evolves one operator type (cycling round-robin), while
-    keeping the other operators in each bundle fixed. The full bundle is
-    evaluated as a unit so operator interactions are captured.
+    Each generation splits `n_offspring` slots evenly across every operator
+    type in `operator_type_names` (shuffled), so every type gets ~1/N of the
+    offspring. The full bundle is evaluated as a unit so operator interactions
+    are captured.
 
     If baseline_bundle is provided, it seeds the initial population: one copy
     is kept as-is and the remaining slots are filled with LLM-generated
@@ -297,7 +449,6 @@ def run_bundle_evolution(
             "eval_generation": generation,
         })
 
-    op_types = [OPERATOR_TYPES[name] for name in operator_type_names]
     references = {name: OPERATOR_TYPES[name].load_reference() for name in operator_type_names}
 
     logger = EvolutionLogger(output_dir, operator_type="bundle")
@@ -314,6 +465,7 @@ def run_bundle_evolution(
         "dataset_names": dataset_names,
         "model": model,
         "model_ensemble": model_ensemble.to_config_dict() if model_ensemble else None,
+
         "temperature": temperature,
         "seed": seed,
         "pysr_kwargs": pysr_kwargs,
@@ -397,12 +549,14 @@ def run_bundle_evolution(
         eval_baseline.result_details = baseline_details
 
         solved_str = format_solved_str(baseline_details)
+        errs_str = format_errors_str(baseline_details)
+        suffix = f" {errs_str}" if errs_str else ""
         if n_runs > 1 and baseline_details:
             per_run_avgs = compute_per_run_avgs(baseline_details, n_runs=n_runs, fitness_metric=fitness_metric)
             runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-            print(f"Baseline avg {metric_label}: {baseline_score:.4f} [{runs_str}] {solved_str}")
+            print(f"Baseline avg {metric_label}: {baseline_score:.4f} [{runs_str}] {solved_str}{suffix}")
         else:
-            print(f"Baseline avg {metric_label}: {baseline_score:.4f} {solved_str}")
+            print(f"Baseline avg {metric_label}: {baseline_score:.4f} {solved_str}{suffix}")
         logger.log_baseline(baseline_score, baseline_vector)
     else:
         baseline_score = resume_state["baseline_score"] or 0.0
@@ -451,17 +605,53 @@ def run_bundle_evolution(
             wandb.log({"best_score": best.score, "generation": start_gen - 1})
     else:
         start_gen = 1
+        init_pop_start = time.perf_counter()
         # Generate initial population of bundles
         # If a baseline_bundle is provided, include it and generate variations from it
         print("\n" + "=" * 60)
         print(f"Generating initial population ({population_size} bundles)...")
         print(f"Operator types: {', '.join(operator_type_names)}")
-        if baseline_bundle:
-            baseline_types = [t for t, op in baseline_bundle.operators.items() if op is not None]
+
+        # Fill any operator slots missing from the baseline bundle with each
+        # type's default PySR implementation (loaded from a .jl file). These
+        # defaults are behavior-identical to PySR's built-ins but exposed as
+        # named custom operators so the evolve loop can refine from them from
+        # generation 1.
+        if baseline_bundle is None:
+            baseline_bundle = OperatorBundle.create_default()
+        default_types_added = []
+        for t in operator_type_names:
+            if baseline_bundle.operators.get(t) is None:
+                default_op = OPERATOR_TYPES[t].load_default_baseline_operator()
+                if default_op is not None:
+                    baseline_bundle.operators[t] = default_op
+                    default_types_added.append(t)
+        if default_types_added:
+            print(f"Filled default baselines for: {', '.join(default_types_added)}")
+
+        baseline_types = [t for t, op in baseline_bundle.operators.items() if op is not None]
+        if baseline_types:
             print(f"Seeding from baseline: {', '.join(baseline_types)}")
         print("=" * 60)
 
         population: List[OperatorBundle] = []
+
+        # Background thread pool so each bundle's SLURM submission runs while
+        # the LLM is generating the next one. Pool is sized for the full
+        # population including the seed bundle.
+        init_submit_executor = ThreadPoolExecutor(
+            max_workers=max(1, population_size),
+            thread_name_prefix="slurm-submit-init",
+        )
+        init_pop_futs: List[Tuple[OperatorBundle, Future]] = []
+
+        def _submit_init(bundle: OperatorBundle) -> None:
+            fut = submit_bundle_future(
+                init_submit_executor, bundle, evaluator, dataset_names, pysr_kwargs,
+                seed=seed, n_runs=n_runs, target_noise_map=target_noise_map,
+                fitness_metric=fitness_metric, run_index_start=0,
+            )
+            init_pop_futs.append((bundle, fut))
 
         # Seed population slot 0 with the baseline bundle (unchanged)
         if baseline_bundle:
@@ -474,6 +664,7 @@ def run_bundle_evolution(
             for t in operator_type_names:
                 op = seed_bundle.get_operator(t)
                 print(f"  {t}: {op.name if op else 'default'}")
+            _submit_init(seed_bundle)
 
         max_bundle_attempts = population_size * 2
         bundle_attempts = 0
@@ -561,83 +752,159 @@ def run_bundle_evolution(
                 continue
 
             population.append(bundle)
+            _submit_init(bundle)
 
         if not population:
+            init_submit_executor.shutdown(wait=True)
             raise RuntimeError("Failed to generate any valid bundles")
+
+        init_gen_elapsed = time.perf_counter() - init_pop_start
+        print(f"\n  [timing] initial-pop generation: {_fmt_elapsed(init_gen_elapsed)}")
 
         # Evaluate initial population
         print("\n" + "=" * 60)
         print(f"Evaluating initial population ({len(population)} bundles)...")
         print("=" * 60)
 
+        init_eval_start = time.perf_counter()
         try:
-            results = evaluate_bundles(
-                population, evaluator, dataset_names, pysr_kwargs, seed,
-                n_runs=n_runs, target_noise_map=target_noise_map,
-                fitness_metric=fitness_metric,
-            )
-            for bundle, (avg_score, score_vector, result_details) in zip(population, results):
+            pairs = collect_bundle_futures(evaluator, init_pop_futs, n_runs)
+            init_submit_executor.shutdown(wait=True)
+            for bundle, (avg_score, score_vector, result_details) in pairs:
                 bundle.score = avg_score
                 bundle.score_vector = score_vector
                 bundle.result_details = result_details
                 bundle.seeds_evaluated = n_runs
                 _log_bundle_eval(bundle, generation=0)
                 solved_str = format_solved_str(result_details)
+                errs_str = format_errors_str(result_details)
+                suffix = f" {errs_str}" if errs_str else ""
                 if n_runs > 1 and result_details:
                     per_run_avgs = compute_per_run_avgs(result_details, n_runs=n_runs, fitness_metric=fitness_metric)
                     runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                    print(f"  {bundle.display_name}: Avg {avg_score:.4f} [{runs_str}] {solved_str}")
+                    print(f"  Avg {avg_score:.4f} {bundle.display_name}: [{runs_str}] {solved_str}{suffix}")
                 else:
-                    print(f"  {bundle.display_name}: {avg_score:.4f} {solved_str}")
+                    print(f"  {avg_score:.4f} {bundle.display_name}: {solved_str}{suffix}")
         except Exception as e:
+            init_submit_executor.shutdown(wait=True)
             print(f"  Batch evaluation failed: {e}")
             for bundle in population:
                 bundle.score = -1.0
                 bundle.score_vector = []
                 _log_bundle_eval(bundle, generation=0)
 
+        init_eval_elapsed = time.perf_counter() - init_eval_start
+        print(f"  [timing] initial-pop evaluation: {_fmt_elapsed(init_eval_elapsed)}")
+        print(f"  [timing] initial-pop total: {_fmt_elapsed(time.perf_counter() - init_pop_start)}")
+
         population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
         _extend_archive(population)
         best = population[0]
         print(f"\nBest initial bundle: {best.display_name} (score: {best.score:.4f})")
+        summary = format_population_summary(population, dataset_names)
+        if summary:
+            print(summary)
 
         if wandb_run is not None:
             import wandb
             wandb.log({"best_score": best.score, "generation": 0})
 
-    # Evolution loop (round-robin across operator types)
+    # Evolution loop: each generation splits offspring evenly across operator types
     for gen in range(start_gen, start_gen + n_generations):
-        # Round-robin: pick which operator type to evolve this generation
-        current_type_name = operator_type_names[(gen - 1) % len(operator_type_names)]
-        current_op_type = OPERATOR_TYPES[current_type_name]
-        reference = references[current_type_name]
+        gen_start = time.perf_counter()
+
+        # Split this generation's offspring slots evenly across operator types.
+        # For n_offspring=20 and 3 types we get 7/7/6, etc. Shuffle so the
+        # order of types in the gen log / parent selection isn't biased by the
+        # fixed operator_type_names order.
+        target_types: List[str] = [
+            operator_type_names[i % len(operator_type_names)]
+            for i in range(n_offspring)
+        ]
+        rng.shuffle(target_types)
+        type_split = {t: target_types.count(t) for t in operator_type_names}
+        split_str = ", ".join(f"{t}={type_split[t]}" for t in operator_type_names)
 
         print("\n" + "=" * 60)
-        print(f"Generation {gen}/{start_gen + n_generations - 1} — Evolving {current_type_name.upper()}")
+        print(
+            f"Generation {gen}/{start_gen + n_generations - 1} — "
+            f"Evolving {len(operator_type_names)} operator types ({split_str})"
+        )
         print("=" * 60)
 
         offspring_bundles: List[OperatorBundle] = []
+        offspring_futs: List[Tuple[OperatorBundle, Future]] = []
         offspring_attempts = 0
         max_offspring_attempts = n_offspring * 3
+        offspring_gen_start = time.perf_counter()
+
+        # Background thread pool for non-blocking SLURM submissions. We want
+        # sbatch + cache pre-filter to run off the main thread so the LLM can
+        # immediately start generating the next candidate. The pool is sized
+        # for racing's pop re-eval + every offspring slot.
+        submit_executor = ThreadPoolExecutor(
+            max_workers=max(1, n_offspring + (population_size if racing else 0)),
+            thread_name_prefix="slurm-submit",
+        )
+
+        # In racing mode we also re-evaluate the current population on fresh
+        # seeds. Submit those jobs up-front so SLURM can churn on them while
+        # we generate offspring with the LLM.
+        pop_futs: List[Tuple[OperatorBundle, Future]] = []
+        pop_members_snapshot: List[OperatorBundle] = []
+        pop_starts: List[int] = []
+        if racing:
+            pop_members_snapshot = list(population)
+            pop_starts = [int(getattr(m, "seeds_evaluated", 0) or 0) for m in pop_members_snapshot]
+            print(
+                f"\nRacing: submitting re-eval of {len(pop_members_snapshot)} pop members "
+                f"on {n_runs} fresh seeds each (in background)..."
+            )
+            for member, start in zip(pop_members_snapshot, pop_starts):
+                fut = submit_bundle_future(
+                    submit_executor, member, evaluator, dataset_names, pysr_kwargs,
+                    seed=seed, n_runs=n_runs, target_noise_map=target_noise_map,
+                    fitness_metric=fitness_metric, run_index_start=start,
+                )
+                pop_futs.append((member, fut))
 
         while len(offspring_bundles) < n_offspring and offspring_attempts < max_offspring_attempts:
             offspring_attempts += 1
+
+            # Pick which operator type this slot evolves — stays fixed across
+            # retries for this slot so a failure doesn't silently shift the
+            # type mix.
+            current_type_name = target_types[len(offspring_bundles)]
+            current_op_type = OPERATOR_TYPES[current_type_name]
+            reference = references[current_type_name]
 
             # Select parent bundle
             parent_bundle = select_parent(population, rng)
             parent_op = parent_bundle.get_operator(current_type_name)
             task_info: Optional[Dict[str, str]] = None
 
-            # Choose mode: if parent has no custom operator for this type, explore.
-            # Otherwise 3:1 refine:explore bias. (Crossover currently disabled.)
-            if parent_op is None:
-                mode = "explore"
-                parent = None
-                parent2 = None
-            else:
-                mode = rng.choice(["explore", "refine", "refine", "refine"])
-                parent = parent_op if mode == "refine" else None
-                parent2 = None
+            # Choose mode: 50/50 refine vs explore. If refine is chosen but the
+            # selected parent bundle lacks a custom operator of this type (common
+            # for survival/selection before any have been generated), fall back
+            # to an operator from any population member that has one. If no
+            # bundle in the population has an operator of this type, explore.
+            # (Crossover currently disabled.)
+            mode = rng.choice(["explore", "refine"])
+            parent = None
+            parent2 = None
+            if mode == "refine":
+                if parent_op is not None:
+                    parent = parent_op
+                else:
+                    refine_candidates = [
+                        b.get_operator(current_type_name)
+                        for b in population
+                        if b.get_operator(current_type_name) is not None
+                    ]
+                    if refine_candidates:
+                        parent = rng.choice(refine_candidates)
+                    else:
+                        mode = "explore"
 
             # Attach execution-trace feedback for an unsolved task, if available.
             if execution_feedback_n > 0 and rng.random() < execution_feedback_prob:
@@ -698,32 +965,50 @@ def run_bundle_evolution(
             offspring_bundles.append(new_bundle)
             print(f"  Created: {unique_name} (mode={mode}, model={selected_model})")
 
-        print(f"\nGenerated {len(offspring_bundles)} offspring bundles")
-
-        if racing:
-            members = list(population) + list(offspring_bundles)
-            starts = [int(getattr(m, "seeds_evaluated", 0) or 0) for m in members]
-            print(
-                f"\nRacing: re-evaluating {len(population)} pop + {len(offspring_bundles)} "
-                f"offspring bundles on {n_runs} fresh seeds each..."
+            # Kick off this offspring's SLURM submission on a background thread
+            # so the main thread can loop straight back into LLM generation
+            # without waiting on sbatch or cache pre-filter.
+            fut = submit_bundle_future(
+                submit_executor, new_bundle, evaluator, dataset_names, pysr_kwargs,
+                seed=seed, n_runs=n_runs, target_noise_map=target_noise_map,
+                fitness_metric=fitness_metric, run_index_start=0,
             )
+            offspring_futs.append((new_bundle, fut))
+
+        offspring_gen_elapsed = time.perf_counter() - offspring_gen_start
+        print(
+            f"\nGenerated {len(offspring_bundles)} offspring bundles "
+            f"[timing: offspring generation {_fmt_elapsed(offspring_gen_elapsed)}]"
+        )
+
+        offspring_eval_start = time.perf_counter()
+        if racing:
+            # Resolve every submission, then wait for all batches (pop + offspring)
+            # with one unified progress stream and one shared retry round.
+            combined_futs = list(pop_futs) + list(offspring_futs)
+            print(
+                f"\nRacing: waiting on {len(pop_futs)} pop + "
+                f"{len(offspring_futs)} offspring batches..."
+            )
+            pairs = collect_bundle_futures(evaluator, combined_futs, n_runs)
+            # Shut down the pool — all submissions are resolved
+            submit_executor.shutdown(wait=True)
+
+            members = [b for b, _ in pairs]
+            results = [r for _, r in pairs]
             try:
-                results = evaluate_bundles(
-                    members, evaluator, dataset_names, pysr_kwargs, seed,
-                    n_runs=n_runs, target_noise_map=target_noise_map,
-                    fitness_metric=fitness_metric,
-                    run_index_start_per_config=starts,
-                )
                 apply_racing_results(members, results, n_runs, fitness_metric)
                 for bundle in members:
                     _log_bundle_eval(bundle, generation=gen)
                     solved_str = format_solved_str(bundle.result_details)
+                    errs_str = format_errors_str(bundle.result_details)
+                    suffix = f" {errs_str}" if errs_str else ""
                     print(
-                        f"  {bundle.display_name}: Avg {bundle.score:.4f} "
-                        f"(seeds={bundle.seeds_evaluated}) {solved_str}"
+                        f"  Avg {bundle.score:.4f} {bundle.display_name}: "
+                        f"(seeds={bundle.seeds_evaluated}) {solved_str}{suffix}"
                     )
             except Exception as e:
-                print(f"  Batch evaluation failed: {e}")
+                print(f"  Racing result aggregation failed: {e}")
                 for bundle in offspring_bundles:
                     if bundle.score is None:
                         bundle.score = -1.0
@@ -740,33 +1025,24 @@ def run_bundle_evolution(
             else:
                 population = select_survivors(pool, [], population_size)
         else:
-            # Evaluate offspring bundles
-            print(f"\nEvaluating {len(offspring_bundles)} offspring bundles...")
-            try:
-                results = evaluate_bundles(
-                    offspring_bundles, evaluator, dataset_names, pysr_kwargs, seed,
-                    n_runs=n_runs, target_noise_map=target_noise_map,
-                    fitness_metric=fitness_metric,
-                )
-                for bundle, (avg_score, score_vector, result_details) in zip(offspring_bundles, results):
-                    bundle.score = avg_score
-                    bundle.score_vector = score_vector
-                    bundle.result_details = result_details
-                    bundle.seeds_evaluated = n_runs
-                    _log_bundle_eval(bundle, generation=gen)
-                    solved_str = format_solved_str(result_details)
-                    if n_runs > 1 and result_details:
-                        per_run_avgs = compute_per_run_avgs(result_details, n_runs=n_runs, fitness_metric=fitness_metric)
-                        runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
-                        print(f"  {bundle.display_name}: Avg {avg_score:.4f} [{runs_str}] {solved_str}")
-                    else:
-                        print(f"  {bundle.display_name}: {avg_score:.4f} {solved_str}")
-            except Exception as e:
-                print(f"  Batch evaluation failed: {e}")
-                for bundle in offspring_bundles:
-                    bundle.score = -1.0
-                    bundle.score_vector = []
-                    _log_bundle_eval(bundle, generation=gen)
+            print(f"\nWaiting on {len(offspring_futs)} offspring batches...")
+            pairs = collect_bundle_futures(evaluator, offspring_futs, n_runs)
+            submit_executor.shutdown(wait=True)
+            for bundle, (avg_score, score_vector, result_details) in pairs:
+                bundle.score = avg_score
+                bundle.score_vector = score_vector
+                bundle.result_details = result_details
+                bundle.seeds_evaluated = n_runs
+                _log_bundle_eval(bundle, generation=gen)
+                solved_str = format_solved_str(result_details)
+                errs_str = format_errors_str(result_details)
+                suffix = f" {errs_str}" if errs_str else ""
+                if n_runs > 1 and result_details:
+                    per_run_avgs = compute_per_run_avgs(result_details, n_runs=n_runs, fitness_metric=fitness_metric)
+                    runs_str = ", ".join(f"{s:.4f}" for s in per_run_avgs)
+                    print(f"  Avg {avg_score:.4f} {bundle.display_name}: [{runs_str}] {solved_str}{suffix}")
+                else:
+                    print(f"  {avg_score:.4f} {bundle.display_name}: {solved_str}{suffix}")
 
             if task_diverse_pop:
                 population = select_survivors_diverse(population, offspring_bundles, population_size, dataset_names)
@@ -774,11 +1050,16 @@ def run_bundle_evolution(
                 population = select_survivors(population, offspring_bundles, population_size)
         best = population[0]
 
+        offspring_eval_elapsed = time.perf_counter() - offspring_eval_start
+        print(f"  [timing] offspring evaluation: {_fmt_elapsed(offspring_eval_elapsed)}")
+
         # HPO tuning step
+        hpo_elapsed = 0.0
         if hp_tuning_trials > 0:
             print(f"\n--- HPO Tuning ({hp_tuning_trials} trials per bundle) ---")
             from hpo_evolve_pysr import tune_population
             score_before = best.score
+            hpo_start = time.perf_counter()
             population = tune_population(
                 population=population,
                 evaluator=evaluator,
@@ -789,22 +1070,49 @@ def run_bundle_evolution(
                 seed=seed,
                 output_dir=output_dir,
                 model=model,
-                n_runs=n_runs,
+                n_runs=hpo_n_runs if hpo_n_runs is not None else n_runs,
                 target_noise_map=target_noise_map,
                 fitness_metric=fitness_metric,
             )
+            hpo_elapsed = time.perf_counter() - hpo_start
             best = population[0]
             if best.score != score_before:
                 print(f"  HPO: {score_before:.4f} -> {best.score:.4f} ({best.score - score_before:+.4f})")
+            print(f"  [timing] HPO tuning: {_fmt_elapsed(hpo_elapsed)}")
 
+        gen_elapsed = time.perf_counter() - gen_start
+        evolved_type_label = "+".join(operator_type_names)
         print(f"\nGeneration {gen} complete:")
-        print(f"  Evolved: {current_type_name}")
+        print(f"  Evolved: {evolved_type_label} ({split_str})")
         print(f"  Pop size: {len(population)}")
         print(f"  Best: {best.display_name} (score: {best.score:.4f})")
         print(f"  Baseline ({metric_label}): {baseline_score:.4f}")
         print(f"  Improvement: {best.score - baseline_score:+.4f}")
+        if len(operator_type_names) == 1:
+            only_type = operator_type_names[0]
+            best_op = best.get_operator(only_type)
+            if best_op is not None and best_op.code:
+                print(f"\n  Best {only_type} code ({best_op.name}):")
+                print("  " + "-" * 58)
+                for line in best_op.code.splitlines():
+                    print(f"  {line}")
+                print("  " + "-" * 58)
+        print(
+            f"  [timing] generation total: {_fmt_elapsed(gen_elapsed)} "
+            f"(offspring gen {_fmt_elapsed(offspring_gen_elapsed)}, "
+            f"offspring eval {_fmt_elapsed(offspring_eval_elapsed)}"
+            + (f", HPO {_fmt_elapsed(hpo_elapsed)}" if hp_tuning_trials > 0 else "")
+            + ")"
+        )
+        # When task_diverse_pop is on, select_survivors_diverse already printed
+        # the population summary. Otherwise, emit it here so non-diverse runs
+        # still see per-task-best info.
+        if not task_diverse_pop:
+            summary = format_population_summary(population, dataset_names)
+            if summary:
+                print(summary)
 
-        logger.log_bundle_generation(gen, population, offspring_bundles, best, current_type_name)
+        logger.log_bundle_generation(gen, population, offspring_bundles, best, evolved_type_label)
 
         if wandb_run is not None:
             import wandb
@@ -812,7 +1120,7 @@ def run_bundle_evolution(
                 "generation": gen,
                 "best_score": best.score,
                 "improvement_over_baseline": best.score - baseline_score,
-                "evolved_type": current_type_name,
+                "evolved_type": evolved_type_label,
             })
             log_cpu_usage(wandb_run)
 
@@ -843,6 +1151,8 @@ def main():
     parser.add_argument("--offspring", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=3)
+    parser.add_argument("--hpo-n-runs", type=int, default=None,
+                        help="n_runs used during HPO tuning (defaults to --n-runs)")
     parser.add_argument("--fitness_metric", type=str, default="gt", choices=["r2", "gt"],
                         help="Meta-evolution fitness metric: r2 or gt (whole-frontier symbolic match rate)")
     parser.add_argument("--hp_tuning_trials", type=int, default=0,
@@ -861,17 +1171,15 @@ def main():
                         help="Maximum evaluations per PySR run (default: 1e6 for mutation, 100000 for survival/selection)")
     parser.add_argument("--timeout", type=int, default=6000)
 
-    DEFAULT_ENSEMBLE = (
-        "openai/gpt-5.4-mini:0.20,"
-        "openai/gpt-5.4-nano:0.30,"
-        "google/gemini-3.1-flash-lite-preview:0.25,"
-        "x-ai/grok-4.1-fast:0.25"
-    )
     parser.add_argument("--model", type=str, default="openai/gpt-5.4-mini",
                         help="Single LLM model (used as fallback if --models not set)")
-    parser.add_argument("--models", type=str, default=DEFAULT_ENSEMBLE,
-                        help="Ensemble of models with weights. "
-                             "Overrides --model when set.")
+    preset_help = "; ".join(
+        f"{name}={spec!r}" for name, spec in MODEL_ENSEMBLE_PRESETS.items()
+    )
+    parser.add_argument("--models", type=str, default="cheap",
+                        help="Ensemble of models with weights, or a preset name. "
+                             "Overrides --model when set. "
+                             f"Presets: {preset_help}")
     parser.add_argument("--temperature", type=float, default=0.0)
 
     parser.add_argument("--partition", type=str, default="default_partition")
@@ -934,12 +1242,27 @@ def main():
     type_label = "+".join(operator_type_names) if len(operator_type_names) > 1 else operator_type_names[0]
     args.output_dir = resolve_run_dir(args.output_dir, label=f"evolve_{type_label}")
 
+    # Warm up the Julia environment once with all juliapkg / Pkg output diverted
+    # to a log file, so LLM-generated operator validation during the generation
+    # loop doesn't spray ~150 lines of package resolution across the main log.
+    warmup_log = Path(args.output_dir) / "julia_warmup.log"
+    print(f"Warming up Julia environment (output -> {warmup_log})...")
+    _using_stmts = ["using SymbolicRegression"]
+    for _t in operator_type_names:
+        _using_stmts.append(f"using SymbolicRegression.{OPERATOR_TYPES[_t].julia_module}")
+    warmup_seconds = warmup_julia(warmup_log, using_statements=_using_stmts)
+    print(f"Julia environment ready ({warmup_seconds:.1f}s)")
+
     dataset_names = load_dataset_names_from_split(args.split)
     print(f"Loaded {len(dataset_names)} datasets from {args.split}")
 
     # Build model ensemble if --models is specified
     model_ensemble = None
     if args.models:
+        resolved_models = resolve_models_arg(args.models)
+        if resolved_models != args.models:
+            print(f"Model ensemble preset '{args.models}' -> {resolved_models}")
+        args.models = resolved_models
         model_ensemble = ModelEnsemble.from_str(args.models, seed=args.seed)
         print(f"Model ensemble: {model_ensemble}")
     else:
@@ -994,6 +1317,7 @@ def main():
         random_target_noise=args.random_target_noise,
         fitness_metric=args.fitness_metric,
         hp_tuning_trials=args.hp_tuning_trials,
+        hpo_n_runs=args.hpo_n_runs,
         repo_root=args.repo_root,
         task_diverse_pop=args.task_diverse_pop,
         racing=args.racing,
@@ -1004,7 +1328,7 @@ def main():
     )
 
     if len(operator_type_names) > 1:
-        print(f"Bundle evolution: {', '.join(operator_type_names)} (round-robin)")
+        print(f"Bundle evolution: {', '.join(operator_type_names)} (offspring split evenly per generation)")
     else:
         print(f"Evolving: {operator_type_names[0]}")
 
@@ -1016,6 +1340,7 @@ def main():
         "offspring": args.offspring,
         "seed": args.seed,
         "n_runs": args.n_runs,
+        "hpo_n_runs": args.hpo_n_runs,
         "fitness_metric": args.fitness_metric,
         "hp_tuning_trials": args.hp_tuning_trials,
         "split": args.split,

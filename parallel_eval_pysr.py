@@ -75,6 +75,17 @@ _DETERMINISTIC_PYSR_ERROR_SNIPPETS = (
 )
 
 
+def _summarize_error(error_msg: Optional[str]) -> str:
+    """Collapse a PySR error (possibly containing a Julia stacktrace) to a single line."""
+    if not error_msg:
+        return ""
+    first_line = error_msg.splitlines()[0].strip()
+    # Keep short enough that printing a handful doesn't flood the log
+    if len(first_line) > 240:
+        first_line = first_line[:237] + "..."
+    return first_line
+
+
 def _classify_pysr_error(error_msg: Optional[str]) -> str:
     """Classify PySR failures for retry/caching policy."""
     if not error_msg:
@@ -771,7 +782,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             best_equation=None,
             best_loss=float("inf"),
             gt_match_score=0.0 if spec.fitness_metric == "gt" else None,
-            error=f"Error: {str(e)}",
+            error=f"Error: {_summarize_error(str(e))}",
             run_index=spec.run_index,
             runtime_seconds=runtime,
             execution_trace=None,
@@ -818,25 +829,31 @@ def _aggregate_pysr_results(
         for dataset_name in dataset_names:
             key = (config_id, dataset_name)
             all_run_results = results_by_config_dataset.get(key, [])
-            # Only count runs that actually succeeded (no error recorded)
             good_runs = [r for r in all_run_results if r.error is None]
 
-            if good_runs:
-                run_r2_scores = [
-                    r.r2_score if (r.r2_score is not None and not np.isnan(r.r2_score)) else -1.0
-                    for r in good_runs
-                ]
-                run_gt_scores = [
-                    r.gt_match_score if (r.gt_match_score is not None and not np.isnan(r.gt_match_score)) else 0.0
-                    for r in good_runs
-                ]
+            if all_run_results:
+                # Errored runs count as failures (r2=-1, gt=0) in the mean, so
+                # bundles that crash on most tasks can't hide behind the few
+                # runs that survived.
+                run_r2_scores = []
+                run_gt_scores = []
+                for r in all_run_results:
+                    if r.error is not None:
+                        run_r2_scores.append(-1.0)
+                        run_gt_scores.append(0.0)
+                    else:
+                        run_r2_scores.append(
+                            r.r2_score if (r.r2_score is not None and not np.isnan(r.r2_score)) else -1.0
+                        )
+                        run_gt_scores.append(
+                            r.gt_match_score if (r.gt_match_score is not None and not np.isnan(r.gt_match_score)) else 0.0
+                        )
                 run_scores = run_gt_scores if fitness_metric == "gt" else run_r2_scores
                 avg_score = float(np.mean(run_scores))
 
                 all_equations = [r.best_equation for r in good_runs if r.best_equation]
                 errors = [r.error for r in all_run_results if r.error]
                 run_num_evals = [r.num_evaluations for r in good_runs]
-                # Collect execution traces across runs; omit None entries.
                 all_traces = [r.execution_trace for r in good_runs if r.execution_trace]
 
                 valid_num_evals = [n for n in run_num_evals if n is not None]
@@ -859,9 +876,7 @@ def _aggregate_pysr_results(
                     "execution_traces": all_traces,
                 })
             else:
-                # All runs for this (config, dataset) errored or are missing.
-                # Exclude from overall mean; r2_vector still records a placeholder.
-                errors = [r.error for r in all_run_results if r.error] or ["No results found"]
+                # No results for this (config, dataset) at all (not even errors).
                 r2_vector.append(0.0 if fitness_metric == "gt" else -1.0)
                 result_details.append({
                     "dataset": dataset_name,
@@ -870,11 +885,11 @@ def _aggregate_pysr_results(
                     "run_r2_scores": [],
                     "run_gt_scores": [],
                     "best_equations": [],
-                    "errors": errors,
+                    "errors": ["No results found"],
                     "run_num_evaluations": [],
                     "avg_num_evaluations": None,
                     "n_successful_runs": 0,
-                    "n_total_runs": len(all_run_results),
+                    "n_total_runs": 0,
                     "execution_traces": [],
                 })
 
@@ -907,6 +922,26 @@ class PySRConfig:
     @classmethod
     def from_json_dict(cls, d: Dict) -> 'PySRConfig':
         return cls(**d)
+
+
+@dataclass
+class PySRBatchHandle:
+    """Opaque handle produced by submit_configs, consumed by collect_batch.
+
+    Captures everything needed to wait for and aggregate the SLURM job(s)
+    submitted for a single evaluation batch (which may itself span multiple
+    configs, datasets, runs, and chunked job arrays).
+    """
+    batch_dir: Path
+    tasks: List[PySRTaskSpec]
+    n_tasks: int
+    n_cached: int
+    uncached_indices: List[int]
+    job_ids: List[str]
+    num_configs: int
+    fitness_metric: str
+    dataset_names: List[str]
+    use_cache_for_run: bool
 
 
 class PySRSlurmEvaluator(BaseSlurmEvaluator):
@@ -993,8 +1028,35 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         run_index_start_per_config: Optional[List[int]] = None,
         hof_csv_map: Optional[Dict[str, List[str]]] = None,
     ) -> List[Tuple[float, List[float], List[Dict]]]:
+        """Submit and wait for a PySR batch. Thin wrapper around submit/collect."""
+        handle = self.submit_configs(
+            configs=configs,
+            dataset_names=dataset_names,
+            seed=seed,
+            n_runs=n_runs,
+            target_noise_map=target_noise_map,
+            fitness_metric=fitness_metric,
+            run_index_start_per_config=run_index_start_per_config,
+            hof_csv_map=hof_csv_map,
+        )
+        return self.collect_batch(handle)
+
+    def submit_configs(
+        self,
+        configs: List[PySRConfig],
+        dataset_names: List[str],
+        seed: int = 42,
+        n_runs: int = 1,
+        target_noise_map: Optional[Dict[str, float]] = None,
+        fitness_metric: str = "r2",
+        run_index_start_per_config: Optional[List[int]] = None,
+        hof_csv_map: Optional[Dict[str, List[str]]] = None,
+    ) -> PySRBatchHandle:
         """
-        Evaluate PySR configurations via SLURM job array.
+        Build task specs, pre-filter cache, and submit SLURM job(s) without waiting.
+
+        Returns a PySRBatchHandle that can be passed to collect_batch() later
+        to wait for completion, run retries, and aggregate per-config results.
 
         Args:
             configs: List of PySRConfig objects to evaluate
@@ -1006,9 +1068,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             hof_csv_map: Optional dict mapping dataset_name -> list of HOF CSV
                          file paths. When omitted, paths are derived automatically
                          as {self.hof_results_dir}/{dataset_name}_hof.csv.
-
-        Returns:
-            List of (avg_r2, r2_vector, result_details) tuples, one per config
         """
         batch_dir = self._new_batch_dir()
         results_subdir = batch_dir / "results"
@@ -1145,35 +1204,59 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         tasks_file = batch_dir / "tasks.json"
         _write_json_atomic(tasks_file, [t.to_json_dict() for t in tasks])
 
-        # Skip SLURM if all tasks are cached
-        if not uncached_indices:
-            print(f"  All {n_tasks} tasks served from cache - skipping SLURM")
-            results, failed_indices = self._collect_results(results_subdir, n_tasks, timed_out=False)
-        else:
-            # Submit SLURM job array(s) for uncached tasks, chunking if the
-            # batch exceeds SLURM's MaxArraySize.
-            original_use_cache = self.use_cache
-            self.use_cache = use_cache_for_run
+        # Submit SLURM job array(s) for uncached tasks (if any). Chunking
+        # handles batches larger than SLURM's MaxArraySize.
+        job_ids: List[str] = []
+        if uncached_indices:
             chunks = [
                 uncached_indices[i:i + self.MAX_ARRAY_SIZE]
                 for i in range(0, len(uncached_indices), self.MAX_ARRAY_SIZE)
             ]
-            job_ids: List[str] = []
             for chunk_num, chunk in enumerate(chunks):
                 job_script = self._create_chunk_job_script(
-                    batch_dir, chunk, chunk_num
+                    batch_dir, chunk, chunk_num, use_cache=use_cache_for_run,
                 )
                 jid = self._submit_job(job_script)
                 job_ids.append(jid)
                 print(
                     f"  Submitted SLURM job array: {jid} "
-                    f"(chunk {chunk_num + 1}/{len(chunks)}, {len(chunk)} tasks)"
+                    f"(batch {batch_dir.name}, chunk {chunk_num + 1}/{len(chunks)}, "
+                    f"{len(chunk)} tasks)"
                 )
                 print(f"    Script: {job_script}")
-            self.use_cache = original_use_cache
             logs_dir = batch_dir / "logs"
             print(f"    Watch logs: tail -f {logs_dir}/task_<N>.out")
+        else:
+            print(f"  All {n_tasks} tasks served from cache - skipping SLURM")
 
+        return PySRBatchHandle(
+            batch_dir=batch_dir,
+            tasks=tasks,
+            n_tasks=n_tasks,
+            n_cached=n_cached,
+            uncached_indices=uncached_indices,
+            job_ids=job_ids,
+            num_configs=len(configs),
+            fitness_metric=fitness_metric,
+            dataset_names=list(dataset_names),
+            use_cache_for_run=use_cache_for_run,
+        )
+
+    def collect_batch(
+        self, handle: PySRBatchHandle,
+    ) -> List[Tuple[float, List[float], List[Dict]]]:
+        """Wait for a previously-submitted batch, retry failures, and aggregate results."""
+        batch_dir = handle.batch_dir
+        results_subdir = batch_dir / "results"
+        tasks = handle.tasks
+        n_tasks = handle.n_tasks
+        n_cached = handle.n_cached
+        job_ids = handle.job_ids
+        use_cache_for_run = handle.use_cache_for_run
+
+        if not handle.uncached_indices:
+            results, failed_indices = self._collect_results(results_subdir, n_tasks, timed_out=False)
+        else:
             # Wait for completion across all chunks
             job_completed = self._wait_for_jobs(
                 job_ids, n_tasks, batch_dir, initial_cached=n_cached
@@ -1207,8 +1290,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                     except FileNotFoundError:
                         pass
 
-                original_use_cache = self.use_cache
-                self.use_cache = use_cache_for_run
                 # Chunk retries the same way as the initial submission so that
                 # neither MaxArraySize nor the max-index limit are hit.
                 retry_chunks = [
@@ -1218,7 +1299,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 retry_job_ids: List[str] = []
                 for rc_num, rc in enumerate(retry_chunks):
                     retry_job_script = self._create_chunk_job_script(
-                        batch_dir, rc, chunk_num=1000 + retry_count * 100 + rc_num
+                        batch_dir, rc, chunk_num=1000 + retry_count * 100 + rc_num,
+                        use_cache=use_cache_for_run,
                     )
                     rjid = self._submit_job(retry_job_script)
                     retry_job_ids.append(rjid)
@@ -1227,7 +1309,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         f"(retry {retry_count} chunk {rc_num + 1}/{len(retry_chunks)}, "
                         f"{len(rc)} tasks)"
                     )
-                self.use_cache = original_use_cache
 
                 self._wait_for_retry_jobs(
                     retry_job_ids, len(failed_indices), batch_dir, failed_indices
@@ -1257,7 +1338,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         error_counts: Dict[str, int] = {}
         for result in results:
             if result.error:
-                error_counts[result.error] = error_counts.get(result.error, 0) + 1
+                key = _summarize_error(result.error)
+                error_counts[key] = error_counts.get(key, 0) + 1
         if error_counts:
             n_errors = sum(error_counts.values())
             print(f"  WARNING: {n_errors}/{len(results)} PySR tasks returned errors")
@@ -1270,10 +1352,302 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
 
         return _aggregate_pysr_results(
             results,
-            dataset_names,
-            num_configs=len(configs),
-            fitness_metric=fitness_metric,
+            handle.dataset_names,
+            num_configs=handle.num_configs,
+            fitness_metric=handle.fitness_metric,
         )
+
+    def collect_batches(
+        self, handles: List[PySRBatchHandle],
+    ) -> List[List[Tuple[float, List[float], List[Dict]]]]:
+        """Wait for many batches together and return per-batch aggregated results.
+
+        Unlike calling collect_batch in a loop, this:
+          * prints a single unified "X/Y total tasks complete" progress stream
+            across every batch's initial SLURM jobs.
+          * runs one shared retry round: after all initial jobs finish, every
+            batch's still-failed tasks are resubmitted together, waited on
+            together, and re-collected — bounded by max_retries rounds.
+          * flushes the PySR cache once at the end.
+        """
+        if not handles:
+            return []
+
+        # Phase 1: wait for all initial jobs together
+        all_initial_jobs: List[str] = [jid for h in handles for jid in h.job_ids]
+        total_tasks = sum(h.n_tasks for h in handles)
+        total_cached = sum(h.n_cached for h in handles)
+        batch_dirs = [h.batch_dir for h in handles]
+
+        if all_initial_jobs:
+            job_completed = self._wait_for_jobs_multi_batch(
+                all_initial_jobs,
+                total_tasks,
+                batch_dirs,
+                initial_cached=total_cached,
+                label="initial",
+            )
+            for h in handles:
+                try:
+                    self._update_bad_nodes_from_logs(h.batch_dir)
+                except Exception as e:
+                    print(f"  WARNING: Failed to update bad nodes from logs: {e}")
+        else:
+            job_completed = True
+
+        # Phase 2: collect initial results for each batch
+        per_batch_results: List[List[PySRTaskResult]] = []
+        per_batch_failed: List[List[int]] = []
+        for h in handles:
+            results, failed = self._collect_results(
+                h.batch_dir / "results", h.n_tasks, timed_out=not job_completed
+            )
+            per_batch_results.append(results)
+            per_batch_failed.append(failed)
+
+        # Phase 3: shared retry rounds across all batches
+        retry_count = 0
+        while any(per_batch_failed) and retry_count < self.max_retries:
+            retry_count += 1
+            total_failed = sum(len(f) for f in per_batch_failed)
+            n_batches_with_failures = sum(1 for f in per_batch_failed if f)
+            print(
+                f"  Retrying {total_failed} failed tasks across "
+                f"{n_batches_with_failures} batches "
+                f"(attempt {retry_count}/{self.max_retries})..."
+            )
+
+            retry_job_ids: List[str] = []
+            retry_batch_dirs: List[Path] = []
+            for h, failed in zip(handles, per_batch_failed):
+                if not failed:
+                    continue
+                results_subdir = h.batch_dir / "results"
+                # Remove stale placeholders so the re-collect picks up the
+                # fresh retry result file, not the previous failure marker.
+                for idx in failed:
+                    stale = results_subdir / f"task_{idx:06d}.json"
+                    try:
+                        stale.unlink()
+                    except FileNotFoundError:
+                        pass
+                retry_chunks = [
+                    failed[i:i + self.MAX_ARRAY_SIZE]
+                    for i in range(0, len(failed), self.MAX_ARRAY_SIZE)
+                ]
+                for rc_num, rc in enumerate(retry_chunks):
+                    retry_script = self._create_chunk_job_script(
+                        h.batch_dir, rc,
+                        chunk_num=1000 + retry_count * 100 + rc_num,
+                        use_cache=h.use_cache_for_run,
+                    )
+                    rjid = self._submit_job(retry_script)
+                    retry_job_ids.append(rjid)
+                    retry_batch_dirs.append(h.batch_dir)
+                    print(
+                        f"    Submitted retry job: {rjid} "
+                        f"(batch {h.batch_dir.name}, retry {retry_count} "
+                        f"chunk {rc_num + 1}/{len(retry_chunks)}, {len(rc)} tasks)"
+                    )
+
+            # Wait for every batch's retry jobs with unified progress. We count
+            # any completed retry task across all batches.
+            all_retry_indices = [
+                (h.batch_dir, idx)
+                for h, failed in zip(handles, per_batch_failed)
+                for idx in failed
+            ]
+            self._wait_for_retry_jobs_multi_batch(
+                retry_job_ids, all_retry_indices,
+            )
+
+            # Re-collect per batch
+            new_per_batch_failed: List[List[int]] = []
+            for h, failed, results in zip(handles, per_batch_failed, per_batch_results):
+                results_subdir = h.batch_dir / "results"
+                for idx in failed:
+                    rf = results_subdir / f"task_{idx:06d}.json"
+                    if rf.exists():
+                        try:
+                            with open(rf, 'r') as f:
+                                data = json.load(f)
+                            results[idx] = PySRTaskResult.from_json_dict(data)
+                        except Exception:
+                            pass
+                _, still_failed = self._collect_results(results_subdir, h.n_tasks)
+                new_per_batch_failed.append(still_failed)
+                try:
+                    self._update_bad_nodes_from_logs(h.batch_dir)
+                except Exception as e:
+                    print(f"    WARNING: Failed to update bad nodes: {e}")
+            per_batch_failed = new_per_batch_failed
+
+        if any(per_batch_failed):
+            remaining = sum(len(f) for f in per_batch_failed)
+            print(f"  WARNING: {remaining} tasks still failed after retries")
+
+        # Phase 4: per-batch cache + aggregation
+        all_results: List[List[Tuple[float, List[float], List[Dict]]]] = []
+        for h, results in zip(handles, per_batch_results):
+            self._queue_results_for_cache(h.tasks, results)
+
+            error_counts: Dict[str, int] = {}
+            for result in results:
+                if result.error:
+                    key = _summarize_error(result.error)
+                    error_counts[key] = error_counts.get(key, 0) + 1
+            if error_counts:
+                n_errors = sum(error_counts.values())
+                print(
+                    f"  [{h.batch_dir.name}] WARNING: {n_errors}/{len(results)} "
+                    f"PySR tasks returned errors"
+                )
+                for error, count in sorted(error_counts.items(), key=lambda it: -it[1])[:3]:
+                    print(f"    {count}x {error}")
+
+            combined_file = h.batch_dir / "combined.json"
+            _write_json_atomic(combined_file, [r.to_json_dict() for r in results])
+
+            all_results.append(_aggregate_pysr_results(
+                results,
+                h.dataset_names,
+                num_configs=h.num_configs,
+                fitness_metric=h.fitness_metric,
+            ))
+
+        # Single cache flush after every batch is done
+        self.flush_pending_cache()
+
+        return all_results
+
+    def _wait_for_jobs_multi_batch(
+        self,
+        job_ids: List[str],
+        n_tasks_total: int,
+        batch_dirs: List[Path],
+        initial_cached: int = 0,
+        label: str = "initial",
+    ) -> bool:
+        """Poll all batch dirs simultaneously until every job reaches a terminal
+        state or we hit the total-task count. Prints a single progress line.
+        """
+        import time as _time
+        start_time = _time.time()
+        last_completed = initial_cached
+        last_progress_time = start_time
+        poll_interval = 10
+        terminal = {'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'}
+        results_dirs = [bd / "results" for bd in batch_dirs]
+
+        while True:
+            completed = sum(
+                len(list(rd.glob("task_*.json"))) for rd in results_dirs
+            )
+            now = _time.time()
+            elapsed = now - start_time
+
+            if completed != last_completed:
+                newly = completed - initial_cached
+                rate = newly / elapsed if elapsed > 0 else 0
+                remaining = n_tasks_total - completed
+                eta = remaining / rate if rate > 0 else float('inf')
+                print(
+                    f"    Progress ({label}): {completed}/{n_tasks_total} "
+                    f"tasks complete ({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)"
+                )
+                last_completed = completed
+                last_progress_time = now
+
+            if completed >= n_tasks_total:
+                print(f"  All {n_tasks_total} {label} tasks completed in {elapsed:.1f}s")
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return True
+
+            if self.job_timeout is not None and elapsed > self.job_timeout:
+                print(
+                    f"  TIMEOUT: {label} jobs exceeded {self.job_timeout}s "
+                    f"({completed}/{n_tasks_total} tasks complete)"
+                )
+                for jid in job_ids:
+                    self._cancel_job(jid)
+                return False
+
+            if (
+                self.stall_timeout is not None
+                and completed < n_tasks_total
+                and (now - last_progress_time) > self.stall_timeout
+            ):
+                print(
+                    f"  STALL: {label} jobs made no progress for "
+                    f"{now - last_progress_time:.0f}s "
+                    f"({completed}/{n_tasks_total} tasks complete)"
+                )
+                for jid in job_ids:
+                    self._cancel_job(jid)
+                return False
+
+            statuses = [self._get_job_status(jid) for jid in job_ids]
+            if all(s in terminal for s in statuses):
+                if completed < n_tasks_total:
+                    print(
+                        f"  WARNING: all {label} jobs ended (statuses={statuses}) "
+                        f"but only {completed}/{n_tasks_total} results found"
+                    )
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return True
+
+            _time.sleep(poll_interval)
+
+    def _wait_for_retry_jobs_multi_batch(
+        self,
+        job_ids: List[str],
+        batch_indices: List[Tuple[Path, int]],
+    ):
+        """Wait for retry jobs spread across multiple batches.
+
+        batch_indices is a flat list of (batch_dir, task_index) tuples covering
+        every retried task. Completion is "result file exists for every pair".
+        """
+        import time as _time
+        start_time = _time.time()
+        last_completed = 0
+        poll_interval = 5
+        terminal = {'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'}
+        n_total = len(batch_indices)
+
+        while True:
+            completed = sum(
+                1 for (bd, i) in batch_indices
+                if (bd / "results" / f"task_{i:06d}.json").exists()
+            )
+            if completed != last_completed:
+                elapsed = _time.time() - start_time
+                print(
+                    f"    Retry progress: {completed}/{n_total} tasks complete "
+                    f"({elapsed:.0f}s elapsed)"
+                )
+                last_completed = completed
+
+            if completed >= n_total:
+                print(f"    Retry completed in {_time.time() - start_time:.1f}s")
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return
+
+            statuses = [self._get_job_status(jid) for jid in job_ids]
+            if all(s in terminal for s in statuses):
+                if completed < n_total:
+                    print(
+                        f"    Retry jobs ended with statuses={statuses}, "
+                        f"{completed}/{n_total} results"
+                    )
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return
+
+            _time.sleep(poll_interval)
 
     def _queue_results_for_cache(
         self,
@@ -1437,7 +1811,8 @@ python -u -m parallel_eval_pysr --worker \\
         return script_path
 
     def _create_chunk_job_script(
-        self, batch_dir: Path, chunk_indices: List[int], chunk_num: int
+        self, batch_dir: Path, chunk_indices: List[int], chunk_num: int,
+        use_cache: Optional[bool] = None,
     ) -> Path:
         """Create SLURM job script for one chunk of a large batch.
 
@@ -1445,7 +1820,13 @@ python -u -m parallel_eval_pysr --worker \\
         SLURM_ARRAY_TASK_ID to the real task index. This keeps every array
         index in [0, N-1], so chunks past SLURM's MaxArraySize (which caps
         the maximum allowed task ID, not the count) still submit cleanly.
+
+        `use_cache` is passed explicitly (instead of read from self.use_cache)
+        so callers on background threads can submit without racing on a
+        shared attribute.
         """
+        if use_cache is None:
+            use_cache = self.use_cache
         abs_batch = batch_dir.resolve()
         logs_dir = abs_batch / "logs"
         tasks_file = abs_batch / "tasks.json"
@@ -1458,7 +1839,7 @@ python -u -m parallel_eval_pysr --worker \\
 
         real_idx_bash = " ".join(str(i) for i in chunk_indices)
         optional_directives = self._get_optional_directives()
-        no_cache_flag = ' --no-cache' if not self.use_cache else ''
+        no_cache_flag = ' --no-cache' if not use_cache else ''
         worker_env_exports = self._build_worker_env_exports()
 
         script_content = f"""#!/bin/bash
@@ -1685,7 +2066,7 @@ def run_pysr_worker(tasks_file: str, task_index: int, output_dir: str, use_cache
                 r2_score=-1.0,
                 best_equation=None,
                 best_loss=float("inf"),
-                error=f"Worker exception: {str(e)}",
+                error=f"Worker exception: {_summarize_error(str(e))}",
             )
 
             _write_json_atomic(result_file, error_result.to_json_dict())

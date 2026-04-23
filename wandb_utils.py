@@ -59,6 +59,39 @@ def _get_cpu_snapshot() -> Optional[Dict[str, Any]]:
     return None
 
 
+def _log_live_openrouter_usage(usage: Dict[str, Any]) -> None:
+    """Callback (registered with completions.py) that pushes the latest
+    OpenRouter usage snapshot to the active wandb run after every API call
+    or cache hit."""
+    try:
+        import wandb
+    except ImportError:
+        return
+    if wandb.run is None:
+        return
+    total_queries = usage["num_calls"] + usage["num_cached_calls"]
+    cache_fraction = (
+        usage["num_cached_calls"] / total_queries if total_queries > 0 else 0.0
+    )
+    try:
+        wandb.log({
+            "openrouter/total_cost": usage["total_cost"],
+            "openrouter/num_calls": usage["num_calls"],
+            "openrouter/num_cached_calls": usage["num_cached_calls"],
+            "openrouter/cache_fraction": cache_fraction,
+            "openrouter/prompt_tokens": usage["prompt_tokens"],
+            "openrouter/completion_tokens": usage["completion_tokens"],
+            "openrouter/total_tokens": usage["total_tokens"],
+        })
+        # Mirror into summary so the current totals are prominent in the UI.
+        wandb.run.summary["openrouter_cost"] = usage["total_cost"]
+        wandb.run.summary["openrouter_num_calls"] = usage["num_calls"]
+        wandb.run.summary["openrouter_num_cached_calls"] = usage["num_cached_calls"]
+        wandb.run.summary["openrouter_cache_fraction"] = cache_fraction
+    except Exception as e:
+        print(f"  WARNING: live openrouter->wandb log failed: {e}")
+
+
 def init_wandb(
     config: Dict[str, Any],
     script_name: Optional[str] = None,
@@ -117,10 +150,20 @@ def init_wandb(
             reinit=True,
         )
         print(f"wandb run initialized: {run.url}")
-        return run
     except Exception as e:
         print(f"WARNING: wandb init failed: {e}")
         return None
+
+    # Start streaming OpenRouter cost/usage live to this run. Registered
+    # here (rather than in completions.py) so completions.py stays free of a
+    # wandb dependency.
+    try:
+        from completions import register_usage_callback
+        register_usage_callback(_log_live_openrouter_usage)
+    except Exception as e:
+        print(f"WARNING: could not register live openrouter logger: {e}")
+
+    return run
 
 
 def log_cpu_usage(run: Any) -> None:
@@ -193,6 +236,14 @@ def log_wandb_summary(
 
 def finish_wandb(run: Any) -> None:
     """Finish the wandb run."""
+    # Always detach the live-logging callback, even if run is None or finish fails,
+    # so a later run in the same process doesn't log into a closed run.
+    try:
+        from completions import unregister_usage_callback
+        unregister_usage_callback(_log_live_openrouter_usage)
+    except Exception:
+        pass
+
     if run is None:
         return
     try:
