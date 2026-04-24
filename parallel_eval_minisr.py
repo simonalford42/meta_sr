@@ -813,6 +813,7 @@ def get_default_mutation_weights() -> Dict[str, float]:
         "weight_custom_mutation_3": 0.0,
         "weight_custom_mutation_4": 0.0,
         "weight_custom_mutation_5": 0.0,
+        "weight_custom_mutation_6": 0.0,
     }
 
 

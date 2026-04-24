@@ -13,7 +13,7 @@ from mini_pypysr_utils import calculate_scores, idx_model_selection
 from julia_env import configure_juliapkg_project
 
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).absolute().parent
 _JL = None
 _LOADED = False
 _MINISR = None
@@ -127,6 +127,7 @@ class PyPySRRegressor:
         weight_custom_mutation_3: float = 0.0,
         weight_custom_mutation_4: float = 0.0,
         weight_custom_mutation_5: float = 0.0,
+        weight_custom_mutation_6: float = 0.0,
         log_file: str | None = None,
         log_snapshots: int = 100,
     ) -> None:
@@ -198,6 +199,7 @@ class PyPySRRegressor:
             "custom_mutation_3": weight_custom_mutation_3,
             "custom_mutation_4": weight_custom_mutation_4,
             "custom_mutation_5": weight_custom_mutation_5,
+            "custom_mutation_6": weight_custom_mutation_6,
         }
         self.equations_ = None
 

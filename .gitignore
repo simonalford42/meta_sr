@@ -16,6 +16,7 @@ graphics
 .vscode
 artifacts
 runs
+autoresearch_sr/workspaces
 wandb
 .julia_depot/
 .juliapkg_env/

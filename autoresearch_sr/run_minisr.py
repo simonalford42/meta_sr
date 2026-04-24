@@ -12,15 +12,31 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 AUTORESEARCH_DIR = Path(__file__).resolve().parent
-META_SR_ROOT = AUTORESEARCH_DIR.parent
-if str(META_SR_ROOT) not in sys.path:
-    sys.path.insert(0, str(META_SR_ROOT))
+DEFAULT_REPO_ROOT = AUTORESEARCH_DIR.parent
+
+
+def _select_repo_root() -> Path:
+    """Parse --repo-root early so it takes effect before importing mini_pysr."""
+    for i, arg in enumerate(sys.argv[1:], start=1):
+        if arg == "--repo-root" and i + 1 < len(sys.argv):
+            return Path(sys.argv[i + 1]).resolve()
+        if arg.startswith("--repo-root="):
+            return Path(arg.split("=", 1)[1]).resolve()
+    return DEFAULT_REPO_ROOT
+
+
+REPO_ROOT = _select_repo_root()
+os.environ["PYTHON_JULIAPKG_PROJECT"] = str(REPO_ROOT / ".juliapkg_env")
+os.environ.pop("JULIA_PROJECT", None)
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import numpy as np  # noqa: E402
 
@@ -50,6 +66,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log-snapshots", type=int, default=100,
                         help="Target # of HOF snapshots written across the search "
                              "(evenly spaced cycles, default: 100)")
+    parser.add_argument("--repo-root", type=str, default=str(DEFAULT_REPO_ROOT),
+                        help="Repo root whose MiniSR.jl to use (default: the standard repo). "
+                             "Point at a workspace slot to test edits in that slot.")
     return parser.parse_args()
 
 

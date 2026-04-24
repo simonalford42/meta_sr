@@ -69,7 +69,7 @@ DEFAULT_N_RUNS = 10
 FITNESS_METRIC = "gt"
 MAX_EVALS = 1_000_000
 MAX_SAMPLES = 1000
-SANDBOX_ROOT = "/home/sca63/meta_sr_agent_loop"
+DEFAULT_SANDBOX_ROOT = "/home/sca63/meta_sr_agent_loop"
 PARTITION = "default_partition"
 TIME_LIMIT = "04:00:00"
 MEM_PER_CPU = "8G"
@@ -82,6 +82,10 @@ def parse_args():
                         help=f"Data seed for evaluation (default: {DEFAULT_SEED})")
     parser.add_argument("--n-runs", type=int, default=DEFAULT_N_RUNS,
                         help=f"Number of runs per dataset (default: {DEFAULT_N_RUNS})")
+    parser.add_argument("--repo-root", type=str, default=DEFAULT_SANDBOX_ROOT,
+                        help=f"Repo root whose SymbolicRegression.jl submodule gets evaluated "
+                             f"(default: {DEFAULT_SANDBOX_ROOT}). Point at a workspace slot "
+                             f"to run parallel experiments without stomping on shared state.")
     return parser.parse_args()
 
 
@@ -89,6 +93,7 @@ def main():
     args = parse_args()
     seed = args.seed
     n_runs = args.n_runs
+    sandbox_root = str(Path(args.repo_root).resolve())
 
     dataset_names = load_dataset_names_from_split(SPLIT)
 
@@ -111,10 +116,10 @@ def main():
         max_retries=2,
         job_timeout=JOB_TIMEOUT,
         use_cache=False,  # MiniSR.jl edits aren't part of the cache key
-        repo_root=SANDBOX_ROOT,
+        repo_root=sandbox_root,
     )
 
-    print(f"Evaluating MiniSR.jl at {SANDBOX_ROOT}/SymbolicRegression.jl/src/MiniSR.jl")
+    print(f"Evaluating MiniSR.jl at {sandbox_root}/SymbolicRegression.jl/src/MiniSR.jl")
     print(f"Evaluating on {len(dataset_names)} datasets, {n_runs} runs each (seed={seed})...")
     print(f"Fitness metric: {FITNESS_METRIC}")
     print()
