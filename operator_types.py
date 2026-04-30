@@ -470,10 +470,14 @@ end"""
     return tree
 end"""
 
-        return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are a helpful assistant tasked with discovering mathematical function strucutres for physics systems, and you are an expert in physics, symbolic regression and genetic programming.
 
 Your task is to create a NEW custom mutation operator for PySR/SymbolicRegression.jl.
 The mutation should help discover better symbolic expressions.
+
+The goal is to create a mutation operator which, when incorporated into the rest of the PySR evolutionary algorithm, 
+improves performance as measured by the ability to discover the ground truth expression of equations from the "SRBench" dataset. 
+Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
 
 {mode_note}
 
@@ -513,9 +517,13 @@ heuristics or assumptions.
         if feedback:
             feedback_section = f"\n## Feedback on parent mutation:\n{feedback}\n"
 
-        return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are a helpful assistant tasked with discovering mathematical function strucutres for physics systems, and you are an expert in physics, symbolic regression and genetic programming.
 
 Your task is to IMPROVE an existing custom mutation operator for PySR/SymbolicRegression.jl.
+
+The goal is to create an improved mutation operator which, when incorporated into the rest of the PySR evolutionary algorithm, 
+improves performance as measured by the ability to discover the ground truth expression of equations from the "SRBench" dataset. 
+Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
 
 ## Parent Mutation Code
 ```julia
@@ -540,9 +548,13 @@ Do not include markdown code blocks or prose outside the docstring.
 """
 
     def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
-        return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are a helpful assistant tasked with discovering mathematical function strucutres for physics systems, and you are an expert in physics, symbolic regression and genetic programming.
 
 Your task is to COMBINE ideas from two mutation operators into a new one.
+
+The goal is to create an improved mutation operator which, when incorporated into the rest of the PySR evolutionary algorithm, 
+improves performance as measured by the ability to discover the ground truth expression of equations from the "SRBench" dataset. 
+Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
 
 ## Parent Mutation 1
 ```julia
@@ -651,10 +663,14 @@ class SurvivalOperatorType(OperatorType):
         selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
         ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
 
-        return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are a helpful assistant tasked with discovering mathematical function strucutres for physics systems, and you are an expert in physics, symbolic regression and genetic programming.
 
 Your task is to create a NEW custom survival operator for PySR/SymbolicRegression.jl.
 The survival operator decides which population member gets REPLACED when a new offspring is created.
+
+The goal is to create a survival operator which, when incorporated into the rest of the PySR evolutionary algorithm, 
+improves performance as measured by the ability to discover the ground truth expression of equations from the "SRBench" dataset. 
+Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
 
 ## Reference: Survival API and Default Implementation
 {reference}
@@ -697,9 +713,13 @@ end
         if feedback:
             feedback_section = f"\n## Feedback on parent survival:\n{feedback}\n"
 
-        return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are a helpful assistant tasked with discovering mathematical function strucutres for physics systems, and you are an expert in physics, symbolic regression and genetic programming.
 
 Your task is to IMPROVE an existing custom survival operator for PySR/SymbolicRegression.jl.
+
+The goal is to create an improved survival operator which, when incorporated into the rest of the PySR evolutionary algorithm, 
+improves performance as measured by the ability to discover the ground truth expression of equations from the "SRBench" dataset. 
+Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
 
 ## Parent Survival Code
 ```julia
@@ -724,9 +744,13 @@ Do not include markdown code blocks or prose outside the docstring.
 """
 
     def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
-        return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are a helpful assistant tasked with discovering mathematical function strucutres for physics systems, and you are an expert in physics, symbolic regression and genetic programming.
 
 Your task is to COMBINE ideas from two survival operators into a new one.
+
+The goal is to create an improved survival operator which, when incorporated into the rest of the PySR evolutionary algorithm, 
+improves performance as measured by the ability to discover the ground truth expression of equations from the "SRBench" dataset. 
+Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
 
 ## Parent Survival 1
 ```julia
@@ -823,10 +847,14 @@ class SelectionOperatorType(OperatorType):
         selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
         ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
 
-        return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are a helpful assistant tasked with discovering mathematical function strucutres for physics systems, and you are an expert in physics, symbolic regression and genetic programming.
 
 Your task is to create a NEW custom selection operator for PySR/SymbolicRegression.jl.
 The selection operator decides which population member is chosen as a PARENT for mutation or crossover.
+
+The goal is to create a selection operator which, when incorporated into the rest of the PySR evolutionary algorithm, 
+improves performance as measured by the ability to discover the ground truth expression of equations from the "SRBench" dataset. 
+Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
 
 ## Reference: Selection API and Default Implementation
 {reference}
@@ -869,9 +897,13 @@ end
         if feedback:
             feedback_section = f"\n## Feedback on parent selection:\n{feedback}\n"
 
-        return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are a helpful assistant tasked with discovering mathematical function strucutres for physics systems, and you are an expert in physics, symbolic regression and genetic programming.
 
 Your task is to IMPROVE an existing custom selection operator for PySR/SymbolicRegression.jl.
+
+The goal is to create an improved selection operator which, when incorporated into the rest of the PySR evolutionary algorithm, 
+improves performance as measured by the ability to discover the ground truth expression of equations from the "SRBench" dataset. 
+Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
 
 ## Parent Selection Code
 ```julia
@@ -895,9 +927,13 @@ Do not include markdown code blocks or prose outside the docstring.
 """
 
     def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
-        return f"""You are an expert in symbolic regression and genetic programming.
+        return f"""You are a helpful assistant tasked with discovering mathematical function strucutres for physics systems, and you are an expert in physics, symbolic regression and genetic programming.
 
 Your task is to COMBINE ideas from two selection operators into a new one.
+
+The goal is to create an improved selection operator which, when incorporated into the rest of the PySR evolutionary algorithm, 
+improves performance as measured by the ability to discover the ground truth expression of equations from the "SRBench" dataset. 
+Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
 
 ## Parent Selection 1
 ```julia
