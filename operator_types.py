@@ -323,6 +323,36 @@ class OperatorType(ABC):
     def baseline_config(self, pysr_kwargs: Dict) -> PySRConfig:
         """Create a baseline PySRConfig (no custom operator)."""
 
+     # Relative path (under SymbolicRegression.jl/src/) to a .jl file containing
+    # this operator type's default baseline implementation — behavior-identical
+    # to PySR's built-in default, exposed as a named custom operator so the
+    # meta-evolution loop has a concrete parent to refine from. Subclasses set
+    # this; loaded lazily by `load_default_baseline_operator()`.
+    default_baseline_rel_path: Optional[str] = None
+
+    def load_default_baseline_operator(self) -> Optional[JuliaOperator]:
+        """Return a JuliaOperator for this type's default PySR baseline.
+        Reads `default_baseline_rel_path` from disk. Returns None if not set or
+        the file is missing. The operator's `name` comes from the file's
+        `function <name>(` definition; its code is the full file contents.
+        Mutation operators receive a default weight of 0.5 (survival/selection
+        don't use the weight field).
+        """
+        if not self.default_baseline_rel_path:
+            return None
+        path = (
+            Path(__file__).resolve().parent
+            / "SymbolicRegression.jl" / "src" / self.default_baseline_rel_path
+        )
+        if not path.exists():
+            return None
+        code = path.read_text()
+        func_name = extract_function_name(code)
+        if not func_name:
+            return None
+        weight = 0.5 if self.name == "mutation" else None
+        return JuliaOperator(name=func_name, code=code, weight=weight)
+
     def create_operator(self, name: str, code: str, generation: int = 0,
                         parent_name: Optional[str] = None, mode: str = "explore") -> JuliaOperator:
         """Create a new JuliaOperator with type-specific defaults."""
