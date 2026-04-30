@@ -254,6 +254,31 @@ def _compute_per_task_best(
     return best
 
 
+def compute_per_task_best_stats(
+    bundles: List, dataset_names: List[str],
+) -> Tuple[float, int, int]:
+    """Return (avg_best_solve_rate, n_tasks_covered, n_tasks).
+
+    Mirrors the `per-task best avg` reported by format_population_summary:
+    for each task, take the winning bundle's solve rate, average across all
+    tasks (uncovered tasks contribute 0).
+    """
+    n_tasks = len(dataset_names)
+    if not bundles or n_tasks == 0:
+        return 0.0, 0, n_tasks
+    best_per_task = _compute_per_task_best(bundles, n_tasks)
+    total_rate = 0.0
+    for rec in best_per_task:
+        if rec is None:
+            continue
+        _, ns, nt = rec
+        if nt > 0:
+            total_rate += ns / nt
+    avg_best = total_rate / n_tasks
+    n_covered = sum(1 for rec in best_per_task if rec is not None)
+    return avg_best, n_covered, n_tasks
+
+
 def format_population_summary(
     bundles: List,
     dataset_names: List[str],

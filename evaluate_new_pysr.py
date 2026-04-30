@@ -71,6 +71,11 @@ class EvolveResult:
     train_score: float
     generation: int
     config: Dict[str, Any]
+    # For HPO bundles: the tuned PySR hparams (population_size, parsimony, ...).
+    # Set on bundle items only (and identical across them); None otherwise.
+    # Operator-specific tuned values (op_<type>__*) are already injected into
+    # `code` by hpo_pysr.py and excluded here.
+    best_hparams: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -98,10 +103,29 @@ def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[E
 
     config = data.get("config", {})
 
-    # Handle bundle results (best_bundle with multiple operators)
+    # Handle bundle results (best_bundle with multiple operators).
+    # Sources, in order of preference:
+    #   1. data["best_bundle"]                 (run_data.json with embedded bundle)
+    #   2. data itself, if shaped like a bundle (best_bundle.json passed directly)
+    #   3. sibling best_bundle.json next to the given path (HPO runs where the
+    #      embed step was missed, e.g. older runs from before the fix)
+    bundle = None
     if "best_bundle" in data:
         bundle = data["best_bundle"]
+    elif "operators" in data and isinstance(data.get("operators"), dict):
+        bundle = data
+    else:
+        sibling = Path(path).parent / "best_bundle.json"
+        if sibling.exists():
+            with open(sibling, "r") as f:
+                bundle = json.load(f)
+
+    if bundle is not None:
         operators = bundle.get("operators", {})
+        # op_<type>__* values are already injected into operator code by
+        # hpo_pysr.py; only PySR-level hparams need to be reapplied at eval time.
+        raw_hparams = bundle.get("best_hparams") or {}
+        bundle_hparams = {k: v for k, v in raw_hparams.items() if not k.startswith("op_")} or None
         results = []
         for op_type_name, op_data in operators.items():
             if op_data is None:
@@ -114,6 +138,7 @@ def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[E
                 train_score=bundle.get("score", 0.0),
                 generation=op_data.get("generation", 0),
                 config=config,
+                best_hparams=bundle_hparams,
             ))
         if results:
             return results
@@ -289,20 +314,8 @@ def cleanup_sr_worktree(submodule_path: Path, wt_dir: Path) -> None:
     )
 
 
-def load_hpo_config(path: str) -> tuple[Dict[str, Any], Dict[str, float]]:
-    """Load HPO output JSON and split into PySR kwargs overrides and mutation weights."""
-    with open(path, "r") as f:
-        data = json.load(f)
-
-    if isinstance(data, dict) and "weights" in data:
-        raw_params = data["weights"]
-    elif isinstance(data, dict) and "best_params" in data:
-        raw_params = data["best_params"]
-    elif isinstance(data, dict) and "params" in data:
-        raw_params = data["params"]
-    else:
-        raw_params = data
-
+def split_hpo_params(raw_params: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, float]]:
+    """Split a flat HPO param dict into (pysr_kwargs_overrides, mutation_weight_overrides)."""
     default_weight_keys = set(get_default_mutation_weights().keys())
     for i in range(1, 6):
         default_weight_keys.add(f"weight_custom_mutation_{i}")
@@ -318,6 +331,23 @@ def load_hpo_config(path: str) -> tuple[Dict[str, Any], Dict[str, float]]:
             pysr_overrides[key] = value
 
     return pysr_overrides, mutation_weights
+
+
+def load_hpo_config(path: str) -> tuple[Dict[str, Any], Dict[str, float]]:
+    """Load HPO output JSON and split into PySR kwargs overrides and mutation weights."""
+    with open(path, "r") as f:
+        data = json.load(f)
+
+    if isinstance(data, dict) and "weights" in data:
+        raw_params = data["weights"]
+    elif isinstance(data, dict) and "best_params" in data:
+        raw_params = data["best_params"]
+    elif isinstance(data, dict) and "params" in data:
+        raw_params = data["params"]
+    else:
+        raw_params = data
+
+    return split_hpo_params(raw_params)
 
 
 # =============================================================================
@@ -447,14 +477,15 @@ def run_final_evaluation(
     seed: int = 42,
     max_samples: int = 1000,
     max_evals: int = 1000000,
-    timeout: int = 600,
-    time_limit: str = "00:30:00",
+    timeout: int = 500,
+    time_limit: str = "00:15:00",
     mem_per_cpu: str = "8G",
-    job_timeout: float = 3000.0,
+    job_timeout: float = 1800.0,
     max_concurrent_jobs: Optional[int] = None,
     use_cache: bool = True,
     wandb_run: Optional[Any] = None,
     target_noise_map: Optional[Dict[str, float]] = None,
+    pysr_wall_limit: int = 600,
 ) -> Dict[str, "EvalSummary"]:
     """Run final evaluation on train/val splits after an evolution, OpenEvolve, or HPO run.
 
@@ -522,6 +553,7 @@ def run_final_evaluation(
         job_timeout=job_timeout,
         max_concurrent_jobs=max_concurrent_jobs,
         use_cache=use_cache,
+        pysr_wall_limit=pysr_wall_limit,
     )
 
     baseline_weights = get_default_mutation_weights()
@@ -549,6 +581,7 @@ def run_final_evaluation(
         datasets = load_dataset_names_from_split(split_path)
         print(f"\nEvaluating on {split_name} ({len(datasets)} datasets, {n_runs} seeds)...")
 
+        evaluator.split_label = split_name
         summary = evaluate_config(
             evaluator, datasets, eval_pysr_kwargs, eval_weights,
             seed, n_runs, f"final_{split_name}_{method_label}",
@@ -655,9 +688,16 @@ def main() -> None:
     parser.add_argument("--max-samples", type=int, default=1000,
                         help="Maximum samples per dataset")
     parser.add_argument("--max-evals", type=int, default=1000000,
-                        help="Maximum evaluations per PySR run")
+                        help="Maximum evaluations per PySR run (ignored if --wall-clock-only)")
     parser.add_argument("--timeout", type=int, default=600,
-                        help="PySR timeout in seconds")
+                        help="PySR timeout in seconds (PySR's own timeout_in_seconds)")
+    parser.add_argument("--wall-clock-only", action="store_true",
+                        help="Stop PySR on wall-clock timeout only (drop max_evals)")
+    parser.add_argument("--noise", type=float, default=0.0,
+                        help="Per-target Gaussian noise level applied uniformly to all datasets")
+    parser.add_argument("--pysr-wall-limit", type=int, default=600,
+                        help="Hard wall-clock guard inside the SLURM task (seconds); "
+                             "must exceed --timeout with a buffer")
     parser.add_argument("--partition", type=str, default="default_partition",
                         help="SLURM partition")
     parser.add_argument("--time-limit", type=str, default="00:30:00",
@@ -731,6 +771,9 @@ def main() -> None:
         "max_samples": args.max_samples,
         "max_evals": args.max_evals,
         "timeout": args.timeout,
+        "wall_clock_only": args.wall_clock_only,
+        "noise": args.noise,
+        "pysr_wall_limit": args.pysr_wall_limit,
         "partition": args.partition,
         "no_cache": args.no_cache,
     }
@@ -741,16 +784,28 @@ def main() -> None:
         wandb_config["generation"] = items[0].generation
         wandb_config["evolve_train_score"] = items[0].train_score
 
+    # W&B tags must be 1-64 chars. Prefer the SLURM job id of the eval run when
+    # available (so the tag links straight to out/<id>.out); otherwise fall back
+    # to method_label, truncated to fit.
+    slurm_job_id = os.environ.get("SLURM_JOB_ID", "")
+    if slurm_job_id:
+        wandb_tag = slurm_job_id
+    elif len(method_label) > 64:
+        wandb_tag = method_label[:61] + "..."
+    else:
+        wandb_tag = method_label
+
     wandb_run = init_wandb(
         config=wandb_config,
         script_name="evaluate_new_pysr.py",
         output_dir=str(output_dir),
-        extra_tags=[method_label],
+        extra_tags=[wandb_tag],
     )
 
     pysr_kwargs = get_default_pysr_kwargs()
-    pysr_kwargs["max_evals"] = args.max_evals
     pysr_kwargs["timeout_in_seconds"] = args.timeout
+    if not args.wall_clock_only:
+        pysr_kwargs["max_evals"] = args.max_evals
 
     evaluator_kwargs: Dict[str, Any] = {}
     if autoresearch_worktree is not None:
@@ -766,6 +821,7 @@ def main() -> None:
         job_timeout=args.job_timeout,
         max_concurrent_jobs=args.max_concurrent_jobs,
         use_cache=not args.no_cache,
+        pysr_wall_limit=args.pysr_wall_limit,
         **evaluator_kwargs,
     )
 
@@ -784,8 +840,17 @@ def main() -> None:
         eval_weights = {**baseline_weights, **hpo_weights}
     elif method is not None:
         eval_weights, eval_extra = build_method_kwargs(method, baseline_weights)
-        # Print loaded method info
+        # If the bundle carries HPO-tuned hparams, apply them too so the eval
+        # matches the score reported by hpo_pysr.py.
         items = method if isinstance(method, list) else [method]
+        bundle_hparams = items[0].best_hparams
+        if bundle_hparams:
+            pysr_overrides, hpo_weights = split_hpo_params(bundle_hparams)
+            eval_pysr_kwargs = {**pysr_kwargs, **pysr_overrides}
+            eval_weights = {**eval_weights, **hpo_weights}
+            print(f"Applied {len(bundle_hparams)} HPO-tuned hparam(s) from bundle: "
+                  f"{sorted(bundle_hparams.keys())}")
+        # Print loaded method info
         for m in items:
             print(f"Loaded [{m.operator_type}] {m.name}")
             print(f"  Generation: {m.generation}")
@@ -804,9 +869,14 @@ def main() -> None:
         print(f"Evaluating {method_label} on {split_name} split ({len(datasets)} datasets)...")
         print(f"{'=' * 60}")
 
+        target_noise_map = (
+            {d: args.noise for d in datasets} if args.noise > 0 else None
+        )
+
         summary = evaluate_config(
             evaluator, datasets, eval_pysr_kwargs, eval_weights,
             args.seed, args.n_runs, f"{split_name}_{method_label}",
+            target_noise_map=target_noise_map,
             **eval_extra,
         )
         split_summaries[split_name] = summary

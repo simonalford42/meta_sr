@@ -1,0 +1,343 @@
+GENERATION 0:
+mutation: explore:	 Data-aware mutation that performs a closed-form least-squares fit of a single constant node embedded anywhere in the expression.
+mutation: explore:	 Constant-folding mutation: scans the tree for operator subtrees whose leaves are **all constants** (no variable features anywhere in the subtree), picks one uniformly at random, evaluates it by applying the operator functions directly to those constants, and replaces the whole subtree with a single...
+mutation: explore:	 Data-aware mutation that selects a random subtree, evaluates it on `dataset.X`, and replaces it with an affine transformation `a + b * subtree` whose coefficients are obtained by ordinary least-squares regression against `dataset.y`.
+mutation: explore:	 Performs a one-step Newton refinement of a single randomly chosen constant node using finite-difference estimates of the mean-squared-error's gradient and curvature with respect to that constant on the training data `(dataset.X, dataset.y)`.
+mutation: explore:	 A symmetry/algebra-aware structural mutation that applies the distributive law `a * (b + c) → a*b + a*c` at a randomly chosen multiplication node.
+survival: explore:	 This diversity-preserving survival operator maintains a healthy Pareto front by targeting overcrowded complexity regions.
+selection: explore:	 This selection operator implements a "Diversity-Preserving Double Tournament" to balance fitness pressure with structural novelty, helping to prevent premature convergence in symbolic regression.
+selection: explore:	 This selection operator uses a multi-objective Pareto tournament to explicitly balance raw fitness (loss) and expression size (complexity), preserving a diverse set of expression structures.
+selection: explore:	 Selection operator that blends epsilon-Pareto dominance with a rarity bonus drawn from `running_search_statistics`.
+
+GENERATION 1:
+mutation: explore:	 This mutation evaluates the current tree on the dataset and calculates its baseline correlation with the target `y`.
+mutation: explore:	 Data-aware "linear readout" mutation.
+mutation: explore:	 Data-aware mutation that discovers quadratic relationships by consulting the training data.
+survival: explore:	 This survival operator balances age-regularized evolution with fitness-based survival.
+selection: explore:	 A three-criterion tournament selection that combines fitness, age (via `birth`), and structural novelty (via `running_search_statistics.normalized_frequencies`).
+selection: explore:	 Epsilon-lexicase selection adapted to symbolic regression with a novelty bonus derived from `running_search_statistics`.
+
+GENERATION 2:
+mutation: explore:	 This structural mutation picks a random node in the tree and wraps it in a new random binary operator.
+mutation: explore:	 Data-aware mutation that evaluates the current expression on `dataset.X`/`dataset.y` to obtain the residual.
+survival: explore:	 A diversity-preserving survival operator that protects the complexity-wise Pareto structure of the population.
+survival: explore:	 This survival operator replaces the least fit (highest cost) member among the older portion of the population.
+selection: explore:	 This selection operator promotes structural diversity across expression complexities by preferentially returning the best-performing member from an underexplored complexity class.
+selection: explore:	 This selection operator uses a multi-objective Pareto tournament to choose a parent.
+
+GENERATION 3:
+mutation: explore:	 Data-aware mutation that tries to turn an expression with the right multiplicative backbone into a simple rational correction.
+mutation: explore:	 This structural mutation tries to turn an already-important subtree into a compact Padé-like rational correction.
+survival: explore:	 This survival operator replaces the member with the *highest cost* (worst performer), using member.cost directly (which already embeds the complexity penalty and any adaptive scaling).
+survival: explore:	 This survival operator combines age-regularized evolution with a strong penalty against expression bloat.
+survival: explore:	 A tournament-based survival operator that selects which member to replace by running a "reverse tournament" among a random subset of the population and picking the *worst* competitor.
+selection: explore:	 A symbolic-regression flavored epsilon-lexicase selection operator designed to escape structural local optima (such as the log-dominated plateau seen in the trace) by picking parents along *different* axes of merit on every call, rather than always along a single scalar cost.
+selection: explore:	 Rank-based selection with a structural-novelty (rarity) boost.
+
+GENERATION 4:
+mutation: explore:	 Data-aware mutation that tries to turn the current expression into a simple rational correction of the form `s * tree / (1 - c*z)`, where `z` is either a single feature or a pairwise feature product.
+survival: explore:	 This survival operator removes members that are redundant and weak stepping stones, instead of always removing the oldest expression.
+survival: explore:	 Choose the population member to replace by assigning each eligible member a "vulnerability" score, then returning the index with the largest score.
+selection: explore:	 This selection operator performs a multi-objective tournament that treats loss and youth (birth timestamp) as separate objectives.
+selection: explore:	 This selection operator implements a continuous Boltzmann (softmax) tournament selection strategy.
+
+GENERATION 5:
+mutation: explore:	 Wraps a randomly chosen subtree `S` in a rational (fractional-linear) structure of the form `S / (1 + S * L)` or `S / (1 + L)`, where `L` is a freshly generated random leaf (constant or variable).
+mutation: explore:	 A purely structural mutation that combats bloat by folding constant subtrees and eliminating identity/annihilation operations (+0, -0, *1, /1, *0).
+mutation: explore:	 Core idea: after evaluating the current expression, compute the residual `y - pred`.
+mutation: explore:	 A data-aware mutation that attempts to wrap the current tree with a *rational* correction of the form `tree / (1 + a * x_i)`, choosing the feature `x_i` and the scalar `a` by least squares against the training data.
+survival: explore:	 This survival operator removes members that are locally redundant in the population's internal loss-complexity tradeoff.
+selection: explore:	 Boltzmann (softmax) selection over the full population.
+
+GENERATION 6:
+survival: explore:	 This survival operator combines age-regularized evolution with fitness-based selection.
+survival: explore:	 This survival operator combats bloat by replacing the population member with the highest expression complexity (computed via `compute_complexity`).
+survival: explore:	 Choose a replacement target by preferentially deleting members that are Pareto-dominated in the `(loss, complexity)` plane, then breaking ties with a staleness-and-redundancy score.
+selection: explore:	 This selection operator first draws a target complexity from a distribution that strongly biases toward smaller sizes (exponential decay) while also favoring complexity bins that are currently underrepresented according to `running_search_statistics.normalized_frequencies`.
+selection: explore:	 This selection operator implements a multi-objective Pareto-tournament that treats raw loss and expression complexity as independent objectives.
+selection: explore:	 Selects a parent in two stages, with the first stage acting on complexity niches rather than directly on individuals.
+
+GENERATION 7:
+survival: explore:	 Replaces members that are Pareto-dominated in the (complexity, cost) plane.
+selection: explore:	 This selection operator implements a Pareto-dominance tournament on two objectives: minimize loss and maximize birth timestamp (i.e, prefer recently discovered expressions).
+selection: explore:	 This selection operator implements an Age-Fitness Pareto Optimization (AFPO) style tournament.
+
+GENERATION 8:
+mutation: explore:	 Picks a random subtree `u` anywhere in the tree and wraps it inside one of several recognizable algebraic / physical templates, such as `1 / sqrt(1 - u^2)` (Lorentz gamma factor), `sqrt(1 - u^2)`, `1 / sqrt(1 + u^2)`, `1 / (1 - u)` (geometric-series sum), `1 / (1 + u^2)` (Lorentzian), or `u / (1 +...
+mutation: explore:	 A data-aware mutation that performs a single Gauss–Newton step to refit a randomly-chosen constant leaf of the tree against `dataset.y`.
+selection: explore:	 This selector uses a two-stage, size-stratified parent choice instead of a local tournament.
+selection: explore:	 This novelty-driven selection operator first identifies the best (lowest cost) member for each complexity present in the population, breaking cost ties by preferring newer individuals (higher `.birth`).
+
+GENERATION 9:
+mutation: explore:	 Targeted structural mutation that algebraically transforms the argument of a randomly chosen unary operator.
+mutation: explore:	 Data-aware mutation that evaluates the current tree on `dataset.X`, treats the resulting prediction vector `z = f(X)` as a single latent regressor, and fits a small affine calibration to the training target: `y ≈ a*z + b`.
+survival: explore:	 Choose a replacement by removing members that are simultaneously weak trade-offs and redundant.
+selection: explore:	 This selection operator implements an Age-Fitness Pareto Tournament.
+
+GENERATION 10:
+mutation: explore:	 This structural mutation promotes the reuse of genetic material within the same tree.
+mutation: explore:	 This mutation selects two random nodes within the same tree (`source` and `target`) and combines them using a randomly chosen binary operator.
+mutation: explore:	 A data-aware constant-refinement mutation that performs **one Gauss–Newton step** on a randomly chosen constant leaf to minimize the mean-squared error against `dataset.y`.
+survival: explore:	 This survival operator implements stochastic tournament-based elimination.
+survival: explore:	 This survival operator combines age-regularized evolution with fitness pressure by replacing the oldest member among the worse half of the population.
+selection: explore:	 This selector evaluates the whole population instead of drawing a tournament.
+selection: explore:	 This selection operator performs linear ranking selection with adaptive parsimony.
+
+GENERATION 11:
+mutation: explore:	 Wraps a randomly chosen subtree `X` into the rational form `X / (1 + L)`, where `L` is a freshly generated random leaf (either a constant or a feature variable).
+survival: explore:	 This survival operator protects the Pareto front by preferentially replacing Pareto-dominated members.
+selection: explore:	 This selection operator implements lexicase selection over three criteria: raw loss, expression complexity, and complexity rarity (from `running_search_statistics.normalized_frequencies`).
+
+GENERATION 12:
+mutation: explore:	 Data-aware mutation that first evaluates the current tree on `dataset.X` to obtain predictions and the residual `dataset.y .- pred`.
+mutation: explore:	 Encourages the discovery of polynomial / quadratic structure by picking a random small subtree and replacing it with its **square**, i.e `s --> s * s`.
+mutation: explore:	 This data-aware mutation tries to "complete a denominator" around the current expression.
+selection: explore:	 A diversity-pressured selection operator that performs a Pareto tournament over two objectives: raw fitness (loss/cost) and **structural novelty**, where novelty is defined as the inverse of how often a candidate's complexity size currently appears in the search (taken directly from `running_search...
+selection: explore:	 Select a parent by sampling from the population's loss-complexity stepping stones rather than from a local tournament.
+
+GENERATION 13:
+mutation: explore:	 Perform a local algebraic refactor based only on tree structure.
+survival: explore:	 This survival operator focuses on strictly controlling equation bloat by replacing the most complex member of the population.
+
+GENERATION 14:
+mutation: explore:	 This mutation evaluates the current tree to compute the residual error (`y - y_pred`).
+mutation: explore:	 This data-aware mutation selects a random constant node in the tree and attempts to find its optimal value using a linear approximation (least squares).
+survival: explore:	 Survival operator that protects complexity diversity while pruning weak members.
+survival: explore:	 This survival operator identifies the population member to replace by scanning all members and selecting the one with the *highest* cost (the cost already folds in both raw loss and a complexity penalty via `options`).
+survival: explore:	 A diversity-preserving survival operator that replaces the most "redundant" member of the population — the one whose (complexity, cost) fingerprint is most densely surrounded by similar members — instead of simply replacing the oldest.
+selection: explore:	 A selection operator designed to combat premature convergence onto a single structural motif (which happened in the trace, where the whole Pareto front locked into `square(cos(x0) - c) / (...)` variants instead of discovering the Gaussian `exp(-x^2/2)` structure).
+selection: explore:	 This selection operator uses multi-objective Pareto tournament selection on the two objectives (loss, complexity).
+
+GENERATION 15:
+mutation: explore:	 This mutation rewrites subtractive rational patterns of the form `A - A^2 / (A + B)` into the reciprocal form `A / (1 + A / B)`.
+mutation: explore:	 Data-aware mutation that performs a **least-squares refinement of a single constant** in the expression.
+selection: explore:	 This selection operator implements an age-fitness Pareto tournament.
+
+GENERATION 16:
+survival: explore:	 Survival operator that combines **complexity-niche crowding** with **worst-fitness replacement**.
+selection: explore:	 Select a parent with a two-stage "frontier bandit" strategy rather than a local tournament.
+
+GENERATION 17:
+mutation: explore:	 This mutation performs a semantics-preserving algebraic refactor that changes only the tree structure.
+mutation: explore:	 Data-aware mutation that first evaluates the current expression on `dataset.X` to obtain residuals (guarding against evaluation failure or `dataset.y === nothing`).
+survival: explore:	 This survival operator promotes complexity diversity by replacing a member from the most overcrowded complexity bin.
+selection: explore:	 This operator samples a candidate pool larger than a standard tournament and treats parent choice as an ε-Pareto problem over three minimized objectives: raw loss, explicit expression complexity, and age (derived from `birth`, so younger members are preferred).
+
+GENERATION 18:
+mutation: explore:	 Search for local correction patterns that already contain a repeated factor and lift them into a rational denominator.
+mutation: explore:	 Data-aware mutation that evaluates the current tree on `dataset.X` to obtain predictions, computes the residual `dataset.y .- pred`, and obtains the MSE-optimal additive bias as `mean(residual)`.
+survival: explore:	 A Pareto/crowding-aware survival operator designed to preserve structural diversity across the complexity axis, which age-regularized evolution tends to erode when a polynomial-style basin dominates the population (as seen in the trace where the search converges on product/square expansions instead...
+survival: explore:	 This survival operator replaces members that are redundant in the current loss landscape rather than simply replacing the oldest individual.
+selection: explore:	 This selection operator performs global rank-based roulette-wheel selection with an explicit diversity bias drawn from `running_search_statistics`.
+selection: explore:	 A multi-objective epsilon-lexicase style selection operator.
+
+GENERATION 19:
+mutation: explore:	 This structural mutation inserts the scaffold `a / sqrt(1 - r*r)` using subtrees that are already present in the expression.
+survival: explore:	 This survival operator uses an inverse tournament selection to choose which population member to replace.
+survival: explore:	 Choose a replacement target by preserving the population's useful accuracy-complexity trade-offs instead of simply removing the oldest member.
+selection: explore:	 Select a parent by first drawing a moderately large random arena from the population (about `2 * options.tournament_selection_n` members), then treating selection as a three-objective problem: minimize scalar `member.cost`, minimize age (`current_max_birth - member.birth`, so newer individuals are...
+
+GENERATION 20:
+mutation: explore:	 A data-aware mutation that selects a random node in the tree and evaluates the effect of replacing its entire subtree with either:
+mutation: explore:	 Structural mutation that performs a single-step algebraic simplification on the tree.
+survival: explore:	 This survival operator replaces the member with the highest complexity (computed via `compute_complexity`), with ties broken by highest `birth` (oldest member).
+survival: explore:	 This survival operator balances age-regularized evolution with fitness-based survival.
+selection: explore:	 This selection operator implements novelty-driven roulette-wheel selection that preferentially chooses parents from underrepresented complexity classes.
+
+GENERATION 21:
+mutation: explore:	 Wraps a random subtree `A` with a rational transformation `A / (1 - B)`, where `B` is either a copy of another subtree already present in the tree or a small freshly-generated expression (a leaf, optionally scaled by a constant).
+survival: explore:	 A Pareto-protecting tournament survival operator designed to preserve structurally useful "stepping stones" on the complexity/loss Pareto front while aggressively culling bloated or redundant members.
+survival: explore:	 A survival operator that combines **Pareto-front protection** with an **anti-tournament** replacement rule, plus mild age pressure.
+selection: explore:	 This selection operator implements an Age-Fitness Pareto tournament to balance exploitation of highly fit individuals with the exploration of newly generated genetic material.
+
+GENERATION 22:
+mutation: explore:	 A structural mutation that injects the pattern `1 - <subtree>` at a randomly chosen node.
+mutation: explore:	 A data-aware mutation that replaces a random subtree with a feature leaf, where the feature is sampled proportionally to its absolute correlation with the current tree's residual error.
+selection: explore:	 This selection operator implements an Age-Fitness Pareto tournament.
+selection: explore:	 An epsilon-lexicase selection operator augmented with novelty and age pressure, designed to maintain structural diversity so the search does not prematurely collapse onto a single "family" of expressions (which appears to have happened in the trace — every front used a `sin`-based dispersion term,...
+
+GENERATION 23:
+mutation: explore:	 Data-aware mutation that picks a random constant leaf and replaces its value with the exact least-squares optimal coefficient for that constant (treating all other parts of the tree as fixed).
+mutation: explore:	 Data-aware mutation for expressions that appear to be a dominant "carrier" term times a hidden normalization factor, especially of the form `y ≈ s(x) / sqrt(a + b*z(x))`.
+survival: explore:	 Survival operator that protects Pareto-front diversity across complexity niches while aggressively culling redundant, poor-performing members.
+
+GENERATION 24:
+mutation: explore:	 Create a rational "feedback" wrapper around an existing subtree.
+survival: explore:	 A diversity-preserving survival operator that replaces members from overcrowded fitness regions.
+survival: explore:	 This survival operator replaces a population member based on a multiplicative combination of its age and fitness ranks, making it robust against extreme cost outliers.
+selection: explore:	 This selection operator performs a Boltzmann (softmax) tournament.
+
+GENERATION 25:
+mutation: explore:	 A structural mutation that scans binary operator nodes for common algebraic identity and annihilation patterns, then collapses them in-place.
+mutation: explore:	 Data-aware mutation that tries to wrap the current expression `f(X)` in a rational correction of the form `f(X) / (1 + α * ϕ(X))`.
+survival: explore:	 Survival operator that targets **Pareto-dominated bloat** for replacement.
+survival: explore:	 Pareto-dominance-based survival operator designed to preserve the structural diversity of the complexity/loss Pareto front while aggressively culling redundant members.
+survival: explore:	 This survival operator replaces the population member with the highest `cost`.
+selection: explore:	 This selection operator uses a multi-objective Pareto tournament to choose a parent.
+
+GENERATION 26:
+mutation: explore:	 Structural mutation that promotes feature diversity by introducing an unused variable.
+mutation: explore:	 This data-aware mutation combines global gradient boosting with local feature injection.
+survival: explore:	 This survival operator runs a mini-tournament to select which member to replace, choosing the *worst* (highest cost) individual from a random sample of `options.tournament_selection_n` candidates.
+survival: explore:	 Choose a replacement candidate by treating the population as a small loss-complexity Pareto archive.
+
+GENERATION 27:
+mutation: explore:	 Data-aware mutation that searches for binary subtraction nodes applied directly to two distinct variable leaves (x_i - x_j).
+mutation: explore:	 Pick a random constant leaf in the tree and update its value with a single Gauss–Newton step that minimises the squared error ``\\|y - f(X; c)\\|^2`` with respect to that constant.
+survival: explore:	 A diversity-preserving survival operator that identifies and replaces members from overcrowded fitness regions.
+selection: explore:	 A novel selection operator that combines **epsilon-lexicase filtering** across multiple symbolic-regression objectives with **adaptive complexity niching** driven by `running_search_statistics`.
+
+GENERATION 28:
+mutation: explore:	 Data-aware mutation that selects a random constant node and replaces its value with the closed-form least-squares optimum under a local linear model.
+mutation: explore:	 A simplification-focused structural mutation that performs one local algebraic simplification step on the tree.
+mutation: explore:	 A structural mutation that injects the frequently occurring pattern `1 - f(x)` (or `f(x) - 1`) into the expression tree.
+survival: explore:	 Survival operator that runs an *inverse tournament* to decide which member to cull.
+selection: explore:	 Select a parent in two stages by treating expression complexity as an explicit search axis.
+
+GENERATION 29:
+mutation: explore:	 Replace an operator with its mathematical "sibling" from the same family, rather than sampling a uniformly random new operator like `mutate_operator` does.
+selection: explore:	 A Pareto-aware, novelty-biased Boltzmann tournament.
+
+GENERATION 30:
+mutation: explore:	 Data-aware mutation that performs a one-step boosting move on the current expression.
+mutation: explore:	 Core idea: Insert the structurally common pattern `1 / sqrt(x)` around a randomly chosen subtree `x`.
+mutation: explore:	 Identify input features that are currently absent from the expression and inject one of them by overwriting a randomly chosen variable leaf.
+selection: explore:	 This selection operator implements global rank-based selection with explicit diversity promotion.
+selection: explore:	 Multi-objective Pareto-dominance selection on raw loss and complexity.
+
+GENERATION 31:
+mutation: explore:	 Data-aware mutation that replaces a random constant leaf with the value that minimizes the squared error on the training data, assuming (approximately) linear dependence of the tree output on that constant.
+mutation: explore:	 Feature-balancing structural mutation.
+mutation: explore:	 Search for a binary `+` or `-` node whose two arguments share an identical multiplicative factor, and rewrite it by factoring that subtree out.
+selection: explore:	 Two-stage parent selector that tries to break search stagnation across complexity classes.
+
+GENERATION 32:
+mutation: explore:	 This structural mutation accelerates the discovery of feature interactions (e.g, `x1 * x2` or `x1 + x2`), which are critical in many real-world datasets but can be slow to evolve via standard random node insertions.
+mutation: explore:	 Data-aware mutation that tries to jump directly into the structural family `β * x_k / sqrt(1 - α * (x_i / x_j)^2)`.
+mutation: explore:	 Data-aware constant refinement via finite-candidate least-squares search.
+survival: explore:	 Crowding-aware tournament survival operator.
+selection: explore:	 This selection operator uses a Multi-Objective Pareto Tournament combined with a novelty-based tie-breaker to choose a parent.
+selection: explore:	 This selection operator implements a Pareto tournament on adjusted cost and youth.
+
+GENERATION 33:
+mutation: explore:	 Evaluates the current tree to compute the residual error (`dataset.y .- y_pred`).
+mutation: explore:	 This mutation identifies a random subtree (motif) and duplicates it to create a symmetric or repeating pattern, which is highly common in physical laws (e.g, `x^2 + y^2` or `f(x) * f(y)`).
+survival: explore:	 Choose a replacement target by removing members that are redundant on the population's internal loss-complexity landscape rather than simply old.
+selection: explore:	 Select a parent in two stochastic stages designed to emphasize "bridge" complexities rather than repeatedly cloning the current globally best models.
+selection: explore:	 This selection operator uses fitness-proportionate roulette-wheel selection augmented by a diversity bonus drawn from running_search_statistics.
+
+GENERATION 34:
+mutation: explore:	 This mutation promotes the reuse of existing subtrees (building blocks), which is highly beneficial for discovering complex equations where the same variable or sub-expression appears multiple times (e.g, `x / (1 + x * y)`).
+mutation: explore:	 Data-aware "affine correction" mutation.
+survival: explore:	 This survival operator implements a "Complexity-Crowding" replacement strategy designed to explicitly protect the Pareto front of expressions.
+survival: explore:	 This survival operator implements an "Elitist Age-Regularized" replacement strategy.
+selection: explore:	 Select a parent by ranking the entire population globally, then sampling from an exponential rank distribution instead of running a tournament.
+
+GENERATION 35:
+mutation: explore:	 This structural mutation performs an intra-tree recombination step: it samples a target node to rewrite and a source subtree already present somewhere in the same expression, then replaces the target with a new binary operator whose children are copies of the original target and source.
+survival: explore:	 Choose a replacement by removing members that are poor uses of complexity rather than simply the oldest.
+survival: explore:	 Replaces the population member with the highest `cost` (raw loss plus complexity penalty).
+selection: explore:	 This selection operator implements a multi-objective Pareto tournament on (cost, age).
+
+GENERATION 36:
+mutation: explore:	 This mutation performs "internal crossover" (or subtree duplication) by selecting a random target node in the tree and replacing it with a deep copy of another randomly selected source node from the same tree.
+mutation: explore:	 Data-aware mutation that performs a small boosting-style step on the current expression.
+mutation: explore:	 This mutation tries to discover a missing logarithmic ratio factor, a motif that often appears in scientific equations but can be hard for random local edits to assemble from separate `/`, `log`, and `*` mutations.
+survival: explore:	 Replaces the member that is most "crowded" in the (complexity, loss) landscape, thereby preserving population diversity and Pareto-front coverage.
+
+GENERATION 37:
+mutation: explore:	 Data-aware leaf-refinement mutation.
+mutation: explore:	 This mutation promotes the reuse of discovered building blocks by copying a random internal subtree and replacing a random leaf with this copy.
+mutation: explore:	 This structural mutation searches for binary `+` or `-` nodes whose two children are both products and share one identical factor, such as `(a*b) + (a*c)`, `(b*a) - (c*a)`, or related variants.
+mutation: explore:	 Evaluates the current expression on `dataset.X` to obtain predictions and residuals (with early exit on failure or non-finite values).
+selection: explore:	 Epsilon-lexicase style selection that combines three criteria in a randomized order: (1) raw training loss, (2) structural novelty measured via complexity rarity, and (3) age.
+
+GENERATION 38:
+survival: explore:	 Survival operator that protects the current Pareto front (complexity vs.
+survival: explore:	 Inverse tournament survival with a bloat-aware penalty.
+selection: explore:	 This selection operator promotes structural diversity by first sampling a target complexity bin with probability inversely proportional to its normalized frequency (`running_search_statistics.normalized_frequencies`).
+
+GENERATION 39:
+mutation: explore:	 Data-aware mutation that performs a closed-form least-squares fit for a randomly chosen constant in the expression.
+mutation: explore:	 Structural mutation that wraps a randomly chosen subtree `S` with a fresh affine transformation `a * S + b`, where `a` and `b` are newly created constant leaves sampled from a standard normal.
+survival: explore:	 A tournament-based survival operator that combines fitness, complexity (bloat), and age to decide which member to replace.
+selection: explore:	 This selection operator extends the default tournament selection by introducing an age-based penalty to protect newly generated expressions.
+selection: explore:	 Age-fitness Pareto tournament selection that treats raw loss and age as two objectives to be minimized.
+
+GENERATION 40:
+mutation: explore:	 This mutation promotes the reuse of discovered mathematical building blocks by copying a random subtree and using it to replace another random node within the same tree.
+mutation: explore:	 Data-aware mutation that first evaluates the current expression on `dataset.X`.
+survival: explore:	 A stochastic "reverse tournament" survival operator that targets bloated, poorly-performing, and stagnating members for replacement.
+selection: explore:	 This selection operator implements an Age-Fitness Pareto Optimization (AFPO) inspired tournament selection.
+
+GENERATION 41:
+mutation: explore:	 Often, inserting a single unary operator (like `sin` or `cos`) drastically changes the output scale of a subtree, causing the new expression to be rejected due to a sudden spike in loss.
+mutation: explore:	 This data-aware mutation looks for a missing multiplicative correction of the form `1 / sqrt(1 - alpha * (x_i / x_j)^2)`.
+mutation: explore:	 This structural mutation performs a multi-node pattern rewrite that bridges between common surrogate growth factors and algebraic radical forms.
+survival: explore:	 Replaces the member that is most "redundant" with respect to the complexity–loss Pareto front of the current population.
+
+GENERATION 42:
+mutation: explore:	 Data-aware mutation that tries to convert the current expression into a better "numerator over denominator" formula.
+mutation: explore:	 Data-aware mutation that performs a single Gauss–Newton step to refit one constant node in the tree against `dataset.y`.
+survival: explore:	 Survival operator that preserves Pareto-front members (in the complexity-vs-cost plane) and preferentially replaces members that are heavily dominated.
+survival: explore:	 This survival operator chooses the population member to replace by balancing age-regularization and fitness.
+selection: explore:	 This operator replaces a single-cost tournament with a diversity-aware Pareto parent choice.
+
+GENERATION 43:
+mutation: explore:	 Evaluates the current tree to compute the residual `y - y_pred`.
+mutation: explore:	 This data-aware mutation evaluates the current tree and computes both the additive residual (`y - y_pred`) and the multiplicative ratio (`y / y_pred`).
+survival: explore:	 A novel survival operator that performs a **reverse tournament with bloat awareness**.
+survival: explore:	 This survival operator replaces the member that looks most redundant in the current loss-complexity tradeoff landscape instead of always replacing the oldest member.
+selection: explore:	 This selection operator picks parents by explicitly favoring members that live in complexity sizes which currently improve the size-vs-loss Pareto frontier.
+
+GENERATION 44:
+mutation: explore:	 Data-aware mutation that picks a random constant leaf and replaces its value with the exact least-squares optimal value for that constant (all other parts of the expression held fixed).
+mutation: explore:	 This mutation performs "in-tree crossover" or subtree recombination.
+survival: explore:	 This survival operator promotes structural diversity by replacing a member from the most crowded complexity bin.
+survival: explore:	 Survival operator that replaces the member judged to be the least valuable based on a combined fitness + crowding score.
+survival: explore:	 This survival operator uses tournament-based replacement: it repeatedly samples a member at random (respecting `exclude_indices`) up to `options.tournament_selection_n` times and replaces the member possessing the highest `cost` observed inside that tournament.
+
+GENERATION 45:
+mutation: explore:	 Data-aware mutation that proposes wrapping the current expression in a rational form `tree / (1 - c * x_i)`.
+survival: explore:	 This survival operator removes members that are weak and redundant in the current cost-complexity landscape instead of simply removing the oldest one.
+selection: explore:	 A hybrid selection operator combining **epsilon-lexicase filtering** with **Pareto-aware multi-objective pressure** and **complexity-frequency diversification**.
+selection: explore:	 This selection operator uses an adaptive Boltzmann (softmax) strategy to choose a parent.
+
+GENERATION 46:
+mutation: explore:	 Data-aware "least-squares affine correction" mutation.
+mutation: explore:	 Searches for repeated subtrees inside binary `+` nodes and rewrites them into a factored form.
+mutation: explore:	 Data-aware mutation that performs a single Gauss–Newton / least-squares step to refine ONE constant leaf of the tree so it better fits `dataset.y`.
+mutation: explore:	 This structural mutation searches `+` and `-` nodes for an exact subtree that appears as a common multiplicative factor on both sides, then factors it out.
+survival: explore:	 This survival operator combines Pareto-dominance with age-regularized evolution.
+survival: explore:	 A diversity-preserving survival operator designed to combat Pareto-front stagnation.
+selection: explore:	 This selection operator implements Age-Fitness Pareto Optimization (AFPO) to balance the selection pressure between highly optimized older expressions and recently generated (younger) expressions.
+
+GENERATION 47:
+mutation: explore:	 A structural mutation that helps discover quadratic and symmetric forms (e.g the x² term inside exp(-theta**2/2)) by duplicating a random subtree under a binary operator.
+mutation: explore:	 Data-aware mutation that tries to convert the current predictor `f(X)` into a rational correction of the form `f(X) / (1 + α*g(X))`.
+mutation: explore:	 Data-aware mutation that evaluates the current tree on `dataset.X` to obtain predictions and the residual `y - pred`.
+survival: explore:	 Choose the population member to replace by targeting individuals that are both redundant and unpromising, rather than simply old.
+selection: explore:	 This selection operator implements global rank-based roulette-wheel selection with frequency-adjusted parsimony.
+selection: explore:	 This selection operator uses a multi-objective Pareto tournament to choose a parent.
+selection: explore:	 This selection operator uses multi-objective Pareto dominance on the (loss, complexity) objective space instead of a scalarized cost.
+
+GENERATION 48:
+mutation: explore:	 Data-aware mutation that evaluates the current expression on `dataset.X`, computes the residual against `dataset.y`, and identifies the input feature with the highest absolute correlation to that residual.
+mutation: explore:	 A structural mutation that promotes the reuse of discovered mathematical building blocks by copying a random internal subtree and overwriting a random leaf node.
+mutation: explore:	 Introduce a rational (division-by-one-plus-something) structure into the tree.
+survival: explore:	 This survival operator returns the index of the population member with the highest cost (worst fitness).
+selection: explore:	 This selection operator uses a Boltzmann/Softmax distribution over a randomly sampled tournament to select a parent.
+
+GENERATION 49:
+mutation: explore:	 A structural mutation that selects a random subtree and replaces it with `subtree / (1 + random_leaf)`.
+survival: explore:	 This survival operator combines age-regularized evolution with fitness-based culling to maintain diversity while applying strong selection pressure.
+selection: explore:	 This selection operator uses a Macro-Lexicase strategy to balance fitness, parsimony, novelty, and age.
+selection: explore:	 This selection operator implements an adaptive epsilon-lexicase strategy over the two objectives of loss and complexity (both minimized).
+
+GENERATION 50:
+mutation: explore:	 Wraps a randomly chosen node with a two-operator "physics motif" of the form `c ⊕ f(node)` in a single mutation step, where `f` is a randomly chosen unary operator, `⊕` is a randomly chosen binary operator, and `c` is a constant leaf drawn from the canonical set {-1, 0, 1}.
+survival: explore:	 This survival operator maintains diversity along the Pareto front by replacing the worst member from the most overcrowded complexity bin.
+survival: explore:	 This survival operator preserves structural diversity by replacing the worst-performing member from the most overcrowded complexity bin.
+survival: explore:	 A tournament-based survival operator that selects the member to replace by running a *reverse* tournament biased toward crowded complexity niches.
+selection: explore:	 A multi-criteria epsilon-lexicase selection operator designed to preserve diversity along the Pareto front and escape local optima (like the `x0/cos(x1/x2)` trap seen in the trace, which blocks discovery of the true `x0/sqrt(1 - (x1/x2)^2)` structure).
+selection: explore:	 This selection operator uses a Borda count approach to combine fitness (cost) and age (birth order) to select a parent.

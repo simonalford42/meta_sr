@@ -8,6 +8,8 @@ Uses SQLite for persistent storage, similar to completions_cache.py.
 import os
 import json
 import hashlib
+import fcntl
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
@@ -23,14 +25,65 @@ Base = declarative_base()
 
 
 def _configure_sqlite_engine(engine) -> None:
-    """Apply conservative SQLite settings for shared, bursty access."""
+    """Apply conservative SQLite settings for shared NFS-backed access.
+
+    Notably we do NOT set journal_mode here. Switching journal_mode is a
+    write-like operation (especially WAL<->non-WAL, which checkpoints and
+    rewrites the file header), so doing it inside a per-connection hook can
+    fire on read paths and race with other writers. The DB is migrated to
+    non-WAL once via scripts/migrate_pysr_cache_to_truncate.py; thereafter
+    new connections inherit the file's persistent mode (DELETE, the default
+    for non-WAL), which is safe on NFS.
+    """
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragmas(dbapi_connection, _connection_record):
         cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA busy_timeout=60000")
+        cursor.execute("PRAGMA synchronous=FULL")
+        cursor.execute("PRAGMA busy_timeout=300000")
         cursor.close()
+
+
+@contextmanager
+def _db_writer_lock(database_path: str):
+    """Interprocess exclusive lock for SQLite writes and schema changes.
+
+    Uses fcntl.lockf (POSIX byte-range locks via fcntl(F_SETLK)) rather than
+    flock(): on Linux, flock() over NFS is local-only by default, while POSIX
+    fcntl locks propagate via NLM (NFSv3) or native NFSv4 locking — which is
+    what we need for two parents on different compute nodes. Within a single
+    host the two are equivalent.
+    """
+    lock_path = f"{database_path}.lock"
+    lock_dir = os.path.dirname(lock_path)
+    if lock_dir:
+        os.makedirs(lock_dir, exist_ok=True)
+    f = open(lock_path, "a+")
+    try:
+        fcntl.lockf(f.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.lockf(f.fileno(), fcntl.LOCK_UN)
+        finally:
+            f.close()
+
+
+def _assert_not_wal(engine, database_path: str) -> None:
+    """Refuse to run if the DB is still in WAL mode.
+
+    WAL on NFS is the failure mode this whole change is designed to avoid.
+    Running scripts/migrate_pysr_cache_to_truncate.py is a manual, one-time
+    step; if someone forgets, fail loudly rather than silently corrupt.
+    """
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        mode = conn.execute(text("PRAGMA journal_mode")).scalar()
+    if mode and mode.lower() == "wal":
+        raise RuntimeError(
+            f"SQLite cache at {database_path} is in WAL mode, which is unsafe "
+            "on NFS. Run scripts/migrate_pysr_cache_to_truncate.py with no "
+            "other process touching the DB, then retry."
+        )
 
 
 class EvaluationCacheEntry(Base):
@@ -279,13 +332,16 @@ class PySRCacheDB:
         db_dir = os.path.dirname(database_path)
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
+        self.database_path = database_path
         self.engine = create_engine(
             f"sqlite:///{database_path}",
             connect_args={"timeout": 60},
         )
         _configure_sqlite_engine(self.engine)
-        Base.metadata.create_all(self.engine)
-        self._migrate()
+        _assert_not_wal(self.engine, database_path)
+        with _db_writer_lock(database_path):
+            Base.metadata.create_all(self.engine)
+            self._migrate()
 
     def _migrate(self):
         """Add columns that may be missing from older databases."""
@@ -507,9 +563,10 @@ class PySRCacheDB:
             created_at=datetime.utcnow(),
         )
 
-        with Session(self.engine) as session:
-            session.merge(entry)
-            session.commit()
+        with _db_writer_lock(self.database_path):
+            with Session(self.engine) as session:
+                session.merge(entry)
+                session.commit()
 
     def get_config_hash(
         self,
@@ -551,10 +608,11 @@ class PySRCacheDB:
                 created_at=entry.get("created_at", datetime.utcnow()),
             ))
 
-        with Session(self.engine) as session:
-            for orm_entry in orm_entries:
-                session.merge(orm_entry)
-            session.commit()
+        with _db_writer_lock(self.database_path):
+            with Session(self.engine) as session:
+                for orm_entry in orm_entries:
+                    session.merge(orm_entry)
+                session.commit()
 
         return len(orm_entries)
 

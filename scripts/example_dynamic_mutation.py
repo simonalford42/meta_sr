@@ -46,6 +46,7 @@ def load_dynamic_mutation(name: str, code: str, weight: float = 0.5) -> None:
 SCALE_MUTATION = '''
 function scale_subtree(
     tree::N,
+    dataset,
     options,
     nfeatures::Int,
     rng::AbstractRNG,
@@ -75,6 +76,7 @@ end
 COMBINE_MUTATION = '''
 function combine_subtrees(
     tree::N,
+    dataset,
     options,
     nfeatures::Int,
     rng::AbstractRNG,

@@ -118,6 +118,7 @@ def main():
         use_cache=False,  # MiniSR.jl edits aren't part of the cache key
         repo_root=sandbox_root,
     )
+    evaluator.split_label = Path(SPLIT).stem
 
     print(f"Evaluating MiniSR.jl at {sandbox_root}/SymbolicRegression.jl/src/MiniSR.jl")
     print(f"Evaluating on {len(dataset_names)} datasets, {n_runs} runs each (seed={seed})...")

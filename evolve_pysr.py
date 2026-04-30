@@ -95,6 +95,7 @@ from evolution_helpers import (
     format_solved_str,
     format_errors_str,
     format_population_summary,
+    compute_per_task_best_stats,
     load_task_formulas,
     select_unsolved_task_with_trace,
     format_pareto_trace_for_task,
@@ -271,6 +272,19 @@ def evaluate_baseline(
     avg_r2, r2_vector, result_details = results[0]
     return avg_r2, r2_vector, result_details
 
+def _format_bundle_file(bundle: OperatorBundle, header: str = "") -> str:
+    """Render a full bundle (mutation/survival/selection) into one .jl file."""
+    sections = [header] if header else []
+    for type_name in ["mutation", "survival", "selection"]:
+        op = bundle.operators.get(type_name)
+        sections.append(f"\n# === {type_name}: {op.name if op else 'default'} ===\n")
+        if op is not None:
+            sections.append(op.code)
+            if not op.code.endswith("\n"):
+                sections.append("\n")
+    return "".join(sections)
+
+
 class EvolutionLogger:
     """Tracks and saves evolution run data."""
 
@@ -345,14 +359,14 @@ class EvolutionLogger:
         self.run_data["generations"].append(gen_data)
         self._save()
 
-        # Save best bundle's operators
-        for type_name, op in best.operators.items():
-            if op is not None:
-                best_file = self.output_dir / f"best_{type_name}_gen{generation}.jl"
-                best_file.write_text(
-                    f"# Best {type_name} from generation {generation}\n"
-                    f"# Bundle score: {best.score}\n\n{op.code}"
-                )
+        bundle_dir = self.output_dir / "best_bundles"
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        best_file = bundle_dir / f"best_gen{generation}.jl"
+        best_file.write_text(_format_bundle_file(best, header=(
+            f"# Best bundle from generation {generation}\n"
+            f"# Bundle score: {best.score}\n"
+            f"# Operators: {best.display_name}\n"
+        )))
 
     def finalize(self, best: JuliaOperator):
         self.run_data["end_time"] = datetime.now().isoformat()
@@ -370,14 +384,15 @@ class EvolutionLogger:
         self.run_data["best_bundle"] = best.to_dict()
         self._save()
 
-        for type_name, op in best.operators.items():
-            if op is not None:
-                final_file = self.output_dir / f"best_{type_name}_final.jl"
-                final_file.write_text(
-                    f"# Best {type_name} from bundle evolution\n"
-                    f"# Bundle score: {best.score}\n\n{op.code}"
-                )
-                print(f"  Best {type_name} saved to: {final_file}")
+        bundle_dir = self.output_dir / "best_bundles"
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        final_file = bundle_dir / "best_final.jl"
+        final_file.write_text(_format_bundle_file(best, header=(
+            f"# Best bundle from evolution run\n"
+            f"# Bundle score: {best.score}\n"
+            f"# Operators: {best.display_name}\n"
+        )))
+        print(f"  Best bundle saved to: {final_file}")
 
 def run_bundle_evolution(
     operator_type_names: List[str],
@@ -413,6 +428,10 @@ def run_bundle_evolution(
     resume_state: Optional[Dict[str, Any]] = None,
     execution_feedback_n: int = 0,
     execution_feedback_prob: float = 0.75,
+    val_split: Optional[str] = None,
+    val_n_runs: int = 10,
+    pysr_wall_limit: int = 600,
+    split_label: Optional[str] = None,
 ) -> Tuple[OperatorBundle, Any, float]:
     """Run bundle evolution across multiple operator types.
 
@@ -521,7 +540,93 @@ def run_bundle_evolution(
         repo_root=repo_root,
         hof_n_steps=execution_feedback_n,
         use_cache=use_cache,
+        pysr_wall_limit=pysr_wall_limit,
     )
+    if split_label is not None:
+        evaluator.split_label = split_label
+
+    # Periodic background validation on a held-out split.
+    # Submits a single-bundle SLURM eval on `val_split` each generation
+    # whenever the current best bundle has changed. Runs on a background
+    # thread so the evolution loop isn't blocked.
+    val_state: Dict[str, Any] = {
+        "enabled": False,
+        "dataset_names": None,
+        "noise_map": None,
+        "executor": None,
+        "pending_future": None,
+        "last_bundle_name": None,
+    }
+    if val_split:
+        val_dataset_names = load_dataset_names_from_split(val_split)
+        val_noise_map = None
+        if random_target_noise:
+            val_noise_map = _build_target_noise_map(val_dataset_names, seed, TARGET_NOISE_LEVELS)
+        val_state.update({
+            "enabled": True,
+            "dataset_names": val_dataset_names,
+            "noise_map": val_noise_map,
+            "executor": ThreadPoolExecutor(max_workers=1, thread_name_prefix="val-eval"),
+        })
+        print(f"Val eval: enabled on {val_split} ({len(val_dataset_names)} datasets, {val_n_runs} runs/bundle)")
+
+    def _run_val_eval(bundle: OperatorBundle, gen_submitted: int) -> Dict[str, Any]:
+        config = bundle.to_pysr_config(pysr_kwargs)
+        handle = evaluator.submit_configs(
+            [config], val_state["dataset_names"],
+            seed=seed, n_runs=val_n_runs,
+            target_noise_map=val_state["noise_map"],
+            fitness_metric=fitness_metric,
+        )
+        batch_results = evaluator.collect_batches([handle])
+        avg, vec, details = batch_results[0][0] if batch_results and batch_results[0] else (-1.0, [], [])
+        return {
+            "gen_submitted": gen_submitted,
+            "bundle_name": bundle.display_name,
+            "avg_score": avg,
+            "score_vector": vec,
+            "result_details": details,
+        }
+
+    def _log_val_result(info: Dict[str, Any]) -> None:
+        avg = info["avg_score"]
+        solved_str = format_solved_str(info["result_details"])
+        print(
+            f"\n[val eval] gen {info['gen_submitted']} {info['bundle_name']}: "
+            f"avg {metric_label}={avg:.4f} {solved_str}"
+        )
+        if wandb_run is not None:
+            import wandb
+            wandb.log({
+                "val_eval/avg_score": avg,
+                "val_eval/gen_submitted": info["gen_submitted"],
+            })
+
+    def _check_val_future(wait: bool = False) -> None:
+        fut = val_state["pending_future"]
+        if fut is None:
+            return
+        if not wait and not fut.done():
+            return
+        try:
+            info = fut.result()
+            _log_val_result(info)
+        except Exception as e:
+            print(f"\n[val eval] failed: {e}")
+        val_state["pending_future"] = None
+
+    def _maybe_submit_val(bundle: OperatorBundle, gen: int) -> None:
+        if not val_state["enabled"]:
+            return
+        if val_state["pending_future"] is not None and not val_state["pending_future"].done():
+            return
+        if bundle.display_name == val_state["last_bundle_name"]:
+            return
+        val_state["last_bundle_name"] = bundle.display_name
+        val_state["pending_future"] = val_state["executor"].submit(
+            _run_val_eval, bundle, gen,
+        )
+        print(f"\n[val eval] submitted for gen {gen} best={bundle.display_name} (background)")
 
     # Evaluate baseline (default operators, with HPO hparams if provided)
     baseline_details: Optional[List[Dict]] = None
@@ -573,6 +678,14 @@ def run_bundle_evolution(
     # Directory for logged prompts (first few generations only)
     prompts_log_dir = Path(output_dir) / "prompts"
     log_prompt_gens_max = 3
+
+    # Directory for proposed operator code, one .jl per offspring slot
+    operators_log_dir = Path(output_dir) / "operators"
+    operators_log_dir.mkdir(parents=True, exist_ok=True)
+
+    def _log_proposed_operator(gen_idx: int, type_name: str, slot_idx: int, code_str: str) -> None:
+        path = operators_log_dir / f"gen{gen_idx}_{type_name}{slot_idx}.jl"
+        path.write_text(code_str)
 
     if wandb_run is not None:
         import wandb
@@ -725,6 +838,8 @@ def run_bundle_evolution(
                         print(f"  {type_name}: validation failed (attempt {attempt + 1}): {error[:80]}...")
                         continue
 
+                    _log_proposed_operator(0, type_name, bundle_idx, code)
+
                     operator = op_type.create_operator(
                         name=unique_name, code=code, generation=0,
                         parent_name=baseline_op.name if baseline_op else None,
@@ -808,6 +923,8 @@ def run_bundle_evolution(
         if wandb_run is not None:
             import wandb
             wandb.log({"best_score": best.score, "generation": 0})
+
+        _maybe_submit_val(best, gen=0)
 
     # Evolution loop: each generation splits offspring evenly across operator types
     for gen in range(start_gen, start_gen + n_generations):
@@ -954,6 +1071,8 @@ def run_bundle_evolution(
             if not is_valid:
                 print(f"  Validation failed for {unique_name}: {error[:80]}...")
                 continue
+
+            _log_proposed_operator(gen, current_type_name, len(offspring_bundles), code)
 
             new_op = current_op_type.create_operator(
                 name=unique_name, code=code, generation=gen,
@@ -1116,13 +1235,35 @@ def run_bundle_evolution(
 
         if wandb_run is not None:
             import wandb
-            wandb.log({
+            log_data = {
                 "generation": gen,
                 "best_score": best.score,
                 "improvement_over_baseline": best.score - baseline_score,
                 "evolved_type": evolved_type_label,
-            })
+            }
+            pop_scores = [c.score for c in population if c.score is not None]
+            if pop_scores:
+                log_data["avg_population_score"] = sum(pop_scores) / len(pop_scores)
+            offspring_scores = [c.score for c in offspring_bundles if c.score is not None]
+            if offspring_scores:
+                log_data["avg_offspring_score"] = sum(offspring_scores) / len(offspring_scores)
+            if task_diverse_pop:
+                avg_best, n_covered, n_tasks = compute_per_task_best_stats(
+                    population, dataset_names
+                )
+                log_data["per_task_best_avg"] = avg_best
+                log_data["per_task_covered"] = n_covered
+            wandb.log(log_data)
             log_cpu_usage(wandb_run)
+
+        _check_val_future(wait=False)
+        _maybe_submit_val(best, gen=gen)
+
+    if val_state["enabled"]:
+        if val_state["pending_future"] is not None:
+            print("\nWaiting for pending val evaluation to complete...")
+        _check_val_future(wait=True)
+        val_state["executor"].shutdown(wait=True)
 
     logger.finalize_bundle(best)
 
@@ -1147,10 +1288,10 @@ def main():
                              "all (all three jointly), or comma-separated list (e.g. mutation,survival)")
 
     parser.add_argument("--generations", type=int, default=25)
-    parser.add_argument("--population", type=int, default=4)
-    parser.add_argument("--offspring", type=int, default=4)
+    parser.add_argument("--population", type=int, default=10)
+    parser.add_argument("--offspring", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--n-runs", type=int, default=3)
+    parser.add_argument("--n-runs", type=int, default=10)
     parser.add_argument("--hpo-n-runs", type=int, default=None,
                         help="n_runs used during HPO tuning (defaults to --n-runs)")
     parser.add_argument("--fitness_metric", type=str, default="gt", choices=["r2", "gt"],
@@ -1158,8 +1299,13 @@ def main():
     parser.add_argument("--hp_tuning_trials", type=int, default=0,
                         help="HPO trials per bundle per generation (0=disabled)")
 
-    parser.add_argument("--split", type=str, default='splits/train.txt',
+    parser.add_argument("--split", type=str, default='splits/barely_unsolvable.txt',
                         help="Path to dataset split file")
+    parser.add_argument("--val_split", type=str, default='splits/barely_unsolvable_val2.txt',
+                        help="If set, after each generation submit the current best bundle "
+                             "for background evaluation on this split (--val_n_runs seeds). ")
+    parser.add_argument("--val_n_runs", type=int, default=10,
+                        help="Number of seeds per val-split run (used when --val_split is set)")
     parser.add_argument("--max_samples", type=int, default=1000)
     parser.add_argument("--target_noise", type=float, default=0.0)
     group = parser.add_mutually_exclusive_group()
@@ -1168,24 +1314,34 @@ def main():
     parser.set_defaults(random_target_noise=False)
 
     parser.add_argument("--max_evals", type=int, default=1000000,
-                        help="Maximum evaluations per PySR run (default: 1e6 for mutation, 100000 for survival/selection)")
-    parser.add_argument("--timeout", type=int, default=6000)
+                        help="Maximum evaluations per PySR run")
+    parser.add_argument("--timeout", type=int, default=500,
+                        help="PySR soft timeout_in_seconds; PySR checks between iterations.")
+    parser.add_argument("--pysr_wall_limit", type=int, default=600,
+                        help="Hard wall-clock limit per PySR task (seconds). Enforced in the "
+                             "worker via SIGALRM; on overrun the task errors out with score=0 "
+                             "and is NOT retried. Must be >= --timeout, with some slack.")
 
     parser.add_argument("--model", type=str, default="openai/gpt-5.4-mini",
                         help="Single LLM model (used as fallback if --models not set)")
     preset_help = "; ".join(
         f"{name}={spec!r}" for name, spec in MODEL_ENSEMBLE_PRESETS.items()
     )
-    parser.add_argument("--models", type=str, default="cheap",
+    parser.add_argument("--models", type=str, default="best",
                         help="Ensemble of models with weights, or a preset name. "
                              "Overrides --model when set. "
                              f"Presets: {preset_help}")
     parser.add_argument("--temperature", type=float, default=0.0)
 
     parser.add_argument("--partition", type=str, default="default_partition")
-    parser.add_argument("--time_limit", type=str, default="04:00:00")
+    parser.add_argument("--time_limit", type=str, default="00:15:00",
+                        help="SLURM --time per array task. Hard kill by SLURM; acts as a safety "
+                             "net if the worker's SIGALRM is swallowed by Julia.")
     parser.add_argument("--mem_per_cpu", type=str, default="8G")
-    parser.add_argument("--job_timeout", type=float, default=3000.0)
+    parser.add_argument("--job_timeout", type=float, default=1800.0,
+                        help="Parent watchdog for a whole batch (seconds). If the batch hasn't "
+                             "finished by this time, remaining jobs are cancelled and the "
+                             "missing tasks are retried (up to --max_retries).")
     parser.add_argument("--max_concurrent_jobs", type=int, default=None,
                         help="Cap on concurrent SLURM array tasks (applies %%N to --array spec). "
                              "None = no limit.")
@@ -1310,6 +1466,8 @@ def main():
         slurm_mem_per_cpu=args.mem_per_cpu,
         max_samples=args.max_samples,
         job_timeout=args.job_timeout,
+        pysr_wall_limit=args.pysr_wall_limit,
+        split_label=Path(args.split).stem if args.split else None,
         max_concurrent_jobs=args.max_concurrent_jobs,
         use_cache=not args.no_cache,
         n_runs=args.n_runs,
@@ -1325,6 +1483,8 @@ def main():
         resume_state=resume_state,
         execution_feedback_n=args.exec_feedback_n,
         execution_feedback_prob=args.exec_feedback_prob,
+        val_split=args.val_split,
+        val_n_runs=args.val_n_runs,
     )
 
     if len(operator_type_names) > 1:
@@ -1344,6 +1504,8 @@ def main():
         "fitness_metric": args.fitness_metric,
         "hp_tuning_trials": args.hp_tuning_trials,
         "split": args.split,
+        "val_split": args.val_split,
+        "val_n_runs": args.val_n_runs,
         "max_samples": args.max_samples,
         "target_noise": args.target_noise,
         "random_target_noise": args.random_target_noise,
@@ -1386,29 +1548,32 @@ def main():
         },
     )
 
-    # Final evaluation on train + val (10 seeds)
+    # Final evaluation on --split and --val_split (10 seeds), with a fresh
+    # data seed so the final-eval training subsample is not the one the
+    # operators were evolved on.
     run_data_path = str(Path(args.output_dir) / "run_data.json")
     if Path(run_data_path).exists():
         try:
             from evaluate_new_pysr import run_final_evaluation
+            final_splits = [args.split]
+            if args.val_split:
+                final_splits.append(args.val_split)
             # Build noise map matching evolution settings
             target_noise_map = None
             if args.random_target_noise:
-                all_splits = ["splits/train.txt", "splits/val.txt"]
                 all_datasets = []
-                for sp in all_splits:
+                for sp in final_splits:
                     all_datasets.extend(load_dataset_names_from_split(sp))
                 target_noise_map = _build_target_noise_map(
                     list(dict.fromkeys(all_datasets)), args.seed, TARGET_NOISE_LEVELS,
                 )
-            # Use a different seed than evolution so the final-eval training
-            # subsample is not the one the operators were evolved on.
             final_eval_seed = 192
             run_final_evaluation(
                 output_dir=args.output_dir,
                 method_source="evolve",
                 method_path=run_data_path,
                 partition=args.partition,
+                splits=final_splits,
                 n_runs=10,
                 seed=final_eval_seed,
                 max_samples=args.max_samples,
@@ -1417,6 +1582,7 @@ def main():
                 time_limit=args.time_limit,
                 mem_per_cpu=args.mem_per_cpu,
                 job_timeout=args.job_timeout,
+                pysr_wall_limit=args.pysr_wall_limit,
                 use_cache=not args.no_cache,
                 wandb_run=wandb_run,
                 target_noise_map=target_noise_map,

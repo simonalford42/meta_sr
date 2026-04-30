@@ -853,6 +853,376 @@ def evaluate_baseline(
 
 
 # =============================================================================
+# Bundle HPO Loop (combined base PySR + LLM-extracted operator hparams)
+# =============================================================================
+
+def run_bundle_hpo(
+    n_trials: int,
+    n_parallel: int,
+    n_runs: int,
+    dataset_names: List[str],
+    base_active_params: List[str],
+    baseline_bundle,
+    seed: int,
+    output_dir: str,
+    base_pysr_kwargs: Dict[str, Any],
+    slurm_partition: str,
+    slurm_time_limit: str,
+    slurm_mem_per_cpu: str,
+    max_samples: int,
+    job_timeout: float,
+    max_concurrent_jobs: Optional[int],
+    fitness_metric: str = "gt",
+    use_cache: bool = True,
+    continue_from: Optional[str] = None,
+    wandb_run: Any = None,
+    target_noise_map: Optional[Dict[str, float]] = None,
+    operator_type_names: Optional[List[str]] = None,
+    model: str = "openai/gpt-5-mini",
+    max_op_hparams: int = 2,
+) -> Tuple[Dict[str, Any], float, Any]:
+    """Joint HPO over base PySR hparams and LLM-extracted operator-specific hparams.
+
+    Each trial samples values for both groups and rewrites the operator code via
+    line-pattern injection. Returns (best_combined_params, best_score, best_bundle).
+    """
+    import copy as _copy
+    import optuna
+    from optuna.samplers import TPESampler
+
+    # Lazy imports to avoid circular dependency (hpo_evolve_pysr imports from this module)
+    from hpo_evolve_pysr import (
+        _get_or_identify_hparams,
+        _sample_trial_params,
+        _build_trial_config,
+        _specs_to_dicts,
+    )
+    from hyperparameter_tuning import inject_hyperparameters
+
+    if operator_type_names is None:
+        operator_type_names = ["mutation", "survival", "selection"]
+
+    np.random.seed(seed)
+
+    # Phase 0: identify operator-specific hparams via LLM (cached on operator.hp_specs)
+    print("=" * 60)
+    print("Identifying operator-specific hyperparameters via LLM...")
+    print("=" * 60)
+    op_hparams: Dict[str, List] = {}
+    for op_type_name in operator_type_names:
+        op = baseline_bundle.operators.get(op_type_name)
+        if op is None:
+            continue
+        specs = _get_or_identify_hparams(op, op_type_name, model)
+        if max_op_hparams is not None and len(specs) > max_op_hparams:
+            specs = specs[:max_op_hparams]
+        if specs:
+            op_hparams[op_type_name] = specs
+            for s in specs:
+                if s.param_type in ("int", "float"):
+                    rng = f"range=[{s.min_value}, {s.max_value}]"
+                else:
+                    rng = f"choices={s.choices}"
+                print(f"  {op_type_name}.{s.name} ({s.param_type}, "
+                      f"current={s.current_value}, {rng})")
+        else:
+            print(f"  {op_type_name}: no tunable hparams found by LLM")
+
+    base_search_space = _filter_active_search_space(base_active_params)
+    n_op_params = sum(len(s) for s in op_hparams.values())
+    n_total = len(base_search_space) + n_op_params
+    if n_total == 0:
+        raise ValueError("No tunable parameters found (empty base search space and no LLM-identified op hparams).")
+    print(f"  Total params to tune: {n_total} "
+          f"({len(base_search_space)} base + {n_op_params} operator-specific)")
+
+    metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
+    logger = HPOLogger(output_dir, fitness_metric=fitness_metric)
+
+    try:
+        logger.set_config({
+            "n_trials": n_trials,
+            "n_parallel": n_parallel,
+            "n_runs": n_runs,
+            "n_datasets": len(dataset_names),
+            "dataset_names": dataset_names,
+            "seed": seed,
+            "active_hpo_params": base_active_params,
+            "base_pysr_kwargs": base_pysr_kwargs,
+            "max_samples": max_samples,
+            "max_concurrent_jobs": max_concurrent_jobs,
+            "fitness_metric": fitness_metric,
+            "mode": "bundle",
+            "max_op_hparams": max_op_hparams,
+            "baseline_bundle": baseline_bundle.to_dict(),
+            "operator_hparams": {
+                op_type: _specs_to_dicts(specs) for op_type, specs in op_hparams.items()
+            },
+            "search_space": {
+                name: {
+                    "kind": spec.kind,
+                    "default": _serialize_param_value(spec.default),
+                    "min": spec.low,
+                    "max": spec.high,
+                    "scale": spec.scale,
+                    "choices": [
+                        {"label": label, "value": _serialize_param_value(value)}
+                        for label, value in (spec.choices or [])
+                    ],
+                }
+                for name, spec in base_search_space.items()
+            },
+        })
+
+        evaluator = PySRSlurmEvaluator(
+            results_dir=output_dir,
+            partition=slurm_partition,
+            time_limit=slurm_time_limit,
+            mem_per_cpu=slurm_mem_per_cpu,
+            dataset_max_samples=max_samples,
+            data_seed=seed,
+            job_timeout=job_timeout,
+            max_concurrent_jobs=max_concurrent_jobs,
+            use_cache=use_cache,
+        )
+
+        # Phase 1: baseline (bundle as-is, no HPO)
+        print("\n" + "=" * 60)
+        loaded_types = [t for t, op in baseline_bundle.operators.items() if op is not None]
+        print(f"Phase 1: Evaluating baseline (bundle {', '.join(loaded_types)}, no HPO overrides)...")
+        print("=" * 60)
+        baseline_score, baseline_vector, baseline_details, baseline_weights = evaluate_baseline(
+            evaluator, dataset_names, base_pysr_kwargs, seed, n_runs, fitness_metric,
+            baseline_bundle=baseline_bundle, target_noise_map=target_noise_map,
+        )
+        if n_runs > 1 and baseline_details:
+            score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
+            per_run_avgs = []
+            for run_idx in range(n_runs):
+                rs = [d[score_key][run_idx] for d in baseline_details
+                      if len(d.get(score_key, [])) > run_idx]
+                if rs:
+                    per_run_avgs.append(float(np.mean(rs)))
+            runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
+            print(f"Baseline avg {metric_label}: {baseline_score:.4f} [{runs_str}]")
+        else:
+            print(f"Baseline avg {metric_label}: {baseline_score:.4f}")
+        logger.log_baseline(baseline_score, baseline_vector, baseline_weights, baseline_details)
+
+        if wandb_run is not None:
+            import wandb
+            wandb.log({"baseline_score": baseline_score, "best_score": baseline_score, "trial": -1})
+            log_cpu_usage(wandb_run)
+
+        # Phase 2: Optuna HPO loop with combined base+op sampling
+        print("\n" + "=" * 60)
+        print(f"Phase 2: Bundle HPO ({n_trials} trials, {n_parallel} parallel)...")
+        print("=" * 60)
+
+        db_path = Path(output_dir) / "optuna_study.db"
+        storage_url = f"sqlite:///{db_path}"
+        study_name = "pysr_bundle_hpo"
+
+        prior_db_path = Path(continue_from) / "optuna_study.db" if continue_from else None
+        if prior_db_path and prior_db_path.exists():
+            import shutil
+            shutil.copy2(prior_db_path, db_path)
+            print(f"  Loaded Optuna study DB from {prior_db_path}")
+            study = optuna.load_study(
+                study_name=study_name, storage=storage_url, sampler=TPESampler(seed=seed),
+            )
+            print(f"  Resuming with {len(study.trials)} prior trials")
+            if study.best_trial:
+                print(f"  Best prior trial: {study.best_trial.number} (score: {study.best_trial.value:.4f})")
+        else:
+            study = optuna.create_study(
+                direction="maximize",
+                sampler=TPESampler(seed=seed),
+                study_name=study_name,
+                storage=storage_url,
+            )
+
+        # Enqueue defaults (operator current values + spec defaults) as the first trial
+        if len(study.trials) == 0:
+            initial = {}
+            for name, spec in base_search_space.items():
+                if spec.kind in ("categorical", "bool"):
+                    choice_map = dict(spec.choices)
+                    reverse = {v: k for k, v in choice_map.items()}
+                    label = reverse.get(spec.default)
+                    initial[name] = label if label is not None else spec.choices[0][0]
+                else:
+                    initial[name] = spec.default
+            for op_type, specs in op_hparams.items():
+                for hp in specs:
+                    initial[f"op_{op_type}__{hp.name}"] = hp.current_value
+            try:
+                study.enqueue_trial(initial)
+            except Exception as e:
+                print(f"  Warning: could not enqueue initial trial: {e}")
+
+        trials_completed = 0
+        best_score = baseline_score
+        best_combined_params: Dict[str, Any] = {}
+        best_op_params: Optional[Dict[str, Dict[str, Any]]] = None
+
+        while trials_completed < n_trials:
+            batch_size = min(n_parallel, n_trials - trials_completed)
+            print(f"\n--- Batch {trials_completed // n_parallel + 1}: "
+                  f"trials {trials_completed + 1}-{trials_completed + batch_size} ---")
+
+            asked: List = []
+            base_params_list: List[Dict[str, Any]] = []
+            op_params_list: List[Dict[str, Dict[str, Any]]] = []
+            configs: List[PySRConfig] = []
+
+            for _ in range(batch_size):
+                trial = study.ask()
+                try:
+                    base_params, op_params = _sample_trial_params(
+                        trial, base_search_space, op_hparams,
+                    )
+                except Exception as e:
+                    print(f"  Trial {trial.number}: param sampling failed: {e}")
+                    study.tell(trial, float('-inf'))
+                    continue
+
+                config = _build_trial_config(
+                    baseline_bundle, base_params, op_params, op_hparams, base_pysr_kwargs,
+                )
+                if config is None:
+                    print(f"  Trial {trial.number}: code injection produced invalid Julia")
+                    study.tell(trial, float('-inf'))
+                    continue
+                config.name = f"hpo_trial_{trial.number}"
+                asked.append(trial)
+                base_params_list.append(base_params)
+                op_params_list.append(op_params)
+                configs.append(config)
+
+            if configs:
+                try:
+                    results = evaluator.evaluate_configs(
+                        configs, dataset_names,
+                        seed=seed, n_runs=n_runs,
+                        target_noise_map=target_noise_map,
+                        fitness_metric=fitness_metric,
+                    )
+
+                    for trial, base_params, op_params, (avg_score, score_vec, result_details) in zip(
+                        asked, base_params_list, op_params_list, results,
+                    ):
+                        study.tell(trial, avg_score)
+
+                        all_params = dict(base_params)
+                        for op_type, params in op_params.items():
+                            for hp_name, val in params.items():
+                                all_params[f"op_{op_type}__{hp_name}"] = val
+
+                        improvement = avg_score - baseline_score
+                        logger.log_trial(HPOTrialResult(
+                            trial_number=trial.number,
+                            params=all_params,
+                            avg_score=avg_score,
+                            score_vector=score_vec,
+                            result_details=result_details,
+                            improvement_vs_baseline=improvement,
+                        ))
+
+                        sign = "+" if improvement >= 0 else ""
+                        if n_runs > 1 and result_details:
+                            score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
+                            per_run_avgs = []
+                            for run_idx in range(n_runs):
+                                rs = [d[score_key][run_idx] for d in result_details
+                                      if len(d.get(score_key, [])) > run_idx]
+                                if rs:
+                                    per_run_avgs.append(float(np.mean(rs)))
+                            runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
+                            print(f"  Trial {trial.number}: {metric_label}={avg_score:.4f} [{runs_str}] "
+                                  f"({sign}{improvement:.4f} vs baseline)")
+                        else:
+                            print(f"  Trial {trial.number}: {metric_label}={avg_score:.4f} "
+                                  f"({sign}{improvement:.4f} vs baseline)")
+
+                        if avg_score > best_score:
+                            best_score = avg_score
+                            best_combined_params = all_params.copy()
+                            best_op_params = {k: v.copy() for k, v in op_params.items()}
+                            logger.log_best_trial(trial.number, avg_score)
+                            print("    *** New best! ***")
+
+                        if wandb_run is not None:
+                            import wandb
+                            wandb.log({
+                                "trial": trial.number,
+                                "trial_score": avg_score,
+                                "best_score": best_score,
+                            })
+
+                except Exception as e:
+                    print(f"  Batch evaluation failed: {e}")
+                    for trial in asked:
+                        study.tell(trial, float('-inf'))
+
+            trials_completed += batch_size
+
+        # Phase 3: bake best params back into a bundle and persist
+        print("\n" + "=" * 60)
+        print("Phase 3: Final Results")
+        print("=" * 60)
+
+        try:
+            best_trial = study.best_trial
+            print(f"\nBest trial: {best_trial.number}")
+            print(f"Best {metric_label}: {best_trial.value:.4f}")
+        except Exception:
+            pass
+        print(f"Baseline {metric_label}: {baseline_score:.4f}")
+        print(f"Improvement: {best_score - baseline_score:+.4f}")
+
+        final_bundle = _copy.deepcopy(baseline_bundle)
+        if best_op_params:
+            for op_type, params in best_op_params.items():
+                op = final_bundle.operators.get(op_type)
+                if op is None or op_type not in op_hparams:
+                    continue
+                op.code = inject_hyperparameters(op.code, op_hparams[op_type], params)
+                if op.hp_specs:
+                    for spec_dict in op.hp_specs:
+                        if spec_dict["name"] in params:
+                            spec_dict["current_value"] = params[spec_dict["name"]]
+        final_bundle.best_hparams = best_combined_params if best_combined_params else None
+        final_bundle.score = best_score
+
+        bundle_path = Path(output_dir) / "best_bundle.json"
+        with open(bundle_path, "w") as f:
+            json.dump(final_bundle.to_dict(), f, indent=2)
+        print(f"\nBest bundle saved to: {bundle_path}")
+
+        # Embed best_bundle into the logger's in-memory dict so evaluate_new_pysr.py
+        # --evolve-results can consume it from run_data.json. Must be set before
+        # logger.finalize() (which writes run_data.json from the in-memory dict).
+        logger.run_data["best_bundle"] = final_bundle.to_dict()
+
+        logger.finalize(best_combined_params, best_score, baseline_score)
+
+        log_wandb_summary(
+            wandb_run,
+            evaluator=evaluator,
+            extra_summary={
+                "best_score": best_score,
+                "baseline_score": baseline_score,
+                "improvement": best_score - baseline_score,
+            },
+        )
+
+        return best_combined_params, best_score, final_bundle
+    finally:
+        logger.close()
+
+
+# =============================================================================
 # Main HPO Loop
 # =============================================================================
 
@@ -1211,11 +1581,19 @@ def main():
     parser.add_argument("--baseline", type=str, default=None,
                         help="Path to a baseline operator to include in all HPO trials. "
                              "Accepts: evolve_pysr output dir or run_data.json, "
-                             "openevolve best_program.py, or a raw .jl file.")
+                             "openevolve best_program.py, or a raw .jl file. "
+                             "If the baseline contains operator code, bundle HPO mode "
+                             "is used (jointly tunes base PySR hparams + LLM-extracted "
+                             "operator-specific hparams).")
     parser.add_argument("--continue-from", type=str, default=None,
                         help="Continue a previous HPO run. Pass the output directory of a prior run "
                              "(e.g., outputs/hpo_pysr_20260407_152534). Replays saved trials into "
                              "the Optuna study so TPE benefits from prior history.")
+    parser.add_argument("--max-op-hparams", type=int, default=2,
+                        help="Bundle HPO only: max operator-specific hparams per operator "
+                             "(LLM extraction is capped here).")
+    parser.add_argument("--llm-model", type=str, default="openai/gpt-5-mini",
+                        help="Bundle HPO only: LLM model used to identify operator hparams.")
 
     args = parser.parse_args()
 
@@ -1333,6 +1711,12 @@ def main():
         else:
             print(f"Continuing from {args.continue_from}: found optuna_study.db")
 
+    # Bundle HPO mode triggers when the baseline carries operator code
+    bundle_mode = (
+        baseline_bundle is not None
+        and any(op is not None for op in baseline_bundle.operators.values())
+    )
+
     # Initialize wandb
     wandb_config = {
         "n_trials": args.n_trials,
@@ -1351,6 +1735,9 @@ def main():
         "continue_from": args.continue_from,
         "no_cache": args.no_cache,
         "active_hpo_params": active_hpo_params,
+        "mode": "bundle" if bundle_mode else "pysr_only",
+        "max_op_hparams": args.max_op_hparams if bundle_mode else None,
+        "llm_model": args.llm_model if bundle_mode else None,
     }
     wandb_run = init_wandb(
         config=wandb_config,
@@ -1359,64 +1746,102 @@ def main():
     )
 
     # Run HPO
-    best_params, best_score = run_hpo(
-        n_trials=args.n_trials,
-        n_parallel=args.n_parallel,
-        n_runs=args.n_runs,
-        dataset_names=dataset_names,
-        active_hpo_params=active_hpo_params,
-        seed=args.seed,
-        output_dir=args.output_dir,
-        base_pysr_kwargs=pysr_kwargs,
-        slurm_partition=args.partition,
-        slurm_time_limit=args.time_limit,
-        slurm_mem_per_cpu=args.mem_per_cpu,
-        max_samples=args.max_samples,
-        job_timeout=args.job_timeout,
-        max_concurrent_jobs=args.max_concurrent_jobs,
-        fitness_metric=args.fitness_metric,
-        use_cache=not args.no_cache,
-        baseline_bundle=baseline_bundle,
-        prior_trials=prior_trials,
-        continue_from=args.continue_from,
-        wandb_run=wandb_run,
-        target_noise_map=target_noise_map,
-    )
+    if bundle_mode:
+        print(f"\nBundle HPO mode (baseline contains operator code).")
+        best_params, best_score, _final_bundle = run_bundle_hpo(
+            n_trials=args.n_trials,
+            n_parallel=args.n_parallel,
+            n_runs=args.n_runs,
+            dataset_names=dataset_names,
+            base_active_params=active_hpo_params,
+            baseline_bundle=baseline_bundle,
+            seed=args.seed,
+            output_dir=args.output_dir,
+            base_pysr_kwargs=pysr_kwargs,
+            slurm_partition=args.partition,
+            slurm_time_limit=args.time_limit,
+            slurm_mem_per_cpu=args.mem_per_cpu,
+            max_samples=args.max_samples,
+            job_timeout=args.job_timeout,
+            max_concurrent_jobs=args.max_concurrent_jobs,
+            fitness_metric=args.fitness_metric,
+            use_cache=not args.no_cache,
+            continue_from=args.continue_from,
+            wandb_run=wandb_run,
+            target_noise_map=target_noise_map,
+            model=args.llm_model,
+            max_op_hparams=args.max_op_hparams,
+        )
+    else:
+        best_params, best_score = run_hpo(
+            n_trials=args.n_trials,
+            n_parallel=args.n_parallel,
+            n_runs=args.n_runs,
+            dataset_names=dataset_names,
+            active_hpo_params=active_hpo_params,
+            seed=args.seed,
+            output_dir=args.output_dir,
+            base_pysr_kwargs=pysr_kwargs,
+            slurm_partition=args.partition,
+            slurm_time_limit=args.time_limit,
+            slurm_mem_per_cpu=args.mem_per_cpu,
+            max_samples=args.max_samples,
+            job_timeout=args.job_timeout,
+            max_concurrent_jobs=args.max_concurrent_jobs,
+            fitness_metric=args.fitness_metric,
+            use_cache=not args.no_cache,
+            baseline_bundle=baseline_bundle,
+            prior_trials=prior_trials,
+            continue_from=args.continue_from,
+            wandb_run=wandb_run,
+            target_noise_map=target_noise_map,
+        )
 
-    # Final evaluation on train + val (10 seeds)
-    best_params_path = Path(args.output_dir) / "best_params.json"
-    if best_params_path.exists():
-        try:
-            from evaluate_new_pysr import run_final_evaluation
-            # Build noise map for final eval splits
-            final_noise_map = None
-            if args.random_target_noise:
-                all_splits = ["splits/train.txt", "splits/val.txt"]
-                all_datasets = []
-                for sp in all_splits:
-                    all_datasets.extend(load_dataset_names_from_split(sp))
-                final_noise_map = _build_target_noise_map(
-                    list(dict.fromkeys(all_datasets)), args.seed, TARGET_NOISE_LEVELS,
+    # Final evaluation on train + val (10 seeds).
+    # Bundle HPO drops the auto-final-eval: load_hpo_config can't handle op_*
+    # keys and build_method_kwargs ignores best_hparams. Run final eval
+    # manually with `evaluate_new_pysr.py --evolve-results <output_dir>/run_data.json`.
+    if not bundle_mode:
+        best_params_path = Path(args.output_dir) / "best_params.json"
+        if best_params_path.exists():
+            try:
+                from evaluate_new_pysr import run_final_evaluation
+                # Build noise map for final eval splits
+                final_noise_map = None
+                if args.random_target_noise:
+                    all_splits = ["splits/train.txt", "splits/val.txt"]
+                    all_datasets = []
+                    for sp in all_splits:
+                        all_datasets.extend(load_dataset_names_from_split(sp))
+                    final_noise_map = _build_target_noise_map(
+                        list(dict.fromkeys(all_datasets)), args.seed, TARGET_NOISE_LEVELS,
+                    )
+                run_final_evaluation(
+                    output_dir=args.output_dir,
+                    method_source="hpo",
+                    method_path=str(best_params_path),
+                    partition=args.partition,
+                    n_runs=10,
+                    seed=args.seed,
+                    max_samples=args.max_samples,
+                    max_evals=args.max_evals,
+                    timeout=args.timeout,
+                    time_limit=args.time_limit,
+                    mem_per_cpu=args.mem_per_cpu,
+                    job_timeout=args.job_timeout,
+                    use_cache=not args.no_cache,
+                    wandb_run=wandb_run,
+                    target_noise_map=final_noise_map,
                 )
-            run_final_evaluation(
-                output_dir=args.output_dir,
-                method_source="hpo",
-                method_path=str(best_params_path),
-                partition=args.partition,
-                n_runs=10,
-                seed=args.seed,
-                max_samples=args.max_samples,
-                max_evals=args.max_evals,
-                timeout=args.timeout,
-                time_limit=args.time_limit,
-                mem_per_cpu=args.mem_per_cpu,
-                job_timeout=args.job_timeout,
-                use_cache=not args.no_cache,
-                wandb_run=wandb_run,
-                target_noise_map=final_noise_map,
-            )
-        except Exception as e:
-            print(f"\nFinal evaluation failed: {e}")
+            except Exception as e:
+                print(f"\nFinal evaluation failed: {e}")
+    else:
+        run_data_path = Path(args.output_dir) / "run_data.json"
+        print(
+            f"\nSkipping auto final eval (bundle mode). To evaluate the best bundle:\n"
+            f"  python evaluate_new_pysr.py --evolve-results {run_data_path} "
+            f"--splits splits/train.txt splits/val.txt --n-runs 10"
+        )
 
     finish_wandb(wandb_run)
 

@@ -20,7 +20,7 @@ from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
-from slurm_eval import BaseSlurmEvaluator, init_worker, _untrack_job
+from slurm_eval import BaseSlurmEvaluator, TERMINAL_SLURM_STATES, init_worker, _untrack_job
 from julia_env import configure_juliapkg_project
 
 
@@ -72,7 +72,18 @@ _DETERMINISTIC_PYSR_ERROR_SNIPPETS = (
     "assertionerror",
     "weights cannot contain inf or nan",
     "cannot convert",
+    "pysr wall-clock limit exceeded",
 )
+
+
+class PySRWallLimitExceeded(TimeoutError):
+    """Raised when PySR search exceeds its hard wall-clock budget.
+
+    Caught by the outer except branch in _evaluate_pysr_task, which records a
+    score=0 error result. The message substring "pysr wall-clock limit
+    exceeded" is in _DETERMINISTIC_PYSR_ERROR_SNIPPETS, so the parent
+    evaluator treats it as non-retryable.
+    """
 
 
 def _summarize_error(error_msg: Optional[str]) -> str:
@@ -514,6 +525,8 @@ class PySRTaskSpec:
     fitness_metric: str = "r2"  # 'r2' or 'gt'
     hof_csv_paths: List[str] = field(default_factory=list)  # Paths to HOF CSVs from run_pysr_srbench
     hof_n_steps: int = 0  # Number of HOF checkpoints to write during fit (0 = disabled)
+    pysr_wall_limit: int = 600  # Hard wall-clock limit for PySR search (seconds); on overrun,
+    # the task errors out with score=0 and is NOT retried.
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -695,16 +708,33 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         hof_results_dir = os.path.dirname(hof_csv_out) or "."
 
         from run_pysr_srbench import run_pysr_with_hof_checkpoints
-        model = run_pysr_with_hof_checkpoints(
-            X_train, y_train,
-            feature_names=variable_names,
-            dataset_name=spec.dataset_name,
-            results_dir=hof_results_dir,
-            milestones=hof_milestones,
-            model=model,
-            seed=run_seed,
-            hof_path=hof_csv_out,
-        )
+
+        # Hard wall-clock guard. On overrun, raise PySRWallLimitExceeded so the
+        # outer except branch writes an error result (score=0). The error is
+        # tagged as deterministic so the parent evaluator does NOT retry it.
+        import signal as _signal
+
+        def _wall_alarm(_signum, _frame):
+            raise PySRWallLimitExceeded(
+                f"PySR wall-clock limit exceeded ({spec.pysr_wall_limit}s)"
+            )
+
+        _prev_handler = _signal.signal(_signal.SIGALRM, _wall_alarm)
+        _signal.alarm(int(spec.pysr_wall_limit))
+        try:
+            model = run_pysr_with_hof_checkpoints(
+                X_train, y_train,
+                feature_names=variable_names,
+                dataset_name=spec.dataset_name,
+                results_dir=hof_results_dir,
+                milestones=hof_milestones,
+                model=model,
+                seed=run_seed,
+                hof_path=hof_csv_out,
+            )
+        finally:
+            _signal.alarm(0)
+            _signal.signal(_signal.SIGALRM, _prev_handler)
 
         # Ensure hof_csv_paths reflects the file we just wrote (or tried to write)
         # so _load_execution_trace() below finds it.
@@ -942,6 +972,9 @@ class PySRBatchHandle:
     fitness_metric: str
     dataset_names: List[str]
     use_cache_for_run: bool
+    submit_time: float = 0.0   # time.time() when tasks were first submitted
+    operator_label: str = ""   # human-readable summary of configs for logging
+    n_runs: int = 1
 
 
 class PySRSlurmEvaluator(BaseSlurmEvaluator):
@@ -959,22 +992,23 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self,
         results_dir: str,
         partition: str = "default_partition",
-        time_limit: str = "02:00:00",
+        time_limit: str = "00:15:00",
         mem_per_cpu: str = "8G",
         dataset_max_samples: Optional[int] = None,
         data_seed: int = 42,
-        max_retries: int = 3,
+        max_retries: int = 1,
         exclude_nodes: Optional[str] = None,
         constraint: Optional[str] = None,
         bad_nodes_file: Optional[str] = "caches/bad_nodes.txt",
         max_concurrent_jobs: Optional[int] = None,
-        job_timeout: Optional[float] = 600.0,
+        job_timeout: Optional[float] = 1800.0,
         stall_timeout: Optional[float] = 300.0,
         use_cache: bool = True,
         target_noise: float = 0.0,
         repo_root: Optional[str] = None,
         hof_results_dir: str= "results_pysr",
         hof_n_steps: int = 0,
+        pysr_wall_limit: int = 600,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -1000,6 +1034,9 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self._pending_cache_entries: List[Dict[str, Any]] = []
         self.hof_results_dir = hof_results_dir
         self.hof_n_steps = hof_n_steps
+        self.pysr_wall_limit = pysr_wall_limit
+        # Optional split label used by eval_log.log_bundle_eval (set by caller).
+        self.split_label: Optional[str] = None
 
     def _build_worker_env_exports(self) -> str:
         """Build shell exports for PySR worker environment isolation."""
@@ -1052,6 +1089,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         run_index_start_per_config: Optional[List[int]] = None,
         hof_csv_map: Optional[Dict[str, List[str]]] = None,
     ) -> PySRBatchHandle:
+        import time as _time_mod
+        _bundle_submit_time = _time_mod.time()
         """
         Build task specs, pre-filter cache, and submit SLURM job(s) without waiting.
 
@@ -1118,6 +1157,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         fitness_metric=fitness_metric,
                         hof_csv_paths=hof_csv_paths,
                         hof_n_steps=self.hof_n_steps,
+                        pysr_wall_limit=self.pysr_wall_limit,
                     ))
 
         n_tasks = len(tasks)
@@ -1229,6 +1269,15 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         else:
             print(f"  All {n_tasks} tasks served from cache - skipping SLURM")
 
+        # Build a short label for logging (first config's name + count of others).
+        _names = [c.name for c in configs if getattr(c, "name", "")]
+        if not _names:
+            operator_label = ""
+        elif len(_names) == 1:
+            operator_label = _names[0]
+        else:
+            operator_label = f"{_names[0]} (+{len(_names) - 1} more)"
+
         return PySRBatchHandle(
             batch_dir=batch_dir,
             tasks=tasks,
@@ -1240,6 +1289,9 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             fitness_metric=fitness_metric,
             dataset_names=list(dataset_names),
             use_cache_for_run=use_cache_for_run,
+            submit_time=_bundle_submit_time,
+            operator_label=operator_label,
+            n_runs=n_runs,
         )
 
     def collect_batch(
@@ -1253,6 +1305,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         n_cached = handle.n_cached
         job_ids = handle.job_ids
         use_cache_for_run = handle.use_cache_for_run
+        retry_count = 0
 
         if not handle.uncached_indices:
             results, failed_indices = self._collect_results(results_subdir, n_tasks, timed_out=False)
@@ -1274,7 +1327,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             )
 
             # Retry failed tasks (including those missing due to timeout/stall)
-            retry_count = 0
             while failed_indices and retry_count < self.max_retries:
                 retry_count += 1
                 print(f"  Retrying {len(failed_indices)} failed tasks "
@@ -1349,6 +1401,44 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # Save combined results
         combined_file = batch_dir / "combined.json"
         _write_json_atomic(combined_file, [r.to_json_dict() for r in results])
+
+        # Append a bundle-eval record for cluster monitoring.
+        try:
+            import time as _time_mod
+            from eval_log import log_bundle_eval as _log_bundle_eval
+            _n_err = sum(1 for r in results if r.error)
+            _n_to = sum(
+                1 for r in results
+                if r.error and "wall-clock limit exceeded" in r.error.lower()
+            )
+            _task_runtimes = [
+                float(r.runtime_seconds) for r in results
+                if r.error is None and r.runtime_seconds and r.runtime_seconds > 0
+            ]
+            _bundle_wall = (
+                _time_mod.time() - handle.submit_time if handle.submit_time else 0.0
+            )
+            _n_executed = max(0, n_tasks - n_cached)
+            _log_bundle_eval(
+                source="pysr",
+                bundle=batch_dir.name,
+                n_tasks=n_tasks,
+                n_cached=n_cached,
+                n_executed=_n_executed,
+                n_errors=_n_err,
+                n_timed_out=_n_to,
+                bundle_wall_s=_bundle_wall,
+                task_runtime_s=_task_runtimes,
+                label=handle.operator_label,
+                split=self.split_label,
+                n_datasets=len(handle.dataset_names),
+                n_runs=handle.n_runs,
+                n_configs=handle.num_configs,
+                n_retries=retry_count,
+                results_dir=str(self.results_dir),
+            )
+        except Exception:
+            pass
 
         return _aggregate_pysr_results(
             results,
@@ -1536,7 +1626,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         last_completed = initial_cached
         last_progress_time = start_time
         poll_interval = 10
-        terminal = {'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'}
         results_dirs = [bd / "results" for bd in batch_dirs]
 
         while True:
@@ -1588,7 +1677,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 return False
 
             statuses = [self._get_job_status(jid) for jid in job_ids]
-            if all(s in terminal for s in statuses):
+            if all(s in TERMINAL_SLURM_STATES for s in statuses):
                 if completed < n_tasks_total:
                     print(
                         f"  WARNING: all {label} jobs ended (statuses={statuses}) "
@@ -1614,7 +1703,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         start_time = _time.time()
         last_completed = 0
         poll_interval = 5
-        terminal = {'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'}
         n_total = len(batch_indices)
 
         while True:
@@ -1637,7 +1725,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 return
 
             statuses = [self._get_job_status(jid) for jid in job_ids]
-            if all(s in terminal for s in statuses):
+            if all(s in TERMINAL_SLURM_STATES for s in statuses):
                 if completed < n_total:
                     print(
                         f"    Retry jobs ended with statuses={statuses}, "
@@ -1707,7 +1795,9 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
 
         array_spec = self._get_array_spec(n_tasks)
         optional_directives = self._get_optional_directives()
-        no_cache_flag = ' --no-cache' if not self.use_cache else ''
+        # Workers always run with --no-cache: they don't need the cache
+        # (parent pre-filters) and must not open the NFS-backed SQLite DB.
+        no_cache_flag = ' --no-cache'
 
         worker_env_exports = self._build_worker_env_exports()
 
@@ -1764,7 +1854,7 @@ python -u -m parallel_eval_pysr --worker \\
 
         array_spec = self._get_array_spec_for_indices(failed_indices)
         optional_directives = self._get_optional_directives()
-        no_cache_flag = ' --no-cache' if not self.use_cache else ''
+        no_cache_flag = ' --no-cache'
 
         worker_env_exports = self._build_worker_env_exports()
 
@@ -1839,7 +1929,7 @@ python -u -m parallel_eval_pysr --worker \\
 
         real_idx_bash = " ".join(str(i) for i in chunk_indices)
         optional_directives = self._get_optional_directives()
-        no_cache_flag = ' --no-cache' if not use_cache else ''
+        no_cache_flag = ' --no-cache'
         worker_env_exports = self._build_worker_env_exports()
 
         script_content = f"""#!/bin/bash
@@ -1912,7 +2002,6 @@ python -u -m parallel_eval_pysr --worker \\
         last_progress_time = start_time
         poll_interval = 10
         results_dir = batch_dir / "results"
-        terminal = {'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'}
 
         while True:
             completed = len(list(results_dir.glob("task_*.json")))
@@ -1961,7 +2050,7 @@ python -u -m parallel_eval_pysr --worker \\
                 return False
 
             statuses = [self._get_job_status(jid) for jid in job_ids]
-            if all(s in terminal for s in statuses):
+            if all(s in TERMINAL_SLURM_STATES for s in statuses):
                 if completed < n_tasks:
                     print(
                         f"  WARNING: All jobs ended (statuses={statuses}) "
@@ -2017,6 +2106,13 @@ def run_pysr_worker(tasks_file: str, task_index: int, output_dir: str, use_cache
         sys.stderr.reconfigure(line_buffering=True)
 
     print(f"PySR Worker initializing: task={task_index}, use_cache={use_cache}", flush=True)
+
+    # Workers must never open the shared SQLite cache: it lives on NFS and
+    # concurrent openers across compute nodes have corrupted it before. The
+    # parent does all cache reads/writes; workers just compute and return JSON.
+    if not use_cache:
+        from evaluation_cache import disable_pysr_cache
+        disable_pysr_cache()
 
     init_worker(extra_env={'JULIA_NUM_THREADS': '1'})
 

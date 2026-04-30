@@ -35,6 +35,17 @@ _ACTIVE_JOB_IDS: Set[str] = set()
 _ACTIVE_JOB_IDS_LOCK = threading.Lock()
 _CLEANUP_INSTALLED = False
 
+# SLURM job states that mean "this job will produce no further output."
+# Used by polling loops to decide when to stop waiting for results.
+# PREEMPTED is critical: preemptible partitions (e.g. default_partition) end
+# slots in this state without writing output, and a missing terminal entry
+# here causes the polling loop to spin until the driver itself times out.
+TERMINAL_SLURM_STATES = frozenset({
+    'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN',
+    'PREEMPTED', 'BOOT_FAIL', 'DEADLINE', 'NODE_FAIL',
+    'OUT_OF_MEMORY', 'REVOKED', 'SPECIAL_EXIT',
+})
+
 
 def _cancel_tracked_jobs(reason: str = "driver exiting") -> None:
     with _ACTIVE_JOB_IDS_LOCK:
@@ -333,21 +344,29 @@ class BaseSlurmEvaluator(ABC):
     def _get_job_status(self, job_id: str) -> str:
         """Get SLURM job status."""
         env = self._get_slurm_env()
-        result = subprocess.run(
-            ['squeue', '-j', job_id, '-h', '-o', '%T'],
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-
-        if result.returncode != 0 or not result.stdout.strip():
-            # Job not in queue, check sacct
+        try:
             result = subprocess.run(
-                ['sacct', '-j', job_id, '-n', '-o', 'State', '-P'],
+                ['squeue', '-j', job_id, '-h', '-o', '%T'],
                 capture_output=True,
                 text=True,
                 env=env,
+                timeout=60,
             )
+        except subprocess.TimeoutExpired:
+            return 'UNKNOWN'
+
+        if result.returncode != 0 or not result.stdout.strip():
+            # Job not in queue, check sacct
+            try:
+                result = subprocess.run(
+                    ['sacct', '-j', job_id, '-n', '-o', 'State', '-P'],
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    timeout=60,
+                )
+            except subprocess.TimeoutExpired:
+                return 'UNKNOWN'
             states = result.stdout.strip().split('\n')
             if states:
                 return states[0].split('|')[0] if '|' in states[0] else states[0]
@@ -447,7 +466,7 @@ class BaseSlurmEvaluator(ABC):
 
             # Also check job status
             job_status = self._get_job_status(job_id)
-            if job_status in ('COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT'):
+            if job_status in TERMINAL_SLURM_STATES:
                 if completed < n_tasks:
                     print(f"  WARNING: Job {job_id} ended with status {job_status} "
                           f"but only {completed}/{n_tasks} results found")
@@ -485,7 +504,7 @@ class BaseSlurmEvaluator(ABC):
 
             # Check job status
             job_status = self._get_job_status(job_id)
-            if job_status in ('COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'):
+            if job_status in TERMINAL_SLURM_STATES:
                 if completed < n_tasks:
                     print(f"    Retry job ended with status {job_status}, {completed}/{n_tasks} results")
                 _untrack_job(job_id)
@@ -509,7 +528,6 @@ class BaseSlurmEvaluator(ABC):
         start_time = time.time()
         last_completed = 0
         poll_interval = 5
-        terminal = {'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT', 'UNKNOWN'}
 
         while True:
             results_dir = batch_dir / "results"
@@ -533,7 +551,7 @@ class BaseSlurmEvaluator(ABC):
                 break
 
             statuses = [self._get_job_status(jid) for jid in job_ids]
-            if all(s in terminal for s in statuses):
+            if all(s in TERMINAL_SLURM_STATES for s in statuses):
                 if completed < n_tasks:
                     print(
                         f"    Retry jobs ended with statuses={statuses}, "

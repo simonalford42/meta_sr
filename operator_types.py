@@ -355,7 +355,7 @@ class MutationOperatorType(OperatorType):
     default_baseline_rel_path = "custom_mutations/add_constant_offset.jl"
     smoke_test_julia = """
     let
-        using SymbolicRegression: Options, Node, AbstractExpressionNode
+        using SymbolicRegression: Options, Node, AbstractExpressionNode, Dataset
         using SymbolicRegression.CustomMutationsModule: apply_custom_mutation
         using Random: Xoshiro
         options = Options(;
@@ -364,8 +364,12 @@ class MutationOperatorType(OperatorType):
         )
         # Build a small tree: x1 + 0.5
         tree = Node(Float64; op=1, l=Node(Float64; feature=1), r=Node(Float64; val=0.5))
+        # Small synthetic dataset so data-aware mutations have real X/y to read
+        X = randn(Float64, 3, 10)
+        y = randn(Float64, 10)
+        dataset = Dataset(X, y)
         rng = Xoshiro(42)
-        result = apply_custom_mutation(:{name}, tree, options, 3, rng)
+        result = apply_custom_mutation(:{name}, tree, dataset, options, 3, rng)
         @assert result isa AbstractExpressionNode "Smoke test: mutation must return a Node, got $(typeof(result))"
     end
     """
@@ -381,7 +385,22 @@ class MutationOperatorType(OperatorType):
         raise FileNotFoundError(f"Could not find MUTATIONS_REFERENCE.md or MUTATIONS_REFERENCE2.md")
 
     def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
-        ideas = [
+        # Alternate between data-aware and structural ideas based on seed parity.
+        # Even seeds -> data-aware (uses dataset.X / dataset.y).
+        # Odd seeds  -> structural (ignores dataset, operates on tree only).
+        # Both branches still receive `dataset` in the signature; structural
+        # mutations just ignore the argument.
+        data_aware_ideas = [
+            "Residual-guided: evaluate the current tree on `dataset.X` and target subtrees whose removal most reduces residual error",
+            "Feature-correlation: pick the input feature most correlated with `dataset.y` (or with the residual) and insert/substitute it into the tree",
+            "Outlier-aware: evaluate subtrees on `dataset.X`; replace any subtree that produces `NaN`/`Inf` or extreme values with a safe constant",
+            "Constant-fitting: replace a constant node with the value that best fits `dataset.y - tree_without_constant(dataset.X)` (closed-form or a few Newton steps)",
+            "Feature-importance: substitute a variable node with another variable ranked by univariate correlation with `dataset.y`",
+            "Range-aware: sample new constants from the empirical distribution of `dataset.y` (mean/std) instead of a standard normal",
+            "Sign-matched: insert `abs`, negation, or `sign` based on the sign pattern of `dataset.y` vs current tree output",
+            "Symmetry-probe: check whether `dataset.y` appears symmetric in some `X` column and insert squaring/`abs` where evidence supports it",
+        ]
+        structural_ideas = [
             "Pattern-based: Insert common mathematical patterns (e.g., polynomial terms, trig identities)",
             "Structure-aware: Target specific tree structures for modification",
             "Simplification-focused: Identify and simplify redundant patterns",
@@ -391,39 +410,102 @@ class MutationOperatorType(OperatorType):
             "Symmetry-aware: Detect and exploit symmetric patterns",
             "Gradient-guided: Use loss gradient information to guide changes",
         ]
-        selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
+
+        data_aware = (variation_seed % 2 == 0)
+        ideas = data_aware_ideas if data_aware else structural_ideas
+        # Rotate within the chosen set so different seeds surface different ideas.
+        rot = (variation_seed // 2) % len(ideas)
+        selected_ideas = ideas[rot:] + ideas[:rot]
         ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
+
+        if data_aware:
+            mode_note = (
+                "For this proposal, write a **data-aware mutation**: consult "
+                "`dataset.X` and/or `dataset.y` to make a data-driven decision "
+                "(e.g. insert the feature most correlated with the residual, "
+                "fit a constant by least squares, detect subtrees that produce "
+                "NaN/Inf on the training data)."
+            )
+            requirement_line = (
+                "Use `dataset.X` / `dataset.y` — this proposal is specifically a data-aware mutation. "
+                "Be defensive: guard against `dataset.y === nothing`, `eval_tree_array` failure, and empty/degenerate trees."
+            )
+            signature_note = (
+                "Use the **5-argument data-aware signature** with `dataset` included "
+                "(the reference doc shows this form). Do NOT use the 4-argument form."
+            )
+            example_signature = """function my_mutation_name(
+    tree::N,
+    dataset,
+    options,
+    nfeatures::Int,
+    rng::AbstractRNG,
+) where {T,N<:AbstractExpressionNode{T}}
+    # Implementation — may read dataset.X :: (nfeatures, n) and dataset.y :: (n,)
+    return tree
+end"""
+        else:
+            mode_note = (
+                "For this proposal, write a **structural mutation**: operate "
+                "purely on the tree (nodes, operators, constants, variables). "
+                "Do not take a `dataset` argument."
+            )
+            requirement_line = (
+                "Do NOT read `dataset.X` / `dataset.y` — this proposal is a structural mutation; keep logic tree-only. "
+                "Your function MUST use the 4-argument signature below (no `dataset` parameter)."
+            )
+            signature_note = (
+                "**Important signature override:** the reference doc shows a 5-argument "
+                "signature with `dataset`. For this structural proposal, use the "
+                "**4-argument form without `dataset`** shown below. The runtime adapts "
+                "automatically based on the arity of your function."
+            )
+            example_signature = """function my_mutation_name(
+    tree::N,
+    options,
+    nfeatures::Int,
+    rng::AbstractRNG,
+) where {T,N<:AbstractExpressionNode{T}}
+    # Implementation — operates on tree structure only
+    return tree
+end"""
 
         return f"""You are an expert in symbolic regression and genetic programming.
 
 Your task is to create a NEW custom mutation operator for PySR/SymbolicRegression.jl.
 The mutation should help discover better symbolic expressions.
 
+{mode_note}
+
+{signature_note}
+
 ## Reference: Existing Mutations and API
 {reference}
 
 ## Requirements
 1. Create a NOVEL mutation that does something different from existing mutations
-2. The mutation should be useful for symbolic regression search
-3. Use proper Julia syntax and the available API
+2. {requirement_line}
+3. The mutation should be useful for symbolic regression search
+4. Use proper Julia syntax and the available API
+5. Include a Julia docstring (a triple-quoted string `\"\"\"...\"\"\"`) immediately above the `function` line that explains how the mutation works — its core idea, the steps it takes, and any heuristics or assumptions.
+6. Add inline `#` comments inside the function body to walk a reader through the implementation: label the major steps, explain non-obvious choices (sampling rules, fallbacks, guards), and note any tricky edge cases. Aim for short, useful comments — not a comment on every line.
 
 ## Ideas to consider (pick one or invent your own):
 {ideas_text}
 
 ## Output Format
-Return ONLY the Julia function code, nothing else. The function should be named descriptively.
-Do not include markdown code blocks or explanations.
+Return ONLY the Julia function code (with the docstring above it and inline comments inside it), nothing else. The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
 
-Example format:
-function my_mutation_name(
-    tree::N,
-    options,
-    nfeatures::Int,
-    rng::AbstractRNG,
-) where {{T,N<:AbstractExpressionNode{{T}}}}
-    # Implementation
-    return tree
-end
+Example format (use this exact signature, with a docstring above and inline comments inside):
+\"\"\"
+    my_mutation_name(tree, ...)
+
+One- or two-paragraph explanation of how this mutation works: the core idea,
+the steps it takes on the tree (and dataset, if data-aware), and any
+heuristics or assumptions.
+\"\"\"
+{example_signature}
 """
 
     def build_refine_prompt(self, parent_code: str, reference: str, feedback: str = "") -> str:
@@ -448,11 +530,13 @@ Your task is to IMPROVE an existing custom mutation operator for PySR/SymbolicRe
 2. Consider: better edge case handling, more efficient sampling, smarter heuristics
 3. The mutation should still be useful for symbolic regression search
 4. Use proper Julia syntax
+5. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the mutation works (core idea, steps, heuristics, and what changed vs. the parent).
+6. Add inline `#` comments inside the function body to walk a reader through the implementation: label the major steps, explain non-obvious choices (sampling rules, fallbacks, guards), and call out anything that differs from the parent. Keep comments short and useful — not a comment on every line.
 
 ## Output Format
-Return ONLY the improved Julia function code, nothing else.
+Return ONLY the improved Julia function code (with the docstring above it and inline comments inside it), nothing else.
 Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
-Do not include markdown code blocks or explanations.
+Do not include markdown code blocks or prose outside the docstring.
 """
 
     def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
@@ -478,11 +562,13 @@ Your task is to COMBINE ideas from two mutation operators into a new one.
 2. Don't just concatenate - synthesize a coherent new approach
 3. The mutation should be useful for symbolic regression search
 4. Use proper Julia syntax
+5. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the combined mutation works — the core idea synthesized from the parents, the steps it takes, and any heuristics or assumptions.
+6. Add inline `#` comments inside the function body to walk a reader through the implementation: label the major steps, explain non-obvious choices (sampling rules, fallbacks, guards), and note which idea each block came from when it helps. Keep comments short and useful — not a comment on every line.
 
 ## Output Format
-Return ONLY the new Julia function code, nothing else.
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
 Give it a new descriptive name.
-Do not include markdown code blocks or explanations.
+Do not include markdown code blocks or prose outside the docstring.
 """
 
     def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
@@ -579,15 +665,23 @@ The survival operator decides which population member gets REPLACED when a new o
 3. Use proper Julia syntax and the available API
 4. MUST handle the `exclude_indices` keyword argument
 5. MUST return a valid index (1 to pop.n)
+6. Include a Julia docstring (a triple-quoted string `\"\"\"...\"\"\"`) immediately above the `function` line that explains how the survival operator works — its core idea, the steps it takes when picking which member to replace, and any heuristics or assumptions.
 
 ## Ideas to consider (pick one or invent your own):
 {ideas_text}
 
 ## Output Format
-Return ONLY the Julia function code, nothing else. The function should be named descriptively.
-Do not include markdown code blocks or explanations.
+Return ONLY the Julia function code (with the docstring above it), nothing else. The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
 
-Example format:
+Example format (with a docstring above):
+\"\"\"
+    my_survival_name(pop, options; exclude_indices)
+
+One- or two-paragraph explanation of how this survival operator chooses
+which population member to replace, including the scoring rule and any
+heuristics or assumptions.
+\"\"\"
 function my_survival_name(
     pop::Population{{T,L,N}},
     options::AbstractOptions;
@@ -621,11 +715,12 @@ Your task is to IMPROVE an existing custom survival operator for PySR/SymbolicRe
 3. MUST handle the `exclude_indices` keyword argument
 4. MUST return a valid index (1 to pop.n)
 5. Use proper Julia syntax
+6. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the survival operator works (core idea, replacement rule, heuristics) and what changed vs. the parent.
 
 ## Output Format
-Return ONLY the improved Julia function code, nothing else.
+Return ONLY the improved Julia function code (with the docstring above it), nothing else.
 Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
-Do not include markdown code blocks or explanations.
+Do not include markdown code blocks or prose outside the docstring.
 """
 
     def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
@@ -652,11 +747,12 @@ Your task is to COMBINE ideas from two survival operators into a new one.
 3. MUST handle the `exclude_indices` keyword argument
 4. MUST return a valid index (1 to pop.n)
 5. Use proper Julia syntax
+6. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the combined survival operator works — the core idea synthesized from the parents, the replacement rule, and any heuristics or assumptions.
 
 ## Output Format
-Return ONLY the new Julia function code, nothing else.
+Return ONLY the new Julia function code (with the docstring above it), nothing else.
 Give it a new descriptive name.
-Do not include markdown code blocks or explanations.
+Do not include markdown code blocks or prose outside the docstring.
 """
 
     def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
@@ -741,15 +837,23 @@ The selection operator decides which population member is chosen as a PARENT for
 3. Use proper Julia syntax and the available API
 4. MUST return a PopMember (the dispatch will copy it)
 5. Can use running_search_statistics for adaptive behavior
+6. Include a Julia docstring (a triple-quoted string `\"\"\"...\"\"\"`) immediately above the `function` line that explains how the selection operator works — its core idea, the steps it takes when picking a parent, and any heuristics or assumptions (including any use of `running_search_statistics`).
 
 ## Ideas to consider (pick one or invent your own):
 {ideas_text}
 
 ## Output Format
-Return ONLY the Julia function code, nothing else. The function should be named descriptively.
-Do not include markdown code blocks or explanations.
+Return ONLY the Julia function code (with the docstring above it), nothing else. The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
 
-Example format:
+Example format (with a docstring above):
+\"\"\"
+    my_selection_name(pop, running_search_statistics, options)
+
+One- or two-paragraph explanation of how this selection operator picks a
+parent: the scoring/sampling rule, any tie-breaking, and how (if at all)
+running_search_statistics is used.
+\"\"\"
 function my_selection_name(
     pop::Population{{T,L,N}},
     running_search_statistics::RunningSearchStatistics,
@@ -782,11 +886,12 @@ Your task is to IMPROVE an existing custom selection operator for PySR/SymbolicR
 2. Consider: better edge case handling, smarter heuristics, combining strategies
 3. MUST return a PopMember
 4. Use proper Julia syntax
+5. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the selection operator works (core idea, scoring/sampling rule, heuristics) and what changed vs. the parent.
 
 ## Output Format
-Return ONLY the improved Julia function code, nothing else.
+Return ONLY the improved Julia function code (with the docstring above it), nothing else.
 Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
-Do not include markdown code blocks or explanations.
+Do not include markdown code blocks or prose outside the docstring.
 """
 
     def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
@@ -812,11 +917,12 @@ Your task is to COMBINE ideas from two selection operators into a new one.
 2. Don't just concatenate - synthesize a coherent new approach
 3. MUST return a PopMember
 4. Use proper Julia syntax
+5. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the combined selection operator works — the core idea synthesized from the parents, the scoring/sampling rule, and any heuristics or assumptions.
 
 ## Output Format
-Return ONLY the new Julia function code, nothing else.
+Return ONLY the new Julia function code (with the docstring above it), nothing else.
 Give it a new descriptive name.
-Do not include markdown code blocks or explanations.
+Do not include markdown code blocks or prose outside the docstring.
 """
 
     def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
@@ -1005,6 +1111,7 @@ def generate_operator_code(
                 temperature=temperature,
                 sample_index=variation_seed + model_attempt * 10_000,
                 use_cache=use_cache,
+                max_tokens=128_000,
             )
             break
         except Exception as e:

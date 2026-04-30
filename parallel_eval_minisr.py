@@ -14,7 +14,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 import sys
 
-from slurm_eval import BaseSlurmEvaluator, init_worker, _untrack_job
+from slurm_eval import BaseSlurmEvaluator, TERMINAL_SLURM_STATES, init_worker, _untrack_job
 from parallel_eval_pysr import add_noise, _remap_formula_variables
 
 
@@ -366,6 +366,8 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
         self.warm_start = warm_start
         self.warm_start_timeout = warm_start_timeout
         self.repo_root = Path(repo_root).resolve() if repo_root else Path(__file__).resolve().parent
+        # Optional split label used by eval_log.log_bundle_eval (set by caller).
+        self.split_label: Optional[str] = None
 
     def evaluate_configs(
         self,
@@ -376,6 +378,8 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
         target_noise_map: Optional[Dict[str, float]] = None,
         fitness_metric: str = "r2",
     ) -> List[Tuple[float, List[float], List[Dict]]]:
+        import time as _time_mod
+        _bundle_submit_time = _time_mod.time()
         batch_dir = self._new_batch_dir()
         results_subdir = batch_dir / "results"
 
@@ -465,6 +469,49 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
         with open(combined_file, "w") as f:
             json.dump([r.to_json_dict() for r in results], f, indent=2)
 
+        # Append a bundle-eval record for cluster monitoring.
+        try:
+            from eval_log import log_bundle_eval as _log_bundle_eval
+            _names = [c.name for c in configs if getattr(c, "name", "")]
+            if not _names:
+                _label = ""
+            elif len(_names) == 1:
+                _label = _names[0]
+            else:
+                _label = f"{_names[0]} (+{len(_names) - 1} more)"
+            _n_err = sum(1 for r in results if r.error)
+            _n_to = sum(
+                1 for r in results
+                if r.error and (
+                    "wall-clock limit exceeded" in r.error.lower()
+                    or r.timed_out
+                )
+            )
+            _task_runtimes = [
+                float(r.runtime_seconds) for r in results
+                if r.error is None and r.runtime_seconds and r.runtime_seconds > 0
+            ]
+            _log_bundle_eval(
+                source="minisr",
+                bundle=batch_dir.name,
+                n_tasks=n_tasks,
+                n_cached=0,
+                n_executed=n_tasks,
+                n_errors=_n_err,
+                n_timed_out=_n_to,
+                bundle_wall_s=_time_mod.time() - _bundle_submit_time,
+                task_runtime_s=_task_runtimes,
+                label=_label,
+                split=self.split_label,
+                n_datasets=len(dataset_names),
+                n_runs=n_runs,
+                n_configs=len(configs),
+                n_retries=retry_count,
+                results_dir=str(self.results_dir),
+            )
+        except Exception:
+            pass
+
         return _aggregate_minisr_results(
             results, dataset_names, num_configs=len(configs), fitness_metric=fitness_metric
         )
@@ -504,7 +551,8 @@ class MiniSRSlurmEvaluator(BaseSlurmEvaluator):
 
     def _wait_for_warmstart_job(self, job_id: str) -> bool:
         start_time = time.time()
-        terminal_states = {"FAILED", "CANCELLED", "TIMEOUT"}
+        # Any terminal state other than COMPLETED is a failure for warmstart.
+        terminal_states = TERMINAL_SLURM_STATES - {"COMPLETED", "UNKNOWN"}
         poll_interval = 5
         last_report_time = start_time
         unknown_since: Optional[float] = None

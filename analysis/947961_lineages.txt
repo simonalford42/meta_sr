@@ -1,0 +1,1387 @@
+Lineage report for run 947961
+
+ID convention used here:
+- 0-0 = baseline component.
+- 1-N = initial-population suggestion init_(N-1).
+- G-I = logged generation (G-1), suggestion I. Example: logged gen21_5 is shown as 22-5.
+- Bundle ID = the ID of the component changed to create that bundle.
+- Direct ancestors are inferred from the evaluated bundle stream in 947961.out by matching the unchanged components and the prior bundle that supplied them.
+
+Component order: (mutation, survival, selection)
+
+Best Bundle Lineages
+
+Generation 0 best score=0.5650: 1-2 -> (1-2, 0-0, 0-0)
+  operators: linear_constant_fit_init_1 | age_regularized_survival | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-2, 0-0, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (1-2, 0-0, 0-0)
+  direct ancestor: 0-0
+
+Generation 1 best score=0.5800: 2-3 -> (2-3, 0-0, 0-0)
+  operators: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0)
+  direct ancestor: 1-8
+
+Generation 2 best score=0.5800: 2-3 -> (2-3, 0-0, 0-0)
+  operators: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0)
+  direct ancestor: 1-8
+
+Generation 3 best score=0.5800: 4-2 -> (4-2, 0-0, 0-0)
+  operators: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-2, 0-0, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (4-2, 0-0, 0-0)
+  direct ancestor: 3-1
+
+Generation 4 best score=0.5800: 4-2 -> (4-2, 0-0, 0-0)
+  operators: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-2, 0-0, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (4-2, 0-0, 0-0)
+  direct ancestor: 3-1
+
+Generation 5 best score=0.5800: 4-2 -> (4-2, 0-0, 0-0)
+  operators: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-2, 0-0, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (4-2, 0-0, 0-0)
+  direct ancestor: 3-1
+
+Generation 6 best score=0.5800: 4-2 -> (4-2, 0-0, 0-0)
+  operators: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-2, 0-0, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (4-2, 0-0, 0-0)
+  direct ancestor: 3-1
+
+Generation 7 best score=0.6000: 8-9 -> (8-9, 0-0, 0-0)
+  operators: promote_repeated_motif_to_ratio_v2_gen7_9 | age_regularized_survival | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-9, 0-0, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-9, 0-0, 0-0)
+  direct ancestor: 7-5
+
+Generation 8 best score=0.6000: 8-9 -> (8-9, 0-0, 0-0)
+  operators: promote_repeated_motif_to_ratio_v2_gen7_9 | age_regularized_survival | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-9, 0-0, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-9, 0-0, 0-0)
+  direct ancestor: 7-5
+
+Generation 9 best score=0.6000: 8-9 -> (8-9, 0-0, 0-0)
+  operators: promote_repeated_motif_to_ratio_v2_gen7_9 | age_regularized_survival | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-9, 0-0, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-9, 0-0, 0-0)
+  direct ancestor: 7-5
+
+Generation 10 best score=0.6100: 11-9 -> (8-6, 0-0, 11-9)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9)
+  direct ancestor: 8-6
+
+Generation 11 best score=0.6100: 11-9 -> (8-6, 0-0, 11-9)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9)
+  direct ancestor: 8-6
+
+Generation 12 best score=0.6100: 11-9 -> (8-6, 0-0, 11-9)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9)
+  direct ancestor: 8-6
+
+Generation 13 best score=0.6100: 11-9 -> (8-6, 0-0, 11-9)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9)
+  direct ancestor: 8-6
+
+Generation 14 best score=0.6100: 11-9 -> (8-6, 0-0, 11-9)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9)
+  direct ancestor: 8-6
+
+Generation 15 best score=0.6150: 16-8 -> (8-6, 16-8, 11-9)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9) -> (8-6, 14-5, 11-9) -> (8-6, 15-6, 11-9) -> (8-6, 16-8, 11-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 0-0, 11-9) -> (8-6, 16-8, 11-9)
+  direct ancestor: 15-6
+
+Generation 16 best score=0.6200: 17-1 -> (8-6, 17-1, 0-0)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 9-6, 0-0) -> (8-6, 16-7, 0-0) -> (8-6, 17-1, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 17-1, 0-0)
+  direct ancestor: 16-7
+
+Generation 17 best score=0.6200: 17-1 -> (8-6, 17-1, 0-0)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 9-6, 0-0) -> (8-6, 16-7, 0-0) -> (8-6, 17-1, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 17-1, 0-0)
+  direct ancestor: 16-7
+
+Generation 18 best score=0.6200: 17-1 -> (8-6, 17-1, 0-0)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 9-6, 0-0) -> (8-6, 16-7, 0-0) -> (8-6, 17-1, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 17-1, 0-0)
+  direct ancestor: 16-7
+
+Generation 19 best score=0.6200: 17-1 -> (8-6, 17-1, 0-0)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 9-6, 0-0) -> (8-6, 16-7, 0-0) -> (8-6, 17-1, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 17-1, 0-0)
+  direct ancestor: 16-7
+
+Generation 20 best score=0.6200: 17-1 -> (8-6, 17-1, 0-0)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 9-6, 0-0) -> (8-6, 16-7, 0-0) -> (8-6, 17-1, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 17-1, 0-0)
+  direct ancestor: 16-7
+
+Generation 21 best score=0.6200: 17-1 -> (8-6, 17-1, 0-0)
+  operators: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-5, 0-0, 0-0) -> (3-1, 0-0, 0-0) -> (4-6, 0-0, 0-0) -> (5-9, 0-0, 0-0) -> (6-9, 0-0, 0-0) -> (7-5, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 9-6, 0-0) -> (8-6, 16-7, 0-0) -> (8-6, 17-1, 0-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (8-6, 0-0, 0-0) -> (8-6, 17-1, 0-0)
+  direct ancestor: 16-7
+
+Generation 22 best score=0.6300: 23-0 -> (23-0, 21-5, 17-9)
+  operators: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  direct ancestor: 21-5
+
+Generation 23 best score=0.6300: 23-0 -> (23-0, 21-5, 17-9)
+  operators: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  direct ancestor: 21-5
+
+Generation 24 best score=0.6300: 23-0 -> (23-0, 21-5, 17-9)
+  operators: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  direct ancestor: 21-5
+
+Generation 25 best score=0.6300: 23-0 -> (23-0, 21-5, 17-9)
+  operators: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  direct ancestor: 21-5
+
+Generation 26 best score=0.6300: 23-0 -> (23-0, 21-5, 17-9)
+  operators: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  direct ancestor: 21-5
+
+Generation 27 best score=0.6300: 23-0 -> (23-0, 21-5, 17-9)
+  operators: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9)
+  direct ancestor: 21-5
+
+Generation 28 best score=0.6356: 29-0 -> (28-7, 29-0, 17-9)
+  operators: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9)
+  direct ancestor: 28-7
+
+Generation 29 best score=0.6400: 30-2 -> (23-0, 21-5, 30-2)
+  operators: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 27-9) -> (23-0, 21-5, 30-2)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 30-2)
+  direct ancestor: 27-9
+
+Generation 30 best score=0.6700: 31-0 -> (28-7, 29-0, 31-0)
+  operators: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  direct ancestor: 29-0
+
+Generation 31 best score=0.6700: 31-0 -> (28-7, 29-0, 31-0)
+  operators: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  direct ancestor: 29-0
+
+Generation 32 best score=0.6700: 31-0 -> (28-7, 29-0, 31-0)
+  operators: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  direct ancestor: 29-0
+
+Generation 33 best score=0.6700: 31-0 -> (28-7, 29-0, 31-0)
+  operators: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  direct ancestor: 29-0
+
+Generation 34 best score=0.6700: 31-0 -> (28-7, 29-0, 31-0)
+  operators: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  direct ancestor: 29-0
+
+Generation 35 best score=0.6700: 31-0 -> (28-7, 29-0, 31-0)
+  operators: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0)
+  direct ancestor: 29-0
+
+Generation 36 best score=0.6700: 37-2 -> (37-2, 29-0, 31-0)
+  operators: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (32-6, 29-0, 31-0) -> (33-0, 29-0, 31-0) -> (34-7, 29-0, 31-0) -> (35-5, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  direct ancestor: 35-5
+
+Generation 37 best score=0.6700: 37-2 -> (37-2, 29-0, 31-0)
+  operators: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (32-6, 29-0, 31-0) -> (33-0, 29-0, 31-0) -> (34-7, 29-0, 31-0) -> (35-5, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  direct ancestor: 35-5
+
+Generation 38 best score=0.6700: 37-2 -> (37-2, 29-0, 31-0)
+  operators: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (32-6, 29-0, 31-0) -> (33-0, 29-0, 31-0) -> (34-7, 29-0, 31-0) -> (35-5, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  direct ancestor: 35-5
+
+Generation 39 best score=0.6700: 37-2 -> (37-2, 29-0, 31-0)
+  operators: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (32-6, 29-0, 31-0) -> (33-0, 29-0, 31-0) -> (34-7, 29-0, 31-0) -> (35-5, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  direct ancestor: 35-5
+
+Generation 40 best score=0.6700: 37-2 -> (37-2, 29-0, 31-0)
+  operators: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (32-6, 29-0, 31-0) -> (33-0, 29-0, 31-0) -> (34-7, 29-0, 31-0) -> (35-5, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  direct ancestor: 35-5
+
+Generation 41 best score=0.6700: 37-2 -> (37-2, 29-0, 31-0)
+  operators: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (32-6, 29-0, 31-0) -> (33-0, 29-0, 31-0) -> (34-7, 29-0, 31-0) -> (35-5, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  direct ancestor: 35-5
+
+Generation 42 best score=0.6700: 37-2 -> (37-2, 29-0, 31-0)
+  operators: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (32-6, 29-0, 31-0) -> (33-0, 29-0, 31-0) -> (34-7, 29-0, 31-0) -> (35-5, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  direct ancestor: 35-5
+
+Generation 43 best score=0.6700: 37-2 -> (37-2, 29-0, 31-0)
+  operators: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (32-6, 29-0, 31-0) -> (33-0, 29-0, 31-0) -> (34-7, 29-0, 31-0) -> (35-5, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  direct ancestor: 35-5
+
+Generation 44 best score=0.6700: 37-2 -> (37-2, 29-0, 31-0)
+  operators: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-7, 21-5, 17-9) -> (24-7, 21-5, 17-9) -> (27-7, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (32-6, 29-0, 31-0) -> (33-0, 29-0, 31-0) -> (34-7, 29-0, 31-0) -> (35-5, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (28-7, 21-5, 17-9) -> (28-7, 29-0, 17-9) -> (28-7, 29-0, 31-0) -> (37-2, 29-0, 31-0)
+  direct ancestor: 35-5
+
+Generation 45 best score=0.6872: 46-8 -> (46-8, 21-5, 31-2)
+  operators: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 27-9) -> (23-0, 21-5, 30-2) -> (23-0, 21-5, 31-2) -> (34-3, 21-5, 31-2) -> (36-4, 21-5, 31-2) -> (37-0, 21-5, 31-2) -> (38-6, 21-5, 31-2) -> (39-0, 21-5, 31-2) -> (40-8, 21-5, 31-2) -> (41-7, 21-5, 31-2) -> (42-8, 21-5, 31-2) -> (43-6, 21-5, 31-2) -> (45-9, 21-5, 31-2) -> (46-8, 21-5, 31-2)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 31-2) -> (46-8, 21-5, 31-2)
+  direct ancestor: 45-9
+
+Generation 46 best score=0.6872: 46-8 -> (46-8, 21-5, 31-2)
+  operators: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 27-9) -> (23-0, 21-5, 30-2) -> (23-0, 21-5, 31-2) -> (34-3, 21-5, 31-2) -> (36-4, 21-5, 31-2) -> (37-0, 21-5, 31-2) -> (38-6, 21-5, 31-2) -> (39-0, 21-5, 31-2) -> (40-8, 21-5, 31-2) -> (41-7, 21-5, 31-2) -> (42-8, 21-5, 31-2) -> (43-6, 21-5, 31-2) -> (45-9, 21-5, 31-2) -> (46-8, 21-5, 31-2)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 31-2) -> (46-8, 21-5, 31-2)
+  direct ancestor: 45-9
+
+Generation 47 best score=0.7050: 48-2 -> (46-8, 21-5, 48-2)
+  operators: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | rank_based_roulette_selection_gen47_2
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 27-9) -> (23-0, 21-5, 30-2) -> (23-0, 21-5, 31-2) -> (34-3, 21-5, 31-2) -> (36-4, 21-5, 31-2) -> (37-0, 21-5, 31-2) -> (38-6, 21-5, 31-2) -> (39-0, 21-5, 31-2) -> (40-8, 21-5, 31-2) -> (41-7, 21-5, 31-2) -> (42-8, 21-5, 31-2) -> (43-6, 21-5, 31-2) -> (45-9, 21-5, 31-2) -> (46-8, 21-5, 31-2) -> (46-8, 21-5, 48-2)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 31-2) -> (46-8, 21-5, 31-2) -> (46-8, 21-5, 48-2)
+  direct ancestor: 46-8
+
+Generation 48 best score=0.7050: 48-2 -> (46-8, 21-5, 48-2)
+  operators: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | rank_based_roulette_selection_gen47_2
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 27-9) -> (23-0, 21-5, 30-2) -> (23-0, 21-5, 31-2) -> (34-3, 21-5, 31-2) -> (36-4, 21-5, 31-2) -> (37-0, 21-5, 31-2) -> (38-6, 21-5, 31-2) -> (39-0, 21-5, 31-2) -> (40-8, 21-5, 31-2) -> (41-7, 21-5, 31-2) -> (42-8, 21-5, 31-2) -> (43-6, 21-5, 31-2) -> (45-9, 21-5, 31-2) -> (46-8, 21-5, 31-2) -> (46-8, 21-5, 48-2)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 31-2) -> (46-8, 21-5, 31-2) -> (46-8, 21-5, 48-2)
+  direct ancestor: 46-8
+
+Generation 49 best score=0.7050: 48-2 -> (46-8, 21-5, 48-2)
+  operators: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | rank_based_roulette_selection_gen47_2
+  lineage: (0-0, 0-0, 0-0) -> (1-8, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 6-8) -> (2-3, 0-0, 10-7) -> (2-3, 0-0, 11-4) -> (2-3, 0-0, 14-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 27-9) -> (23-0, 21-5, 30-2) -> (23-0, 21-5, 31-2) -> (34-3, 21-5, 31-2) -> (36-4, 21-5, 31-2) -> (37-0, 21-5, 31-2) -> (38-6, 21-5, 31-2) -> (39-0, 21-5, 31-2) -> (40-8, 21-5, 31-2) -> (41-7, 21-5, 31-2) -> (42-8, 21-5, 31-2) -> (43-6, 21-5, 31-2) -> (45-9, 21-5, 31-2) -> (46-8, 21-5, 31-2) -> (46-8, 21-5, 48-2)
+  simplified lineage: (0-0, 0-0, 0-0) -> (2-3, 0-0, 0-0) -> (2-3, 0-0, 17-9) -> (2-3, 21-5, 17-9) -> (23-0, 21-5, 17-9) -> (23-0, 21-5, 31-2) -> (46-8, 21-5, 31-2) -> (46-8, 21-5, 48-2)
+  direct ancestor: 46-8
+
+Evolution Summary
+Each generation lists carried-in frontier/population bundles first, then new offspring bundles from that generation.
+
+Initial population
+  0-0 -> (0-0, 0-0, 0-0) parent=0-0 score=0.4500 :: add_constant_offset | age_regularized_survival | tournament_selection
+  1-1 -> (0-0, 0-0, 1-1) parent=0-0 score=0.3950 :: add_constant_offset | age_regularized_survival | novelty_tournament_selection_init_0
+  1-2 -> (1-2, 0-0, 0-0) parent=0-0 score=0.5650 :: linear_constant_fit_init_1 | age_regularized_survival | tournament_selection
+  1-3 -> (1-3, 0-0, 0-0) parent=0-0 score=0.5400 :: fold_constant_subtree_init_2 | age_regularized_survival | tournament_selection
+  1-4 -> (0-0, 0-0, 1-4) parent=0-0 score=0.4600 :: add_constant_offset | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  1-5 -> (0-0, 1-5, 0-0) parent=0-0 score=0.2700 :: add_constant_offset | survival_crowded_worst_fitness_init_4 | tournament_selection
+  1-6 -> (1-6, 0-0, 0-0) parent=0-0 score=0.4750 :: affine_fit_subtree_init_5 | age_regularized_survival | tournament_selection
+  1-7 -> (1-7, 0-0, 0-0) parent=0-0 score=0.4850 :: newton_constant_optimize_init_6 | age_regularized_survival | tournament_selection
+  1-8 -> (1-8, 0-0, 0-0) parent=0-0 score=0.5350 :: distribute_multiplication_mutation_init_7 | age_regularized_survival | tournament_selection
+  1-9 -> (0-0, 0-0, 1-9) parent=0-0 score=0.4550 :: add_constant_offset | age_regularized_survival | epsilon_pareto_rarity_selection_init_8
+
+Generation 1
+  2-0 -> (1-7, 2-0, 0-0) parent=1-7 score=0.5000 :: newton_constant_optimize_init_6 | oldest_worst_survival_gen1_0 | tournament_selection
+  2-1 -> (0-0, 0-0, 2-1) parent=1-9 score=0.2200 :: add_constant_offset | age_regularized_survival | pareto_novelty_age_tournament_gen1_1
+  2-2 -> (1-2, 0-0, 2-2) parent=1-2 score=0.5000 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_aware_tournament_selection_v2_gen1_2
+  2-3 -> (2-3, 0-0, 0-0) parent=1-8 score=0.5800 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  2-4 -> (2-4, 0-0, 1-4) parent=1-4 score=0.4000 :: add_constant_offset_smart_gen1_4 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  2-5 -> (2-5, 0-0, 0-0) parent=1-8 score=0.4650 :: affine_calibrate_tree_gen1_5 | age_regularized_survival | tournament_selection
+  2-6 -> (1-3, 2-6, 0-0) parent=1-3 score=0.4950 :: fold_constant_subtree_init_2 | worst_of_oldest_survival_gen1_6 | tournament_selection
+  2-7 -> (2-7, 0-0, 1-4) parent=1-4 score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  2-8 -> (1-7, 0-0, 2-8) parent=1-7 score=0.0000 :: newton_constant_optimize_init_6 | age_regularized_survival | epsilon_lexicase_novelty_selection_gen1_8
+  2-9 -> (1-3, 2-9, 0-0) parent=1-3 score=0.4450 :: fold_constant_subtree_init_2 | hybrid_age_parsimony_survival_v2_gen1_9 | tournament_selection
+
+Generation 2
+  carried (2-3, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  carried (1-2, 0-0, 0-0) score=0.5650 :: linear_constant_fit_init_1 | age_regularized_survival | tournament_selection
+  carried (1-3, 0-0, 0-0) score=0.5400 :: fold_constant_subtree_init_2 | age_regularized_survival | tournament_selection
+  carried (1-8, 0-0, 0-0) score=0.5350 :: distribute_multiplication_mutation_init_7 | age_regularized_survival | tournament_selection
+  carried (1-7, 2-0, 0-0) score=0.5000 :: newton_constant_optimize_init_6 | oldest_worst_survival_gen1_0 | tournament_selection
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  carried (0-0, 0-0, 1-9) score=0.4550 :: add_constant_offset | age_regularized_survival | epsilon_pareto_rarity_selection_init_8
+  carried (2-4, 0-0, 1-4) score=0.4000 :: add_constant_offset_smart_gen1_4 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  3-0 -> (3-0, 0-0, 0-0) parent=2-5 score=0.5100 :: combine_subtrees_mutation_gen2_0 | age_regularized_survival | tournament_selection
+  3-1 -> (3-1, 0-0, 0-0) parent=2-5 score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  3-2 -> (2-3, 3-2, 0-0) parent=2-3 score=0.3900 :: data_aware_correlation_builder_gen1_3 | crowded_complexity_niche_survival_gen2_2 | tournament_selection
+  3-3 -> (3-3, 2-0, 0-0) parent=2-0 score=0.3800 :: insert_residual_correlated_trig_term_gen2_3 | oldest_worst_survival_gen1_0 | tournament_selection
+  3-4 -> (3-4, 0-0, 2-2) parent=2-2 score=0.0000 :: linear_constant_fit_v2_gen2_4 | age_regularized_survival | pareto_aware_tournament_selection_v2_gen1_2
+  3-5 -> (1-3, 3-5, 0-0) parent=2-9 score=0.4800 :: fold_constant_subtree_init_2 | worst_of_oldest_survival_v2_gen2_5 | tournament_selection
+  3-6 -> (1-2, 3-6, 2-2) parent=2-2 score=0.5000 :: linear_constant_fit_init_1 | survival_worst_of_oldest_gen2_6 | pareto_aware_tournament_selection_v2_gen1_2
+  3-7 -> (1-2, 0-0, 3-7) parent=2-2 score=0.1900 :: linear_constant_fit_init_1 | age_regularized_survival | diversity_aware_selection_gen2_7
+  3-8 -> (1-2, 0-0, 3-8) parent=2-2 score=0.4800 :: linear_constant_fit_init_1 | age_regularized_survival | tournament_selection_age_biased_gen2_8
+  3-9 -> (1-2, 0-0, 3-9) parent=2-2 score=0.5350 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_gen2_9
+
+Generation 3
+  carried (2-3, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  carried (1-2, 0-0, 0-0) score=0.5650 :: linear_constant_fit_init_1 | age_regularized_survival | tournament_selection
+  carried (1-3, 0-0, 0-0) score=0.5400 :: fold_constant_subtree_init_2 | age_regularized_survival | tournament_selection
+  carried (1-2, 0-0, 3-9) score=0.5350 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  carried (1-8, 0-0, 0-0) score=0.5350 :: distribute_multiplication_mutation_init_7 | age_regularized_survival | tournament_selection
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (3-0, 0-0, 0-0) score=0.5100 :: combine_subtrees_mutation_gen2_0 | age_regularized_survival | tournament_selection
+  carried (1-2, 0-0, 3-8) score=0.4800 :: linear_constant_fit_init_1 | age_regularized_survival | tournament_selection_age_biased_gen2_8
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  4-0 -> (1-8, 4-0, 0-0) parent=1-8 score=0.2150 :: distribute_multiplication_mutation_init_7 | adaptive_parsimony_survival_gen3_0 | tournament_selection
+  4-1 -> (4-1, 0-0, 0-0) parent=3-1 score=0.5150 :: insert_fitted_linear_denominator_correction_gen3_1 | age_regularized_survival | tournament_selection
+  4-2 -> (4-2, 0-0, 0-0) parent=3-1 score=0.5800 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  4-3 -> (1-2, 4-3, 3-9) parent=3-9 score=0.5200 :: linear_constant_fit_init_1 | oldest_complex_survival_gen3_3 | pareto_tournament_selection_gen2_9
+  4-4 -> (4-4, 0-0, 3-9) parent=3-9 score=0.5050 :: linear_constant_fit_v2_gen3_4 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  4-5 -> (3-1, 0-0, 4-5) parent=3-1 score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection_pareto_v2_gen3_5
+  4-6 -> (4-6, 0-0, 0-0) parent=3-1 score=0.5600 :: promote_repeated_motif_to_ratio_gen3_6 | age_regularized_survival | tournament_selection
+  4-7 -> (1-2, 0-0, 4-7) parent=3-9 score=0.1500 :: linear_constant_fit_init_1 | age_regularized_survival | epsilon_lexicase_novelty_selection_gen3_7
+  4-8 -> (2-3, 4-8, 0-0) parent=3-2 score=0.4200 :: data_aware_correlation_builder_gen1_3 | bloat_aware_tournament_survival_gen3_8 | tournament_selection
+  4-9 -> (1-2, 0-0, 4-9) parent=3-9 score=0.4350 :: linear_constant_fit_init_1 | age_regularized_survival | rarity_boosted_rank_selection_gen3_9
+
+Generation 4
+  carried (4-2, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  carried (4-6, 0-0, 0-0) score=0.5600 :: promote_repeated_motif_to_ratio_gen3_6 | age_regularized_survival | tournament_selection
+  carried (1-2, 0-0, 3-9) score=0.5350 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  carried (4-1, 0-0, 0-0) score=0.5150 :: insert_fitted_linear_denominator_correction_gen3_1 | age_regularized_survival | tournament_selection
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  carried (2-3, 4-8, 0-0) score=0.4200 :: data_aware_correlation_builder_gen1_3 | bloat_aware_tournament_survival_gen3_8 | tournament_selection
+  5-0 -> (1-2, 5-0, 3-9) parent=4-3 score=0.3000 :: linear_constant_fit_init_1 | pareto_band_crowding_survival_gen4_0 | pareto_tournament_selection_gen2_9
+  5-1 -> (3-1, 5-1, 0-0) parent=3-1 score=0.5200 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | worst_of_oldest_survival_gen4_1 | tournament_selection
+  5-2 -> (5-2, 0-0, 0-0) parent=4-6 score=0.5012 :: data_aware_correlation_builder_v3_shape_templates_gen4_2 | age_regularized_survival | tournament_selection
+  5-3 -> (5-3, 0-0, 0-0) parent=4-6 score=0.4650 :: fit_one_pole_rational_correction_mutation_gen4_3 | age_regularized_survival | tournament_selection
+  5-4 -> (5-4, 0-0, 0-0) parent=4-6 score=0.5583 :: promote_repeated_motif_structural_v2_gen4_4 | age_regularized_survival | tournament_selection
+  5-5 -> (1-2, 5-5, 0-0) parent=1-2 score=0.3950 :: linear_constant_fit_init_1 | pareto_niche_redundancy_survival_gen4_5 | tournament_selection
+  5-6 -> (4-2, 0-0, 5-6) parent=4-2 score=0.5600 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | age_fitness_pareto_selection_gen4_6
+  5-7 -> (1-2, 0-0, 5-7) parent=4-9 score=0.4900 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_improved_gen4_7
+  5-8 -> (4-6, 0-0, 5-8) parent=4-6 score=0.2000 :: promote_repeated_motif_to_ratio_gen3_6 | age_regularized_survival | boltzmann_tournament_selection_gen4_8
+  5-9 -> (5-9, 0-0, 0-0) parent=4-6 score=0.5300 :: promote_repeated_motif_to_ratio_data_aware_gen4_9 | age_regularized_survival | tournament_selection
+
+Generation 5
+  carried (4-2, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  carried (4-6, 0-0, 0-0) score=0.5600 :: promote_repeated_motif_to_ratio_gen3_6 | age_regularized_survival | tournament_selection
+  carried (5-4, 0-0, 0-0) score=0.5583 :: promote_repeated_motif_structural_v2_gen4_4 | age_regularized_survival | tournament_selection
+  carried (1-2, 0-0, 3-9) score=0.5350 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  carried (2-3, 4-8, 0-0) score=0.4200 :: data_aware_correlation_builder_gen1_3 | bloat_aware_tournament_survival_gen3_8 | tournament_selection
+  6-0 -> (6-0, 0-0, 0-0) parent=5-9 score=0.5650 :: fractional_linear_wrap_gen5_0 | age_regularized_survival | tournament_selection
+  6-1 -> (2-3, 6-1, 0-0) parent=4-8 score=0.4150 :: data_aware_correlation_builder_gen1_3 | epsilon_pareto_bloat_survival_gen5_1 | tournament_selection
+  6-2 -> (6-2, 0-0, 0-0) parent=5-9 score=0.4700 :: prune_redundant_operations_gen5_2 | age_regularized_survival | tournament_selection
+  6-3 -> (2-3, 6-3, 0-0) parent=4-8 score=0.5450 :: data_aware_correlation_builder_gen1_3 | elitist_age_survival_gen5_3 | tournament_selection
+  6-4 -> (5-4, 6-4, 0-0) parent=5-4 score=0.5350 :: promote_repeated_motif_structural_v2_gen4_4 | worst_among_oldest_survival_gen5_4 | tournament_selection
+  6-5 -> (4-6, 0-0, 6-5) parent=5-8 score=0.5250 :: promote_repeated_motif_to_ratio_gen3_6 | age_regularized_survival | tournament_selection_improved_gen5_5
+  6-6 -> (4-2, 0-0, 6-6) parent=5-6 score=0.2300 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | boltzmann_selection_gen5_6
+  6-7 -> (6-7, 0-0, 0-0) parent=5-9 score=0.4100 :: residual_guided_linear_addition_gen5_7 | age_regularized_survival | tournament_selection
+  6-8 -> (2-3, 0-0, 6-8) parent=2-3 score=0.5500 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | pareto_aware_tournament_v2_gen5_8
+  6-9 -> (6-9, 0-0, 0-0) parent=5-9 score=0.5112 :: fit_linear_denominator_mutation_gen5_9 | age_regularized_survival | tournament_selection
+
+Generation 6
+  carried (4-2, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  carried (6-0, 0-0, 0-0) score=0.5650 :: fractional_linear_wrap_gen5_0 | age_regularized_survival | tournament_selection
+  carried (4-6, 0-0, 0-0) score=0.5600 :: promote_repeated_motif_to_ratio_gen3_6 | age_regularized_survival | tournament_selection
+  carried (5-4, 0-0, 0-0) score=0.5583 :: promote_repeated_motif_structural_v2_gen4_4 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 6-8) score=0.5500 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | pareto_aware_tournament_v2_gen5_8
+  carried (1-2, 0-0, 3-9) score=0.5350 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  7-0 -> (7-0, 0-0, 0-0) parent=6-9 score=0.5150 :: local_linear_constant_fit_v2_gen6_0 | age_regularized_survival | tournament_selection
+  7-1 -> (7-1, 0-0, 0-0) parent=6-9 score=0.4850 :: promote_repeated_motif_structural_relativistic_v3_gen6_1 | age_regularized_survival | tournament_selection
+  7-2 -> (7-2, 0-0, 0-0) parent=6-9 score=0.5800 :: data_aware_correlation_builder_v2_gen6_2 | age_regularized_survival | tournament_selection
+  7-3 -> (6-0, 0-0, 7-3) parent=6-0 score=0.2800 :: fractional_linear_wrap_gen5_0 | age_regularized_survival | complexity_biased_selection_gen6_3
+  7-4 -> (4-2, 0-0, 7-4) parent=6-6 score=0.3550 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | pareto_tournament_selection_gen6_4
+  7-5 -> (7-5, 0-0, 0-0) parent=6-9 score=0.0000 :: data_aware_correlation_builder_v3_relational_gen6_5 | age_regularized_survival | tournament_selection
+  7-6 -> (6-0, 7-6, 0-0) parent=6-0 score=0.4800 :: fractional_linear_wrap_gen5_0 | worst_of_oldest_survival_gen6_6 | tournament_selection
+  7-7 -> (4-6, 0-0, 7-7) parent=6-5 score=0.2500 :: promote_repeated_motif_to_ratio_gen3_6 | age_regularized_survival | adaptive_frontier_niche_selection_gen6_7
+  7-8 -> (1-2, 7-8, 3-9) parent=5-0 score=0.0000 :: linear_constant_fit_init_1 | complexity_driven_survival_gen6_8 | pareto_tournament_selection_gen2_9
+  7-9 -> (6-0, 7-9, 0-0) parent=6-0 score=0.4900 :: fractional_linear_wrap_gen5_0 | pareto_crowding_age_survival_gen6_9 | tournament_selection
+
+Generation 7
+  carried (4-2, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  carried (7-2, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_v2_gen6_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  carried (6-0, 0-0, 0-0) score=0.5650 :: fractional_linear_wrap_gen5_0 | age_regularized_survival | tournament_selection
+  carried (4-6, 0-0, 0-0) score=0.5600 :: promote_repeated_motif_to_ratio_gen3_6 | age_regularized_survival | tournament_selection
+  carried (5-4, 0-0, 0-0) score=0.5583 :: promote_repeated_motif_structural_v2_gen4_4 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 6-8) score=0.5500 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | pareto_aware_tournament_v2_gen5_8
+  carried (1-2, 0-0, 3-9) score=0.5350 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  8-0 -> (4-2, 8-0, 0-0) parent=4-2 score=0.4500 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_pareto_survival_v2_gen7_0 | tournament_selection
+  8-1 -> (4-6, 8-1, 0-0) parent=4-6 score=0.4300 :: promote_repeated_motif_to_ratio_gen3_6 | pareto_dominated_survival_gen7_1 | tournament_selection
+  8-2 -> (8-2, 0-0, 0-0) parent=7-5 score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  8-3 -> (4-6, 0-0, 8-3) parent=7-7 score=0.5200 :: promote_repeated_motif_to_ratio_gen3_6 | age_regularized_survival | tournament_selection_bridge_v2_gen7_3
+  8-4 -> (4-2, 8-4, 0-0) parent=4-2 score=0.3400 :: data_aware_correlation_builder_v2_gen3_2 | pareto_age_fitness_survival_gen7_4 | tournament_selection
+  8-5 -> (8-5, 0-0, 0-0) parent=7-5 score=0.5750 :: data_aware_correlation_builder_v3_gen7_5 | age_regularized_survival | tournament_selection
+  8-6 -> (8-6, 0-0, 0-0) parent=7-5 score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection
+  8-7 -> (5-4, 0-0, 8-7) parent=5-4 score=0.4500 :: promote_repeated_motif_structural_v2_gen4_4 | age_regularized_survival | age_fitness_pareto_selection_gen7_7
+  8-8 -> (5-4, 0-0, 8-8) parent=5-4 score=0.4600 :: promote_repeated_motif_structural_v2_gen4_4 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen7_8
+  8-9 -> (8-9, 0-0, 0-0) parent=7-5 score=0.6000 :: promote_repeated_motif_to_ratio_v2_gen7_9 | age_regularized_survival | tournament_selection
+
+Generation 8
+  carried (8-9, 0-0, 0-0) score=0.6000 :: promote_repeated_motif_to_ratio_v2_gen7_9 | age_regularized_survival | tournament_selection
+  carried (8-6, 0-0, 0-0) score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection
+  carried (4-2, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (6-0, 0-0, 0-0) score=0.5650 :: fractional_linear_wrap_gen5_0 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 6-8) score=0.5500 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | pareto_aware_tournament_v2_gen5_8
+  carried (1-2, 0-0, 3-9) score=0.5350 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  9-0 -> (9-0, 0-0, 6-8) parent=6-8 score=0.4950 :: wrap_in_algebraic_template_gen8_0 | age_regularized_survival | pareto_aware_tournament_v2_gen5_8
+  9-1 -> (2-3, 9-1, 6-8) parent=6-8 score=0.5350 :: data_aware_correlation_builder_gen1_3 | age_cost_tournament_survival_gen8_1 | pareto_aware_tournament_v2_gen5_8
+  9-2 -> (9-2, 0-0, 0-0) parent=8-9 score=0.4136 :: data_aware_correlation_builder_v2_gen8_2 | age_regularized_survival | tournament_selection
+  9-3 -> (8-6, 9-3, 0-0) parent=8-6 score=0.5972 :: data_aware_correlation_builder_v3_gen7_6 | fitness_protected_age_survival_v2_gen8_3 | tournament_selection
+  9-4 -> (9-4, 0-0, 0-0) parent=8-9 score=0.4650 :: gauss_newton_fit_constant_gen8_4 | age_regularized_survival | tournament_selection
+  9-5 -> (8-9, 0-0, 9-5) parent=8-9 score=0.2350 :: promote_repeated_motif_to_ratio_v2_gen7_9 | age_regularized_survival | adaptive_size_band_parent_selection_gen8_5
+  9-6 -> (8-6, 9-6, 0-0) parent=8-6 score=0.0000 :: data_aware_correlation_builder_v3_gen7_6 | age_cost_hybrid_survival_v2_gen8_6 | tournament_selection
+  9-7 -> (9-7, 0-0, 0-0) parent=8-9 score=0.5650 :: data_aware_node_insertion_v2_gen8_7 | age_regularized_survival | tournament_selection
+  9-8 -> (8-9, 0-0, 9-8) parent=8-9 score=0.1250 :: promote_repeated_motif_to_ratio_v2_gen7_9 | age_regularized_survival | complexity_diversity_selection_gen8_8
+  9-9 -> (4-2, 0-0, 9-9) parent=7-4 score=0.5500 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection_v2_gen8_9
+
+Generation 9
+  carried (8-9, 0-0, 0-0) score=0.6000 :: promote_repeated_motif_to_ratio_v2_gen7_9 | age_regularized_survival | tournament_selection
+  carried (8-6, 9-3, 0-0) score=0.5972 :: data_aware_correlation_builder_v3_gen7_6 | fitness_protected_age_survival_v2_gen8_3 | tournament_selection
+  carried (8-6, 0-0, 0-0) score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection
+  carried (4-2, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_v2_gen3_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (6-0, 0-0, 0-0) score=0.5650 :: fractional_linear_wrap_gen5_0 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 6-8) score=0.5500 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | pareto_aware_tournament_v2_gen5_8
+  carried (1-2, 0-0, 3-9) score=0.5350 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  10-0 -> (10-0, 0-0, 6-8) parent=9-0 score=0.4300 :: transform_unary_argument_gen9_0 | age_regularized_survival | pareto_aware_tournament_v2_gen5_8
+  10-1 -> (2-3, 0-0, 10-1) parent=6-8 score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  10-2 -> (10-2, 0-0, 0-0) parent=9-7 score=0.5300 :: stochastic_data_aware_correlation_builder_gen9_2 | age_regularized_survival | tournament_selection
+  10-3 -> (8-6, 9-3, 10-3) parent=9-3 score=0.5750 :: data_aware_correlation_builder_v3_gen7_6 | fitness_protected_age_survival_v2_gen8_3 | tournament_selection_improved_gen9_3
+  10-4 -> (8-2, 10-4, 0-0) parent=8-2 score=0.4450 :: promote_repeated_motif_structural_v3_gen7_2 | redundancy_aware_pareto_survival_gen9_4 | tournament_selection
+  10-5 -> (10-5, 0-0, 0-0) parent=9-7 score=0.4600 :: least_squares_affine_wrapper_mutation_gen9_5 | age_regularized_survival | tournament_selection
+  10-6 -> (10-6, 0-0, 0-0) parent=9-7 score=0.5700 :: fractional_affine_ratio_wrap_v2_gen9_6 | age_regularized_survival | tournament_selection
+  10-7 -> (2-3, 0-0, 10-7) parent=6-8 score=0.5450 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | enhanced_recency_biased_tournament_v2_gen9_7
+  10-8 -> (4-2, 10-8, 0-0) parent=8-4 score=0.5400 :: data_aware_correlation_builder_v2_gen3_2 | hybrid_age_parsimony_survival_v2_gen9_8 | tournament_selection
+  10-9 -> (8-2, 10-9, 0-0) parent=8-2 score=0.4950 :: promote_repeated_motif_structural_v3_gen7_2 | age_pareto_regularized_survival_v2_gen9_9 | tournament_selection
+
+Generation 10
+  carried (8-9, 0-0, 0-0) score=0.6000 :: promote_repeated_motif_to_ratio_v2_gen7_9 | age_regularized_survival | tournament_selection
+  carried (8-6, 9-3, 0-0) score=0.5972 :: data_aware_correlation_builder_v3_gen7_6 | fitness_protected_age_survival_v2_gen8_3 | tournament_selection
+  carried (8-6, 0-0, 0-0) score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 0-0) score=0.5800 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | tournament_selection
+  carried (10-6, 0-0, 0-0) score=0.5700 :: fractional_affine_ratio_wrap_v2_gen9_6 | age_regularized_survival | tournament_selection
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (6-0, 0-0, 0-0) score=0.5650 :: fractional_linear_wrap_gen5_0 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (2-3, 0-0, 6-8) score=0.5500 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | pareto_aware_tournament_v2_gen5_8
+  carried (1-2, 0-0, 3-9) score=0.5350 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  11-0 -> (11-0, 0-0, 0-0) parent=10-6 score=0.4900 :: mutate_internal_recombination_gen10_0 | age_regularized_survival | tournament_selection
+  11-1 -> (2-3, 11-1, 0-0) parent=6-3 score=0.5250 :: data_aware_correlation_builder_gen1_3 | pareto_protected_age_survival_gen10_1 | tournament_selection
+  11-2 -> (11-2, 0-0, 0-0) parent=10-6 score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  11-3 -> (8-9, 11-3, 0-0) parent=8-9 score=0.4950 :: promote_repeated_motif_to_ratio_v2_gen7_9 | tournament_worst_survival_gen10_3 | tournament_selection
+  11-4 -> (2-3, 0-0, 11-4) parent=10-7 score=0.5550 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_rank_novelty_selection_gen10_4
+  11-5 -> (8-9, 11-5, 0-0) parent=8-9 score=0.2700 :: promote_repeated_motif_to_ratio_v2_gen7_9 | oldest_worst_survival_gen10_5 | tournament_selection
+  11-6 -> (11-6, 0-0, 0-0) parent=10-6 score=0.5050 :: internal_subtree_combine_gen10_6 | age_regularized_survival | tournament_selection
+  11-7 -> (11-7, 9-3, 0-0) parent=9-3 score=0.3800 :: gauss_newton_constant_fit_gen10_7 | fitness_protected_age_survival_v2_gen8_3 | tournament_selection
+  11-8 -> (8-2, 0-0, 11-8) parent=8-2 score=0.2000 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | linear_rank_selection_gen10_8
+  11-9 -> (8-6, 0-0, 11-9) parent=8-6 score=0.6100 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+
+Generation 11
+  carried (8-6, 0-0, 11-9) score=0.6100 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (8-6, 0-0, 0-0) score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (6-0, 0-0, 0-0) score=0.5650 :: fractional_linear_wrap_gen5_0 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (2-3, 0-0, 6-8) score=0.5500 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | pareto_aware_tournament_v2_gen5_8
+  carried (1-2, 0-0, 3-9) score=0.5350 :: linear_constant_fit_init_1 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  12-0 -> (2-7, 0-0, 12-0) parent=2-7 score=0.4050 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | lexicase_selection_gen11_0
+  12-1 -> (12-1, 0-0, 11-9) parent=11-9 score=0.4987 :: data_aware_correlation_builder_v4_gen11_1 | age_regularized_survival | tournament_selection_improved_gen10_9
+  12-2 -> (12-2, 0-0, 0-0) parent=11-6 score=0.5700 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_regularized_survival | tournament_selection
+  12-3 -> (11-2, 12-3, 0-0) parent=11-2 score=0.5050 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival_v2_gen11_3 | tournament_selection
+  12-4 -> (12-4, 0-0, 3-9) parent=4-4 score=0.4700 :: rationalize_subtree_gen11_4 | age_regularized_survival | pareto_tournament_selection_gen2_9
+  12-5 -> (8-2, 12-5, 0-0) parent=10-9 score=0.5150 :: promote_repeated_motif_structural_v3_gen7_2 | pareto_dominated_survival_gen11_5 | tournament_selection
+  12-6 -> (8-2, 0-0, 12-6) parent=11-8 score=0.4950 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | diversity_aware_tournament_v2_gen11_6
+  12-7 -> (8-6, 0-0, 12-7) parent=11-9 score=0.5750 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_bridge_v2_gen11_7
+  12-8 -> (12-8, 0-0, 0-0) parent=11-6 score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  12-9 -> (11-2, 12-9, 0-0) parent=11-2 score=0.5550 :: fractional_affine_ratio_wrap_v3_gen10_2 | protected_age_regularized_survival_v2_gen11_9 | tournament_selection
+
+Generation 12
+  carried (8-6, 0-0, 11-9) score=0.6100 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (8-6, 0-0, 0-0) score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection
+  carried (12-2, 0-0, 0-0) score=0.5700 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_regularized_survival | tournament_selection
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (12-1, 0-0, 11-9) score=0.4987 :: data_aware_correlation_builder_v4_gen11_1 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  13-0 -> (13-0, 0-0, 0-0) parent=12-8 score=0.5850 :: data_aware_correlation_builder_v4_gen12_0 | age_regularized_survival | tournament_selection
+  13-1 -> (8-2, 13-1, 0-0) parent=12-5 score=0.5050 :: promote_repeated_motif_structural_v3_gen7_2 | pareto_protected_age_survival_gen12_1 | tournament_selection
+  13-2 -> (12-2, 13-2, 0-0) parent=12-2 score=0.4750 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_regularized_pareto_survival_v2_gen12_2 | tournament_selection
+  13-3 -> (11-2, 0-0, 13-3) parent=11-2 score=0.3900 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | pareto_novelty_tournament_gen12_3
+  13-4 -> (12-2, 0-0, 13-4) parent=12-2 score=0.5750 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_regularized_survival | tournament_selection_v2_gen12_4
+  13-5 -> (13-5, 0-0, 0-0) parent=12-8 score=0.5100 :: residual_guided_feature_mutation_gen12_5 | age_regularized_survival | tournament_selection
+  13-6 -> (13-6, 0-0, 11-9) parent=12-1 score=0.4850 :: squarify_subtree_mutation_gen12_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  13-7 -> (12-2, 0-0, 13-7) parent=12-2 score=0.0000 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_regularized_survival | adaptive_pareto_steppingstone_selection_gen12_7
+  13-8 -> (13-8, 0-0, 0-0) parent=12-8 score=0.5250 :: reciprocal_residual_denominator_mutation_gen12_8 | age_regularized_survival | tournament_selection
+  13-9 -> (11-2, 13-9, 0-0) parent=12-9 score=0.4800 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_parsimony_regularized_survival_v2_gen12_9 | tournament_selection
+
+Generation 13
+  carried (8-6, 0-0, 11-9) score=0.6100 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (8-6, 0-0, 0-0) score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection
+  carried (12-2, 0-0, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_regularized_survival | tournament_selection_v2_gen12_4
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (12-1, 0-0, 11-9) score=0.4987 :: data_aware_correlation_builder_v4_gen11_1 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  14-0 -> (2-3, 0-0, 14-0) parent=11-4 score=0.5450 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_improved_gen13_0
+  14-1 -> (12-2, 14-1, 13-4) parent=13-4 score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  14-2 -> (8-6, 0-0, 14-2) parent=12-7 score=0.5900 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen13_2
+  14-3 -> (14-3, 0-0, 0-0) parent=13-8 score=0.4800 :: distribute_multiplication_mutation_chain_preserving_v3_gen13_3 | age_regularized_survival | tournament_selection
+  14-4 -> (14-4, 0-0, 0-0) parent=13-8 score=0.5650 :: relativistic_rational_wrap_v3_improved_gen13_4 | age_regularized_survival | tournament_selection
+  14-5 -> (8-6, 14-5, 11-9) parent=11-9 score=0.2100 :: data_aware_correlation_builder_v3_gen7_6 | survival_bloat_control_gen13_5 | tournament_selection_improved_gen10_9
+  14-6 -> (14-6, 0-0, 1-4) parent=2-7 score=0.4350 :: insert_residual_guided_quadratic_term_v2_gen13_6 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  14-7 -> (12-2, 14-7, 13-4) parent=13-4 score=0.5550 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | pareto_protected_age_survival_gen13_7 | tournament_selection_v2_gen12_4
+  14-8 -> (14-8, 0-0, 0-0) parent=13-8 score=0.5150 :: factor_or_distribute_common_subtree_gen13_8 | age_regularized_survival | tournament_selection
+  14-9 -> (8-2, 0-0, 14-9) parent=12-6 score=0.5050 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | smart_tournament_selection_gen13_9
+
+Generation 14
+  carried (8-6, 0-0, 11-9) score=0.6100 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (8-6, 0-0, 0-0) score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (12-1, 0-0, 11-9) score=0.4987 :: data_aware_correlation_builder_v4_gen11_1 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  15-0 -> (12-8, 0-0, 15-0) parent=12-8 score=0.5500 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection_pareto_v2_gen14_0
+  15-1 -> (15-1, 0-0, 0-0) parent=14-8 score=0.5600 :: fractional_affine_ratio_wrap_v4_gen11_gen14_1 | age_regularized_survival | tournament_selection
+  15-2 -> (11-2, 0-0, 15-2) parent=13-3 score=0.5900 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | pareto_novelty_tournament_gen14_2
+  15-3 -> (15-3, 0-0, 0-0) parent=14-8 score=0.5250 :: residual_guided_feature_insertion_gen14_3 | age_regularized_survival | tournament_selection
+  15-4 -> (8-2, 15-4, 0-0) parent=13-1 score=0.4150 :: promote_repeated_motif_structural_v3_gen7_2 | crowded_niche_worst_survival_gen14_4 | tournament_selection
+  15-5 -> (12-2, 14-1, 15-5) parent=14-1 score=0.0100 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | pareto_tournament_selection_gen14_5
+  15-6 -> (8-6, 15-6, 11-9) parent=14-5 score=0.3700 :: data_aware_correlation_builder_v3_gen7_6 | worst_cost_survival_gen14_6 | tournament_selection_improved_gen10_9
+  15-7 -> (3-1, 15-7, 0-0) parent=5-1 score=0.0250 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | crowding_replacement_survival_gen14_7 | tournament_selection
+  15-8 -> (15-8, 0-0, 0-0) parent=14-8 score=0.5150 :: promote_repeated_motif_structural_v4_gen14_8 | age_regularized_survival | tournament_selection
+  15-9 -> (15-9, 0-0, 0-0) parent=14-8 score=0.5450 :: optimize_constant_by_linear_approximation_gen14_9 | age_regularized_survival | tournament_selection
+
+Generation 15
+  carried (8-6, 0-0, 11-9) score=0.6100 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (8-6, 0-0, 0-0) score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (12-1, 0-0, 11-9) score=0.4987 :: data_aware_correlation_builder_v4_gen11_1 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (2-7, 0-0, 1-4) score=0.4600 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  16-0 -> (16-0, 0-0, 0-0) parent=15-9 score=0.5450 :: promote_repeated_motif_structural_v4_gen15_0 | age_regularized_survival | tournament_selection
+  16-1 -> (8-6, 16-1, 0-0) parent=9-6 score=0.5350 :: data_aware_correlation_builder_v3_gen7_6 | pareto_protected_age_survival_gen15_1 | tournament_selection
+  16-2 -> (8-6, 0-0, 16-2) parent=14-2 score=0.6000 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | age_fitness_pareto_selection_gen15_2
+  16-3 -> (16-3, 0-0, 0-0) parent=15-9 score=0.5150 :: rewrite_self_cancellation_to_oneplus_denominator_gen15_3 | age_regularized_survival | tournament_selection
+  16-4 -> (2-7, 0-0, 16-4) parent=12-0 score=0.4300 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | enhanced_pareto_novelty_selection_gen15_4
+  16-5 -> (3-1, 0-0, 16-5) parent=4-5 score=0.3550 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | enhanced_diversity_tournament_gen15_5
+  16-6 -> (16-6, 0-0, 10-1) parent=10-1 score=0.4900 :: fit_constant_lsq_gen15_6 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  16-7 -> (8-6, 16-7, 0-0) parent=9-6 score=0.5800 :: data_aware_correlation_builder_v3_gen7_6 | pareto_aware_age_survival_gen15_7 | tournament_selection
+  16-8 -> (8-6, 16-8, 11-9) parent=15-6 score=0.6150 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  16-9 -> (16-9, 0-0, 0-0) parent=15-9 score=0.5500 :: relativistic_rational_wrap_v3_dataaware_gen15_9 | age_regularized_survival | tournament_selection
+
+Generation 16
+  carried (8-6, 16-8, 11-9) score=0.6150 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (8-6, 0-0, 11-9) score=0.6100 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (8-6, 0-0, 0-0) score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (12-1, 0-0, 11-9) score=0.4987 :: data_aware_correlation_builder_v4_gen11_1 | age_regularized_survival | tournament_selection_improved_gen10_9
+  17-0 -> (8-6, 17-0, 11-9) parent=16-8 score=0.5600 :: data_aware_correlation_builder_v3_gen7_6 | worst_of_oldest_survival_gen16_0 | tournament_selection_improved_gen10_9
+  17-1 -> (8-6, 17-1, 0-0) parent=16-7 score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  17-2 -> (17-2, 0-0, 0-0) parent=16-9 score=0.4850 :: distribute_multiplication_mutation_data_aware_v3_gen16_2 | age_regularized_survival | tournament_selection
+  17-3 -> (12-2, 17-3, 13-4) parent=14-7 score=0.4650 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | crowded_complexity_worst_survival_gen16_3 | tournament_selection_v2_gen12_4
+  17-4 -> (17-4, 0-0, 1-4) parent=14-6 score=0.4563 :: insert_residual_guided_quadratic_term_improved_gen16_4 | age_regularized_survival | pareto_novelty_tournament_selection_init_3
+  17-5 -> (17-5, 0-0, 11-9) parent=13-6 score=0.4792 :: data_aware_correlation_builder_v4_improved_gen16_5 | age_regularized_survival | tournament_selection_improved_gen10_9
+  17-6 -> (17-6, 0-0, 11-9) parent=13-6 score=0.5700 :: data_aware_correlation_builder_v4_gen16_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  17-7 -> (8-6, 16-8, 17-7) parent=16-8 score=0.2900 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_adaptive_eps_v2_gen16_7
+  17-8 -> (8-6, 0-0, 17-8) parent=16-2 score=0.5600 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_survival | tournament_selection_v2_gen16_8
+  17-9 -> (2-3, 0-0, 17-9) parent=14-0 score=0.5300 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_gen16_9
+
+Generation 17
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (8-6, 16-8, 11-9) score=0.6150 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (17-6, 0-0, 11-9) score=0.5700 :: data_aware_correlation_builder_v4_gen16_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (2-3, 0-0, 17-9) score=0.5300 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_gen16_9
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  18-0 -> (18-0, 0-0, 11-9) parent=17-6 score=0.4900 :: factor_common_term_mutation_gen17_0 | age_regularized_survival | tournament_selection_improved_gen10_9
+  18-1 -> (17-6, 0-0, 18-1) parent=17-6 score=0.5389 :: data_aware_correlation_builder_v4_gen16_6 | age_regularized_survival | rarity_weighted_age_fitness_complexity_selection_gen17_1
+  18-2 -> (17-6, 0-0, 18-2) parent=17-6 score=0.5300 :: data_aware_correlation_builder_v4_gen16_6 | age_regularized_survival | tournament_selection_pareto_epsilon_v2_gen17_2
+  18-3 -> (12-8, 0-0, 18-3) parent=15-0 score=0.5150 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | enhanced_lex_tournament_gen17_3
+  18-4 -> (8-6, 18-4, 11-9) parent=17-0 score=0.5750 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_frontier_thinning_survival_v2_gen17_4 | tournament_selection_improved_gen10_9
+  18-5 -> (17-6, 18-5, 11-9) parent=17-6 score=0.4572 :: data_aware_correlation_builder_v4_gen16_6 | complexity_crowding_survival_gen17_5 | tournament_selection_improved_gen10_9
+  18-6 -> (2-3, 18-6, 10-1) parent=10-1 score=0.5100 :: data_aware_correlation_builder_gen1_3 | tournament_age_survival_gen17_6 | age_fitness_pareto_tournament_selection_gen9_1
+  18-7 -> (18-7, 17-1, 0-0) parent=17-1 score=0.5000 :: data_aware_correlation_builder_v3_gen8_gen17_7 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  18-8 -> (18-8, 0-0, 0-0) parent=17-2 score=0.5700 :: relativistic_rational_wrap_v3_gen17_8 | age_regularized_survival | tournament_selection
+  18-9 -> (18-9, 0-0, 11-9) parent=17-6 score=0.5250 :: data_aware_quadratic_insertion_gen17_9 | age_regularized_survival | tournament_selection_improved_gen10_9
+
+Generation 18
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (8-6, 16-8, 11-9) score=0.6150 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (17-6, 0-0, 11-9) score=0.5700 :: data_aware_correlation_builder_v4_gen16_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (2-3, 0-0, 17-9) score=0.5300 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_gen16_9
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  19-0 -> (8-2, 0-0, 19-0) parent=14-9 score=0.4200 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | diversity_promoting_rank_selection_gen18_0
+  19-1 -> (19-1, 0-0, 17-9) parent=17-9 score=0.5250 :: data_aware_correlation_builder_v2_gen18_1 | age_regularized_survival | adaptive_frontier_bandit_selection_gen16_9
+  19-2 -> (19-2, 0-0, 11-9) parent=18-9 score=0.3051 :: data_aware_correlation_builder_v5_gen18_2 | age_regularized_survival | tournament_selection_improved_gen10_9
+  19-3 -> (8-6, 19-3, 11-9) parent=18-4 score=0.4150 :: data_aware_correlation_builder_v3_gen7_6 | pareto_crowding_survival_gen18_3 | tournament_selection_improved_gen10_9
+  19-4 -> (2-7, 0-0, 19-4) parent=16-4 score=0.4800 :: insert_residual_guided_quadratic_term_gen1_7 | age_regularized_survival | pareto_novelty_tournament_selection_improved_gen18_4
+  19-5 -> (8-2, 0-0, 19-5) parent=14-9 score=0.0150 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | epsilon_lexicase_pareto_selection_gen18_5
+  19-6 -> (19-6, 17-1, 0-0) parent=18-7 score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  19-7 -> (2-7, 19-7, 1-4) parent=2-7 score=0.3600 :: insert_residual_guided_quadratic_term_gen1_7 | pareto_protected_age_survival_gen18_7 | pareto_novelty_tournament_selection_init_3
+  19-8 -> (8-6, 19-8, 11-9) parent=18-4 score=0.4600 :: data_aware_correlation_builder_v3_gen7_6 | crowded_plateau_parsimony_survival_gen18_8 | tournament_selection_improved_gen10_9
+  19-9 -> (19-9, 0-0, 0-0) parent=18-8 score=0.4400 :: fit_bias_constant_gen18_9 | age_regularized_survival | tournament_selection
+
+Generation 19
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (8-6, 16-8, 11-9) score=0.6150 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (17-6, 0-0, 11-9) score=0.5700 :: data_aware_correlation_builder_v4_gen16_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (2-3, 0-0, 17-9) score=0.5300 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_gen16_9
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  20-0 -> (20-0, 16-8, 11-9) parent=16-8 score=0.5250 :: insert_normalized_ratio_shell_gen19_0 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  20-1 -> (20-1, 0-0, 17-9) parent=19-1 score=0.5150 :: data_aware_correlation_builder_v2_gen19_1 | age_regularized_survival | adaptive_frontier_bandit_selection_gen16_9
+  20-2 -> (11-2, 0-0, 20-2) parent=15-2 score=0.0000 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | age_fitness_frequency_pareto_selection_gen19_2
+  20-3 -> (2-3, 0-0, 20-3) parent=17-9 score=0.4600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_loss_pareto_tournament_selection_improved_gen19_3
+  20-4 -> (12-8, 0-0, 20-4) parent=18-3 score=0.4700 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection_v2_gen19_4
+  20-5 -> (20-5, 16-8, 11-9) parent=16-8 score=0.5500 :: data_aware_correlation_builder_v4_gen19_5 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  20-6 -> (8-6, 20-6, 0-0) parent=17-1 score=0.5700 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_elite_survival_v2_gen19_6 | tournament_selection
+  20-7 -> (8-6, 20-7, 11-9) parent=19-8 score=0.5450 :: data_aware_correlation_builder_v3_gen7_6 | tournament_worst_survival_gen19_7 | tournament_selection_improved_gen10_9
+  20-8 -> (20-8, 17-1, 0-0) parent=19-6 score=0.5800 :: data_aware_correlation_builder_v4_sqsum_gen19_8 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  20-9 -> (12-8, 20-9, 0-0) parent=12-8 score=0.3947 :: relativistic_rational_wrap_v2_gen11_8 | frontier_crowding_survival_gen19_9 | tournament_selection
+
+Generation 20
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (8-6, 16-8, 11-9) score=0.6150 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (17-6, 0-0, 11-9) score=0.5700 :: data_aware_correlation_builder_v4_gen16_6 | age_regularized_survival | tournament_selection_improved_gen10_9
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (2-3, 0-0, 17-9) score=0.5300 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_gen16_9
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  21-0 -> (11-2, 21-0, 0-0) parent=13-9 score=0.0550 :: fractional_affine_ratio_wrap_v3_gen10_2 | complexity_aware_survival_gen20_0 | tournament_selection
+  21-1 -> (21-1, 16-8, 11-9) parent=20-5 score=0.5450 :: data_driven_node_replacement_gen20_1 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  21-2 -> (12-8, 21-2, 0-0) parent=20-9 score=0.5900 :: relativistic_rational_wrap_v2_gen11_8 | age_fitness_survival_improved_gen20_2 | tournament_selection
+  21-3 -> (8-6, 17-1, 21-3) parent=17-1 score=0.5250 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection_improved_gen20_3
+  21-4 -> (8-6, 16-8, 21-4) parent=17-7 score=0.5750 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_pareto_epsilon_v2_gen20_4
+  21-5 -> (2-3, 21-5, 17-9) parent=17-9 score=0.5750 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  21-6 -> (21-6, 17-1, 0-0) parent=20-8 score=0.5611 :: data_aware_correlation_builder_v4_gen20_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  21-7 -> (21-7, 17-1, 0-0) parent=20-8 score=0.5950 :: data_aware_correlation_builder_v4_gen20_7 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  21-8 -> (21-8, 14-1, 13-4) parent=14-1 score=0.4800 :: simplify_identities_gen20_8 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  21-9 -> (8-2, 0-0, 21-9) parent=19-5 score=0.0000 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | frequency_balanced_selection_gen20_9
+
+Generation 21
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (8-6, 16-8, 11-9) score=0.6150 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (2-3, 21-5, 17-9) score=0.5750 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (2-3, 0-0, 17-9) score=0.5300 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_gen16_9
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  22-0 -> (22-0, 16-8, 11-9) parent=21-1 score=0.4850 :: wrap_in_rational_denominator_gen21_0 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  22-1 -> (22-1, 0-0, 0-0) parent=19-9 score=0.5450 :: promote_repeated_motif_structural_v4_gen21_1 | age_regularized_survival | tournament_selection
+  22-2 -> (8-2, 22-2, 0-0) parent=15-4 score=0.5450 :: promote_repeated_motif_structural_v3_gen7_2 | cohort_age_survival_gen21_2 | tournament_selection
+  22-3 -> (11-2, 0-0, 22-3) parent=20-2 score=0.5450 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection_improved_gen21_3
+  22-4 -> (8-6, 22-4, 11-9) parent=20-7 score=0.5550 :: data_aware_correlation_builder_v3_gen7_6 | pareto_protecting_tournament_survival_gen21_4 | tournament_selection_improved_gen10_9
+  22-5 -> (11-2, 22-5, 0-0) parent=21-0 score=0.4950 :: fractional_affine_ratio_wrap_v3_gen10_2 | pareto_protected_anti_tournament_gen21_5 | tournament_selection
+  22-6 -> (22-6, 16-8, 11-9) parent=21-1 score=0.5250 :: data_aware_correlation_builder_v4_gen21_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  22-7 -> (8-6, 17-1, 22-7) parent=21-3 score=0.5900 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection_v2_gen21_7
+  22-8 -> (8-6, 16-8, 22-8) parent=21-4 score=0.5450 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | age_fitness_pareto_selection_gen21_8
+  22-9 -> (22-9, 16-8, 11-9) parent=21-1 score=0.5600 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+
+Generation 22
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (8-6, 16-8, 11-9) score=0.6150 :: data_aware_correlation_builder_v3_gen7_6 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (11-2, 0-0, 0-0) score=0.6100 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (2-3, 21-5, 17-9) score=0.5750 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (22-9, 16-8, 11-9) score=0.5600 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (2-3, 0-0, 10-1) score=0.5600 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_tournament_selection_gen9_1
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (2-3, 0-0, 17-9) score=0.5300 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_gen16_9
+  23-0 -> (23-0, 21-5, 17-9) parent=21-5 score=0.6300 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  23-1 -> (11-2, 23-1, 0-0) parent=22-5 score=0.5200 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_fitness_pareto_survival_gen22_1 | tournament_selection
+  23-2 -> (23-2, 16-8, 11-9) parent=22-9 score=0.4700 :: insert_one_minus_gen22_2 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  23-3 -> (11-2, 23-3, 0-0) parent=22-5 score=0.3700 :: fractional_affine_ratio_wrap_v3_gen10_2 | pareto_protected_age_survival_gen22_3 | tournament_selection
+  23-4 -> (2-3, 0-0, 23-4) parent=20-3 score=0.6100 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | age_fitness_pareto_selection_gen22_4
+  23-5 -> (11-2, 0-0, 23-5) parent=22-3 score=0.5700 :: fractional_affine_ratio_wrap_v3_gen10_2 | age_regularized_survival | epsilon_lexicase_novelty_selection_gen22_5
+  23-6 -> (2-3, 23-6, 10-1) parent=18-6 score=0.5400 :: data_aware_correlation_builder_gen1_3 | age_regularized_pareto_crowding_survival_v2_gen22_6 | age_fitness_pareto_tournament_selection_gen9_1
+  23-7 -> (23-7, 21-5, 17-9) parent=21-5 score=0.4600 :: mutate_residual_feature_substitution_gen22_7 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  23-8 -> (23-8, 16-8, 11-9) parent=22-9 score=0.3211 :: data_aware_correlation_motif_builder_v4_improved_gen22_8 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  23-9 -> (2-3, 0-0, 23-9) parent=20-3 score=0.5000 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_corridor_v2_gen22_9
+
+Generation 23
+  carried (23-0, 21-5, 17-9) score=0.6300 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (2-3, 21-5, 17-9) score=0.5750 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (22-9, 16-8, 11-9) score=0.5600 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 23-9) score=0.5000 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_corridor_v2_gen22_9
+  24-0 -> (12-8, 0-0, 24-0) parent=20-4 score=0.0000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection_v2_gen23_0
+  24-1 -> (12-2, 24-1, 13-4) parent=17-3 score=0.5550 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | crowded_niche_worst_survival_gen23_1 | tournament_selection_v2_gen12_4
+  24-2 -> (3-1, 0-0, 24-2) parent=16-5 score=0.2600 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection_pareto_young_v2_gen23_2
+  24-3 -> (23-0, 24-3, 17-9) parent=23-0 score=0.6150 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_v2_gen23_3 | adaptive_frontier_bandit_selection_gen16_9
+  24-4 -> (22-9, 16-8, 24-4) parent=22-9 score=0.3300 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_epsilon_lex_v2_gen23_4
+  24-5 -> (24-5, 17-1, 0-0) parent=21-7 score=0.5500 :: data_aware_correlation_builder_v4_gen23_5 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  24-6 -> (12-8, 24-6, 0-0) parent=21-2 score=0.5550 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival_v2_gen23_6 | tournament_selection
+  24-7 -> (24-7, 21-5, 17-9) parent=23-7 score=0.5950 :: data_aware_correlation_builder_v2_gen23_7 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  24-8 -> (24-8, 0-0, 0-0) parent=22-1 score=0.4850 :: fit_constant_by_least_squares_gen23_8 | age_regularized_survival | tournament_selection
+  24-9 -> (24-9, 16-8, 11-9) parent=23-8 score=0.5200 :: linearized_invsqrt_ratio_factor_mutation_gen23_9 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+
+Generation 24
+  carried (23-0, 21-5, 17-9) score=0.6300 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (2-3, 21-5, 17-9) score=0.5750 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (22-9, 16-8, 11-9) score=0.5600 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 23-9) score=0.5000 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_corridor_v2_gen22_9
+  25-0 -> (25-0, 17-1, 0-0) parent=24-5 score=0.4900 :: pade_rationalize_shared_factor_v2_gen24_0 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  25-1 -> (2-3, 0-0, 25-1) parent=23-9 score=0.4750 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_corridor_v3_gen24_1
+  25-2 -> (22-9, 25-2, 11-9) parent=22-9 score=0.4306 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | crowding_survival_gen24_2 | tournament_selection_improved_gen10_9
+  25-3 -> (8-2, 0-0, 25-3) parent=21-9 score=0.5250 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen24_3
+  25-4 -> (25-4, 17-1, 0-0) parent=24-5 score=0.6000 :: data_aware_correlation_builder_v4_gen24_4 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  25-5 -> (23-0, 25-5, 17-9) parent=24-3 score=0.5850 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_improved_gen24_5 | adaptive_frontier_bandit_selection_gen16_9
+  25-6 -> (25-6, 0-0, 23-9) parent=23-9 score=0.3117 :: data_aware_correlation_builder_v2_gen24_6 | age_regularized_survival | adaptive_frontier_bandit_selection_corridor_v2_gen22_9
+  25-7 -> (19-6, 17-1, 25-7) parent=19-6 score=0.0000 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | adaptive_softmax_selection_gen24_7
+  25-8 -> (25-8, 0-0, 0-0) parent=24-8 score=0.5600 :: duplicate_subtree_into_feedback_denominator_gen24_8 | age_regularized_survival | tournament_selection
+  25-9 -> (8-6, 25-9, 0-0) parent=20-6 score=0.5850 :: data_aware_correlation_builder_v3_gen7_6 | rank_age_fitness_survival_gen24_9 | tournament_selection
+
+Generation 25
+  carried (23-0, 21-5, 17-9) score=0.6300 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (2-3, 21-5, 17-9) score=0.5750 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-2, 0-0, 0-0) score=0.5650 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection
+  carried (22-9, 16-8, 11-9) score=0.5600 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  carried (2-3, 0-0, 23-9) score=0.5000 :: data_aware_correlation_builder_gen1_3 | age_regularized_survival | adaptive_frontier_bandit_selection_corridor_v2_gen22_9
+  26-0 -> (26-0, 0-0, 23-9) parent=25-6 score=0.0000 :: simplify_identities_gen25_0 | age_regularized_survival | adaptive_frontier_bandit_selection_corridor_v2_gen22_9
+  26-1 -> (22-9, 26-1, 11-9) parent=25-2 score=0.5000 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | dominated_bloat_survival_gen25_1 | tournament_selection_improved_gen10_9
+  26-2 -> (8-2, 26-2, 0-0) parent=22-2 score=0.3100 :: promote_repeated_motif_structural_v3_gen7_2 | pareto_dominated_survival_gen25_2 | tournament_selection
+  26-3 -> (26-3, 0-0, 0-0) parent=25-8 score=0.5100 :: promote_repeated_motif_structural_v4_gen25_3 | age_regularized_survival | tournament_selection
+  26-4 -> (8-2, 0-0, 26-4) parent=25-3 score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  26-5 -> (26-5, 0-0, 0-0) parent=25-8 score=0.1574 :: ratio_guided_denominator_rationalization_gen25_5 | age_regularized_survival | tournament_selection
+  26-6 -> (22-9, 16-8, 26-6) parent=24-4 score=0.5600 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | pareto_tournament_selection_gen25_6
+  26-7 -> (2-3, 21-5, 26-7) parent=21-5 score=0.6050 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_gen25_7
+  26-8 -> (26-8, 17-1, 0-0) parent=25-4 score=0.5700 :: data_aware_correlation_builder_v3_gen8_gen25_8 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  26-9 -> (8-6, 26-9, 0-0) parent=25-9 score=0.3350 :: data_aware_correlation_builder_v3_gen7_6 | worst_cost_survival_gen25_9 | tournament_selection
+
+Generation 26
+  carried (23-0, 21-5, 17-9) score=0.6300 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (2-3, 21-5, 26-7) score=0.6050 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_gen25_7
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (2-3, 21-5, 17-9) score=0.5750 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-2, 0-0, 26-4) score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  carried (22-9, 16-8, 11-9) score=0.5600 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  27-0 -> (27-0, 21-5, 17-9) parent=24-7 score=0.5439 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  27-1 -> (27-1, 14-1, 13-4) parent=21-8 score=0.5600 :: fractional_affine_ratio_wrap_v5_safe_adaptive_gen26_1 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  27-2 -> (12-8, 27-2, 0-0) parent=24-6 score=0.4850 :: relativistic_rational_wrap_v2_gen11_8 | tournament_worst_survival_gen26_2 | tournament_selection
+  27-3 -> (12-8, 0-0, 27-3) parent=24-0 score=0.5700 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | diversity_aware_tournament_v2_gen26_3
+  27-4 -> (12-8, 27-4, 0-0) parent=24-6 score=0.3750 :: relativistic_rational_wrap_v2_gen11_8 | pareto_dominance_survival_gen26_4 | tournament_selection
+  27-5 -> (23-0, 21-5, 27-5) parent=23-0 score=0.6000 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_lineage_aware_v2_gen26_5
+  27-6 -> (8-6, 27-6, 0-0) parent=26-9 score=0.5550 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_pareto_survival_v2_gen26_6 | tournament_selection
+  27-7 -> (27-7, 21-5, 17-9) parent=24-7 score=0.5100 :: introduce_new_feature_gen26_7 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  27-8 -> (27-8, 0-0, 0-0) parent=26-5 score=0.4300 :: boosting_feature_mutation_gen26_8 | age_regularized_survival | tournament_selection
+  27-9 -> (23-0, 21-5, 27-9) parent=23-0 score=0.5700 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_v2_gen26_9
+
+Generation 27
+  carried (23-0, 21-5, 17-9) score=0.6300 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (2-3, 21-5, 26-7) score=0.6050 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_gen25_7
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (8-2, 0-0, 26-4) score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  carried (22-9, 16-8, 11-9) score=0.5600 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (27-0, 21-5, 17-9) score=0.5439 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (3-1, 0-0, 0-0) score=0.5100 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | age_regularized_survival | tournament_selection
+  28-0 -> (12-8, 0-0, 28-0) parent=27-3 score=0.2700 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | pareto_epsilon_lexicase_selection_gen27_0
+  28-1 -> (3-1, 28-1, 0-0) parent=15-7 score=0.5350 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | parsimony_protected_age_survival_gen27_1 | tournament_selection
+  28-2 -> (28-2, 17-1, 0-0) parent=26-8 score=0.4200 :: replace_subtraction_with_log_ratio_gen27_2 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  28-3 -> (2-3, 21-5, 28-3) parent=26-7 score=0.6150 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  28-4 -> (28-4, 0-0, 0-0) parent=27-8 score=0.5550 :: relativistic_rational_wrap_v3_gen27_4 | age_regularized_survival | tournament_selection
+  28-5 -> (22-9, 28-5, 11-9) parent=26-1 score=0.2750 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | crowding_survival_gen27_5 | tournament_selection_improved_gen10_9
+  28-6 -> (28-6, 17-1, 0-0) parent=26-8 score=0.4600 :: gauss_newton_constant_fit_gen27_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  28-7 -> (28-7, 21-5, 17-9) parent=27-7 score=0.6283 :: data_aware_node_builder_v3_gen27_7 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  28-8 -> (8-6, 17-1, 28-8) parent=22-7 score=0.5600 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | balanced_tournament_selection_v2_gen27_8
+  28-9 -> (8-6, 28-9, 0-0) parent=27-6 score=0.5600 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_v2_gen27_9 | tournament_selection
+
+Generation 28
+  carried (23-0, 21-5, 17-9) score=0.6300 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (28-7, 21-5, 17-9) score=0.6283 :: data_aware_node_builder_v3_gen27_7 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (2-3, 21-5, 28-3) score=0.6150 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (8-2, 0-0, 26-4) score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  carried (22-9, 16-8, 11-9) score=0.5600 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (27-0, 21-5, 17-9) score=0.5439 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  29-0 -> (28-7, 29-0, 17-9) parent=28-7 score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  29-1 -> (29-1, 21-5, 17-9) parent=28-7 score=0.5300 :: data_aware_constant_fit_gen28_1 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  29-2 -> (22-9, 29-2, 11-9) parent=28-5 score=0.5950 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v3_gen28_2 | tournament_selection_improved_gen10_9
+  29-3 -> (12-8, 29-3, 0-0) parent=27-4 score=0.5100 :: relativistic_rational_wrap_v2_gen11_8 | bloated_loser_tournament_survival_gen28_3 | tournament_selection
+  29-4 -> (29-4, 0-0, 0-0) parent=28-4 score=0.4650 :: simplify_algebraic_identities_gen28_4 | age_regularized_survival | tournament_selection
+  29-5 -> (29-5, 16-8, 11-9) parent=24-9 score=0.5711 :: data_aware_correlation_builder_v5_weighted_scaled_gen28_5 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  29-6 -> (29-6, 0-0, 26-4) parent=26-4 score=0.4450 :: insert_complement_gen28_6 | age_regularized_survival | tournament_selection_improved_gen25_4
+  29-7 -> (8-2, 0-0, 29-7) parent=26-4 score=0.5200 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_v2_gen28_7
+  29-8 -> (22-9, 16-8, 29-8) parent=26-6 score=0.5400 :: data_aware_correlation_builder_v4_ratio_motif_boost_gen21_9 | age_regularized_pareto_survival_v2_gen15_8 | pareto_corridor_rank_selection_gen28_8
+  29-9 -> (12-8, 0-0, 29-9) parent=28-0 score=0.6050 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection_improved_gen28_9
+
+Generation 29
+  carried (28-7, 29-0, 17-9) score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  carried (23-0, 21-5, 17-9) score=0.6300 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (2-3, 21-5, 28-3) score=0.6150 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (29-5, 16-8, 11-9) score=0.5711 :: data_aware_correlation_builder_v5_weighted_scaled_gen28_5 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (8-2, 0-0, 26-4) score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (27-0, 21-5, 17-9) score=0.5439 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  30-0 -> (30-0, 16-8, 11-9) parent=29-5 score=0.4850 :: swap_operator_family_gen29_0 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  30-1 -> (30-1, 0-0, 26-4) parent=29-6 score=0.0000 :: promote_repeated_motif_structural_v4_gen29_1 | age_regularized_survival | tournament_selection_improved_gen25_4
+  30-2 -> (23-0, 21-5, 30-2) parent=27-9 score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  30-3 -> (28-7, 30-3, 17-9) parent=29-0 score=0.5656 :: data_aware_node_builder_v3_gen27_7 | older_worst_adaptive_v3_gen29_3 | adaptive_frontier_bandit_selection_gen16_9
+  30-4 -> (30-4, 21-5, 28-3) parent=28-3 score=0.5850 :: data_aware_correlation_builder_v2_gen29_4 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  30-5 -> (8-6, 17-1, 30-5) parent=28-8 score=0.5250 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection_v2_gen29_5
+  30-6 -> (29-5, 16-8, 30-6) parent=29-5 score=0.5650 :: data_aware_correlation_builder_v5_weighted_scaled_gen28_5 | age_regularized_pareto_survival_v2_gen15_8 | pareto_novelty_boltzmann_selection_gen29_6
+  30-7 -> (29-5, 30-7, 11-9) parent=29-5 score=0.5500 :: data_aware_correlation_builder_v5_weighted_scaled_gen28_5 | soft_pareto_age_survival_improved_gen29_7 | tournament_selection_improved_gen10_9
+  30-8 -> (30-8, 29-0, 17-9) parent=29-0 score=0.5600 :: data_aware_node_builder_v4_affine_rational_gen29_8 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  30-9 -> (12-8, 30-9, 0-0) parent=29-3 score=0.4700 :: relativistic_rational_wrap_v2_gen11_8 | protected_age_regularized_survival_v2_gen29_9 | tournament_selection
+
+Generation 30
+  carried (23-0, 21-5, 30-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  carried (28-7, 29-0, 17-9) score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  carried (23-0, 21-5, 17-9) score=0.6300 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (8-6, 17-1, 0-0) score=0.6200 :: data_aware_correlation_builder_v3_gen7_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (2-3, 21-5, 28-3) score=0.6150 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (29-5, 16-8, 11-9) score=0.5711 :: data_aware_correlation_builder_v5_weighted_scaled_gen28_5 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (8-2, 0-0, 26-4) score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (27-0, 21-5, 17-9) score=0.5439 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  31-0 -> (28-7, 29-0, 31-0) parent=29-0 score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  31-1 -> (12-2, 31-1, 13-4) parent=24-1 score=0.5750 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_v2_gen30_1 | tournament_selection_v2_gen12_4
+  31-2 -> (23-0, 21-5, 31-2) parent=30-2 score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  31-3 -> (31-3, 17-1, 0-0) parent=28-6 score=0.3796 :: residual_guided_affine_feature_boost_gen30_3 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  31-4 -> (23-0, 21-5, 31-4) parent=30-2 score=0.5550 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | pareto_dominance_selection_gen30_4
+  31-5 -> (31-5, 21-5, 30-2) parent=30-2 score=0.6400 :: data_aware_node_builder_v2_gen30_5 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  31-6 -> (31-6, 21-5, 17-9) parent=29-1 score=0.4900 :: wrap_subtree_with_inv_sqrt_gen30_6 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  31-7 -> (3-1, 31-7, 0-0) parent=28-1 score=0.1800 :: distribute_multiplication_mutation_bloat_aware_v2_gen2_1 | hybrid_age_cost_survival_v2_gen30_7 | tournament_selection
+  31-8 -> (31-8, 29-0, 17-9) parent=30-8 score=0.4900 :: introduce_unused_feature_gen30_8 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  31-9 -> (28-7, 31-9, 17-9) parent=30-3 score=0.5850 :: data_aware_node_builder_v3_gen27_7 | older_worst_adaptive_v3_gen30_9 | adaptive_frontier_bandit_selection_gen16_9
+
+Generation 31
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 30-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  carried (28-7, 29-0, 17-9) score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  carried (2-3, 21-5, 28-3) score=0.6150 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (29-5, 16-8, 11-9) score=0.5711 :: data_aware_correlation_builder_v5_weighted_scaled_gen28_5 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (8-2, 0-0, 26-4) score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (27-0, 21-5, 17-9) score=0.5439 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  32-0 -> (23-0, 21-5, 32-0) parent=31-4 score=0.5500 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | rarity_stratified_age_fitness_selection_gen31_0
+  32-1 -> (28-7, 32-1, 17-9) parent=31-9 score=0.4500 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_robust_v3_gen31_1 | adaptive_frontier_bandit_selection_gen16_9
+  32-2 -> (28-7, 32-2, 17-9) parent=31-9 score=0.5900 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v3_gen31_2 | adaptive_frontier_bandit_selection_gen16_9
+  32-3 -> (32-3, 14-1, 13-4) parent=27-1 score=0.4650 :: fit_constant_least_squares_gen31_3 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  32-4 -> (32-4, 21-5, 17-9) parent=31-6 score=0.4950 :: inject_underutilized_feature_gen31_4 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  32-5 -> (27-0, 32-5, 17-9) parent=27-0 score=0.6006 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  32-6 -> (32-6, 29-0, 31-0) parent=31-0 score=0.4450 :: factor_common_multiplicative_term_gen31_6 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  32-7 -> (32-7, 21-5, 17-9) parent=31-6 score=0.3800 :: data_aware_motif_builder_loss_guided_v3_gen31_7 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_gen16_9
+  32-8 -> (27-0, 21-5, 32-8) parent=27-0 score=0.5206 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_gen20_5 | adaptive_frontier_bandit_selection_v2_gen31_8
+  32-9 -> (28-7, 29-0, 32-9) parent=31-0 score=0.5900 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_hybrid_improved_gen31_9
+
+Generation 32
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 30-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  carried (28-7, 29-0, 17-9) score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  carried (2-3, 21-5, 28-3) score=0.6150 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (27-0, 32-5, 17-9) score=0.6006 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (29-5, 16-8, 11-9) score=0.5711 :: data_aware_correlation_builder_v5_weighted_scaled_gen28_5 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  carried (8-2, 0-0, 26-4) score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  33-0 -> (33-0, 29-0, 31-0) parent=32-6 score=0.4800 :: insert_interaction_term_gen32_0 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  33-1 -> (33-1, 16-8, 11-9) parent=30-0 score=0.4750 :: fit_reciprocal_sqrt_feature_ratio_mutation_gen32_1 | age_regularized_pareto_survival_v2_gen15_8 | tournament_selection_improved_gen10_9
+  33-2 -> (27-0, 33-2, 17-9) parent=32-5 score=0.5621 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v3_gen32_2 | adaptive_frontier_bandit_selection_gen16_9
+  33-3 -> (27-0, 32-5, 33-3) parent=32-5 score=0.4750 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v2_gen31_5 | pareto_novelty_tournament_selection_gen32_3
+  33-4 -> (8-2, 0-0, 33-4) parent=29-7 score=0.4750 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | age_parsimony_pareto_selection_gen32_4
+  33-5 -> (23-0, 21-5, 33-5) parent=32-0 score=0.5150 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | pareto_diversity_selection_v2_gen32_5
+  33-6 -> (33-6, 29-0, 17-9) parent=31-8 score=0.5350 :: optimize_constant_by_grid_search_gen32_6 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  33-7 -> (33-7, 14-1, 13-4) parent=32-3 score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  33-8 -> (29-5, 33-8, 11-9) parent=30-7 score=0.5950 :: data_aware_correlation_builder_v5_weighted_scaled_gen28_5 | age_regularized_pareto_steppingstone_survival_v3_gen32_8 | tournament_selection_improved_gen10_9
+  33-9 -> (28-7, 33-9, 31-0) parent=31-0 score=0.5200 :: data_aware_node_builder_v3_gen27_7 | crowded_tournament_survival_gen32_9 | adaptive_frontier_bandit_selection_v2_gen30_0
+
+Generation 33
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 30-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  carried (28-7, 29-0, 17-9) score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  carried (2-3, 21-5, 28-3) score=0.6150 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (27-0, 32-5, 17-9) score=0.6006 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (12-8, 0-0, 0-0) score=0.6000 :: relativistic_rational_wrap_v2_gen11_8 | age_regularized_survival | tournament_selection
+  carried (33-7, 14-1, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (8-2, 0-0, 26-4) score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  carried (12-2, 14-1, 13-4) score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  34-0 -> (33-7, 14-1, 34-0) parent=33-7 score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  34-1 -> (34-1, 32-5, 17-9) parent=32-5 score=0.5267 :: data_aware_motif_builder_loss_guided_v3_affine_weighted_gen33_1 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  34-2 -> (34-2, 29-0, 31-0) parent=33-0 score=0.5150 :: residual_guided_subtree_replacement_gen33_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  34-3 -> (34-3, 21-5, 31-2) parent=31-2 score=0.6300 :: data_aware_node_builder_improved_v2_gen33_3 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  34-4 -> (12-2, 14-1, 34-4) parent=15-5 score=0.5450 :: fractional_affine_ratio_wrap_v4_gaussian_gen11_2 | age_pareto_protected_survival_gen13_1 | bridge_complexity_rank_selection_gen33_4
+  34-5 -> (27-0, 34-5, 17-9) parent=33-2 score=0.5100 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v3_gen33_5 | adaptive_frontier_bandit_selection_gen16_9
+  34-6 -> (23-0, 34-6, 30-2) parent=30-2 score=0.4550 :: data_aware_node_builder_improved_gen22_0 | dominated_crowding_survival_gen33_6 | refined_adaptive_frontier_bandit_selection_gen29_2
+  34-7 -> (34-7, 29-0, 31-0) parent=33-0 score=0.4700 :: insert_symmetric_motif_gen33_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  34-8 -> (27-0, 34-8, 17-9) parent=33-2 score=0.5850 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v3_improved_gen33_8 | adaptive_frontier_bandit_selection_gen16_9
+  34-9 -> (23-0, 21-5, 34-9) parent=33-5 score=0.4750 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | adaptive_diversity_selection_gen33_9
+
+Generation 34
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 30-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  carried (28-7, 29-0, 17-9) score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  carried (2-3, 21-5, 28-3) score=0.6150 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (27-0, 32-5, 17-9) score=0.6006 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 14-1, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (8-2, 0-0, 26-4) score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  carried (19-6, 17-1, 0-0) score=0.5250 :: pade_rationalize_shared_factor_gen18_6 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  35-0 -> (35-0, 17-1, 0-0) parent=31-3 score=0.5450 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  35-1 -> (27-0, 35-1, 17-9) parent=34-8 score=0.5500 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | complexity_crowding_survival_gen34_1 | adaptive_frontier_bandit_selection_gen16_9
+  35-2 -> (35-2, 21-5, 28-3) parent=30-4 score=0.4850 :: insert_duplicated_subtree_gen34_2 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  35-3 -> (19-6, 35-3, 0-0) parent=19-6 score=0.5150 :: pade_rationalize_shared_factor_gen18_6 | worst_of_oldest_survival_gen34_3 | tournament_selection
+  35-4 -> (23-0, 21-5, 35-4) parent=34-9 score=0.5950 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | bridge_preserving_frontier_bandit_selection_v2_gen34_4
+  35-5 -> (35-5, 29-0, 31-0) parent=34-7 score=0.4550 :: affine_rescale_mutation_gen34_5 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  35-6 -> (27-0, 35-6, 17-9) parent=34-8 score=0.5350 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v3_gen34_6 | adaptive_frontier_bandit_selection_gen16_9
+  35-7 -> (35-7, 29-0, 17-9) parent=33-6 score=0.5600 :: data_aware_node_builder_v4_hybrid_templates_gen34_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  35-8 -> (28-7, 29-0, 35-8) parent=32-9 score=0.2650 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_rarity_rank_softmax_selection_gen34_8
+  35-9 -> (27-0, 32-5, 35-9) parent=33-3 score=0.0000 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_v2_gen34_9
+
+Generation 35
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 30-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  carried (28-7, 29-0, 17-9) score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  carried (2-3, 21-5, 28-3) score=0.6150 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (27-0, 32-5, 17-9) score=0.6006 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 14-1, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (8-2, 0-0, 26-4) score=0.5700 :: promote_repeated_motif_structural_v3_gen7_2 | age_regularized_survival | tournament_selection_improved_gen25_4
+  carried (35-0, 17-1, 0-0) score=0.5450 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  36-0 -> (36-0, 21-5, 28-3) parent=35-2 score=0.5850 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  36-1 -> (28-7, 36-1, 17-9) parent=32-2 score=0.5500 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_dominance_v3_gen35_1 | adaptive_frontier_bandit_selection_gen16_9
+  36-2 -> (36-2, 21-5, 28-3) parent=35-2 score=0.5350 :: data_aware_correlation_builder_motif_affine_v2_gen35_2 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  36-3 -> (36-3, 32-5, 17-9) parent=34-1 score=0.5150 :: recombine_existing_subtrees_gen35_3 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  36-4 -> (36-4, 21-5, 31-2) parent=34-3 score=0.6000 :: data_aware_node_builder_contextual_v2_gen35_4 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  36-5 -> (2-3, 21-5, 36-5) parent=28-3 score=0.6000 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v3_gen35_5
+  36-6 -> (2-3, 36-6, 28-3) parent=28-3 score=0.5200 :: data_aware_correlation_builder_gen1_3 | epsilon_pareto_crowding_survival_gen35_6 | adaptive_frontier_tournament_selection_v2_gen27_3
+  36-7 -> (28-7, 36-7, 31-0) parent=33-9 score=0.3722 :: data_aware_node_builder_v3_gen27_7 | worst_cost_survival_gen35_7 | adaptive_frontier_bandit_selection_v2_gen30_0
+  36-8 -> (28-7, 29-0, 36-8) parent=35-8 score=0.5613 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen35_8
+  36-9 -> (23-0, 21-5, 36-9) parent=35-4 score=0.4600 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen35_9
+
+Generation 36
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 30-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  carried (28-7, 29-0, 17-9) score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  carried (2-3, 21-5, 28-3) score=0.6150 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (27-0, 32-5, 17-9) score=0.6006 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (36-0, 21-5, 28-3) score=0.5850 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 14-1, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (35-0, 17-1, 0-0) score=0.5450 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  37-0 -> (37-0, 21-5, 31-2) parent=36-4 score=0.5000 :: internal_crossover_gen36_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  37-1 -> (37-1, 21-5, 30-2) parent=31-5 score=0.2683 :: least_squares_residual_feature_graft_gen36_1 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  37-2 -> (37-2, 29-0, 31-0) parent=35-5 score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  37-3 -> (2-3, 37-3, 28-3) parent=36-6 score=0.5950 :: data_aware_correlation_builder_gen1_3 | crowding_diversity_survival_gen36_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  37-4 -> (2-3, 21-5, 37-4) parent=36-5 score=0.5900 :: data_aware_correlation_builder_gen1_3 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v3_robust_gen36_4
+  37-5 -> (33-7, 37-5, 13-4) parent=33-7 score=0.5400 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_redundancy_aware_v2_gen36_5 | tournament_selection_v2_gen12_4
+  37-6 -> (23-0, 21-5, 37-6) parent=36-9 score=0.6250 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | hybrid_frontier_tournament_selection_v2_gen36_6
+  37-7 -> (23-0, 21-5, 37-7) parent=36-9 score=0.5850 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | epsilon_lexicographic_frontier_selection_v3_gen36_7
+  37-8 -> (28-7, 37-8, 31-0) parent=36-7 score=0.3850 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v3_improved_gen36_8 | adaptive_frontier_bandit_selection_v2_gen30_0
+  37-9 -> (37-9, 17-1, 0-0) parent=35-0 score=0.4350 :: residual_guided_logratio_factor_mutation_gen36_9 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+
+Generation 37
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 30-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  carried (28-7, 29-0, 17-9) score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  carried (27-0, 32-5, 17-9) score=0.6006 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (36-0, 21-5, 28-3) score=0.5850 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 14-1, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (35-0, 17-1, 0-0) score=0.5450 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  38-0 -> (23-0, 21-5, 38-0) parent=37-7 score=0.5800 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | lexicase_pareto_novelty_selection_gen37_0
+  38-1 -> (28-7, 38-1, 17-9) parent=36-1 score=0.5671 :: data_aware_node_builder_v3_gen27_7 | older_worst_frontier_guarded_v3_gen37_1 | adaptive_frontier_bandit_selection_gen16_9
+  38-2 -> (28-7, 38-2, 17-9) parent=36-1 score=0.6000 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v3_gen37_2 | adaptive_frontier_bandit_selection_gen16_9
+  38-3 -> (28-7, 38-3, 31-0) parent=37-8 score=0.3063 :: data_aware_node_builder_v3_gen27_7 | older_worst_adaptive_v3_gen37_3 | adaptive_frontier_bandit_selection_v2_gen30_0
+  38-4 -> (36-0, 21-5, 38-4) parent=36-0 score=0.5900 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v3_gen37_4
+  38-5 -> (38-5, 32-5, 17-9) parent=36-3 score=0.5300 :: greedy_leaf_refinement_gen37_5 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  38-6 -> (38-6, 21-5, 31-2) parent=37-0 score=0.5000 :: duplicate_subtree_gen37_6 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  38-7 -> (36-0, 21-5, 38-7) parent=36-0 score=0.5900 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | older_worst_survival_gen20_5 | adaptive_stratified_tournament_selection_v3_gen37_7
+  38-8 -> (38-8, 21-5, 28-3) parent=36-2 score=0.4800 :: factor_common_product_term_gen37_8 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  38-9 -> (38-9, 17-1, 0-0) parent=37-9 score=0.5350 :: data_aware_residual_guided_insertion_gen37_9 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+
+Generation 38
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 30-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  carried (28-7, 29-0, 17-9) score=0.6356 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_gen16_9
+  carried (27-0, 32-5, 17-9) score=0.6006 :: data_aware_motif_builder_loss_guided_v2_gen26_0 | older_worst_survival_v2_gen31_5 | adaptive_frontier_bandit_selection_gen16_9
+  carried (36-0, 21-5, 28-3) score=0.5850 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | older_worst_survival_gen20_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 14-1, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (35-0, 17-1, 0-0) score=0.5450 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  39-0 -> (39-0, 21-5, 31-2) parent=38-6 score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  39-1 -> (39-1, 17-1, 0-0) parent=38-9 score=0.0050 :: algebraic_pattern_simplifier_v3_gen38_1 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  39-2 -> (37-2, 29-0, 39-2) parent=37-2 score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  39-3 -> (36-0, 39-3, 28-3) parent=36-0 score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  39-4 -> (39-4, 29-0, 31-0) parent=37-2 score=0.6200 :: data_aware_node_builder_improved_v2_gen38_4 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  39-5 -> (37-2, 39-5, 31-0) parent=37-2 score=0.3600 :: data_aware_node_builder_improved_gen36_2 | inverse_tournament_bloat_survival_gen38_5 | adaptive_frontier_bandit_selection_v2_gen30_0
+  39-6 -> (39-6, 29-0, 31-0) parent=37-2 score=0.6350 :: data_aware_node_builder_guided_v2_gen38_6 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  39-7 -> (37-2, 29-0, 39-7) parent=37-2 score=0.5467 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | frequency_balanced_selection_gen38_7
+  39-8 -> (37-2, 39-8, 31-0) parent=37-2 score=0.3550 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v3_gen38_8 | adaptive_frontier_bandit_selection_v2_gen30_0
+  39-9 -> (23-0, 21-5, 39-9) parent=38-0 score=0.5200 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_steppingstone_v2_gen38_9
+
+Generation 39
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 30-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_gen29_2
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 14-1, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (35-0, 17-1, 0-0) score=0.5450 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  40-0 -> (40-0, 29-0, 31-0) parent=39-6 score=0.6200 :: data_aware_node_builder_v4_gen39_0 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  40-1 -> (40-1, 21-5, 31-2) parent=39-0 score=0.5350 :: linear_fit_constant_gen39_1 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  40-2 -> (23-0, 21-5, 40-2) parent=39-9 score=0.6200 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | refined_adaptive_frontier_bandit_selection_v3_gen39_2
+  40-3 -> (39-0, 40-3, 31-2) parent=39-0 score=0.6050 :: data_aware_node_builder_v2_gen38_0 | older_worst_frontier_survival_v2_gen39_3 | diversity_weighted_rank_selection_gen30_2
+  40-4 -> (28-7, 40-4, 31-0) parent=38-3 score=0.6150 :: data_aware_node_builder_v3_gen27_7 | bloat_aware_tournament_survival_gen39_4 | adaptive_frontier_bandit_selection_v2_gen30_0
+  40-5 -> (37-2, 29-0, 40-5) parent=39-7 score=0.5300 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | age_regularized_selection_gen39_5
+  40-6 -> (40-6, 29-0, 31-0) parent=39-6 score=0.4400 :: affine_wrap_subtree_gen39_6 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  40-7 -> (36-2, 21-5, 40-7) parent=36-2 score=0.1628 :: data_aware_correlation_builder_motif_affine_v2_gen35_2 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen39_7
+  40-8 -> (40-8, 21-5, 31-2) parent=39-0 score=0.6200 :: data_aware_node_builder_v3_gen39_8 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  40-9 -> (35-0, 40-9, 0-0) parent=35-0 score=0.5450 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_pareto_staleness_survival_v2_gen39_9 | tournament_selection
+
+Generation 40
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 14-1, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (35-0, 17-1, 0-0) score=0.5450 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_tournament_survival_gen16_1 | tournament_selection
+  carried (35-0, 40-9, 0-0) score=0.5450 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_pareto_staleness_survival_v2_gen39_9 | tournament_selection
+  41-0 -> (33-7, 41-0, 13-4) parent=37-5 score=0.5200 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | bloat_aware_reverse_tournament_gen40_0 | tournament_selection_v2_gen12_4
+  41-1 -> (41-1, 0-0, 0-0) parent=29-4 score=0.4750 :: distribute_multiplication_mutation_bloat_aware_v3_gen40_1 | age_regularized_survival | tournament_selection
+  41-2 -> (37-2, 29-0, 41-2) parent=40-5 score=0.5950 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v4_gen40_2
+  41-3 -> (23-0, 41-3, 31-2) parent=31-2 score=0.5200 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_v2_gen40_3 | diversity_weighted_rank_selection_gen30_2
+  41-4 -> (41-4, 21-5, 31-2) parent=40-8 score=0.4100 :: data_aware_node_builder_v3_gen40_4 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  41-5 -> (33-7, 41-5, 34-0) parent=34-0 score=0.5450 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen40_5 | tournament_selection_pareto_rescue_v2_gen33_0
+  41-6 -> (39-0, 21-5, 41-6) parent=39-0 score=0.6100 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_frontier_selection_v2_gen40_6
+  41-7 -> (41-7, 21-5, 31-2) parent=40-8 score=0.5150 :: duplicate_subtree_gen40_7 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  41-8 -> (41-8, 40-9, 0-0) parent=40-9 score=0.4100 :: insert_fitted_bias_gen40_8 | age_fitness_pareto_staleness_survival_v2_gen39_9 | tournament_selection
+  41-9 -> (39-0, 21-5, 41-9) parent=39-0 score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+
+Generation 41
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 41-9) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 14-1, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (35-0, 40-9, 0-0) score=0.5450 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_pareto_staleness_survival_v2_gen39_9 | tournament_selection
+  42-0 -> (42-0, 21-5, 31-2) parent=41-7 score=0.5817 :: data_aware_node_builder_v3_gen41_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  42-1 -> (33-7, 14-1, 42-1) parent=34-0 score=0.5500 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_knee_v3_gen41_1
+  42-2 -> (42-2, 21-5, 31-2) parent=41-7 score=0.5000 :: mutate_scaled_unary_gen41_2 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  42-3 -> (35-0, 42-3, 0-0) parent=40-9 score=0.5250 :: pade_rationalize_shared_factor_v2_gen34_0 | age_fitness_pareto_staleness_survival_v3_gen41_3 | tournament_selection
+  42-4 -> (39-0, 21-5, 42-4) parent=41-9 score=0.6350 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | exponential_age_diversity_selection_gen41_4
+  42-5 -> (33-7, 14-1, 42-5) parent=34-0 score=0.5650 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v3_gen41_5
+  42-6 -> (33-7, 42-6, 13-4) parent=41-0 score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | bloat_aware_reverse_tournament_v2_gen41_6 | tournament_selection_v2_gen12_4
+  42-7 -> (42-7, 21-5, 31-2) parent=41-7 score=0.4650 :: insert_fitted_inverse_sqrt_ratio_gate_gen41_7 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  42-8 -> (42-8, 21-5, 31-2) parent=41-7 score=0.5650 :: mutate_exponential_bridge_to_reciprocal_root_gen41_8 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  42-9 -> (37-2, 42-9, 31-0) parent=39-8 score=0.5600 :: data_aware_node_builder_improved_gen36_2 | pareto_dominated_survival_gen41_9 | adaptive_frontier_bandit_selection_v2_gen30_0
+
+Generation 42
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 41-9) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 14-1, 13-4) score=0.5750 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_v2_gen12_4
+  carried (33-7, 14-1, 42-5) score=0.5650 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v3_gen41_5
+  43-0 -> (33-7, 43-0, 42-5) parent=42-5 score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_rescue_v3_gen41_5
+  43-1 -> (43-1, 29-0, 31-0) parent=40-6 score=0.5700 :: data_aware_node_builder_optimized_gen42_1 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  43-2 -> (39-0, 21-5, 43-2) parent=42-4 score=0.6350 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | harmonic_afpo_selection_gen42_2
+  43-3 -> (43-3, 21-5, 31-2) parent=42-8 score=0.6500 :: data_aware_node_builder_v3_contextual_screened_gen42_3 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  43-4 -> (39-0, 43-4, 41-9) parent=41-9 score=0.5050 :: data_aware_node_builder_v2_gen38_0 | pareto_dominated_survival_gen42_4 | age_fitness_pareto_selection_gen40_9
+  43-5 -> (33-7, 14-1, 43-5) parent=42-5 score=0.5600 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | adaptive_age_fitness_rarity_pareto_selection_gen42_5
+  43-6 -> (43-6, 21-5, 31-2) parent=42-8 score=0.5250 :: insert_fitted_reciprocal_basis_correction_gen42_6 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  43-7 -> (37-2, 29-0, 43-7) parent=41-2 score=0.5600 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen31_0_gen42_7
+  43-8 -> (33-7, 43-8, 34-0) parent=41-5 score=0.4900 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_fitness_ranking_survival_gen42_8 | tournament_selection_pareto_rescue_v2_gen33_0
+  43-9 -> (43-9, 39-3, 28-3) parent=39-3 score=0.4150 :: fit_constant_least_squares_gen42_9 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+
+Generation 43
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (43-3, 21-5, 31-2) score=0.6500 :: data_aware_node_builder_v3_contextual_screened_gen42_3 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 41-9) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 43-0, 42-5) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_rescue_v3_gen41_5
+  44-0 -> (28-7, 29-0, 44-0) parent=36-8 score=0.5467 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen43_0
+  44-1 -> (44-1, 43-0, 42-5) parent=43-0 score=0.4450 :: insert_residual_correlated_feature_gen43_1 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_rescue_v3_gen41_5
+  44-2 -> (37-2, 44-2, 31-0) parent=42-9 score=0.3100 :: data_aware_node_builder_improved_gen36_2 | crowded_reverse_tournament_survival_gen43_2 | adaptive_frontier_bandit_selection_v2_gen30_0
+  44-3 -> (36-0, 44-3, 28-3) parent=39-3 score=0.5950 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_crowding_survival_gen43_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  44-4 -> (36-0, 44-4, 28-3) parent=39-3 score=0.5600 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protected_age_survival_gen43_4 | adaptive_frontier_tournament_selection_v2_gen27_3
+  44-5 -> (33-7, 41-0, 44-5) parent=41-0 score=0.3850 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | bloat_aware_reverse_tournament_gen40_0 | pareto_frontier_bucket_selection_gen43_5
+  44-6 -> (44-6, 29-0, 31-0) parent=43-1 score=0.0400 :: data_aware_node_builder_v3_gen43_6 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  44-7 -> (28-7, 29-0, 44-7) parent=36-8 score=0.5694 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_hybrid_gen43_7
+  44-8 -> (44-8, 29-0, 31-0) parent=43-1 score=0.5650 :: data_aware_targeted_weakest_link_gen43_8 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  44-9 -> (44-9, 29-0, 39-2) parent=39-2 score=0.4900 :: mutate_residual_guided_insert_gen43_9 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+
+Generation 44
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (43-3, 21-5, 31-2) score=0.6500 :: data_aware_node_builder_v3_contextual_screened_gen42_3 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 41-9) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 43-0, 42-5) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_rescue_v3_gen41_5
+  45-0 -> (45-0, 14-1, 42-5) parent=42-5 score=0.3850 :: fit_constant_least_squares_gen44_0 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v3_gen41_5
+  45-1 -> (28-7, 45-1, 31-0) parent=40-4 score=0.5800 :: data_aware_node_builder_v3_gen27_7 | crowded_complexity_survival_gen44_1 | adaptive_frontier_bandit_selection_v2_gen30_0
+  45-2 -> (39-0, 21-5, 45-2) parent=43-2 score=0.2400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_hybrid_v2_gen44_2
+  45-3 -> (28-7, 45-3, 31-0) parent=40-4 score=0.5325 :: data_aware_node_builder_v3_gen27_7 | crowded_worst_survival_gen44_3 | adaptive_frontier_bandit_selection_v2_gen30_0
+  45-4 -> (37-2, 29-0, 45-4) parent=43-7 score=0.6290 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v4_anchorbridge_gen44_4
+  45-5 -> (39-0, 45-5, 41-9) parent=43-4 score=0.5950 :: data_aware_node_builder_v2_gen38_0 | tournament_survival_gen44_5 | age_fitness_pareto_selection_gen40_9
+  45-6 -> (45-6, 21-5, 31-2) parent=43-6 score=0.6200 :: data_aware_node_builder_v4_contextual_motif_affine_gen44_6 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  45-7 -> (45-7, 21-5, 31-2) parent=43-6 score=0.6117 :: data_aware_node_builder_v3_gen44_7 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  45-8 -> (39-0, 21-5, 45-8) parent=43-2 score=0.6250 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_improved_gen44_8
+  45-9 -> (45-9, 21-5, 31-2) parent=43-6 score=0.0000 :: mutate_subtree_recombination_gen44_9 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+
+Generation 45
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (43-3, 21-5, 31-2) score=0.6500 :: data_aware_node_builder_v3_contextual_screened_gen42_3 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 41-9) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 43-0, 42-5) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_rescue_v3_gen41_5
+  46-0 -> (33-7, 43-0, 46-0) parent=43-0 score=0.5400 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen42_0 | pareto_epsilon_lexicase_selection_gen45_0
+  46-1 -> (23-0, 46-1, 31-2) parent=41-3 score=0.5900 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_frontier_v2_gen45_1 | diversity_weighted_rank_selection_gen30_2
+  46-2 -> (39-0, 21-5, 46-2) parent=45-8 score=0.5650 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_v2_gen45_2
+  46-3 -> (46-3, 21-5, 31-2) parent=45-9 score=0.6050 :: data_aware_contextual_motif_builder_v2_gen45_3 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  46-4 -> (28-7, 29-0, 46-4) parent=44-7 score=0.5756 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_boltzmann_selection_gen45_4
+  46-5 -> (43-3, 46-5, 31-2) parent=43-3 score=0.4750 :: data_aware_node_builder_v3_contextual_screened_gen42_3 | pareto_redundancy_survival_gen45_5 | diversity_weighted_rank_selection_gen30_2
+  46-6 -> (46-6, 29-0, 39-2) parent=44-9 score=0.4600 :: rational_denominator_wrap_gen45_6 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  46-7 -> (28-7, 46-7, 31-0) parent=45-3 score=0.5264 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v3_robust_gen45_7 | adaptive_frontier_bandit_selection_v2_gen30_0
+  46-8 -> (46-8, 21-5, 31-2) parent=45-9 score=0.6872 :: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  46-9 -> (46-9, 39-3, 28-3) parent=43-9 score=0.5686 :: data_aware_correlation_builder_exponential_motif_v3_gen45_9 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+
+Generation 46
+  carried (46-8, 21-5, 31-2) score=0.6872 :: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (43-3, 21-5, 31-2) score=0.6500 :: data_aware_node_builder_v3_contextual_screened_gen42_3 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 41-9) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 43-0, 42-5) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_rescue_v3_gen41_5
+  47-0 -> (33-7, 47-0, 42-5) parent=43-0 score=0.5100 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_crowding_survival_v2_gen46_0 | tournament_selection_pareto_rescue_v3_gen41_5
+  47-1 -> (39-0, 47-1, 41-9) parent=45-5 score=0.5550 :: data_aware_node_builder_v2_gen38_0 | pareto_age_survival_gen46_1 | age_fitness_pareto_selection_gen40_9
+  47-2 -> (47-2, 21-5, 31-2) parent=46-8 score=0.4550 :: affine_fit_mutation_gen46_2 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  47-3 -> (37-2, 29-0, 47-3) parent=45-4 score=0.6150 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | age_fitness_pareto_selection_gen46_3
+  47-4 -> (37-2, 29-0, 47-4) parent=45-4 score=0.5983 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen46_4
+  47-5 -> (47-5, 29-0, 31-0) parent=44-8 score=0.4350 :: factor_repeated_additive_structure_gen46_5 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  47-6 -> (39-0, 47-6, 41-9) parent=45-5 score=0.5100 :: data_aware_node_builder_v2_gen38_0 | crowding_diversity_survival_gen46_6 | age_fitness_pareto_selection_gen40_9
+  47-7 -> (37-2, 29-0, 47-7) parent=45-4 score=0.5656 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_hybrid_gen46_7
+  47-8 -> (47-8, 21-5, 41-9) parent=41-9 score=0.5000 :: fit_constant_newton_gen46_8 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  47-9 -> (47-9, 21-5, 31-2) parent=46-8 score=0.4850 :: factor_shared_multiplicative_subtree_gen46_9 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+
+Generation 47
+  carried (46-8, 21-5, 31-2) score=0.6872 :: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (28-7, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_v3_gen27_7 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (43-3, 21-5, 31-2) score=0.6500 :: data_aware_node_builder_v3_contextual_screened_gen42_3 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 41-9) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 43-0, 42-5) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_rescue_v3_gen41_5
+  48-0 -> (48-0, 39-3, 28-3) parent=46-9 score=0.4200 :: multiply_subtree_by_itself_gen47_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  48-1 -> (48-1, 21-5, 31-2) parent=47-9 score=0.4381 :: ratio_linearized_denominator_graft_gen47_1 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  48-2 -> (46-8, 21-5, 48-2) parent=46-8 score=0.7050 :: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | rank_based_roulette_selection_gen47_2
+  48-3 -> (48-3, 29-0, 31-0) parent=47-5 score=0.4900 :: residual_aware_feature_substitution_gen47_3 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  48-4 -> (43-3, 48-4, 31-2) parent=46-5 score=0.5200 :: data_aware_node_builder_v3_contextual_screened_gen42_3 | pareto_crowding_parsimony_survival_gen47_4 | diversity_weighted_rank_selection_gen30_2
+  48-5 -> (33-7, 48-5, 34-0) parent=43-8 score=0.5700 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_stratified_survival_v2_gen47_5 | tournament_selection_pareto_rescue_v2_gen33_0
+  48-6 -> (37-2, 48-6, 31-0) parent=44-2 score=0.5050 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v3_gen47_6 | adaptive_frontier_bandit_selection_v2_gen30_0
+  48-7 -> (37-2, 29-0, 48-7) parent=47-7 score=0.6650 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | pareto_frequency_tournament_selection_gen47_7
+  48-8 -> (23-0, 21-5, 48-8) parent=40-2 score=0.5450 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | pareto_tournament_selection_gen47_8
+  48-9 -> (48-9, 29-0, 31-0) parent=47-5 score=0.0000 :: data_aware_node_builder_affine_guided_v2_gen47_9 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+
+Generation 48
+  carried (46-8, 21-5, 48-2) score=0.7050 :: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | rank_based_roulette_selection_gen47_2
+  carried (46-8, 21-5, 31-2) score=0.6872 :: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (37-2, 29-0, 48-7) score=0.6650 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | pareto_frequency_tournament_selection_gen47_7
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 41-9) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  carried (33-7, 43-0, 42-5) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_rescue_v3_gen41_5
+  49-0 -> (37-2, 29-0, 49-0) parent=48-7 score=0.5912 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | softmax_tournament_selection_gen48_0
+  49-1 -> (49-1, 29-0, 31-0) parent=48-9 score=0.4550 :: residual_guided_feature_substitution_gen48_1 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  49-2 -> (49-2, 29-0, 39-2) parent=46-6 score=0.4750 :: duplicate_subtree_to_leaf_gen48_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  49-3 -> (46-8, 49-3, 48-2) parent=48-2 score=0.3250 :: data_aware_node_builder_v4_template_aware_gen45_8 | highest_cost_survival_gen48_3 | rank_based_roulette_selection_gen47_2
+  49-4 -> (33-7, 49-4, 34-0) parent=48-5 score=0.3700 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen48_4 | tournament_selection_pareto_rescue_v2_gen33_0
+  49-5 -> (36-0, 49-5, 28-3) parent=44-4 score=0.5900 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_crowded_survival_v2_gen48_5 | adaptive_frontier_tournament_selection_v2_gen27_3
+  49-6 -> (49-6, 21-5, 48-2) parent=48-2 score=0.5400 :: rationalize_subtree_gen48_6 | older_worst_survival_gen20_5 | rank_based_roulette_selection_gen47_2
+  49-7 -> (49-7, 29-0, 48-7) parent=48-7 score=0.6350 :: data_aware_node_builder_v37_gen48_7 | older_worst_balanced_v2_gen28_0 | pareto_frequency_tournament_selection_gen47_7
+  49-8 -> (33-7, 43-0, 49-8) parent=46-0 score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_crowding_v4_gen48_8
+  49-9 -> (46-8, 21-5, 49-9) parent=48-2 score=0.6400 :: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | global_adjusted_rank_selection_v2_gen48_9
+
+Generation 49
+  carried (46-8, 21-5, 48-2) score=0.7050 :: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | rank_based_roulette_selection_gen47_2
+  carried (46-8, 21-5, 31-2) score=0.6872 :: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (37-2, 29-0, 31-0) score=0.6700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v2_gen30_0
+  carried (37-2, 29-0, 48-7) score=0.6650 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | pareto_frequency_tournament_selection_gen47_7
+  carried (23-0, 21-5, 31-2) score=0.6400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_gen20_5 | diversity_weighted_rank_selection_gen30_2
+  carried (39-0, 21-5, 41-9) score=0.6400 :: data_aware_node_builder_v2_gen38_0 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  carried (36-0, 39-3, 28-3) score=0.6311 :: data_aware_correlation_builder_rational_motif_v2_gen35_0 | pareto_protective_tournament_survival_gen38_3 | adaptive_frontier_tournament_selection_v2_gen27_3
+  carried (37-2, 29-0, 39-2) score=0.6089 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen38_2
+  carried (33-7, 43-0, 49-8) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_crowding_v4_gen48_8
+  carried (33-7, 14-1, 34-0) score=0.5800 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  50-0 -> (33-7, 14-1, 50-0) parent=43-5 score=0.5650 :: fractional_affine_ratio_wrap_v5_sqrt_relativistic_gen32_7 | age_pareto_protected_survival_gen13_1 | macro_lexicase_selection_gen49_0
+  50-1 -> (23-0, 50-1, 31-2) parent=46-1 score=0.5400 :: data_aware_node_builder_improved_gen22_0 | older_worst_survival_v2_gen49_1 | diversity_weighted_rank_selection_gen30_2
+  50-2 -> (46-8, 50-2, 31-2) parent=46-8 score=0.6200 :: data_aware_node_builder_v4_template_aware_gen45_8 | survival_worst_of_oldest_gen49_2 | diversity_weighted_rank_selection_gen30_2
+  50-3 -> (37-2, 50-3, 48-7) parent=48-7 score=0.6400 :: data_aware_node_builder_improved_gen36_2 | older_worst_adaptive_v3_gen49_3 | pareto_frequency_tournament_selection_gen47_7
+  50-4 -> (50-4, 14-1, 34-0) parent=34-0 score=0.5250 :: fractional_affine_ratio_wrap_v6_sumsq_gen49_4 | age_pareto_protected_survival_gen13_1 | tournament_selection_pareto_rescue_v2_gen33_0
+  50-5 -> (50-5, 21-5, 41-9) parent=47-8 score=0.5242 :: data_aware_node_builder_v3_gen49_5 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  50-6 -> (50-6, 21-5, 41-9) parent=47-8 score=0.6450 :: data_aware_node_builder_v3_gen49_6 | older_worst_survival_gen20_5 | age_fitness_pareto_selection_gen40_9
+  50-7 -> (50-7, 43-0, 49-8) parent=49-8 score=0.4550 :: insert_one_plus_denominator_gen49_7 | age_pareto_protected_survival_v2_gen42_0 | tournament_selection_pareto_crowding_v4_gen48_8
+  50-8 -> (46-8, 21-5, 50-8) parent=49-9 score=0.4300 :: data_aware_node_builder_v4_template_aware_gen45_8 | older_worst_survival_gen20_5 | epsilon_lexicase_selection_gen49_8
+  50-9 -> (37-2, 29-0, 50-9) parent=49-0 score=0.5700 :: data_aware_node_builder_improved_gen36_2 | older_worst_balanced_v2_gen28_0 | adaptive_frontier_bandit_selection_v3_gen49_9

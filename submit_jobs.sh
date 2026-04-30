@@ -1,5 +1,60 @@
+# 4/30
+sbatch -J smart2 --mem 20G run.sh evolve_pysr.py --operator_type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3 --continue_from runs/947961
+sbatch -J smart_no_task --mem 20G run.sh evolve_pysr.py --operator_type all --generations 25 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --exec_feedback_n 3
+
+SPLITS="splits/barely_unsolvable_val2.txt"
+SEED=1000
+BUNDLE_RESULTS=runs/947961/run_data.json
+JID1A=$(sbatch --parsable -J eval_947961_val2  --mem 20G run.sh evaluate_new_pysr.py --evolve-results $BUNDLE_RESULTS --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00)
+JID1B=$(sbatch --parsable -J eval_baseline_val2 --mem 20G run.sh evaluate_new_pysr.py                                  --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00)
+
+# 4/29 — Final eval of 947961 bundle vs PySR baseline.
+# Splits: train + val + barely_unsolvable (60 datasets).
+# 10 seeds, fresh seed base (1000) so we don't reuse cached evolve-run results.
+# 4 budget conditions x 2 methods (947961 bundle, baseline) = 8 invocations.
+# Conditions run sequentially via --dependency=afterany; the two methods within
+# each condition run in parallel.
+
+# BUNDLE_RESULTS=runs/947961/run_data.json
+# SPLITS="splits/train.txt splits/val.txt splits/barely_unsolvable.txt"
+# SEED=1000
+
+# # (1) 1e6 max_evals — matches evolve-run training budget.
+# JID1A=$(sbatch --parsable -J eval_947961_1e6  --mem 20G run.sh evaluate_new_pysr.py --evolve-results $BUNDLE_RESULTS --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00)
+# JID1B=$(sbatch --parsable -J eval_baseline_1e6 --mem 20G run.sh evaluate_new_pysr.py                                  --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00)
+
+# # (2) Wall-clock only (no max_evals; PySR stops on timeout_in_seconds=300s).
+# JID2A=$(sbatch --parsable --dependency=afterany:$JID1A:$JID1B -J eval_947961_wc   --mem 20G run.sh evaluate_new_pysr.py --evolve-results $BUNDLE_RESULTS --splits $SPLITS --seed $SEED --n-runs 10 --wall-clock-only --timeout 300 --pysr-wall-limit 600 --time-limit 01:00:00)
+# JID2B=$(sbatch --parsable --dependency=afterany:$JID1A:$JID1B -J eval_baseline_wc --mem 20G run.sh evaluate_new_pysr.py                                  --splits $SPLITS --seed $SEED --n-runs 10 --wall-clock-only --timeout 300 --pysr-wall-limit 600 --time-limit 01:00:00)
+
+# # (3) 1e7 max_evals — 10x training budget.
+# JID3A=$(sbatch --parsable --dependency=afterany:$JID2A:$JID2B -J eval_947961_1e7  --mem 20G run.sh evaluate_new_pysr.py --evolve-results $BUNDLE_RESULTS --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 10000000 --timeout 3600 --pysr-wall-limit 4200 --time-limit 06:00:00)
+# JID3B=$(sbatch --parsable --dependency=afterany:$JID2A:$JID2B -J eval_baseline_1e7 --mem 20G run.sh evaluate_new_pysr.py                                 --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 10000000 --timeout 3600 --pysr-wall-limit 4200 --time-limit 06:00:00)
+
+# # (4) 1e6 max_evals + Gaussian target noise (SRBench standard 0.001).
+# JID4A=$(sbatch --parsable --dependency=afterany:$JID3A:$JID3B -J eval_947961_noise  --mem 20G run.sh evaluate_new_pysr.py --evolve-results $BUNDLE_RESULTS --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 1000000 --noise 0.001 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00)
+# JID4B=$(sbatch --parsable --dependency=afterany:$JID3A:$JID3B -J eval_baseline_noise --mem 20G run.sh evaluate_new_pysr.py                                 --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 1000000 --noise 0.001 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00)
+
+# echo "Submitted: (1) $JID1A,$JID1B  (2) $JID2A,$JID2B  (3) $JID3A,$JID3B  (4) $JID4A,$JID4B"
+
+
+# 4/29 — Bundle HPO of the 947961 best bundle (combined base PySR hparams +
+# LLM-extracted operator hparams, max 2/operator). 500 trials, 3 runs/trial,
+# up to 20 trials in parallel.
+# sbatch -J hpo_947961 --mem 20G run.sh hpo_pysr.py --baseline runs/947961 --n-trials 100 --n-parallel 20 --n-runs 10 --max-op-hparams 2 --split splits/barely_unsolvable.txt --max-evals 1000000 --time-limit 02:00:00
+
+
+# 4/24
+# sbatch -J smart2 --mem 20G run.sh evolve_pysr.py --operator_type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --exec_feedback_n 3 --models best --continue_from runs/947961
+# sbatch -J smart_no_task --mem 20G run.sh evolve_pysr.py --operator_type all --generations 25 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt --exec_feedback_n 3 --models best
+
+
+# 4/23
+# sbatch -J smart_test --mem 40G run.sh evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 20 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --exec_feedback_n 3 --models best --hp_tuning_trials 3 --hpo-n-runs 3
+
+
 # 4/22
-sbatch -J task --mem 40G run.sh evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 20 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --exec_feedback_n 3 --hp_tuning_trials 3 --hpo-n-runs 3 --models best
+# sbatch -J task --mem 40G run.sh evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 20 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --exec_feedback_n 3 --hp_tuning_trials 3 --hpo-n-runs 3 --models best
 
 # 4/21
 # MiniSR vs. PySR baseline comparison on full SRBench (130 datasets × 3 seeds × 2 engines).
