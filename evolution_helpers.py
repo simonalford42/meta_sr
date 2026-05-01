@@ -11,6 +11,7 @@ to the originals in evolve_pysr_old.py.
 import copy
 import hashlib
 import random
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -337,30 +338,66 @@ def format_population_summary(
     )
     return "\n".join(lines)
 
+def _substitute_x_vars(formula: str, var_names: List[str]) -> str:
+    """Rewrite `formula` with each variable name replaced by x0, x1, ...
+
+    Uses placeholders so a name that contains another name (e.g. "rho_c_0"
+    vs. "c") is not double-substituted.
+    """
+    if not formula or not var_names:
+        return formula
+    indexed = sorted(enumerate(var_names), key=lambda kv: -len(kv[1]))
+    result = formula
+    replacements: List[Tuple[str, str]] = []
+    for i, name in indexed:
+        if not name:
+            continue
+        placeholder = f"\x00X{i}\x00"
+        result = re.sub(rf"\b{re.escape(name)}\b", placeholder, result)
+        replacements.append((placeholder, f"x{i}"))
+    for ph, repl in replacements:
+        result = result.replace(ph, repl)
+    return result
+
+
 def load_task_formulas(dataset_names: List[str]) -> Dict[str, str]:
     """Load ground-truth formulas for each dataset by reading only metadata.yaml.
 
-    Returns a dict mapping dataset name -> formula string (empty string if unavailable).
+    Returns a dict mapping dataset name -> formula string. When feature names
+    are listed in the metadata, the returned value is
+    "<original> = <x-substituted>" so the trace's x0/x1/... variables are
+    cross-referenced with the physics names. Empty string if unavailable.
     """
     from utils import PMLB_PATH, rhs_only
     formulas: Dict[str, str] = {}
     for name in dataset_names:
         formula = ""
+        var_names: List[str] = []
         metadata_path = PMLB_PATH / name / "metadata.yaml"
         if metadata_path.exists():
             try:
                 import yaml
                 with open(metadata_path, "r") as f:
                     metadata = yaml.safe_load(f)
-                desc = metadata.get("description", "") if isinstance(metadata, dict) else ""
-                for line in desc.split("\n"):
-                    line = line.strip()
-                    if "=" in line and not line.startswith("#"):
-                        if " in [" not in line and " in (" not in line:
-                            formula = rhs_only(line)
-                            break
+                if isinstance(metadata, dict):
+                    desc = metadata.get("description", "") or ""
+                    for line in desc.split("\n"):
+                        line = line.strip()
+                        if "=" in line and not line.startswith("#"):
+                            if " in [" not in line and " in (" not in line:
+                                formula = rhs_only(line)
+                                break
+                    for feat in metadata.get("features", []) or []:
+                        if isinstance(feat, dict):
+                            n = feat.get("name")
+                            if isinstance(n, str) and n:
+                                var_names.append(n)
             except Exception:
                 pass
+        if formula and var_names:
+            x_form = _substitute_x_vars(formula, var_names)
+            if x_form and x_form != formula:
+                formula = f"{formula} = {x_form}"
         formulas[name] = formula
     return formulas
 

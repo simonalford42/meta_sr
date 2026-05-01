@@ -1583,8 +1583,8 @@ def main():
                              "Accepts: evolve_pysr output dir or run_data.json, "
                              "openevolve best_program.py, or a raw .jl file. "
                              "If the baseline contains operator code, bundle HPO mode "
-                             "is used (jointly tunes base PySR hparams + LLM-extracted "
-                             "operator-specific hparams).")
+                             "is used (by default tunes only LLM-extracted operator-specific "
+                             "hparams; pass --tune-pysr-hparams to also tune the base PySR hparams).")
     parser.add_argument("--continue-from", type=str, default=None,
                         help="Continue a previous HPO run. Pass the output directory of a prior run "
                              "(e.g., outputs/hpo_pysr_20260407_152534). Replays saved trials into "
@@ -1594,6 +1594,9 @@ def main():
                              "(LLM extraction is capped here).")
     parser.add_argument("--llm-model", type=str, default="openai/gpt-5-mini",
                         help="Bundle HPO only: LLM model used to identify operator hparams.")
+    parser.add_argument("--tune-pysr-hparams", action="store_true",
+                        help="Bundle HPO only: ALSO tune the base PySR hparams "
+                             "(default: tune only the LLM-extracted operator hparams).")
 
     args = parser.parse_args()
 
@@ -1717,6 +1720,16 @@ def main():
         and any(op is not None for op in baseline_bundle.operators.values())
     )
 
+    # In bundle mode, default to tuning ONLY the operator-extracted hparams.
+    # The user can opt back into the base PySR search space with --tune-pysr-hparams.
+    if bundle_mode and not args.tune_pysr_hparams:
+        if active_hpo_params:
+            print(
+                f"Bundle mode: skipping {len(active_hpo_params)} base PySR hparams "
+                "(pass --tune-pysr-hparams to include them)."
+            )
+        active_hpo_params = []
+
     # Initialize wandb
     wandb_config = {
         "n_trials": args.n_trials,
@@ -1738,6 +1751,7 @@ def main():
         "mode": "bundle" if bundle_mode else "pysr_only",
         "max_op_hparams": args.max_op_hparams if bundle_mode else None,
         "llm_model": args.llm_model if bundle_mode else None,
+        "tune_pysr_hparams": args.tune_pysr_hparams if bundle_mode else None,
     }
     wandb_run = init_wandb(
         config=wandb_config,

@@ -271,8 +271,24 @@ class OperatorBundle:
             parts.append(op.name if op else "default")
         return " | ".join(parts)
 
+
+
 class OperatorType(ABC):
-    """Base class defining operator-type-specific behavior."""
+    """Base class defining operator-type-specific behavior.
+
+    All four prompt modes (explore, refine, simplify, crossover) are built on
+    this base class. They are parameterized by `self.name` plus two subclass
+    hooks that fill in the type-specific bits:
+
+      `_explore_extras()`    — optional explore-only signature/note variants
+                               (default all empty); mutation uses this for its
+                               data-aware vs structural toggle, which changes
+                               the function's arity
+
+    Subclasses end up small: they fill in Julia validation config and (only
+    when needed) the constraint and explore hooks. The LLM picks up the
+    operator's role from the reference doc loaded by `load_reference()`.
+    """
 
     name: str  # "mutation", "survival", "selection"
 
@@ -283,21 +299,32 @@ class OperatorType(ABC):
     list_func: str
     smoke_test_julia: str = ""  # Julia code template for runtime smoke test
 
+    # Relative path (under SymbolicRegression.jl/src/) to a .jl file containing
+    # this operator type's default baseline implementation — behavior-identical
+    # to PySR's built-in default, exposed as a named custom operator so the
+    # meta-evolution loop has a concrete parent to refine from. Subclasses set
+    # this; loaded lazily by `load_default_baseline_operator()`.
+    default_baseline_rel_path: Optional[str] = None
+
     @abstractmethod
     def load_reference(self) -> str:
         """Load the reference documentation for this operator type."""
 
-    @abstractmethod
-    def build_explore_prompt(self, reference: str, variation_seed: int) -> str:
-        """Build LLM prompt for exploring new operator ideas."""
+    def _explore_extras(self, variation_seed: int) -> Tuple[str, List[str], str]:
+        """Optional explore-only extras for per-type signature/note variants.
 
-    @abstractmethod
-    def build_refine_prompt(self, parent_code: str, reference: str, feedback: str) -> str:
-        """Build LLM prompt for refining an existing operator."""
+        Returns (intro_tail, extra_reqs, example_section):
+            - `intro_tail`: empty, OR text spliced in after the meta-intro
+              (must include any leading "\\n\\n" needed to separate from preceding text)
+            - `extra_reqs`: additional MUST/Required bullets prepended to the
+              requirements list (before shared core)
+            - `example_section`: empty, OR formatted example block (must include
+              any leading "\\n" needed to separate from preceding text)
 
-    @abstractmethod
-    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
-        """Build LLM prompt for crossing over two operators."""
+        Default: all empty. Mutation overrides to provide its data-aware vs
+        structural toggle (which changes the function's arity).
+        """
+        return "", [], ""
 
     @abstractmethod
     def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
@@ -307,12 +334,103 @@ class OperatorType(ABC):
     def baseline_config(self, pysr_kwargs: Dict) -> PySRConfig:
         """Create a baseline PySRConfig (no custom operator)."""
 
-    # Relative path (under SymbolicRegression.jl/src/) to a .jl file containing
-    # this operator type's default baseline implementation — behavior-identical
-    # to PySR's built-in default, exposed as a named custom operator so the
-    # meta-evolution loop has a concrete parent to refine from. Subclasses set
-    # this; loaded lazily by `load_default_baseline_operator()`.
-    default_baseline_rel_path: Optional[str] = None
+    def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
+        intro_tail, extra_reqs, example_section = self._explore_extras(variation_seed)
+        return (
+            "You are an expert in symbolic regression and genetic programming.\n\n"
+            f"Your task is to create a NEW custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
+            "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
+            "and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.\n"
+            "Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks\n"
+            "for which PySR discovers the correct ground truth expression."
+            f"{intro_tail}\n\n"
+            f"## Reference: relevant API\n{reference}\n\n"
+            "## Requirements\n"
+            + "\n".join(f"{i}. {req}" for i, req in enumerate([
+                *extra_reqs,
+                "Use proper Julia syntax",
+                "Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining its core idea, the steps it takes, and any heuristics or assumptions.",
+                "Use inline comments as appropriate to explain the implementation of the function body.",
+            ], start=1))
+            + "\n\n"
+            "## Output Format\n"
+            "Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.\n"
+            "The function should be named descriptively.\n"
+            "Do not include markdown code blocks or prose outside the docstring.\n"
+            + example_section
+        )
+
+    def build_refine_prompt(self, parent: JuliaOperator, reference: str) -> str:
+        return (
+            "You are an expert in symbolic regression and genetic programming.\n\n"
+            f"Your task is to IMPROVE an existing custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
+            "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
+            "and evaluates many proposed improvements to the PySR algorithm.\n"
+            "Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks\n"
+            "for which PySR discovers the correct ground truth expression.\n\n"
+            f"## Parent {self.name} operator code\n```julia\n{parent.code}\n```\n\n"
+            f"## Reference: relevant API\n{reference}\n\n"
+            "## Requirements\n"
+            + "\n".join(f"{i}. {req}" for i, req in enumerate([
+                "Keep the core idea but improve the implementation, or generate a variant that improves on the parent.",
+                "Use proper Julia syntax",
+                "Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining the operator's core idea, steps, and heuristics, plus what changed vs. the parent.",
+                "Use inline comments as appropriate to explain the implementation of the function body.",
+            ], start=1))
+            + "\n\n"
+            "## Output Format\n"
+            "Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.\n"
+            "The function should be named descriptively.\n"
+            "Do not include markdown code blocks or prose outside the docstring.\n"
+        )
+
+    def build_simplify_prompt(self, parent_code: str, reference: str) -> str:
+        return (
+            "You are an expert in symbolic regression and genetic programming.\n\n"
+            f"Your task is to SIMPLIFY an existing custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
+            "Produce a streamlined version of the parent that keeps its core idea but removes complexity.\n"
+            "For example, you might drop redundant branches, fold special cases into the common path,\n"
+            "or trim heuristics. If the parent combines many factors (e.g. five distinct heuristics),\n"
+            "you might keep only the most important three or four. The goal is to maintain performance\n"
+            "(as measured by percent of tasks for which PySR discovers the correct ground truth expression)\n"
+            "while simplifying the operator.\n\n"
+            f"## Parent {self.name} operator code\n```julia\n{parent_code}\n```\n\n"
+            f"## Reference: relevant API\n{reference}\n\n"
+            "## Requirements\n"
+            + "\n".join(f"{i}. {req}" for i, req in enumerate([
+                "Keep the same function signature shape as the parent",
+                "Use proper Julia syntax",
+                "Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining the simplified operator's core idea, the steps it takes, and what was removed/merged from the parent (and why the simplification should still be sound).",
+                "Use inline comments as appropriate to explain the implementation of the function body.",
+            ], start=1))
+            + "\n\n"
+            "## Output Format\n"
+            "Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.\n"
+            "The function should be named descriptively.\n"
+            "Do not include markdown code blocks or prose outside the docstring.\n"
+        )
+
+    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
+        return (
+            "You are an expert in symbolic regression and genetic programming.\n\n"
+            f"Your task is to COMBINE ideas from two {self.name} operators into a new one.\n\n"
+            f"## Parent {self.name} operator 1\n```julia\n{p1_code}\n```\n\n"
+            f"## Parent {self.name} operator 2\n```julia\n{p2_code}\n```\n\n"
+            f"## Reference: relevant API\n{reference}\n\n"
+            "## Requirements\n"
+            + "\n".join(f"{i}. {req}" for i, req in enumerate([
+                f"Create a NEW {self.name} operator that combines the best ideas from both parents",
+                "Don't just concatenate — synthesize a coherent new approach",
+                "Use proper Julia syntax",
+                "Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining the core idea synthesized from the parents, the steps it takes, and any heuristics or assumptions.",
+                "Use inline comments as appropriate to explain the implementation of the function body.",
+            ], start=1))
+            + "\n\n"
+            "## Output Format\n"
+            "Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.\n"
+            "The function should be named descriptively.\n"
+            "Do not include markdown code blocks or prose outside the docstring.\n"
+        )
 
     def load_default_baseline_operator(self) -> Optional[JuliaOperator]:
         """Return a JuliaOperator for this type's default PySR baseline.
@@ -376,63 +494,29 @@ class MutationOperatorType(OperatorType):
 
     def load_reference(self) -> str:
         base = Path(__file__).resolve().parent / "SymbolicRegression.jl/src/custom_mutations"
-        ref_path = base / "MUTATIONS_REFERENCE2.md"
-        if ref_path.exists():
-            return ref_path.read_text()
         ref_path = base / "MUTATIONS_REFERENCE.md"
         if ref_path.exists():
             return ref_path.read_text()
-        raise FileNotFoundError(f"Could not find MUTATIONS_REFERENCE.md or MUTATIONS_REFERENCE2.md")
+        raise FileNotFoundError(f"Could not find MUTATIONS_REFERENCE.md")
 
-    def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
-        # Alternate between data-aware and structural ideas based on seed parity.
-        # Even seeds -> data-aware (uses dataset.X / dataset.y).
-        # Odd seeds  -> structural (ignores dataset, operates on tree only).
-        # Both branches still receive `dataset` in the signature; structural
-        # mutations just ignore the argument.
-        data_aware_ideas = [
-            "Residual-guided: evaluate the current tree on `dataset.X` and target subtrees whose removal most reduces residual error",
-            "Feature-correlation: pick the input feature most correlated with `dataset.y` (or with the residual) and insert/substitute it into the tree",
-            "Outlier-aware: evaluate subtrees on `dataset.X`; replace any subtree that produces `NaN`/`Inf` or extreme values with a safe constant",
-            "Constant-fitting: replace a constant node with the value that best fits `dataset.y - tree_without_constant(dataset.X)` (closed-form or a few Newton steps)",
-            "Feature-importance: substitute a variable node with another variable ranked by univariate correlation with `dataset.y`",
-            "Range-aware: sample new constants from the empirical distribution of `dataset.y` (mean/std) instead of a standard normal",
-            "Sign-matched: insert `abs`, negation, or `sign` based on the sign pattern of `dataset.y` vs current tree output",
-            "Symmetry-probe: check whether `dataset.y` appears symmetric in some `X` column and insert squaring/`abs` where evidence supports it",
-        ]
-        structural_ideas = [
-            "Pattern-based: Insert common mathematical patterns (e.g., polynomial terms, trig identities)",
-            "Structure-aware: Target specific tree structures for modification",
-            "Simplification-focused: Identify and simplify redundant patterns",
-            "Feature-focused: Encourage using underutilized input variables",
-            "Constant-aware: Smart constant insertion or modification",
-            "Depth-balancing: Rebalance tree depth for better search",
-            "Symmetry-aware: Detect and exploit symmetric patterns",
-            "Gradient-guided: Use loss gradient information to guide changes",
-        ]
-
+    # Mutation has a per-explore data-aware vs structural toggle (chosen by
+    # variation_seed parity) — the function signature itself differs (5-arg
+    # with `dataset` vs 4-arg without), so the example template below changes
+    # accordingly. Refine doesn't toggle: it inherits the parent's signature.
+    def _explore_extras(self, variation_seed: int) -> Tuple[str, List[str], str]:
         data_aware = (variation_seed % 2 == 0)
-        ideas = data_aware_ideas if data_aware else structural_ideas
-        # Rotate within the chosen set so different seeds surface different ideas.
-        rot = (variation_seed // 2) % len(ideas)
-        selected_ideas = ideas[rot:] + ideas[:rot]
-        ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
-
         if data_aware:
             mode_note = (
-                "For this proposal, write a **data-aware mutation**: consult "
-                "`dataset.X` and/or `dataset.y` to make a data-driven decision "
-                "(e.g. insert the feature most correlated with the residual, "
-                "fit a constant by least squares, detect subtrees that produce "
-                "NaN/Inf on the training data)."
-            )
-            requirement_line = (
-                "Use `dataset.X` / `dataset.y` — this proposal is specifically a data-aware mutation. "
-                "Be defensive: guard against `dataset.y === nothing`, `eval_tree_array` failure, and empty/degenerate trees."
+                "For this proposal, write a **data-aware mutation**: consult `dataset.X` and/or `dataset.y`\n"
+                "to make a data-driven decision (e.g. insert the feature most correlated with the residual,\n"
+                "fit a constant by least squares, detect subtrees that produce NaN/Inf on the training data)."
             )
             signature_note = (
-                "Use the **5-argument data-aware signature** with `dataset` included "
+                "Use the **5-argument data-aware signature** with `dataset` included\n"
                 "(the reference doc shows this form). Do NOT use the 4-argument form."
+            )
+            extra_req = (
+                "Use `dataset.X` / `dataset.y` — this proposal is specifically a data-aware mutation."
             )
             example_signature = """function my_mutation_name(
     tree::N,
@@ -446,19 +530,16 @@ class MutationOperatorType(OperatorType):
 end"""
         else:
             mode_note = (
-                "For this proposal, write a **structural mutation**: operate "
-                "purely on the tree (nodes, operators, constants, variables). "
-                "Do not take a `dataset` argument."
-            )
-            requirement_line = (
-                "Do NOT read `dataset.X` / `dataset.y` — this proposal is a structural mutation; keep logic tree-only. "
-                "Your function MUST use the 4-argument signature below (no `dataset` parameter)."
+                "For this proposal, write a **structural mutation**: operate purely on the tree (nodes,\n"
+                "operators, constants, variables). Do not take a `dataset` argument."
             )
             signature_note = (
-                "**Important signature override:** the reference doc shows a 5-argument "
-                "signature with `dataset`. For this structural proposal, use the "
-                "**4-argument form without `dataset`** shown below. The runtime adapts "
-                "automatically based on the arity of your function."
+                "**Important signature override:** the reference doc shows a 5-argument signature with `dataset`.\n"
+                "For this structural proposal, use the **4-argument form without `dataset`** shown below.\n"
+                "The runtime adapts automatically based on the arity of your function."
+            )
+            extra_req = (
+                "Your function MUST use the 4-argument signature below (no `dataset` parameter)."
             )
             example_signature = """function my_mutation_name(
     tree::N,
@@ -470,106 +551,15 @@ end"""
     return tree
 end"""
 
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to create a NEW custom mutation operator for PySR/SymbolicRegression.jl.
-The mutation should help discover better symbolic expressions.
-
-{mode_note}
-
-{signature_note}
-
-## Reference: Existing Mutations and API
-{reference}
-
-## Requirements
-1. Create a NOVEL mutation that does something different from existing mutations
-2. {requirement_line}
-3. The mutation should be useful for symbolic regression search
-4. Use proper Julia syntax and the available API
-5. Include a Julia docstring (a triple-quoted string `\"\"\"...\"\"\"`) immediately above the `function` line that explains how the mutation works — its core idea, the steps it takes, and any heuristics or assumptions.
-6. Add inline `#` comments inside the function body to walk a reader through the implementation: label the major steps, explain non-obvious choices (sampling rules, fallbacks, guards), and note any tricky edge cases. Aim for short, useful comments — not a comment on every line.
-
-## Ideas to consider (pick one or invent your own):
-{ideas_text}
-
-## Output Format
-Return ONLY the Julia function code (with the docstring above it and inline comments inside it), nothing else. The function should be named descriptively.
-Do not include markdown code blocks or prose outside the docstring.
-
-Example format (use this exact signature, with a docstring above and inline comments inside):
-\"\"\"
-    my_mutation_name(tree, ...)
-
-One- or two-paragraph explanation of how this mutation works: the core idea,
-the steps it takes on the tree (and dataset, if data-aware), and any
-heuristics or assumptions.
-\"\"\"
-{example_signature}
-"""
-
-    def build_refine_prompt(self, parent_code: str, reference: str, feedback: str = "") -> str:
-        feedback_section = ""
-        if feedback:
-            feedback_section = f"\n## Feedback on parent mutation:\n{feedback}\n"
-
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to IMPROVE an existing custom mutation operator for PySR/SymbolicRegression.jl.
-
-## Parent Mutation Code
-```julia
-{parent_code}
-```
-{feedback_section}
-## Reference: Mutations API
-{reference}
-
-## Requirements
-1. Keep the core idea but improve the implementation
-2. Consider: better edge case handling, more efficient sampling, smarter heuristics
-3. The mutation should still be useful for symbolic regression search
-4. Use proper Julia syntax
-5. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the mutation works (core idea, steps, heuristics, and what changed vs. the parent).
-6. Add inline `#` comments inside the function body to walk a reader through the implementation: label the major steps, explain non-obvious choices (sampling rules, fallbacks, guards), and call out anything that differs from the parent. Keep comments short and useful — not a comment on every line.
-
-## Output Format
-Return ONLY the improved Julia function code (with the docstring above it and inline comments inside it), nothing else.
-Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
-Do not include markdown code blocks or prose outside the docstring.
-"""
-
-    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to COMBINE ideas from two mutation operators into a new one.
-
-## Parent Mutation 1
-```julia
-{p1_code}
-```
-
-## Parent Mutation 2
-```julia
-{p2_code}
-```
-
-## Reference: Mutations API
-{reference}
-
-## Requirements
-1. Create a NEW mutation that combines the best ideas from both parents
-2. Don't just concatenate - synthesize a coherent new approach
-3. The mutation should be useful for symbolic regression search
-4. Use proper Julia syntax
-5. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the combined mutation works — the core idea synthesized from the parents, the steps it takes, and any heuristics or assumptions.
-6. Add inline `#` comments inside the function body to walk a reader through the implementation: label the major steps, explain non-obvious choices (sampling rules, fallbacks, guards), and note which idea each block came from when it helps. Keep comments short and useful — not a comment on every line.
-
-## Output Format
-Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
-Give it a new descriptive name.
-Do not include markdown code blocks or prose outside the docstring.
-"""
+        intro_tail = f"\n\n{mode_note}\n\n{signature_note}"
+        example_section = (
+            "\nExample format (use this exact signature, with a docstring above and inline comments inside):\n"
+            f'"""\n    my_{self.name}_name(tree, ...)\n\n'
+            f"One- or two-paragraph explanation of how this {self.name} operator works.\n"
+            f'"""\n'
+            f"{example_signature}\n"
+        )
+        return intro_tail, [extra_req], example_section
 
     def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
         mutation_weights = get_default_mutation_weights()
@@ -637,124 +627,6 @@ class SurvivalOperatorType(OperatorType):
             return ref_path.read_text()
         raise FileNotFoundError(f"Could not find SURVIVAL_REFERENCE.md at {ref_path}")
 
-    def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
-        ideas = [
-            "Worst-fitness: Replace the member with the highest cost/loss",
-            "Complexity-aware: Replace the most bloated member (highest complexity)",
-            "Combined age+fitness: Weight both age and fitness to find replacement",
-            "Diversity-preserving: Replace members from overcrowded fitness regions",
-            "Tournament-based: Run a mini-tournament and replace the worst",
-            "Similarity-based: Replace the member most similar to the incoming offspring",
-            "Stagnation-based: Replace members that haven't improved in a while",
-            "Random: Uniform random replacement for baseline comparison",
-        ]
-        selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
-        ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
-
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to create a NEW custom survival operator for PySR/SymbolicRegression.jl.
-The survival operator decides which population member gets REPLACED when a new offspring is created.
-
-## Reference: Survival API and Default Implementation
-{reference}
-
-## Requirements
-1. Create a NOVEL survival strategy that differs from the default (replace-oldest)
-2. The function should help symbolic regression search find better expressions
-3. Use proper Julia syntax and the available API
-4. MUST handle the `exclude_indices` keyword argument
-5. MUST return a valid index (1 to pop.n)
-6. Include a Julia docstring (a triple-quoted string `\"\"\"...\"\"\"`) immediately above the `function` line that explains how the survival operator works — its core idea, the steps it takes when picking which member to replace, and any heuristics or assumptions.
-
-## Ideas to consider (pick one or invent your own):
-{ideas_text}
-
-## Output Format
-Return ONLY the Julia function code (with the docstring above it), nothing else. The function should be named descriptively.
-Do not include markdown code blocks or prose outside the docstring.
-
-Example format (with a docstring above):
-\"\"\"
-    my_survival_name(pop, options; exclude_indices)
-
-One- or two-paragraph explanation of how this survival operator chooses
-which population member to replace, including the scoring rule and any
-heuristics or assumptions.
-\"\"\"
-function my_survival_name(
-    pop::Population{{T,L,N}},
-    options::AbstractOptions;
-    exclude_indices::Vector{{Int}}=Int[],
-)::Int where {{T,L,N}}
-    # Implementation
-    return idx
-end
-"""
-
-    def build_refine_prompt(self, parent_code: str, reference: str, feedback: str = "") -> str:
-        feedback_section = ""
-        if feedback:
-            feedback_section = f"\n## Feedback on parent survival:\n{feedback}\n"
-
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to IMPROVE an existing custom survival operator for PySR/SymbolicRegression.jl.
-
-## Parent Survival Code
-```julia
-{parent_code}
-```
-{feedback_section}
-## Reference: Survival API
-{reference}
-
-## Requirements
-1. Keep the core idea but improve the implementation
-2. Consider: better edge case handling, smarter heuristics, combining strategies
-3. MUST handle the `exclude_indices` keyword argument
-4. MUST return a valid index (1 to pop.n)
-5. Use proper Julia syntax
-6. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the survival operator works (core idea, replacement rule, heuristics) and what changed vs. the parent.
-
-## Output Format
-Return ONLY the improved Julia function code (with the docstring above it), nothing else.
-Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
-Do not include markdown code blocks or prose outside the docstring.
-"""
-
-    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to COMBINE ideas from two survival operators into a new one.
-
-## Parent Survival 1
-```julia
-{p1_code}
-```
-
-## Parent Survival 2
-```julia
-{p2_code}
-```
-
-## Reference: Survival API
-{reference}
-
-## Requirements
-1. Create a NEW survival operator that combines the best ideas from both parents
-2. Don't just concatenate - synthesize a coherent new approach
-3. MUST handle the `exclude_indices` keyword argument
-4. MUST return a valid index (1 to pop.n)
-5. Use proper Julia syntax
-6. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the combined survival operator works — the core idea synthesized from the parents, the replacement rule, and any heuristics or assumptions.
-
-## Output Format
-Return ONLY the new Julia function code (with the docstring above it), nothing else.
-Give it a new descriptive name.
-Do not include markdown code blocks or prose outside the docstring.
-"""
-
     def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
         mutation_weights = get_default_mutation_weights()
         return PySRConfig(
@@ -808,122 +680,6 @@ class SelectionOperatorType(OperatorType):
         if ref_path.exists():
             return ref_path.read_text()
         raise FileNotFoundError(f"Could not find SELECTION_REFERENCE.md at {ref_path}")
-
-    def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
-        ideas = [
-            "Lexicase selection: Sequentially filter candidates on shuffled evaluation criteria",
-            "Epsilon-lexicase: Like lexicase but with tolerance threshold for near-best candidates",
-            "Fitness-proportionate: Select with probability proportional to fitness (roulette wheel)",
-            "Boltzmann/softmax: Use temperature-controlled selection pressure",
-            "Rank-based: Assign selection probability based on rank rather than raw fitness",
-            "Novelty-based: Prefer members whose expression structure is rare in the population",
-            "Multi-objective: Consider both fitness and complexity using Pareto dominance",
-            "Age-fitness Pareto: Combine age and fitness in multi-objective selection",
-        ]
-        selected_ideas = ideas[variation_seed % len(ideas):] + ideas[:variation_seed % len(ideas)]
-        ideas_text = "\n".join(f"- {idea}" for idea in selected_ideas[:4])
-
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to create a NEW custom selection operator for PySR/SymbolicRegression.jl.
-The selection operator decides which population member is chosen as a PARENT for mutation or crossover.
-
-## Reference: Selection API and Default Implementation
-{reference}
-
-## Requirements
-1. Create a NOVEL selection strategy that differs from the default tournament selection
-2. The function should help symbolic regression search find better expressions
-3. Use proper Julia syntax and the available API
-4. MUST return a PopMember (the dispatch will copy it)
-5. Can use running_search_statistics for adaptive behavior
-6. Include a Julia docstring (a triple-quoted string `\"\"\"...\"\"\"`) immediately above the `function` line that explains how the selection operator works — its core idea, the steps it takes when picking a parent, and any heuristics or assumptions (including any use of `running_search_statistics`).
-
-## Ideas to consider (pick one or invent your own):
-{ideas_text}
-
-## Output Format
-Return ONLY the Julia function code (with the docstring above it), nothing else. The function should be named descriptively.
-Do not include markdown code blocks or prose outside the docstring.
-
-Example format (with a docstring above):
-\"\"\"
-    my_selection_name(pop, running_search_statistics, options)
-
-One- or two-paragraph explanation of how this selection operator picks a
-parent: the scoring/sampling rule, any tie-breaking, and how (if at all)
-running_search_statistics is used.
-\"\"\"
-function my_selection_name(
-    pop::Population{{T,L,N}},
-    running_search_statistics::RunningSearchStatistics,
-    options::AbstractOptions,
-)::PopMember{{T,L,N}} where {{T,L,N}}
-    # Implementation
-    return selected_member
-end
-"""
-
-    def build_refine_prompt(self, parent_code: str, reference: str, feedback: str = "") -> str:
-        feedback_section = ""
-        if feedback:
-            feedback_section = f"\n## Feedback on parent selection:\n{feedback}\n"
-
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to IMPROVE an existing custom selection operator for PySR/SymbolicRegression.jl.
-
-## Parent Selection Code
-```julia
-{parent_code}
-```
-{feedback_section}
-## Reference: Selection API
-{reference}
-
-## Requirements
-1. Keep the core idea but improve the implementation
-2. Consider: better edge case handling, smarter heuristics, combining strategies
-3. MUST return a PopMember
-4. Use proper Julia syntax
-5. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the selection operator works (core idea, scoring/sampling rule, heuristics) and what changed vs. the parent.
-
-## Output Format
-Return ONLY the improved Julia function code (with the docstring above it), nothing else.
-Use a NEW function name (append _v2, _improved, etc. or rename descriptively).
-Do not include markdown code blocks or prose outside the docstring.
-"""
-
-    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
-        return f"""You are an expert in symbolic regression and genetic programming.
-
-Your task is to COMBINE ideas from two selection operators into a new one.
-
-## Parent Selection 1
-```julia
-{p1_code}
-```
-
-## Parent Selection 2
-```julia
-{p2_code}
-```
-
-## Reference: Selection API
-{reference}
-
-## Requirements
-1. Create a NEW selection operator that combines the best ideas from both parents
-2. Don't just concatenate - synthesize a coherent new approach
-3. MUST return a PopMember
-4. Use proper Julia syntax
-5. Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining how the combined selection operator works — the core idea synthesized from the parents, the scoring/sampling rule, and any heuristics or assumptions.
-
-## Output Format
-Return ONLY the new Julia function code (with the docstring above it), nothing else.
-Give it a new descriptive name.
-Do not include markdown code blocks or prose outside the docstring.
-"""
 
     def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
         mutation_weights = get_default_mutation_weights()
@@ -1059,7 +815,6 @@ def generate_operator_code(
     model: str = "openai/gpt-5-mini",
     model_ensemble: Optional[ModelEnsemble] = None,
     mode: str = "explore",
-    feedback: str = "",
     variation_seed: int = 0,
     temperature: float = 0.0,
     use_cache: bool = True,
@@ -1076,11 +831,15 @@ def generate_operator_code(
     elif mode == "refine":
         if parent is None:
             raise ValueError("refine mode requires a parent")
-        prompt = op_type.build_refine_prompt(parent.code, reference, feedback)
+        prompt = op_type.build_refine_prompt(parent, reference)
     elif mode == "crossover":
         if parent is None or parent2 is None:
             raise ValueError("crossover mode requires two parents")
         prompt = op_type.build_crossover_prompt(parent.code, parent2.code, reference)
+    elif mode == "simplify":
+        if parent is None:
+            raise ValueError("simplify mode requires a parent")
+        prompt = op_type.build_simplify_prompt(parent.code, reference)
     else:
         raise ValueError(f"Unknown mode: {mode}")
 

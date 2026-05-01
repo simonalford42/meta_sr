@@ -169,6 +169,7 @@ def _build_pysr_cache_entry(
         allow_custom_mutations=spec.allow_custom_mutations,
         custom_selection_code=spec.custom_selection_code,
         custom_survival_code=spec.custom_survival_code,
+        custom_loss_code=spec.custom_loss_code,
     )
     request_hash = cache.make_request_hash(
         mutation_weights=pysr_mutation_kwargs,
@@ -184,6 +185,7 @@ def _build_pysr_cache_entry(
         target_noise=spec.target_noise,
         custom_selection_code=spec.custom_selection_code,
         custom_survival_code=spec.custom_survival_code,
+        custom_loss_code=spec.custom_loss_code,
         hof_n_steps=hof_n_steps,
     )
     execution_trace_json = (
@@ -337,6 +339,32 @@ def _load_dynamic_survival(custom_survival_code: str) -> None:
 
     escaped_code = custom_survival_code.replace('"""', '\\"\\"\\"')
     jl.seval(f'load_survival_from_string!(:{name}, raw"""{escaped_code}""")')
+
+
+def _load_dynamic_loss(custom_loss_code: str) -> None:
+    """
+    Load custom loss code into Julia at runtime.
+
+    Args:
+        custom_loss_code: Julia code string defining a loss function.
+    """
+    from juliacall import Main as jl
+
+    jl.seval("using SymbolicRegression")
+    jl.seval("using SymbolicRegression.CustomLossModule")
+
+    # Clear any previously loaded dynamic losses
+    jl.seval("clear_dynamic_losses!()")
+
+    # Extract function name from code
+    import re
+    match = re.search(r'function\s+(\w+)\s*\(', custom_loss_code)
+    if not match:
+        raise ValueError("Could not extract function name from loss code")
+    name = match.group(1)
+
+    escaped_code = custom_loss_code.replace('"""', '\\"\\"\\"')
+    jl.seval(f'load_loss_from_string!(:{name}, raw"""{escaped_code}""")')
 
 
 def _load_dynamic_mutations(custom_mutation_code: Dict[str, str]) -> None:
@@ -522,6 +550,7 @@ class PySRTaskSpec:
     target_noise: float = 0.0  # Gaussian noise level for target (SRBench standard: 0.0, 0.001, 0.01, 0.1)
     custom_selection_code: Optional[str] = None  # Julia code for custom selection operator
     custom_survival_code: Optional[str] = None  # Julia code for custom survival operator
+    custom_loss_code: Optional[str] = None  # Julia code for custom loss operator
     fitness_metric: str = "r2"  # 'r2' or 'gt'
     hof_csv_paths: List[str] = field(default_factory=list)  # Paths to HOF CSVs from run_pysr_srbench
     hof_n_steps: int = 0  # Number of HOF checkpoints to write during fit (0 = disabled)
@@ -666,6 +695,18 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             print(f"[{spec.dataset_name}] Loading custom survival operator", flush=True)
             _load_dynamic_survival(spec.custom_survival_code)
             print(f"[{spec.dataset_name}] Custom survival loaded in {_time.time() - t2:.1f}s", flush=True)
+
+        # Load dynamic loss if provided
+        if spec.custom_loss_code:
+            t2 = _time.time()
+            print(f"[{spec.dataset_name}] Loading custom loss operator", flush=True)
+            _load_dynamic_loss(spec.custom_loss_code)
+            print(f"[{spec.dataset_name}] Custom loss loaded in {_time.time() - t2:.1f}s", flush=True)
+        else:
+            # Ensure no stale custom loss from a prior task is still active.
+            from juliacall import Main as jl
+            jl.seval("using SymbolicRegression.CustomLossModule")
+            jl.seval("clear_dynamic_losses!()")
 
         # Create and fit model
         model = PySRRegressor(**model_kwargs)
@@ -944,6 +985,7 @@ class PySRConfig:
     allow_custom_mutations: bool = False
     custom_selection_code: Optional[str] = None
     custom_survival_code: Optional[str] = None
+    custom_loss_code: Optional[str] = None
     name: str = ""  # Optional name for logging
 
     def to_json_dict(self) -> Dict:
@@ -1154,6 +1196,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         target_noise=noise,
                         custom_selection_code=config.custom_selection_code,
                         custom_survival_code=config.custom_survival_code,
+                        custom_loss_code=config.custom_loss_code,
                         fitness_metric=fitness_metric,
                         hof_csv_paths=hof_csv_paths,
                         hof_n_steps=self.hof_n_steps,
@@ -1188,6 +1231,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             target_noise=task.target_noise,
                             custom_selection_code=task.custom_selection_code,
                             custom_survival_code=task.custom_survival_code,
+                            custom_loss_code=task.custom_loss_code,
                             hof_n_steps=hof_n_steps,
                         )
                         cached_has_required_trace = (

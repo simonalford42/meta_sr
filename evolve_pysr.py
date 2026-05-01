@@ -416,8 +416,6 @@ def run_bundle_evolution(
     target_noise: float = 0.0,
     random_target_noise: bool = False,
     fitness_metric: str = "gt",
-    hp_tuning_trials: int = 0,
-    hpo_n_runs: Optional[int] = None,
     repo_root: Optional[str] = None,
     baseline_bundle: Optional[OperatorBundle] = None,
     wandb_run: Optional[Any] = None,
@@ -628,16 +626,13 @@ def run_bundle_evolution(
         )
         print(f"\n[val eval] submitted for gen {gen} best={bundle.display_name} (background)")
 
-    # Evaluate baseline (default operators, with HPO hparams if provided)
+    # Evaluate baseline (default operators)
     baseline_details: Optional[List[Dict]] = None
     if resume_state is None:
         print("=" * 60)
         print("Evaluating baseline (default operators)...")
         print("=" * 60)
         eval_baseline = OperatorBundle.create_default()
-        if baseline_bundle is not None and baseline_bundle.best_hparams:
-            eval_baseline.best_hparams = copy.deepcopy(baseline_bundle.best_hparams)
-            print(f"  Using {len(eval_baseline.best_hparams)} hparams from --baseline")
         baseline_config = eval_baseline.to_pysr_config(pysr_kwargs)
         baseline_results = _evaluate_configs_with_noise_map(
             evaluator=evaluator,
@@ -770,7 +765,6 @@ def run_bundle_evolution(
         if baseline_bundle:
             seed_bundle = OperatorBundle(
                 operators={k: copy.deepcopy(v) for k, v in baseline_bundle.operators.items()},
-                best_hparams=copy.deepcopy(baseline_bundle.best_hparams) if baseline_bundle.best_hparams else None,
             )
             population.append(seed_bundle)
             print(f"\nBundle 1/{population_size}: baseline (unchanged)")
@@ -790,7 +784,6 @@ def run_bundle_evolution(
             if baseline_bundle:
                 bundle = OperatorBundle(
                     operators={k: copy.deepcopy(v) for k, v in baseline_bundle.operators.items()},
-                    best_hparams=copy.deepcopy(baseline_bundle.best_hparams) if baseline_bundle.best_hparams else None,
                 )
             else:
                 bundle = OperatorBundle.create_default()
@@ -1000,28 +993,38 @@ def run_bundle_evolution(
             parent_op = parent_bundle.get_operator(current_type_name)
             task_info: Optional[Dict[str, str]] = None
 
-            # Choose mode: 50/50 refine vs explore. If refine is chosen but the
-            # selected parent bundle lacks a custom operator of this type (common
-            # for survival/selection before any have been generated), fall back
-            # to an operator from any population member that has one. If no
-            # bundle in the population has an operator of this type, explore.
-            # (Crossover currently disabled.)
-            mode = rng.choice(["explore", "refine"])
+            # Choose mode with equal weight between explore / refine / simplify
+            # / crossover. refine and simplify need one parent operator of the
+            # current type; crossover needs two distinct ones. If the selected
+            # parent bundle lacks a custom operator of this type (common for
+            # survival/selection before any have been generated), fall back to
+            # an operator from any population member that has one. If the
+            # population can't supply enough parents for the chosen mode, fall
+            # back along: crossover -> refine -> explore, simplify -> explore.
+            mode = rng.choice(["explore", "refine", "simplify", "crossover"])
             parent = None
             parent2 = None
-            if mode == "refine":
+            type_candidates = [
+                b.get_operator(current_type_name)
+                for b in population
+                if b.get_operator(current_type_name) is not None
+            ]
+            if mode in ("refine", "simplify"):
                 if parent_op is not None:
                     parent = parent_op
+                elif type_candidates:
+                    parent = rng.choice(type_candidates)
                 else:
-                    refine_candidates = [
-                        b.get_operator(current_type_name)
-                        for b in population
-                        if b.get_operator(current_type_name) is not None
-                    ]
-                    if refine_candidates:
-                        parent = rng.choice(refine_candidates)
-                    else:
-                        mode = "explore"
+                    mode = "explore"
+            elif mode == "crossover":
+                if len(type_candidates) >= 2:
+                    p1, p2 = rng.sample(type_candidates, 2)
+                    parent, parent2 = p1, p2
+                elif len(type_candidates) == 1:
+                    parent = type_candidates[0]
+                    mode = "refine"
+                else:
+                    mode = "explore"
 
             # Attach execution-trace feedback for an unsolved task, if available.
             if execution_feedback_n > 0 and rng.random() < execution_feedback_prob:
@@ -1172,33 +1175,6 @@ def run_bundle_evolution(
         offspring_eval_elapsed = time.perf_counter() - offspring_eval_start
         print(f"  [timing] offspring evaluation: {_fmt_elapsed(offspring_eval_elapsed)}")
 
-        # HPO tuning step
-        hpo_elapsed = 0.0
-        if hp_tuning_trials > 0:
-            print(f"\n--- HPO Tuning ({hp_tuning_trials} trials per bundle) ---")
-            from hpo_evolve_pysr import tune_population
-            score_before = best.score
-            hpo_start = time.perf_counter()
-            population = tune_population(
-                population=population,
-                evaluator=evaluator,
-                dataset_names=dataset_names,
-                pysr_kwargs=pysr_kwargs,
-                operator_type_names=operator_type_names,
-                n_trials=hp_tuning_trials,
-                seed=seed,
-                output_dir=output_dir,
-                model=model,
-                n_runs=hpo_n_runs if hpo_n_runs is not None else n_runs,
-                target_noise_map=target_noise_map,
-                fitness_metric=fitness_metric,
-            )
-            hpo_elapsed = time.perf_counter() - hpo_start
-            best = population[0]
-            if best.score != score_before:
-                print(f"  HPO: {score_before:.4f} -> {best.score:.4f} ({best.score - score_before:+.4f})")
-            print(f"  [timing] HPO tuning: {_fmt_elapsed(hpo_elapsed)}")
-
         gen_elapsed = time.perf_counter() - gen_start
         evolved_type_label = "+".join(operator_type_names)
         print(f"\nGeneration {gen} complete:")
@@ -1219,9 +1195,7 @@ def run_bundle_evolution(
         print(
             f"  [timing] generation total: {_fmt_elapsed(gen_elapsed)} "
             f"(offspring gen {_fmt_elapsed(offspring_gen_elapsed)}, "
-            f"offspring eval {_fmt_elapsed(offspring_eval_elapsed)}"
-            + (f", HPO {_fmt_elapsed(hpo_elapsed)}" if hp_tuning_trials > 0 else "")
-            + ")"
+            f"offspring eval {_fmt_elapsed(offspring_eval_elapsed)})"
         )
         # When task_diverse_pop is on, select_survivors_diverse already printed
         # the population summary. Otherwise, emit it here so non-diverse runs
@@ -1240,6 +1214,9 @@ def run_bundle_evolution(
                 "best_score": best.score,
                 "improvement_over_baseline": best.score - baseline_score,
                 "evolved_type": evolved_type_label,
+                "gen_time_sec": gen_elapsed,
+                "offspring_gen_time_sec": offspring_gen_elapsed,
+                "offspring_eval_time_sec": offspring_eval_elapsed,
             }
             pop_scores = [c.score for c in population if c.score is not None]
             if pop_scores:
@@ -1292,12 +1269,8 @@ def main():
     parser.add_argument("--offspring", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=10)
-    parser.add_argument("--hpo-n-runs", type=int, default=None,
-                        help="n_runs used during HPO tuning (defaults to --n-runs)")
     parser.add_argument("--fitness_metric", type=str, default="gt", choices=["r2", "gt"],
                         help="Meta-evolution fitness metric: r2 or gt (whole-frontier symbolic match rate)")
-    parser.add_argument("--hp_tuning_trials", type=int, default=0,
-                        help="HPO trials per bundle per generation (0=disabled)")
 
     parser.add_argument("--split", type=str, default='splits/barely_unsolvable.txt',
                         help="Path to dataset split file")
@@ -1373,7 +1346,6 @@ def main():
     parser.add_argument("--baseline", type=str, default=None,
                         help="Path to a baseline operator to seed the initial population. "
                              "Accepts: evolve_pysr output dir or run_data.json, "
-                             "hpo_pysr output dir or best_params.json, "
                              "openevolve best_program.py, or a raw .jl file.")
 
     parser.add_argument("--exec_feedback_n", type=int, default=0,
@@ -1474,8 +1446,6 @@ def main():
         target_noise=args.target_noise,
         random_target_noise=args.random_target_noise,
         fitness_metric=args.fitness_metric,
-        hp_tuning_trials=args.hp_tuning_trials,
-        hpo_n_runs=args.hpo_n_runs,
         repo_root=args.repo_root,
         task_diverse_pop=args.task_diverse_pop,
         racing=args.racing,
@@ -1500,9 +1470,7 @@ def main():
         "offspring": args.offspring,
         "seed": args.seed,
         "n_runs": args.n_runs,
-        "hpo_n_runs": args.hpo_n_runs,
         "fitness_metric": args.fitness_metric,
-        "hp_tuning_trials": args.hp_tuning_trials,
         "split": args.split,
         "val_split": args.val_split,
         "val_n_runs": args.val_n_runs,

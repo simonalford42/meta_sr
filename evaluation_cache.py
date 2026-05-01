@@ -369,6 +369,7 @@ class PySRCacheDB:
         allow_custom_mutations: bool,
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
+        custom_loss_code: Optional[str] = None,
     ) -> str:
         """Create a deterministic hash for a PySR configuration."""
         key_data = {
@@ -379,6 +380,11 @@ class PySRCacheDB:
             "custom_selection_code": custom_selection_code,
             "custom_survival_code": custom_survival_code,
         }
+        # Conditionally include custom_loss_code only when set, so existing
+        # cache entries (written before the loss operator existed) keep the
+        # same hash and remain valid.
+        if custom_loss_code is not None:
+            key_data["custom_loss_code"] = custom_loss_code
         key_str = json.dumps(key_data, sort_keys=True, ensure_ascii=True)
         return hashlib.sha256(key_str.encode()).hexdigest()
 
@@ -397,12 +403,13 @@ class PySRCacheDB:
         target_noise: float = 0.0,
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
+        custom_loss_code: Optional[str] = None,
         hof_n_steps: int = 0,
     ) -> str:
         """Create a deterministic hash key for the PySR evaluation request."""
         config_hash = self._make_config_hash(
             mutation_weights, pysr_kwargs, custom_mutation_code, allow_custom_mutations,
-            custom_selection_code, custom_survival_code
+            custom_selection_code, custom_survival_code, custom_loss_code,
         )
         key_data = {
             "config_hash": config_hash,
@@ -434,6 +441,7 @@ class PySRCacheDB:
         target_noise: float = 0.0,
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
+        custom_loss_code: Optional[str] = None,
         hof_n_steps: int = 0,
     ) -> str:
         """Public wrapper for the deterministic request hash."""
@@ -451,6 +459,7 @@ class PySRCacheDB:
             target_noise=target_noise,
             custom_selection_code=custom_selection_code,
             custom_survival_code=custom_survival_code,
+            custom_loss_code=custom_loss_code,
             hof_n_steps=hof_n_steps,
         )
 
@@ -469,6 +478,7 @@ class PySRCacheDB:
         target_noise: float = 0.0,
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
+        custom_loss_code: Optional[str] = None,
         hof_n_steps: int = 0,
     ) -> Optional[Dict[str, Any]]:
         """Look up a cached PySR evaluation result. Returns None if not found."""
@@ -476,7 +486,7 @@ class PySRCacheDB:
             mutation_weights, pysr_kwargs, dataset_name, seed, data_seed,
             max_samples, run_index, custom_mutation_code, allow_custom_mutations,
             pysr_model_kwargs, target_noise, custom_selection_code, custom_survival_code,
-            hof_n_steps
+            custom_loss_code, hof_n_steps,
         )
 
         stmt = select(
@@ -532,6 +542,7 @@ class PySRCacheDB:
         runtime_seconds: float = 0.0,
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
+        custom_loss_code: Optional[str] = None,
         gt_match_score: Optional[float] = None,
         execution_trace: Optional[List[Dict]] = None,
         hof_n_steps: int = 0,
@@ -539,13 +550,13 @@ class PySRCacheDB:
         """Store a PySR evaluation result in the cache."""
         config_hash = self._make_config_hash(
             mutation_weights, pysr_kwargs, custom_mutation_code, allow_custom_mutations,
-            custom_selection_code, custom_survival_code
+            custom_selection_code, custom_survival_code, custom_loss_code,
         )
         request_hash = self._make_cache_key(
             mutation_weights, pysr_kwargs, dataset_name, seed, data_seed,
             max_samples, run_index, custom_mutation_code, allow_custom_mutations,
             pysr_model_kwargs, target_noise, custom_selection_code, custom_survival_code,
-            hof_n_steps
+            custom_loss_code, hof_n_steps,
         )
 
         entry = PySRCacheEntry(
@@ -576,11 +587,12 @@ class PySRCacheDB:
         allow_custom_mutations: bool = False,
         custom_selection_code: Optional[str] = None,
         custom_survival_code: Optional[str] = None,
+        custom_loss_code: Optional[str] = None,
     ) -> str:
         """Public method to get config hash for external use."""
         return self._make_config_hash(
             mutation_weights, pysr_kwargs, custom_mutation_code, allow_custom_mutations,
-            custom_selection_code, custom_survival_code
+            custom_selection_code, custom_survival_code, custom_loss_code,
         )
 
     def store_many(self, entries: List[Dict[str, Any]]) -> int:
