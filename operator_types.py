@@ -356,12 +356,13 @@ class OperatorType(ABC):
     def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
         intro_tail, explore_extra_reqs, example_section = self._explore_extras(variation_seed)
         return (
-            "You are an expert in symbolic regression and genetic programming.\n\n"
+            "You are an expert in symbolic regression, physics, and genetic programming programming.\n\n"
             f"Your task is to create a NEW custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
             "and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.\n"
             "Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks\n"
-            "for which PySR discovers the correct ground truth expression."
+            "for which PySR discovers the correct ground truth expression.\n"
+            "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n\n"
             f"{intro_tail}\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
@@ -382,12 +383,13 @@ class OperatorType(ABC):
 
     def build_refine_prompt(self, parent: JuliaOperator, reference: str) -> str:
         return (
-            "You are an expert in symbolic regression and genetic programming.\n\n"
+            "You are an expert in symbolic regression, physics, and genetic programming programming.\n\n"
             f"Your task is to IMPROVE an existing custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
             "and evaluates many proposed improvements to the PySR algorithm.\n"
             "Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks\n"
-            "for which PySR discovers the correct ground truth expression.\n\n"
+            "for which PySR discovers the correct ground truth expression.\n"
+            "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n\n"
             f"## Parent {self.name} operator code\n```julia\n{parent.code}\n```\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
@@ -407,14 +409,15 @@ class OperatorType(ABC):
 
     def build_simplify_prompt(self, parent_code: str, reference: str) -> str:
         return (
-            "You are an expert in symbolic regression and genetic programming.\n\n"
+            "You are an expert in symbolic regression, physics, and genetic programming programming.\n\n"
             f"Your task is to SIMPLIFY an existing custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Produce a streamlined version of the parent that keeps its core idea but removes complexity.\n"
             "For example, you might drop redundant branches, fold special cases into the common path,\n"
             "or trim heuristics. If the parent combines many factors (e.g. five distinct heuristics),\n"
             "you might keep only the most important three or four. The goal is to maintain performance\n"
             "(as measured by percent of tasks for which PySR discovers the correct ground truth expression)\n"
-            "while simplifying the operator.\n\n"
+            "while simplifying the operator.\n"
+            "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n\n"
             f"## Parent {self.name} operator code\n```julia\n{parent_code}\n```\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
@@ -434,8 +437,12 @@ class OperatorType(ABC):
 
     def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
         return (
-            "You are an expert in symbolic regression and genetic programming.\n\n"
-            f"Your task is to COMBINE ideas from two {self.name} operators into a new one.\n\n"
+            "You are an expert in symbolic regression, physics, and genetic programming programming.\n\n"
+            f"Your task is to COMBINE ideas from two {self.name} operators into a new one.\n"
+            "Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks\n"
+            "for which PySR discovers the correct ground truth expression.\n"
+            "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n\n"
+
             f"## Parent {self.name} operator 1\n```julia\n{p1_code}\n```\n\n"
             f"## Parent {self.name} operator 2\n```julia\n{p2_code}\n```\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
