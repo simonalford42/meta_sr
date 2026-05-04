@@ -210,6 +210,10 @@ class OperatorBundle:
         if sel is not None:
             config_kwargs["custom_selection_code"] = sel.code
 
+        loss = self.operators.get("loss")
+        if loss is not None:
+            config_kwargs["custom_loss_code"] = loss.code
+
         # Merge HPO-tuned hparams if available
         # Skip op_* keys (operator-specific hparams stored for reference only)
         merged_pysr_kwargs = dict(pysr_kwargs)
@@ -224,7 +228,7 @@ class OperatorBundle:
 
         # Build name from operator names
         name_parts = []
-        for t in ["mutation", "survival", "selection"]:
+        for t in ["mutation", "survival", "selection", "loss"]:
             op = self.operators.get(t)
             name_parts.append(op.name if op else "default")
         name = "__".join(name_parts)
@@ -266,7 +270,7 @@ class OperatorBundle:
     @property
     def display_name(self) -> str:
         parts = []
-        for t in ["mutation", "survival", "selection"]:
+        for t in ["mutation", "survival", "selection", "loss"]:
             op = self.operators.get(t)
             parts.append(op.name if op else "default")
         return " | ".join(parts)
@@ -280,17 +284,23 @@ class OperatorType(ABC):
     this base class. They are parameterized by `self.name` plus two subclass
     hooks that fill in the type-specific bits:
 
-      `_explore_extras()`    — optional explore-only signature/note variants
+      `_extra_requirements()` — optional type-specific requirement bullets that
+                               apply across ALL prompt modes (explore, refine,
+                               simplify, crossover). Default: empty list. Loss
+                               uses this for the "DO NOT penalize complexity"
+                               constraint that holds regardless of mode.
+
+      `_explore_extras()`     — optional explore-only signature/note variants
                                (default all empty); mutation uses this for its
                                data-aware vs structural toggle, which changes
-                               the function's arity
+                               the function's arity.
 
     Subclasses end up small: they fill in Julia validation config and (only
     when needed) the constraint and explore hooks. The LLM picks up the
     operator's role from the reference doc loaded by `load_reference()`.
     """
 
-    name: str  # "mutation", "survival", "selection"
+    name: str  # "mutation", "survival", "selection", "loss"
 
     # Julia validation config
     julia_module: str
@@ -310,6 +320,16 @@ class OperatorType(ABC):
     def load_reference(self) -> str:
         """Load the reference documentation for this operator type."""
 
+    def _extra_requirements(self) -> List[str]:
+        """Optional type-specific requirement bullets shared by all prompt modes.
+
+        Returned bullets are prepended to the requirements list in every prompt
+        (explore, refine, simplify, crossover). Use this for hard constraints
+        that are invariant across modes — e.g., the loss operator's "do not
+        penalize complexity" rule. Default: empty.
+        """
+        return []
+
     def _explore_extras(self, variation_seed: int) -> Tuple[str, List[str], str]:
         """Optional explore-only extras for per-type signature/note variants.
 
@@ -319,7 +339,6 @@ class OperatorType(ABC):
             - `extra_reqs`: additional MUST/Required bullets prepended to the
               requirements list (before shared core)
             - `example_section`: empty, OR formatted example block (must include
-              any leading "\\n" needed to separate from preceding text)
 
         Default: all empty. Mutation overrides to provide its data-aware vs
         structural toggle (which changes the function's arity).
@@ -335,7 +354,7 @@ class OperatorType(ABC):
         """Create a baseline PySRConfig (no custom operator)."""
 
     def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
-        intro_tail, extra_reqs, example_section = self._explore_extras(variation_seed)
+        intro_tail, explore_extra_reqs, example_section = self._explore_extras(variation_seed)
         return (
             "You are an expert in symbolic regression and genetic programming.\n\n"
             f"Your task is to create a NEW custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
@@ -347,7 +366,8 @@ class OperatorType(ABC):
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
             + "\n".join(f"{i}. {req}" for i, req in enumerate([
-                *extra_reqs,
+                *self._extra_requirements(),
+                *explore_extra_reqs,
                 "Use proper Julia syntax",
                 "Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining its core idea, the steps it takes, and any heuristics or assumptions.",
                 "Use inline comments as appropriate to explain the implementation of the function body.",
@@ -372,6 +392,7 @@ class OperatorType(ABC):
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
             + "\n".join(f"{i}. {req}" for i, req in enumerate([
+                *self._extra_requirements(),
                 "Keep the core idea but improve the implementation, or generate a variant that improves on the parent.",
                 "Use proper Julia syntax",
                 "Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining the operator's core idea, steps, and heuristics, plus what changed vs. the parent.",
@@ -398,6 +419,7 @@ class OperatorType(ABC):
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
             + "\n".join(f"{i}. {req}" for i, req in enumerate([
+                *self._extra_requirements(),
                 "Keep the same function signature shape as the parent",
                 "Use proper Julia syntax",
                 "Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining the simplified operator's core idea, the steps it takes, and what was removed/merged from the parent (and why the simplification should still be sound).",
@@ -419,6 +441,7 @@ class OperatorType(ABC):
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
             + "\n".join(f"{i}. {req}" for i, req in enumerate([
+                *self._extra_requirements(),
                 f"Create a NEW {self.name} operator that combines the best ideas from both parents",
                 "Don't just concatenate — synthesize a coherent new approach",
                 "Use proper Julia syntax",
@@ -698,10 +721,75 @@ class SelectionOperatorType(OperatorType):
             name="baseline",
         )
 
+class LossOperatorType(OperatorType):
+    name = "loss"
+    julia_module = "CustomLossModule"
+    load_func = "load_loss_from_string!"
+    clear_func = "clear_dynamic_losses!"
+    list_func = "list_available_losses"
+    default_baseline_rel_path = "custom_loss/mse_loss.jl"
+    smoke_test_julia = """
+    let
+        using SymbolicRegression: Options, Node, Dataset, eval_loss
+        using SymbolicRegression.CustomLossModule: apply_custom_loss
+        options = Options(;
+            binary_operators=[+, -, *, /],
+            unary_operators=[sin, cos],
+        )
+        X = randn(Float64, 3, 30)
+        y = X[1, :] .+ 0.5 .* X[2, :]
+        dataset = Dataset(X, y)
+        tree = Node(Float64; op=1, l=Node(Float64; feature=1), r=Node(Float64; val=0.5))
+        # Direct dispatch (covers the eval_loss hook too).
+        loss_val = apply_custom_loss(tree, dataset, options)
+        @assert loss_val isa AbstractFloat "Smoke test: loss must return AbstractFloat, got $(typeof(loss_val))"
+        @assert isfinite(loss_val) || isinf(loss_val) "Smoke test: loss must be finite or Inf, got $(loss_val)"
+        # Confirm it also flows through eval_loss (the production code path).
+        loss_via_eval = eval_loss(tree, dataset, options)
+        @assert loss_via_eval isa AbstractFloat
+    end
+    """
+
+    def load_reference(self) -> str:
+        ref_path = Path(__file__).resolve().parent / "SymbolicRegression.jl/src/custom_loss/LOSS_REFERENCE.md"
+        if ref_path.exists():
+            return ref_path.read_text()
+        raise FileNotFoundError(f"Could not find LOSS_REFERENCE.md at {ref_path}")
+
+    # The constraint "DO NOT penalize complexity" must hold across explore,
+    # refine, simplify, and crossover, so it lives in `_extra_requirements`
+    # (which is consumed by all four prompt builders) rather than the
+    # explore-only `_explore_extras` hook.
+    def _extra_requirements(self) -> List[str]:
+        return [
+            "DO NOT penalize raw expression complexity in your loss. PySR already tracks "
+            "a Pareto frontier of (loss, complexity) and adds a separate parsimony term to "
+            "the cost. A complexity penalty inside the loss double-counts size and distorts "
+            "the Pareto frontier.",
+        ]
+
+    def to_pysr_config(self, operator: JuliaOperator, pysr_kwargs: Dict) -> PySRConfig:
+        mutation_weights = get_default_mutation_weights()
+        return PySRConfig(
+            mutation_weights=mutation_weights,
+            pysr_kwargs=pysr_kwargs,
+            custom_loss_code=operator.code,
+            name=operator.name,
+        )
+
+    def baseline_config(self, pysr_kwargs: Dict) -> PySRConfig:
+        mutation_weights = get_default_mutation_weights()
+        return PySRConfig(
+            mutation_weights=mutation_weights,
+            pysr_kwargs=pysr_kwargs,
+            name="baseline",
+        )
+
 OPERATOR_TYPES: Dict[str, OperatorType] = {
     "mutation": MutationOperatorType(),
     "survival": SurvivalOperatorType(),
     "selection": SelectionOperatorType(),
+    "loss": LossOperatorType(),
 }
 
 def validate_julia_code(name: str, code: str, op_type: OperatorType) -> Tuple[bool, str]:
@@ -797,7 +885,7 @@ def smoke_test_bundle(bundle: 'OperatorBundle') -> Tuple[bool, List[str]]:
     Returns (all_passed, list_of_error_messages).
     """
     errors = []
-    for type_name in ("mutation", "survival", "selection"):
+    for type_name in ("mutation", "survival", "selection", "loss"):
         op = bundle.get_operator(type_name)
         if op is None:
             continue

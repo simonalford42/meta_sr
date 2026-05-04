@@ -273,9 +273,9 @@ def evaluate_baseline(
     return avg_r2, r2_vector, result_details
 
 def _format_bundle_file(bundle: OperatorBundle, header: str = "") -> str:
-    """Render a full bundle (mutation/survival/selection) into one .jl file."""
+    """Render a full bundle (mutation/survival/selection/loss) into one .jl file."""
     sections = [header] if header else []
-    for type_name in ["mutation", "survival", "selection"]:
+    for type_name in ["mutation", "survival", "selection", "loss"]:
         op = bundle.operators.get(type_name)
         sections.append(f"\n# === {type_name}: {op.name if op else 'default'} ===\n")
         if op is not None:
@@ -1360,12 +1360,12 @@ def main():
 
     # Parse operator type(s)
     if args.operator_type == "all":
-        operator_type_names = ["mutation", "survival", "selection"]
+        operator_type_names = ["mutation", "survival", "selection", "loss"]
     else:
         operator_type_names = [t.strip() for t in args.operator_type.split(",")]
         for name in operator_type_names:
             if name not in OPERATOR_TYPES:
-                parser.error(f"Unknown operator type: {name}. Choose from: mutation, survival, selection, all")
+                parser.error(f"Unknown operator type: {name}. Choose from: mutation, survival, selection, loss, all")
 
     type_label = "+".join(operator_type_names) if len(operator_type_names) > 1 else operator_type_names[0]
     args.output_dir = resolve_run_dir(args.output_dir, label=f"evolve_{type_label}")

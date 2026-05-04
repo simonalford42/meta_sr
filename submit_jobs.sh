@@ -1,12 +1,16 @@
-# 4/30
-sbatch -J smart2 --mem 20G run.sh evolve_pysr.py --operator_type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3 --continue_from runs/947961
-sbatch -J smart_no_task --mem 20G run.sh evolve_pysr.py --operator_type all --generations 25 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --exec_feedback_n 3
+# 5/4
+sbatch -J test run.sh evolve_pysr.py --operator_type all --generations 2 --population 3 --offspring 3 --n-runs 1 --max_evals 10000 --task_diverse_pop --exec_feedback_n 3
 
-SPLITS="splits/barely_unsolvable_val2.txt"
-SEED=1000
-BUNDLE_RESULTS=runs/947961/run_data.json
-JID1A=$(sbatch --parsable -J eval_947961_val2  --mem 20G run.sh evaluate_new_pysr.py --evolve-results $BUNDLE_RESULTS --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00)
-JID1B=$(sbatch --parsable -J eval_baseline_val2 --mem 20G run.sh evaluate_new_pysr.py                                  --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00)
+
+# 4/30
+# sbatch -J smart2 --mem 20G run.sh evolve_pysr.py --operator_type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3 --continue_from runs/947961
+# sbatch -J smart_no_task --mem 20G run.sh evolve_pysr.py --operator_type all --generations 25 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --exec_feedback_n 3
+
+# SPLITS="splits/barely_unsolvable_val2.txt"
+# SEED=1000
+# BUNDLE_RESULTS=runs/947961/run_data.json
+# JID1A=$(sbatch --parsable -J eval_947961_val2  --mem 20G run.sh evaluate_new_pysr.py --evolve-results $BUNDLE_RESULTS --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00)
+# JID1B=$(sbatch --parsable -J eval_baseline_val2 --mem 20G run.sh evaluate_new_pysr.py                                  --splits $SPLITS --seed $SEED --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00)
 
 # 4/29 — Final eval of 947961 bundle vs PySR baseline.
 # Splits: train + val + barely_unsolvable (60 datasets).

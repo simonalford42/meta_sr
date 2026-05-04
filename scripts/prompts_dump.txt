@@ -1,0 +1,546 @@
+==============================================================================
+mutation / explore
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to create a NEW custom mutation operator for PySR/SymbolicRegression.jl.
+Your proposal is being considered as part of a meta-evolutionary loop that samples
+and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
+Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
+for which PySR discovers the correct ground truth expression.
+
+For this proposal, write a **data-aware mutation**: consult `dataset.X` and/or `dataset.y`
+to make a data-driven decision (e.g. insert the feature most correlated with the residual,
+fit a constant by least squares, detect subtrees that produce NaN/Inf on the training data).
+
+Use the **5-argument data-aware signature** with `dataset` included
+(the reference doc shows this form). Do NOT use the 4-argument form.
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Use `dataset.X` / `dataset.y` — this proposal is specifically a data-aware mutation.
+2. Use proper Julia syntax
+3. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining its core idea, the steps it takes, and any heuristics or assumptions.
+4. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+Example format (use this exact signature, with a docstring above and inline comments inside):
+"""
+    my_mutation_name(tree, ...)
+
+One- or two-paragraph explanation of how this mutation operator works.
+"""
+function my_mutation_name(
+    tree::N,
+    dataset,
+    options,
+    nfeatures::Int,
+    rng::AbstractRNG,
+) where {T,N<:AbstractExpressionNode{T}}
+    # Implementation — may read dataset.X :: (nfeatures, n) and dataset.y :: (n,)
+    return tree
+end
+
+==============================================================================
+mutation / explore (structural, seed=1)
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to create a NEW custom mutation operator for PySR/SymbolicRegression.jl.
+Your proposal is being considered as part of a meta-evolutionary loop that samples
+and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
+Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
+for which PySR discovers the correct ground truth expression.
+
+For this proposal, write a **structural mutation**: operate purely on the tree (nodes,
+operators, constants, variables). Do not take a `dataset` argument.
+
+**Important signature override:** the reference doc shows a 5-argument signature with `dataset`.
+For this structural proposal, use the **4-argument form without `dataset`** shown below.
+The runtime adapts automatically based on the arity of your function.
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Your function MUST use the 4-argument signature below (no `dataset` parameter).
+2. Use proper Julia syntax
+3. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining its core idea, the steps it takes, and any heuristics or assumptions.
+4. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+Example format (use this exact signature, with a docstring above and inline comments inside):
+"""
+    my_mutation_name(tree, ...)
+
+One- or two-paragraph explanation of how this mutation operator works.
+"""
+function my_mutation_name(
+    tree::N,
+    options,
+    nfeatures::Int,
+    rng::AbstractRNG,
+) where {T,N<:AbstractExpressionNode{T}}
+    # Implementation — operates on tree structure only
+    return tree
+end
+
+==============================================================================
+mutation / refine
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to IMPROVE an existing custom mutation operator for PySR/SymbolicRegression.jl.
+Your proposal is being considered as part of a meta-evolutionary loop that samples
+and evaluates many proposed improvements to the PySR algorithm.
+Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
+for which PySR discovers the correct ground truth expression.
+
+## Parent mutation operator code
+```julia
+<<PARENT CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Keep the core idea but improve the implementation, or generate a variant that improves on the parent.
+2. Use proper Julia syntax
+3. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the operator's core idea, steps, and heuristics, plus what changed vs. the parent.
+4. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+mutation / simplify
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to SIMPLIFY an existing custom mutation operator for PySR/SymbolicRegression.jl.
+Produce a streamlined version of the parent that keeps its core idea but removes complexity.
+For example, you might drop redundant branches, fold special cases into the common path,
+or trim heuristics. If the parent combines many factors (e.g. five distinct heuristics),
+you might keep only the most important three or four. The goal is to maintain performance
+(as measured by percent of tasks for which PySR discovers the correct ground truth expression)
+while simplifying the operator.
+
+## Parent mutation operator code
+```julia
+<<PARENT CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Keep the same function signature shape as the parent
+2. Use proper Julia syntax
+3. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the simplified operator's core idea, the steps it takes, and what was removed/merged from the parent (and why the simplification should still be sound).
+4. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+mutation / crossover
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to COMBINE ideas from two mutation operators into a new one.
+
+## Parent mutation operator 1
+```julia
+<<PARENT CODE>>
+```
+
+## Parent mutation operator 2
+```julia
+<<PARENT 2 CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Create a NEW mutation operator that combines the best ideas from both parents
+2. Don't just concatenate — synthesize a coherent new approach
+3. Use proper Julia syntax
+4. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the core idea synthesized from the parents, the steps it takes, and any heuristics or assumptions.
+5. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+survival / explore
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to create a NEW custom survival operator for PySR/SymbolicRegression.jl.
+Your proposal is being considered as part of a meta-evolutionary loop that samples
+and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
+Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
+for which PySR discovers the correct ground truth expression.
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Use proper Julia syntax
+2. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining its core idea, the steps it takes, and any heuristics or assumptions.
+3. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+survival / refine
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to IMPROVE an existing custom survival operator for PySR/SymbolicRegression.jl.
+Your proposal is being considered as part of a meta-evolutionary loop that samples
+and evaluates many proposed improvements to the PySR algorithm.
+Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
+for which PySR discovers the correct ground truth expression.
+
+## Parent survival operator code
+```julia
+<<PARENT CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Keep the core idea but improve the implementation, or generate a variant that improves on the parent.
+2. Use proper Julia syntax
+3. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the operator's core idea, steps, and heuristics, plus what changed vs. the parent.
+4. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+survival / simplify
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to SIMPLIFY an existing custom survival operator for PySR/SymbolicRegression.jl.
+Produce a streamlined version of the parent that keeps its core idea but removes complexity.
+For example, you might drop redundant branches, fold special cases into the common path,
+or trim heuristics. If the parent combines many factors (e.g. five distinct heuristics),
+you might keep only the most important three or four. The goal is to maintain performance
+(as measured by percent of tasks for which PySR discovers the correct ground truth expression)
+while simplifying the operator.
+
+## Parent survival operator code
+```julia
+<<PARENT CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Keep the same function signature shape as the parent
+2. Use proper Julia syntax
+3. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the simplified operator's core idea, the steps it takes, and what was removed/merged from the parent (and why the simplification should still be sound).
+4. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+survival / crossover
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to COMBINE ideas from two survival operators into a new one.
+
+## Parent survival operator 1
+```julia
+<<PARENT CODE>>
+```
+
+## Parent survival operator 2
+```julia
+<<PARENT 2 CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Create a NEW survival operator that combines the best ideas from both parents
+2. Don't just concatenate — synthesize a coherent new approach
+3. Use proper Julia syntax
+4. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the core idea synthesized from the parents, the steps it takes, and any heuristics or assumptions.
+5. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+selection / explore
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to create a NEW custom selection operator for PySR/SymbolicRegression.jl.
+Your proposal is being considered as part of a meta-evolutionary loop that samples
+and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
+Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
+for which PySR discovers the correct ground truth expression.
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Use proper Julia syntax
+2. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining its core idea, the steps it takes, and any heuristics or assumptions.
+3. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+selection / refine
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to IMPROVE an existing custom selection operator for PySR/SymbolicRegression.jl.
+Your proposal is being considered as part of a meta-evolutionary loop that samples
+and evaluates many proposed improvements to the PySR algorithm.
+Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
+for which PySR discovers the correct ground truth expression.
+
+## Parent selection operator code
+```julia
+<<PARENT CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Keep the core idea but improve the implementation, or generate a variant that improves on the parent.
+2. Use proper Julia syntax
+3. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the operator's core idea, steps, and heuristics, plus what changed vs. the parent.
+4. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+selection / simplify
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to SIMPLIFY an existing custom selection operator for PySR/SymbolicRegression.jl.
+Produce a streamlined version of the parent that keeps its core idea but removes complexity.
+For example, you might drop redundant branches, fold special cases into the common path,
+or trim heuristics. If the parent combines many factors (e.g. five distinct heuristics),
+you might keep only the most important three or four. The goal is to maintain performance
+(as measured by percent of tasks for which PySR discovers the correct ground truth expression)
+while simplifying the operator.
+
+## Parent selection operator code
+```julia
+<<PARENT CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Keep the same function signature shape as the parent
+2. Use proper Julia syntax
+3. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the simplified operator's core idea, the steps it takes, and what was removed/merged from the parent (and why the simplification should still be sound).
+4. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+selection / crossover
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to COMBINE ideas from two selection operators into a new one.
+
+## Parent selection operator 1
+```julia
+<<PARENT CODE>>
+```
+
+## Parent selection operator 2
+```julia
+<<PARENT 2 CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Create a NEW selection operator that combines the best ideas from both parents
+2. Don't just concatenate — synthesize a coherent new approach
+3. Use proper Julia syntax
+4. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the core idea synthesized from the parents, the steps it takes, and any heuristics or assumptions.
+5. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+loss / explore
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to create a NEW custom loss operator for PySR/SymbolicRegression.jl.
+Your proposal is being considered as part of a meta-evolutionary loop that samples
+and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
+Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
+for which PySR discovers the correct ground truth expression.
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. DO NOT penalize raw expression complexity in your loss. PySR already tracks a Pareto frontier of (loss, complexity) and adds a separate parsimony term to the cost. A complexity penalty inside the loss double-counts size and distorts the Pareto frontier. Your loss should be a fidelity term (MSE-like) optionally augmented with terms that depend on PREDICTIONS or DATA, not on tree size.
+2. Default behavior should remain MSE-like. Compute predictions via `eval_tree_array(tree, dataset.X, options)` and return `L(Inf)` when the evaluation fails. Augmentations should be additive on top of MSE, not replacements for it.
+3. Use proper Julia syntax
+4. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining its core idea, the steps it takes, and any heuristics or assumptions.
+5. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+loss / refine
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to IMPROVE an existing custom loss operator for PySR/SymbolicRegression.jl.
+Your proposal is being considered as part of a meta-evolutionary loop that samples
+and evaluates many proposed improvements to the PySR algorithm.
+Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
+for which PySR discovers the correct ground truth expression.
+
+## Parent loss operator code
+```julia
+<<PARENT CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Keep the core idea but improve the implementation, or generate a variant that improves on the parent.
+2. Use proper Julia syntax
+3. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the operator's core idea, steps, and heuristics, plus what changed vs. the parent.
+4. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+loss / simplify
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to SIMPLIFY an existing custom loss operator for PySR/SymbolicRegression.jl.
+Produce a streamlined version of the parent that keeps its core idea but removes complexity.
+For example, you might drop redundant branches, fold special cases into the common path,
+or trim heuristics. If the parent combines many factors (e.g. five distinct heuristics),
+you might keep only the most important three or four. The goal is to maintain performance
+(as measured by percent of tasks for which PySR discovers the correct ground truth expression)
+while simplifying the operator.
+
+## Parent loss operator code
+```julia
+<<PARENT CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Keep the same function signature shape as the parent
+2. Use proper Julia syntax
+3. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the simplified operator's core idea, the steps it takes, and what was removed/merged from the parent (and why the simplification should still be sound).
+4. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
+
+==============================================================================
+loss / crossover
+==============================================================================
+You are an expert in symbolic regression and genetic programming.
+
+Your task is to COMBINE ideas from two loss operators into a new one.
+
+## Parent loss operator 1
+```julia
+<<PARENT CODE>>
+```
+
+## Parent loss operator 2
+```julia
+<<PARENT 2 CODE>>
+```
+
+## Reference: relevant API
+<<REFERENCE DOC>>
+
+## Requirements
+1. Create a NEW loss operator that combines the best ideas from both parents
+2. Don't just concatenate — synthesize a coherent new approach
+3. Use proper Julia syntax
+4. Include a Julia docstring (`"""..."""`) immediately above the `function` line explaining the core idea synthesized from the parents, the steps it takes, and any heuristics or assumptions.
+5. Use inline comments as appropriate to explain the implementation of the function body.
+
+## Output Format
+Return ONLY the new Julia function code (with the docstring above it and inline comments inside it), nothing else.
+The function should be named descriptively.
+Do not include markdown code blocks or prose outside the docstring.
