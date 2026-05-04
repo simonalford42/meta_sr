@@ -63,7 +63,7 @@ from wandb_utils import init_wandb, log_wandb_summary, finish_wandb
 
 @dataclass
 class EvolveResult:
-    """Results loaded from an evolve run (mutation, survival, or selection)."""
+    """Results loaded from an evolve run (mutation, survival, selection, or loss)."""
     operator_type: str
     name: str
     code: str
@@ -147,7 +147,7 @@ def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[E
     op_type = operator_type or config.get("operator_type", "mutation")
 
     best = None
-    for key in [f"best_{op_type}", "best_mutation", "best_survival", "best_selection"]:
+    for key in [f"best_{op_type}", "best_mutation", "best_survival", "best_selection", "best_loss"]:
         if key in data:
             best = data[key]
             break
@@ -380,6 +380,7 @@ def evaluate_config(
     allow_custom_mutations: bool = False,
     custom_survival_code: Optional[str] = None,
     custom_selection_code: Optional[str] = None,
+    custom_loss_code: Optional[str] = None,
     target_noise_map: Optional[Dict[str, float]] = None,
 ) -> EvalSummary:
     """Evaluate a config and return summary. Cache stats are tracked on the evaluator."""
@@ -390,6 +391,7 @@ def evaluate_config(
         allow_custom_mutations=allow_custom_mutations,
         custom_survival_code=custom_survival_code,
         custom_selection_code=custom_selection_code,
+        custom_loss_code=custom_loss_code,
         name=name,
     )
 
@@ -429,6 +431,8 @@ def build_method_kwargs(evolve_data, baseline_weights: Dict[str, float]):
             extra["custom_survival_code"] = item.code
         elif item.operator_type == "selection":
             extra["custom_selection_code"] = item.code
+        elif item.operator_type == "loss":
+            extra["custom_loss_code"] = item.code
 
     return weights, extra
 

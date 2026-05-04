@@ -1,7 +1,10 @@
 # 5/4
-sbatch -J test run.sh evolve_pysr.py --operator_type all --generations 2 --population 3 --offspring 3 --n-runs 1 --max_evals 10000 --task_diverse_pop --exec_feedback_n 3
+sbatch -J loss run.sh evolve_pysr.py --operator_type loss --generations 5 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3
+sbatch -J full run.sh evolve_pysr.py --operator_type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3
 
-sbatch -J loss run.sh evolve_pysr.py --operator_type loss --generations 10 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3
+# sbatch -J test run.sh evolve_pysr.py --operator_type loss --generations 2 --population 3 --offspring 3 --n-runs 1 --max_evals 10000 --task_diverse_pop --exec_feedback_n 3
+
+# sbatch -J loss run.sh evolve_pysr.py --operator_type loss --generations 10 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3
 
 # 4/30
 # sbatch -J smart2 --mem 20G run.sh evolve_pysr.py --operator_type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3 --continue_from runs/947961

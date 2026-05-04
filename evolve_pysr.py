@@ -927,8 +927,10 @@ def run_bundle_evolution(
         # For n_offspring=20 and 3 types we get 7/7/6, etc. Shuffle so the
         # order of types in the gen log / parent selection isn't biased by the
         # fixed operator_type_names order.
+        shuffled_types = list(operator_type_names)
+        rng.shuffle(shuffled_types)
         target_types: List[str] = [
-            operator_type_names[i % len(operator_type_names)]
+            shuffled_types[i % len(shuffled_types)]
             for i in range(n_offspring)
         ]
         rng.shuffle(target_types)
