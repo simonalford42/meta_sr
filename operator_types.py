@@ -338,7 +338,7 @@ class OperatorType(ABC):
               (must include any leading "\\n\\n" needed to separate from preceding text)
             - `extra_reqs`: additional MUST/Required bullets prepended to the
               requirements list (before shared core)
-            - `example_section`: empty, OR formatted example block (must include
+            - `example_section`: empty, OR formatted example block
 
         Default: all empty. Mutation overrides to provide its data-aware vs
         structural toggle (which changes the function's arity).
@@ -356,13 +356,13 @@ class OperatorType(ABC):
     def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
         intro_tail, explore_extra_reqs, example_section = self._explore_extras(variation_seed)
         return (
-            "You are an expert in symbolic regression, physics, and genetic programming programming.\n\n"
+            "You are an expert in symbolic regression, physics, and genetic programming.\n\n"
             f"Your task is to create a NEW custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
             "and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.\n"
             "Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks\n"
             "for which PySR discovers the correct ground truth expression.\n"
-            "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n\n"
+            "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n"
             f"{intro_tail}\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
@@ -383,7 +383,7 @@ class OperatorType(ABC):
 
     def build_refine_prompt(self, parent: JuliaOperator, reference: str) -> str:
         return (
-            "You are an expert in symbolic regression, physics, and genetic programming programming.\n\n"
+            "You are an expert in symbolic regression, physics, and genetic programming.\n\n"
             f"Your task is to IMPROVE an existing custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
             "and evaluates many proposed improvements to the PySR algorithm.\n"
@@ -409,7 +409,7 @@ class OperatorType(ABC):
 
     def build_simplify_prompt(self, parent_code: str, reference: str) -> str:
         return (
-            "You are an expert in symbolic regression, physics, and genetic programming programming.\n\n"
+            "You are an expert in symbolic regression, physics, and genetic programming.\n\n"
             f"Your task is to SIMPLIFY an existing custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Produce a streamlined version of the parent that keeps its core idea but removes complexity.\n"
             "For example, you might drop redundant branches, fold special cases into the common path,\n"
@@ -437,12 +437,13 @@ class OperatorType(ABC):
 
     def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
         return (
-            "You are an expert in symbolic regression, physics, and genetic programming programming.\n\n"
+            "You are an expert in symbolic regression, physics, and genetic programming.\n\n"
             f"Your task is to COMBINE ideas from two {self.name} operators into a new one.\n"
+            "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
+            "and evaluates many proposed improvements to the PySR algorithm.\n"
             "Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks\n"
             "for which PySR discovers the correct ground truth expression.\n"
             "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n\n"
-
             f"## Parent {self.name} operator 1\n```julia\n{p1_code}\n```\n\n"
             f"## Parent {self.name} operator 2\n```julia\n{p2_code}\n```\n\n"
             f"## Reference: relevant API\n{reference}\n\n"

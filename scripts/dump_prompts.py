@@ -15,8 +15,15 @@ Usage:
 """
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Callable, List, Tuple
+
+# Allow running from anywhere (e.g. `python scripts/dump_prompts.py` or
+# `python dump_prompts.py` from inside scripts/).
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from operator_types import OPERATOR_TYPES, JuliaOperator, OperatorType
 
