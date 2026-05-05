@@ -6,11 +6,11 @@ Unified evolution script that generates Julia code with an LLM, validates it,
 and evaluates performance on SRBench datasets via SLURM.
 
 Usage:
-    python evolve_pysr.py --operator_type mutation --split splits/train.txt --generations 20
-    python evolve_pysr.py --operator_type survival --split splits/train_hard.txt --generations 20
-    python evolve_pysr.py --operator_type selection --split splits/train_hard.txt --generations 20
-    python evolve_pysr.py --operator_type all --generations 30  # joint evolution, offspring split per gen
-    python evolve_pysr.py --operator_type mutation,survival --generations 20  # subset
+    python evolve_pysr.py --operator-type mutation --split splits/train.txt --generations 20
+    python evolve_pysr.py --operator-type survival --split splits/train_hard.txt --generations 20
+    python evolve_pysr.py --operator-type selection --split splits/train_hard.txt --generations 20
+    python evolve_pysr.py --operator-type all --generations 30  # joint evolution, offspring split per gen
+    python evolve_pysr.py --operator-type mutation,survival --generations 20  # subset
 
 Most of the previously-inline helpers now live in:
     operator_types.py     — JuliaOperator, OperatorBundle, OperatorType + subclasses,
@@ -50,7 +50,8 @@ from operator_types import (
     OPERATOR_TYPES,
     validate_julia_code,
     append_validation_log,
-    generate_operator_code,
+    generate_operator_code_batch,
+    OperatorGenerationSpec,
 )
 from baseline_loader import (
     load_resume_state,
@@ -423,6 +424,7 @@ def run_bundle_evolution(
     racing: bool = False,
     hof: bool = False,
     max_concurrent_jobs: Optional[int] = None,
+    llm_max_workers: int = 16,
     resume_state: Optional[Dict[str, Any]] = None,
     execution_feedback_n: int = 0,
     execution_feedback_prob: float = 0.75,
@@ -495,6 +497,7 @@ def run_bundle_evolution(
         "task_diverse_pop": task_diverse_pop,
         "racing": racing,
         "hof": hof,
+        "llm_max_workers": llm_max_workers,
         "execution_feedback_n": execution_feedback_n,
         "execution_feedback_prob": execution_feedback_prob,
     })
@@ -682,6 +685,13 @@ def run_bundle_evolution(
         path = operators_log_dir / f"gen{gen_idx}_{type_name}{slot_idx}.jl"
         path.write_text(code_str)
 
+    def _llm_worker_count(n_requests: int) -> int:
+        if n_requests <= 0:
+            return 1
+        if llm_max_workers <= 0:
+            return n_requests
+        return max(1, min(llm_max_workers, n_requests))
+
     if wandb_run is not None:
         import wandb
         wandb.log({"baseline_score": baseline_score, "generation": 0})
@@ -775,92 +785,128 @@ def run_bundle_evolution(
 
         max_bundle_attempts = population_size * 2
         bundle_attempts = 0
-        while len(population) < population_size and bundle_attempts < max_bundle_attempts:
+        pending_init: List[Dict[str, Any]] = []
+
+        def _new_init_candidate() -> Optional[Dict[str, Any]]:
+            nonlocal bundle_attempts
+            if bundle_attempts >= max_bundle_attempts:
+                return None
             bundle_idx = bundle_attempts
             bundle_attempts += 1
+            type_name = rng.choice(operator_type_names)
+            print(
+                f"\nBundle candidate {bundle_idx + 1}/{max_bundle_attempts}: "
+                f"varying {type_name}"
+            )
+            return {"bundle_idx": bundle_idx, "type_name": type_name, "attempt": 0}
 
-            # When we have a baseline, start each new bundle from a copy of it
-            # and generate variations via "refine" for types that have a baseline operator
-            if baseline_bundle:
-                bundle = OperatorBundle(
-                    operators={k: copy.deepcopy(v) for k, v in baseline_bundle.operators.items()},
-                )
-            else:
-                bundle = OperatorBundle.create_default()
+        while len(population) < population_size:
+            while (
+                len(population) + len(pending_init) < population_size
+                and bundle_attempts < max_bundle_attempts
+            ):
+                cand = _new_init_candidate()
+                if cand is not None:
+                    pending_init.append(cand)
+            if not pending_init:
+                break
 
-            n_generated = 0
-            # Sample a single operator type to vary for this bundle; keep the others at baseline.
-            type_to_vary = rng.choice(operator_type_names)
-            print(f"\nBundle {len(population) + 1}/{population_size} (attempt {bundle_idx + 1}): varying {type_to_vary}")
-
-            for type_name in [type_to_vary]:
+            specs: List[OperatorGenerationSpec] = []
+            for cand in pending_init:
+                type_name = cand["type_name"]
                 op_type = OPERATOR_TYPES[type_name]
-                reference = references[type_name]
-
-                # Always explore for initial population — no refine prompts.
                 baseline_op = baseline_bundle.get_operator(type_name) if baseline_bundle else None
-                mode = "explore"
+                specs.append(OperatorGenerationSpec(
+                    op_type=op_type,
+                    reference=references[type_name],
+                    parent=baseline_op,
+                    model=model,
+                    model_ensemble=model_ensemble,
+                    mode="explore",
+                    variation_seed=cand["bundle_idx"] * 100 + cand["attempt"],
+                    temperature=temperature,
+                    use_cache=use_cache,
+                    log_prompt_dir=prompts_log_dir,
+                    log_generation=0,
+                ))
 
-                # Try to generate a valid operator for this type
-                generated = False
-                for attempt in range(3):
-                    code, func_name, selected_model = generate_operator_code(
-                        op_type=op_type,
-                        reference=reference,
-                        parent=baseline_op,
-                        model=model,
-                        model_ensemble=model_ensemble,
-                        mode=mode,
-                        variation_seed=bundle_idx * 100 + attempt,
-                        temperature=temperature,
-                        use_cache=use_cache,
-                        log_prompt_dir=prompts_log_dir,
-                        log_generation=0,
-                    )
-                    if not code or not func_name:
-                        continue
+            print(
+                f"\nRequesting {len(specs)} initial-pop LLM completions "
+                f"(workers={_llm_worker_count(len(specs))})..."
+            )
+            results = generate_operator_code_batch(
+                specs,
+                max_workers=_llm_worker_count(len(specs)),
+            )
 
+            next_pending: List[Dict[str, Any]] = []
+            for cand, spec, (code, func_name, selected_model) in zip(pending_init, specs, results):
+                bundle_idx = cand["bundle_idx"]
+                type_name = cand["type_name"]
+                op_type = spec.op_type
+                baseline_op = spec.parent
+                attempt = cand["attempt"]
+
+                if code and func_name:
                     unique_name = f"{func_name}_init_{bundle_idx}"
                     code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
 
                     is_valid, error = validate_julia_code(unique_name, code, op_type)
-                    append_validation_log(prompts_log_dir, op_type, mode, 0,
-                                          bundle_idx * 100 + attempt,
-                                          is_valid, error, unique_name)
-                    if not is_valid:
-                        print(f"  {type_name}: validation failed (attempt {attempt + 1}): {error[:80]}...")
+                    append_validation_log(
+                        prompts_log_dir, op_type, "explore", 0,
+                        bundle_idx * 100 + attempt,
+                        is_valid, error, unique_name,
+                    )
+                    if is_valid:
+                        _log_proposed_operator(0, type_name, bundle_idx, code)
+
+                        if baseline_bundle:
+                            bundle = OperatorBundle(
+                                operators={k: copy.deepcopy(v) for k, v in baseline_bundle.operators.items()},
+                            )
+                        else:
+                            bundle = OperatorBundle.create_default()
+
+                        operator = op_type.create_operator(
+                            name=unique_name, code=code, generation=0,
+                            parent_name=baseline_op.name if baseline_op else None,
+                            mode="explore",
+                        )
+                        operator.model = selected_model
+                        if baseline_op and baseline_op.weight is not None:
+                            operator.weight = baseline_op.weight
+                        bundle = bundle.copy_with(type_name, operator)
+                        print(f"  {type_name}: {unique_name} (model={selected_model})")
+                        population.append(bundle)
+                        _submit_init(bundle)
                         continue
 
-                    _log_proposed_operator(0, type_name, bundle_idx, code)
-
-                    operator = op_type.create_operator(
-                        name=unique_name, code=code, generation=0,
-                        parent_name=baseline_op.name if baseline_op else None,
-                        mode=mode,
+                    print(
+                        f"  {type_name}: validation failed "
+                        f"(attempt {attempt + 1}): {error[:80]}..."
                     )
-                    operator.model = selected_model
-                    if baseline_op and baseline_op.weight is not None:
-                        operator.weight = baseline_op.weight
-                    bundle = bundle.copy_with(type_name, operator)
-                    print(f"  {type_name}: {unique_name} (model={selected_model})")
-                    generated = True
-                    n_generated += 1
-                    break
+                else:
+                    print(f"  {type_name}: no code extracted (attempt {attempt + 1})")
 
-                if not generated:
-                    # If we have a baseline op, keep it in the bundle rather than failing
-                    if baseline_op:
-                        print(f"  {type_name}: keeping baseline ({baseline_op.name})")
-                        n_generated += 1  # baseline op counts
+                next_attempt = attempt + 1
+                if next_attempt < 3:
+                    retry_cand = dict(cand)
+                    retry_cand["attempt"] = next_attempt
+                    next_pending.append(retry_cand)
+                elif baseline_op:
+                    print(f"  {type_name}: keeping baseline ({baseline_op.name})")
+                    if baseline_bundle:
+                        bundle = OperatorBundle(
+                            operators={k: copy.deepcopy(v) for k, v in baseline_bundle.operators.items()},
+                        )
                     else:
-                        print(f"  {type_name}: failed to generate after 3 attempts")
+                        bundle = OperatorBundle.create_default()
+                    population.append(bundle)
+                    _submit_init(bundle)
+                else:
+                    print(f"  {type_name}: failed to generate after 3 attempts")
 
-            if n_generated == 0:
-                print(f"  Skipping bundle (no operators generated)")
-                continue
-
-            population.append(bundle)
-            _submit_init(bundle)
+            pending_init = next_pending
 
         if not population:
             init_submit_executor.shutdown(wait=True)
@@ -980,17 +1026,11 @@ def run_bundle_evolution(
                 )
                 pop_futs.append((member, fut))
 
-        while len(offspring_bundles) < n_offspring and offspring_attempts < max_offspring_attempts:
-            offspring_attempts += 1
-
+        def _plan_offspring_candidate(slot_idx: int, attempt_idx: int) -> Dict[str, Any]:
             # Pick which operator type this slot evolves — stays fixed across
             # retries for this slot so a failure doesn't silently shift the
             # type mix.
-            current_type_name = target_types[len(offspring_bundles)]
-            current_op_type = OPERATOR_TYPES[current_type_name]
-            reference = references[current_type_name]
-
-            # Select parent bundle
+            current_type_name = target_types[slot_idx]
             parent_bundle = select_parent(population, rng)
             parent_op = parent_bundle.get_operator(current_type_name)
             task_info: Optional[Dict[str, str]] = None
@@ -1041,63 +1081,133 @@ def run_bundle_evolution(
                         detail, name, task_formulas.get(name, ""),
                     )
                     if trace_text:
-                        if task_info is None:
-                            task_info = {}
-                        task_info["execution_trace_text"] = trace_text
+                        task_info = {"execution_trace_text": trace_text}
 
-            code, func_name, selected_model = generate_operator_code(
-                op_type=current_op_type,
-                reference=reference,
-                parent=parent,
-                parent2=parent2,
-                model=model,
-                model_ensemble=model_ensemble,
-                mode=mode,
-                variation_seed=gen * 100 + offspring_attempts,
-                temperature=temperature,
-                use_cache=use_cache,
-                task_info=task_info,
-                log_prompt_dir=prompts_log_dir if gen <= log_prompt_gens_max else None,
-                log_generation=gen,
+            variation_seed = gen * 100_000 + slot_idx * 100 + attempt_idx
+            return {
+                "slot_idx": slot_idx,
+                "attempt_idx": attempt_idx,
+                "type_name": current_type_name,
+                "op_type": OPERATOR_TYPES[current_type_name],
+                "parent_bundle": parent_bundle,
+                "parent": parent,
+                "parent2": parent2,
+                "mode": mode,
+                "task_info": task_info,
+                "variation_seed": variation_seed,
+            }
+
+        pending_offspring = [
+            _plan_offspring_candidate(slot_idx, 0)
+            for slot_idx in range(n_offspring)
+        ]
+        offspring_by_slot: Dict[int, OperatorBundle] = {}
+        offspring_futs_by_slot: Dict[int, Tuple[OperatorBundle, Future]] = {}
+
+        while pending_offspring and offspring_attempts < max_offspring_attempts:
+            specs = [
+                OperatorGenerationSpec(
+                    op_type=cand["op_type"],
+                    reference=references[cand["type_name"]],
+                    parent=cand["parent"],
+                    parent2=cand["parent2"],
+                    model=model,
+                    model_ensemble=model_ensemble,
+                    mode=cand["mode"],
+                    variation_seed=cand["variation_seed"],
+                    temperature=temperature,
+                    use_cache=use_cache,
+                    task_info=cand["task_info"],
+                    log_prompt_dir=prompts_log_dir if gen <= log_prompt_gens_max else None,
+                    log_generation=gen,
+                )
+                for cand in pending_offspring
+            ]
+            offspring_attempts += len(specs)
+            print(
+                f"\nRequesting {len(specs)} offspring LLM completions "
+                f"(workers={_llm_worker_count(len(specs))})..."
+            )
+            results = generate_operator_code_batch(
+                specs,
+                max_workers=_llm_worker_count(len(specs)),
             )
 
-            if not code or not func_name:
-                continue
+            next_pending: List[Dict[str, Any]] = []
+            for cand, spec, (code, func_name, selected_model) in zip(
+                pending_offspring, specs, results,
+            ):
+                slot_idx = cand["slot_idx"]
+                current_type_name = cand["type_name"]
+                current_op_type = cand["op_type"]
+                parent_bundle = cand["parent_bundle"]
+                parent = cand["parent"]
+                mode = cand["mode"]
+                variation_seed = cand["variation_seed"]
+                attempt_idx = cand["attempt_idx"]
 
-            unique_name = f"{func_name}_gen{gen}_{len(offspring_bundles)}"
-            code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
+                if code and func_name:
+                    unique_name = f"{func_name}_gen{gen}_{slot_idx}"
+                    code = code.replace(f"function {func_name}(", f"function {unique_name}(", 1)
 
-            is_valid, error = validate_julia_code(unique_name, code, current_op_type)
-            append_validation_log(
-                prompts_log_dir if gen <= log_prompt_gens_max else None,
-                current_op_type, mode, gen, gen * 100 + offspring_attempts,
-                is_valid, error, unique_name,
-            )
-            if not is_valid:
-                print(f"  Validation failed for {unique_name}: {error[:80]}...")
-                continue
+                    is_valid, error = validate_julia_code(unique_name, code, current_op_type)
+                    append_validation_log(
+                        prompts_log_dir if gen <= log_prompt_gens_max else None,
+                        current_op_type, mode, gen, variation_seed,
+                        is_valid, error, unique_name,
+                    )
+                    if is_valid:
+                        _log_proposed_operator(gen, current_type_name, slot_idx, code)
 
-            _log_proposed_operator(gen, current_type_name, len(offspring_bundles), code)
+                        new_op = current_op_type.create_operator(
+                            name=unique_name, code=code, generation=gen,
+                            parent_name=parent.name if parent else None, mode=mode,
+                        )
+                        new_op.model = selected_model
+                        # Create new bundle: keep all other operators from parent, replace evolved type
+                        new_bundle = parent_bundle.copy_with(current_type_name, new_op)
+                        offspring_by_slot[slot_idx] = new_bundle
+                        print(f"  Created: {unique_name} (mode={mode}, model={selected_model})")
 
-            new_op = current_op_type.create_operator(
-                name=unique_name, code=code, generation=gen,
-                parent_name=parent.name if parent else None, mode=mode,
-            )
-            new_op.model = selected_model
-            # Create new bundle: keep all other operators from parent, replace evolved type
-            new_bundle = parent_bundle.copy_with(current_type_name, new_op)
-            offspring_bundles.append(new_bundle)
-            print(f"  Created: {unique_name} (mode={mode}, model={selected_model})")
+                        # Kick off this offspring's SLURM submission on a background thread
+                        # so remaining validation/top-up can continue without waiting on
+                        # sbatch or cache pre-filter.
+                        fut = submit_bundle_future(
+                            submit_executor, new_bundle, evaluator, dataset_names, pysr_kwargs,
+                            seed=seed, n_runs=n_runs, target_noise_map=target_noise_map,
+                            fitness_metric=fitness_metric, run_index_start=0,
+                        )
+                        offspring_futs_by_slot[slot_idx] = (new_bundle, fut)
+                        continue
 
-            # Kick off this offspring's SLURM submission on a background thread
-            # so the main thread can loop straight back into LLM generation
-            # without waiting on sbatch or cache pre-filter.
-            fut = submit_bundle_future(
-                submit_executor, new_bundle, evaluator, dataset_names, pysr_kwargs,
-                seed=seed, n_runs=n_runs, target_noise_map=target_noise_map,
-                fitness_metric=fitness_metric, run_index_start=0,
-            )
-            offspring_futs.append((new_bundle, fut))
+                    print(f"  Validation failed for {unique_name}: {error[:80]}...")
+                else:
+                    print(
+                        f"  {current_type_name} slot {slot_idx}: "
+                        f"no code extracted (attempt {attempt_idx + 1})"
+                    )
+
+                next_attempt = attempt_idx + 1
+                if next_attempt < 3:
+                    next_pending.append(_plan_offspring_candidate(slot_idx, next_attempt))
+                else:
+                    print(
+                        f"  {current_type_name} slot {slot_idx}: "
+                        "failed to generate after 3 attempts"
+                    )
+
+            pending_offspring = next_pending
+
+        offspring_bundles = [
+            offspring_by_slot[slot_idx]
+            for slot_idx in range(n_offspring)
+            if slot_idx in offspring_by_slot
+        ]
+        offspring_futs = [
+            offspring_futs_by_slot[slot_idx]
+            for slot_idx in range(n_offspring)
+            if slot_idx in offspring_futs_by_slot
+        ]
 
         offspring_gen_elapsed = time.perf_counter() - offspring_gen_start
         print(
@@ -1262,7 +1372,7 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    parser.add_argument("--operator_type", type=str, required=True,
+    parser.add_argument("--operator-type", type=str, required=True,
                         help="Type of operator to evolve: mutation, survival, selection, "
                              "all (all three jointly), or comma-separated list (e.g. mutation,survival)")
 
@@ -1271,28 +1381,28 @@ def main():
     parser.add_argument("--offspring", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=10)
-    parser.add_argument("--fitness_metric", type=str, default="gt", choices=["r2", "gt"],
+    parser.add_argument("--fitness-metric", type=str, default="gt", choices=["r2", "gt"],
                         help="Meta-evolution fitness metric: r2 or gt (whole-frontier symbolic match rate)")
 
     parser.add_argument("--split", type=str, default='splits/barely_unsolvable.txt',
                         help="Path to dataset split file")
-    parser.add_argument("--val_split", type=str, default='splits/barely_unsolvable_val2.txt',
+    parser.add_argument("--val-split", type=str, default='splits/barely_unsolvable_val2.txt',
                         help="If set, after each generation submit the current best bundle "
-                             "for background evaluation on this split (--val_n_runs seeds). ")
-    parser.add_argument("--val_n_runs", type=int, default=10,
-                        help="Number of seeds per val-split run (used when --val_split is set)")
-    parser.add_argument("--max_samples", type=int, default=1000)
-    parser.add_argument("--target_noise", type=float, default=0.0)
+                             "for background evaluation on this split (--val-n-runs seeds). ")
+    parser.add_argument("--val-n-runs", type=int, default=10,
+                        help="Number of seeds per val-split run (used when --val-split is set)")
+    parser.add_argument("--max-samples", type=int, default=1000)
+    parser.add_argument("--target-noise", type=float, default=0.0)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--random_target_noise", action="store_true")
-    group.add_argument("--no_random_target_noise", dest="random_target_noise", action="store_false")
+    group.add_argument("--random-target-noise", action="store_true")
+    group.add_argument("--no-random-target-noise", dest="random_target_noise", action="store_false")
     parser.set_defaults(random_target_noise=False)
 
-    parser.add_argument("--max_evals", type=int, default=1000000,
+    parser.add_argument("--max-evals", type=int, default=1000000,
                         help="Maximum evaluations per PySR run")
     parser.add_argument("--timeout", type=int, default=500,
                         help="PySR soft timeout_in_seconds; PySR checks between iterations.")
-    parser.add_argument("--pysr_wall_limit", type=int, default=600,
+    parser.add_argument("--pysr-wall-limit", type=int, default=600,
                         help="Hard wall-clock limit per PySR task (seconds). Enforced in the "
                              "worker via SIGALRM; on overrun the task errors out with score=0 "
                              "and is NOT retried. Must be >= --timeout, with some slack.")
@@ -1307,25 +1417,29 @@ def main():
                              "Overrides --model when set. "
                              f"Presets: {preset_help}")
     parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--llm-max-workers", type=int, default=16,
+                        help="Maximum concurrent LLM completion requests for operator generation. "
+                             "Use 1 for sequential behavior; use 0 to launch every pending "
+                             "offspring request in the current wave.")
 
     parser.add_argument("--partition", type=str, default="default_partition")
-    parser.add_argument("--time_limit", type=str, default="00:15:00",
+    parser.add_argument("--time-limit", type=str, default="00:15:00",
                         help="SLURM --time per array task. Hard kill by SLURM; acts as a safety "
                              "net if the worker's SIGALRM is swallowed by Julia.")
-    parser.add_argument("--mem_per_cpu", type=str, default="8G")
-    parser.add_argument("--job_timeout", type=float, default=1800.0,
+    parser.add_argument("--mem-per-cpu", type=str, default="8G")
+    parser.add_argument("--job-timeout", type=float, default=1800.0,
                         help="Parent watchdog for a whole batch (seconds). If the batch hasn't "
                              "finished by this time, remaining jobs are cancelled and the "
-                             "missing tasks are retried (up to --max_retries).")
-    parser.add_argument("--max_concurrent_jobs", type=int, default=None,
+                             "missing tasks are retried (up to --max-retries).")
+    parser.add_argument("--max-concurrent-jobs", type=int, default=None,
                         help="Cap on concurrent SLURM array tasks (applies %%N to --array spec). "
                              "None = no limit.")
     parser.add_argument("--repo-root", type=str, default=str(Path(__file__).resolve().parent),
                         help="Repo root containing PySR and SymbolicRegression.jl.")
 
-    parser.add_argument("--output_dir", type=str, default=None)
+    parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--no-cache", action="store_true")
-    parser.add_argument("--task_diverse_pop", action="store_true",
+    parser.add_argument("--task-diverse-pop", action="store_true",
                         help="Use task-diverse population selection: keep the best solver for each task, "
                              "allowing population to grow up to #tasks. Requires fitness_metric=gt.")
     parser.add_argument("--racing", action="store_true",
@@ -1339,7 +1453,7 @@ def main():
                              "bundle ever evaluated, ranked by avg score across all accumulated "
                              "seeds. Requires --racing so scores remain comparable as seeds grow.")
 
-    parser.add_argument("--continue_from", type=str, default=None,
+    parser.add_argument("--continue-from", type=str, default=None,
                         help="Path to a prior evolve_pysr run dir (or run_data.json) to resume from. "
                              "Writes to a new output dir; --generations N means N ADDITIONAL generations. "
                              "Works for all variants (racing, hof, task_diverse_pop, etc.). "
@@ -1350,10 +1464,10 @@ def main():
                              "Accepts: evolve_pysr output dir or run_data.json, "
                              "openevolve best_program.py, or a raw .jl file.")
 
-    parser.add_argument("--exec_feedback_n", type=int, default=0,
+    parser.add_argument("--exec-feedback-n", type=int, default=0,
                         help="Enable execution-trace prompt feedback and record this many search checkpoints per PySR fit (0 = disabled)")
-    parser.add_argument("--exec_feedback_prob", type=float, default=0.75,
-                        help="Fraction of mutations that attach an execution-trace to the prompt when --exec_feedback_n > 0 (default 0.75)")
+    parser.add_argument("--exec-feedback-prob", type=float, default=0.75,
+                        help="Fraction of mutations that attach an execution-trace to the prompt when --exec-feedback-n > 0 (default 0.75)")
 
     args = parser.parse_args()
 
@@ -1431,6 +1545,7 @@ def main():
         dataset_names=dataset_names,
         model=args.model,
         temperature=args.temperature,
+        llm_max_workers=args.llm_max_workers,
         model_ensemble=model_ensemble,
         seed=args.seed,
         output_dir=args.output_dir,
@@ -1484,6 +1599,7 @@ def main():
         "model": args.model,
         "models": args.models,
         "temperature": args.temperature,
+        "llm_max_workers": args.llm_max_workers,
         "partition": args.partition,
         "baseline": args.baseline,
         "no_cache": args.no_cache,
@@ -1518,7 +1634,7 @@ def main():
         },
     )
 
-    # Final evaluation on --split and --val_split (10 seeds), with a fresh
+    # Final evaluation on --split and --val-split (10 seeds), with a fresh
     # data seed so the final-eval training subsample is not the one the
     # operators were evolved on.
     run_data_path = str(Path(args.output_dir) / "run_data.json")

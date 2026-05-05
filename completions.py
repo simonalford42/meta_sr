@@ -141,26 +141,30 @@ class CompletionsCacheDB:
 
 # Global cache instance
 _cache = CompletionsCacheDB()
+_cache_lock = threading.Lock()
 
 
 def set_cache_path(database_path: str):
     """Change the cache database path. Creates a new cache instance."""
     global _cache
-    _cache = CompletionsCacheDB(database_path)
+    with _cache_lock:
+        _cache = CompletionsCacheDB(database_path)
 
 
 def clear_cache():
     """Clear all entries from the cache."""
-    with Session(_cache.engine) as session:
-        session.query(ChatCompletionCache).delete()
-        session.commit()
+    with _cache_lock:
+        with Session(_cache.engine) as session:
+            session.query(ChatCompletionCache).delete()
+            session.commit()
 
 
 def get_cache_stats() -> Dict[str, Any]:
     """Get statistics about the cache."""
-    with Session(_cache.engine) as session:
-        count = session.query(ChatCompletionCache).count()
-        return {"num_entries": count}
+    with _cache_lock:
+        with Session(_cache.engine) as session:
+            count = session.query(ChatCompletionCache).count()
+            return {"num_entries": count}
 
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -293,7 +297,8 @@ def chat_completion(
             # Use unified 'sample_index' key for all cache lookups
             sample_idx = sample_index_offset + i
             sample_cache_kwargs = {**cache_kwargs, 'sample_index': sample_idx}
-            cached = _cache.lookup(model, messages, temperature, max_tokens, sample_cache_kwargs)
+            with _cache_lock:
+                cached = _cache.lookup(model, messages, temperature, max_tokens, sample_cache_kwargs)
             if cached is not None:
                 # Extract the single choice from cached response
                 cached_choices.append((i, cached['choices'][0]))
@@ -322,7 +327,8 @@ def chat_completion(
 
     # Check cache for simple n=1 case (no sample_index offset)
     if use_cache and n_samples == 1 and sample_index_offset == 0:
-        cached_response = _cache.lookup(model, messages, temperature, max_tokens, cache_kwargs)
+        with _cache_lock:
+            cached_response = _cache.lookup(model, messages, temperature, max_tokens, cache_kwargs)
         if cached_response is not None:
             print(f"      [API] cached (no API call)")
             with _usage_lock:
@@ -423,7 +429,8 @@ def chat_completion(
             if use_cache:
                 if n_samples == 1 and sample_index_offset == 0:
                     # Simple case: store single response without sample_index
-                    _cache.store(model, messages, temperature, max_tokens, cache_kwargs, data)
+                    with _cache_lock:
+                        _cache.store(model, messages, temperature, max_tokens, cache_kwargs, data)
                 else:
                     # Store each choice separately with unified 'sample_index' key
                     for fetch_idx, choice in enumerate(data.get('choices', [])):
@@ -436,8 +443,9 @@ def chat_completion(
                                 'choices': [choice],
                                 'model': data.get('model', model),
                             }
-                            _cache.store(model, messages, temperature, max_tokens,
-                                        sample_cache_kwargs, single_response)
+                            with _cache_lock:
+                                _cache.store(model, messages, temperature, max_tokens,
+                                            sample_cache_kwargs, single_response)
 
             # Combine cached and fresh choices for n>1
             if n_samples > 1 and cached_choices:

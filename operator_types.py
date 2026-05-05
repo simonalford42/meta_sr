@@ -16,7 +16,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from completions import chat_completion, get_content
+from completions import chat_completion, chat_completion_batch, get_content
 from parallel_eval_pysr import (
     PySRConfig,
     get_default_mutation_weights,
@@ -903,6 +903,210 @@ def smoke_test_bundle(bundle: 'OperatorBundle') -> Tuple[bool, List[str]]:
             errors.append(f"{type_name}/{op.name}: {error}")
     return len(errors) == 0, errors
 
+@dataclass
+class OperatorGenerationSpec:
+    """Fully-planned inputs for one operator-code LLM completion."""
+    op_type: OperatorType
+    reference: str
+    parent: Optional[JuliaOperator] = None
+    parent2: Optional[JuliaOperator] = None
+    model: str = "openai/gpt-5-mini"
+    model_ensemble: Optional[ModelEnsemble] = None
+    mode: str = "explore"
+    variation_seed: int = 0
+    temperature: float = 0.0
+    use_cache: bool = True
+    task_info: Optional[Dict[str, str]] = None
+    log_prompt_dir: Optional[Path] = None
+    log_generation: int = -1
+
+
+def _build_operator_prompt(spec: OperatorGenerationSpec) -> str:
+    """Build the type-specific prompt for an operator generation request."""
+    if spec.mode == "explore":
+        prompt = spec.op_type.build_explore_prompt(spec.reference, spec.variation_seed)
+    elif spec.mode == "refine":
+        if spec.parent is None:
+            raise ValueError("refine mode requires a parent")
+        prompt = spec.op_type.build_refine_prompt(spec.parent, spec.reference)
+    elif spec.mode == "crossover":
+        if spec.parent is None or spec.parent2 is None:
+            raise ValueError("crossover mode requires two parents")
+        prompt = spec.op_type.build_crossover_prompt(
+            spec.parent.code, spec.parent2.code, spec.reference,
+        )
+    elif spec.mode == "simplify":
+        if spec.parent is None:
+            raise ValueError("simplify mode requires a parent")
+        prompt = spec.op_type.build_simplify_prompt(spec.parent.code, spec.reference)
+    else:
+        raise ValueError(f"Unknown mode: {spec.mode}")
+
+    # Optional generic appendix: execution trace from a recent search using this
+    # bundle, plus a brainstorm instruction. Applied after the type-specific
+    # prompt so it works uniformly across mutation/survival/selection.
+    if spec.task_info and spec.task_info.get("execution_trace_text"):
+        prompt = (
+            f"{prompt}\n\n"
+            f"## Execution trace from a recent search using this bundle\n"
+            f"{spec.task_info['execution_trace_text']}\n\n"
+            f"{_BRAINSTORM_INSTRUCTION}\n"
+        )
+    return prompt
+
+
+def _log_operator_generation(
+    spec: OperatorGenerationSpec,
+    prompt: str,
+    content: str,
+    code: str,
+    func_name: str,
+    selected_model: str,
+) -> None:
+    """Log prompt, raw response, and extracted code for one generation request."""
+    if spec.log_prompt_dir is None:
+        return
+    try:
+        spec.log_prompt_dir.mkdir(parents=True, exist_ok=True)
+        fname = (
+            f"gen{max(spec.log_generation, 0):03d}_"
+            f"{spec.op_type.name}_{spec.mode}_seed{spec.variation_seed}.md"
+        )
+        header = (
+            f"<!-- op_type={spec.op_type.name} mode={spec.mode} "
+            f"generation={spec.log_generation} variation_seed={spec.variation_seed} "
+            f"model={selected_model} func_name={func_name} -->\n\n"
+        )
+        body = (
+            header
+            + "## Prompt\n\n"
+            + prompt
+            + "\n\n## Raw Response\n\n"
+            + (content or "(empty)")
+            + "\n\n## Extracted Code\n\n```julia\n"
+            + (code or "(no code extracted)")
+            + "\n```\n"
+        )
+        (spec.log_prompt_dir / fname).write_text(body)
+    except Exception as e:
+        print(f"  [prompt-log] Failed to write prompt: {e}")
+
+
+def _extract_operator_generation_result(
+    spec: OperatorGenerationSpec,
+    prompt: str,
+    response: Dict[str, Any],
+    selected_model: str,
+) -> Tuple[str, str, str]:
+    """Convert a chat-completion response into (code, func_name, model)."""
+    content = get_content(response)
+    code = extract_julia_code(content)
+    func_name = extract_function_name(code) if code else ""
+    _log_operator_generation(spec, prompt, content, code, func_name, selected_model)
+    if not code:
+        return "", "", selected_model
+    return code, func_name, selected_model
+
+
+def _operator_generation_chat_request(
+    spec: OperatorGenerationSpec,
+    prompt: str,
+    selected_model: str,
+    model_attempt: int,
+) -> Dict[str, Any]:
+    """Build kwargs for completions.chat_completion."""
+    return {
+        "model": selected_model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": spec.temperature,
+        "sample_index": spec.variation_seed + model_attempt * 10_000,
+        "use_cache": spec.use_cache,
+        "max_tokens": 128_000,
+    }
+
+
+def _resample_operator_model(
+    model_ensemble: ModelEnsemble,
+    tried_models: List[str],
+) -> str:
+    """Sample a different model when possible after an API failure."""
+    for _ in range(10):
+        candidate = model_ensemble.sample()
+        if candidate not in tried_models:
+            return candidate
+    return model_ensemble.sample()
+
+
+def generate_operator_code_batch(
+    specs: List[OperatorGenerationSpec],
+    max_workers: int = 8,
+) -> List[Tuple[str, str, str]]:
+    """Generate multiple operator-code completions in parallel.
+
+    Each result is a (code, func_name, selected_model) tuple in the same order
+    as `specs`. Per-request model failover mirrors generate_operator_code; a
+    request that exhausts all model attempts returns empty code so callers can
+    retry/top up that slot without aborting the whole batch.
+    """
+    if not specs:
+        return []
+
+    prompts = [_build_operator_prompt(spec) for spec in specs]
+    selected_models = [
+        spec.model_ensemble.sample() if spec.model_ensemble else spec.model
+        for spec in specs
+    ]
+    tried_models: List[List[str]] = [[] for _ in specs]
+    attempt_counts = [0 for _ in specs]
+    results: List[Optional[Tuple[str, str, str]]] = [None for _ in specs]
+    pending = list(range(len(specs)))
+    worker_count = len(specs) if max_workers <= 0 else max_workers
+    worker_count = max(1, min(worker_count, len(specs)))
+
+    while pending:
+        batch_indices = list(pending)
+        batch_requests: List[Dict[str, Any]] = []
+        for idx in batch_indices:
+            model_attempt = attempt_counts[idx]
+            tried_models[idx].append(selected_models[idx])
+            batch_requests.append(_operator_generation_chat_request(
+                specs[idx],
+                prompts[idx],
+                selected_models[idx],
+                model_attempt,
+            ))
+            attempt_counts[idx] += 1
+
+        batch_responses = chat_completion_batch(batch_requests, max_workers=worker_count)
+
+        next_pending: List[int] = []
+        for idx, response in zip(batch_indices, batch_responses):
+            if isinstance(response, dict) and "error" not in response:
+                results[idx] = _extract_operator_generation_result(
+                    specs[idx], prompts[idx], response, selected_models[idx],
+                )
+                continue
+
+            error = response.get("error", "unknown error") if isinstance(response, dict) else response
+            print(
+                f"  chat_completion failed with {selected_models[idx]}: {error}"
+            )
+            max_model_attempts = 4 if specs[idx].model_ensemble else 1
+            if attempt_counts[idx] >= max_model_attempts or not specs[idx].model_ensemble:
+                print(f"  Giving up after trying models: {tried_models[idx]}")
+                results[idx] = ("", "", selected_models[idx])
+                continue
+
+            selected_models[idx] = _resample_operator_model(
+                specs[idx].model_ensemble, tried_models[idx],
+            )
+            print(f"  Retrying with different model: {selected_models[idx]}")
+            next_pending.append(idx)
+        pending = next_pending
+
+    return [result if result is not None else ("", "", "") for result in results]
+
+
 def generate_operator_code(
     op_type: OperatorType,
     reference: str,
@@ -922,33 +1126,22 @@ def generate_operator_code(
 
     Returns (code, func_name, selected_model).
     """
-    if mode == "explore":
-        prompt = op_type.build_explore_prompt(reference, variation_seed)
-    elif mode == "refine":
-        if parent is None:
-            raise ValueError("refine mode requires a parent")
-        prompt = op_type.build_refine_prompt(parent, reference)
-    elif mode == "crossover":
-        if parent is None or parent2 is None:
-            raise ValueError("crossover mode requires two parents")
-        prompt = op_type.build_crossover_prompt(parent.code, parent2.code, reference)
-    elif mode == "simplify":
-        if parent is None:
-            raise ValueError("simplify mode requires a parent")
-        prompt = op_type.build_simplify_prompt(parent.code, reference)
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
-
-    # Optional generic appendix: execution trace from a recent search using this
-    # bundle, plus a brainstorm instruction. Applied after the type-specific
-    # prompt so it works uniformly across mutation/survival/selection.
-    if task_info and task_info.get("execution_trace_text"):
-        prompt = (
-            f"{prompt}\n\n"
-            f"## Execution trace from a recent search using this bundle\n"
-            f"{task_info['execution_trace_text']}\n\n"
-            f"{_BRAINSTORM_INSTRUCTION}\n"
-        )
+    spec = OperatorGenerationSpec(
+        op_type=op_type,
+        reference=reference,
+        parent=parent,
+        parent2=parent2,
+        model=model,
+        model_ensemble=model_ensemble,
+        mode=mode,
+        variation_seed=variation_seed,
+        temperature=temperature,
+        use_cache=use_cache,
+        task_info=task_info,
+        log_prompt_dir=log_prompt_dir,
+        log_generation=log_generation,
+    )
+    prompt = _build_operator_prompt(spec)
 
     # Use ensemble to pick model if available, otherwise use single model.
     # If the API call fails (even after internal retries), resample a different
@@ -960,59 +1153,16 @@ def generate_operator_code(
     for model_attempt in range(max_model_attempts):
         tried_models.append(selected_model)
         try:
-            response = chat_completion(
-                model=selected_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
-                sample_index=variation_seed + model_attempt * 10_000,
-                use_cache=use_cache,
-                max_tokens=128_000,
-            )
+            response = chat_completion(**_operator_generation_chat_request(
+                spec, prompt, selected_model, model_attempt,
+            ))
             break
         except Exception as e:
             print(f"  chat_completion failed with {selected_model}: {type(e).__name__}: {e}")
             if model_attempt + 1 >= max_model_attempts or not model_ensemble:
                 print(f"  Giving up after trying models: {tried_models}")
                 raise
-            # Sample a different model if possible
-            for _ in range(10):
-                candidate = model_ensemble.sample()
-                if candidate not in tried_models:
-                    selected_model = candidate
-                    break
-            else:
-                selected_model = model_ensemble.sample()
+            selected_model = _resample_operator_model(model_ensemble, tried_models)
             print(f"  Retrying with different model: {selected_model}")
 
-    content = get_content(response)
-    code = extract_julia_code(content)
-    func_name = extract_function_name(code) if code else ""
-
-    # Log prompt + response + extracted code to disk.
-    if log_prompt_dir is not None:
-        try:
-            log_prompt_dir.mkdir(parents=True, exist_ok=True)
-            fname = f"gen{max(log_generation, 0):03d}_{op_type.name}_{mode}_seed{variation_seed}.md"
-            header = (
-                f"<!-- op_type={op_type.name} mode={mode} "
-                f"generation={log_generation} variation_seed={variation_seed} "
-                f"model={selected_model} func_name={func_name} -->\n\n"
-            )
-            body = (
-                header
-                + "## Prompt\n\n"
-                + prompt
-                + "\n\n## Raw Response\n\n"
-                + (content or "(empty)")
-                + "\n\n## Extracted Code\n\n```julia\n"
-                + (code or "(no code extracted)")
-                + "\n```\n"
-            )
-            (log_prompt_dir / fname).write_text(body)
-        except Exception as e:
-            print(f"  [prompt-log] Failed to write prompt: {e}")
-
-    if not code:
-        return "", "", selected_model
-
-    return code, func_name, selected_model
+    return _extract_operator_generation_result(spec, prompt, response, selected_model)
