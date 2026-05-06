@@ -14,6 +14,12 @@ Usage:
         --evolve-results outputs/evolve_mutation_*/run_data.json \
         --n-runs 5
 
+    # Unfinalized bundle run (uses best bundle seen so far)
+    python evaluate_new_pysr.py \
+        --evolve-results 399313 \
+        --splits splits/val.txt \
+        --n-runs 10
+
     # OpenEvolve result
     python evaluate_new_pysr.py \
         --openevolve-results outputs/openevolve_pysr_survival_*/ \
@@ -92,16 +98,59 @@ class EvalSummary:
 # Loaders
 # =============================================================================
 
+def resolve_evolve_results_path(path: str) -> Path:
+    """Resolve a run_data source passed to --evolve-results."""
+    candidate = Path(path)
+    if candidate.is_file():
+        return candidate
+    if candidate.is_dir() and (candidate / "run_data.json").is_file():
+        return candidate / "run_data.json"
+    run_candidate = Path("runs") / path / "run_data.json"
+    if run_candidate.is_file():
+        return run_candidate
+    raise FileNotFoundError(f"Could not resolve evolve results from {path!r}")
+
+
 def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[EvolveResult]":
     """Load results from an evolve run_data.json file.
 
     For bundle runs (multiple operator types), returns a list of EvolveResult.
     For single-operator runs, returns a single EvolveResult.
     """
-    with open(path, "r") as f:
+    source_path = resolve_evolve_results_path(path)
+    with open(source_path, "r") as f:
         data = json.load(f)
 
     config = data.get("config", {})
+
+    def find_best_bundle_so_far() -> tuple[Optional[Dict[str, Any]], Optional[int]]:
+        """Return the highest-scoring bundle in generation populations.
+
+        Some long-running bundle evolutions may be evaluated before finalize()
+        writes a top-level best_bundle. In that case, use the best population
+        member seen so far, matching scripts/evaluate_best_so_far.py.
+        """
+        best = None
+        best_score = float("-inf")
+        best_gen = None
+        for gen in data.get("generations", []):
+            for entry in gen.get("population", []):
+                if not isinstance(entry, dict) or "operators" not in entry:
+                    continue
+                score = entry.get("score")
+                if score is None:
+                    continue
+                try:
+                    score_value = float(score)
+                except (TypeError, ValueError):
+                    continue
+                if not np.isfinite(score_value):
+                    continue
+                if best is None or score_value > best_score:
+                    best = entry
+                    best_score = score_value
+                    best_gen = gen.get("generation")
+        return best, best_gen
 
     # Handle bundle results (best_bundle with multiple operators).
     # Sources, in order of preference:
@@ -109,16 +158,23 @@ def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[E
     #   2. data itself, if shaped like a bundle (best_bundle.json passed directly)
     #   3. sibling best_bundle.json next to the given path (HPO runs where the
     #      embed step was missed, e.g. older runs from before the fix)
+    #   4. best-scoring bundle in generation populations (unfinished runs)
     bundle = None
-    if "best_bundle" in data:
+    if data.get("best_bundle"):
         bundle = data["best_bundle"]
     elif "operators" in data and isinstance(data.get("operators"), dict):
         bundle = data
     else:
-        sibling = Path(path).parent / "best_bundle.json"
+        sibling = source_path.parent / "best_bundle.json"
         if sibling.exists():
             with open(sibling, "r") as f:
                 bundle = json.load(f)
+        else:
+            bundle, bundle_generation = find_best_bundle_so_far()
+            if bundle is not None:
+                print(f"  Note: run has no finalized best_bundle. Using best "
+                      f"bundle from generation {bundle_generation}: "
+                      f"score={bundle.get('score', '?')}")
 
     if bundle is not None:
         operators = bundle.get("operators", {})
@@ -155,11 +211,11 @@ def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[E
     if best is None:
         generations = data.get("generations", [])
         if not generations:
-            raise ValueError(f"File {path} has no finalized best-operator and no generations.")
+            raise ValueError(f"File {source_path} has no finalized best-operator and no generations.")
         last_gen = generations[-1]
         population = last_gen.get("population", [])
         if not population:
-            raise ValueError(f"File {path}: last generation has empty population.")
+            raise ValueError(f"File {source_path}: last generation has empty population.")
         best = population[0]
         print(f"  Note: run did not finalize. Using best from generation "
               f"{last_gen.get('generation', '?')}: {best.get('name', '?')} "
@@ -667,7 +723,8 @@ def main() -> None:
     # Method source (at most one; none = baseline)
     method_group = parser.add_mutually_exclusive_group()
     method_group.add_argument("--evolve-results", type=str,
-                              help="Path to evolve_pysr run_data.json")
+                              help="Path to evolve_pysr run_data.json, a run "
+                                   "directory, or a run id under runs/")
     method_group.add_argument("--openevolve-results", type=str,
                               help="Path to OpenEvolve output directory")
     method_group.add_argument("--best-weights", type=str,
