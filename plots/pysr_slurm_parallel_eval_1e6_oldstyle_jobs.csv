@@ -1,0 +1,32 @@
+parent_slurm_id,source,command
+157619,evaluate_new_pysr.py,evaluate_new_pysr.py --evolve-results runs/947961/run_data.json --splits splits/train.txt splits/val.txt splits/barely_unsolvable.txt --seed 1000 --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00
+157620,evaluate_new_pysr.py,evaluate_new_pysr.py --splits splits/train.txt splits/val.txt splits/barely_unsolvable.txt --seed 1000 --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00
+157720,evaluate_new_pysr.py,evaluate_new_pysr.py --evolve-results runs/947961/run_data.json --splits splits/train.txt splits/val.txt splits/barely_unsolvable.txt --seed 1000 --n-runs 10 --max-evals 1000000 --noise 0.001 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00
+157721,evaluate_new_pysr.py,evaluate_new_pysr.py --splits splits/train.txt splits/val.txt splits/barely_unsolvable.txt --seed 1000 --n-runs 10 --max-evals 1000000 --noise 0.001 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00
+234143,evaluate_new_pysr.py,(not logged; inferred from run output)
+234144,evaluate_new_pysr.py,(not logged; inferred from run output)
+234145,evaluate_new_pysr.py,(not logged; inferred from run output)
+234147,evaluate_new_pysr.py,(not logged; inferred from run output)
+253071,evaluate_new_pysr.py,evaluate_new_pysr.py --evolve-results runs/947961/run_data.json --splits splits/barely_unsolvable_val2.txt --seed 1000 --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00
+253072,evaluate_new_pysr.py,evaluate_new_pysr.py --splits splits/barely_unsolvable_val2.txt --seed 1000 --n-runs 10 --max-evals 1000000 --timeout 600 --pysr-wall-limit 900 --time-limit 02:00:00
+354754,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 2 --population 40 --offspring 40 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt
+354755,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 10 --n-runs 1 --max_evals 1000000 --split splits/barely_unsolvable.txt
+355508,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 10 --n-runs 1 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing
+355589,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 10 --n-runs 1 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --task_aware
+395522,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 2 --population 40 --offspring 40 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt
+468274,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 30 --population 5 --offspring 5 --n-runs 1 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing
+468276,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 1 --population 40 --offspring 40 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt
+499254,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 10 --population 5 --offspring 20 --n-runs 10 --max_evals 1000000 --split splits/barely_unsolvable.txt
+499255,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 60 --population 5 --offspring 5 --n-runs 2 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing
+499256,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 10 --population 10 --offspring 10 --n-runs 5 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --task_aware
+572209,evaluate_new_pysr.py,evaluate_new_pysr.py --evolve-results outputs/eval_best_so_far_499254_gen9/run_data_snapshot.json --splits splits/train.txt splits/val.txt splits/barely_unsolvable.txt --n-runs 10 --seed 32 --partition ellis --output-dir outputs/eval_best_so_far_499254_gen9
+572260,evaluate_new_pysr.py,evaluate_new_pysr.py --evolve-results outputs/eval_best_so_far_499255_gen16/run_data_snapshot.json --splits splits/train.txt splits/val.txt splits/barely_unsolvable.txt --n-runs 10 --seed 32 --partition ellis --output-dir outputs/eval_best_so_far_499255_gen16
+595409,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 60 --population 5 --offspring 5 --n-runs 2 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing --hof
+608003,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 60 --population 5 --offspring 5 --n-runs 2 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing --continue_from runs/499255
+669093,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 30 --population 5 --offspring 5 --n-runs 2 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing --exec_feedback_n 3
+669094,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 5 --population 10 --offspring 10 --n-runs 5 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --exec_feedback_n 3
+691785,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 30 --population 5 --offspring 5 --n-runs 2 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing --exec_feedback_n 3
+691786,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 5 --population 10 --offspring 10 --n-runs 5 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --exec_feedback_n 3
+695307,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 30 --population 5 --offspring 5 --n-runs 2 --max_evals 1000000 --split splits/barely_unsolvable.txt --racing --exec_feedback_n 3
+695308,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 5 --population 10 --offspring 10 --n-runs 5 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --exec_feedback_n 3
+726782,evolve_pysr.py,evolve_pysr.py --operator_type all --generations 5 --population 10 --offspring 10 --n-runs 5 --max_evals 1000000 --split splits/barely_unsolvable.txt --task_diverse_pop --exec_feedback_n 3
