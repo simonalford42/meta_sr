@@ -8,6 +8,10 @@ Color:
   red  = currently in population
   blue = in archive but not in population
   yellow outline = selected for extra evaluations this generation
+
+For each distinct seed-eval count N, the rightmost point gets a horizontal
+error bar showing +/- score_std_one_eval / sqrt(N).  The default one-seed
+standard deviation is 0.07.
 """
 
 from __future__ import annotations
@@ -237,6 +241,7 @@ def plot_generation(
     meta: RacingMeta,
     run_id: str,
     out_path: Path,
+    score_std_one_eval: float,
 ) -> None:
     xs = [b.score for b in archive]
     ys = [b.seeds for b in archive]
@@ -260,6 +265,31 @@ def plot_generation(
         linewidths=linewidths,
         alpha=0.88,
     )
+
+    # Show score uncertainty without cluttering the whole cloud: for every
+    # evaluation count N, annotate the highest-score bundle at that N.
+    rightmost_by_eval_count: dict[int, tuple[int, BundleState]] = {}
+    for idx, bundle in enumerate(archive):
+        current = rightmost_by_eval_count.get(bundle.seeds)
+        if current is None or bundle.score > current[1].score:
+            rightmost_by_eval_count[bundle.seeds] = (idx, bundle)
+
+    for idx, bundle in sorted(rightmost_by_eval_count.values(), key=lambda item: item[1].seeds):
+        if bundle.seeds <= 0:
+            continue
+        xerr = score_std_one_eval / math.sqrt(bundle.seeds)
+        ax.errorbar(
+            bundle.score,
+            bundle.seeds,
+            xerr=xerr,
+            fmt="none",
+            ecolor="#111111",
+            elinewidth=1.2,
+            capsize=3,
+            capthick=1.0,
+            alpha=0.85,
+            zorder=4,
+        )
 
     if xs:
         x_pad = max(0.02, (max(xs) - min(xs)) * 0.08)
@@ -291,6 +321,10 @@ def plot_generation(
             markerfacecolor="white", markeredgecolor="#f2c300",
             markeredgewidth=2.2, markersize=8,
         ),
+        Line2D(
+            [0], [0], color="#111111", linestyle="-",
+            label=f"+/- {score_std_one_eval:g}/sqrt(N) score std",
+        ),
     ]
     ax.legend(handles=legend_items, loc="best", frameon=True)
 
@@ -300,7 +334,7 @@ def plot_generation(
     plt.close(fig)
 
 
-def make_plots(run_dir: Path, out_dir: Path) -> list[Path]:
+def make_plots(run_dir: Path, out_dir: Path, score_std_one_eval: float) -> list[Path]:
     config = load_config(run_dir)
     population_size = int(config.get("population_size") or 10)
     initial_seeds = int(config.get("n_runs") or 1)
@@ -336,6 +370,7 @@ def make_plots(run_dir: Path, out_dir: Path) -> list[Path]:
             meta=meta,
             run_id=run_id,
             out_path=out_path,
+            score_std_one_eval=score_std_one_eval,
         )
         written.append(out_path)
 
@@ -360,6 +395,12 @@ def main() -> None:
         default=None,
         help="Output directory (default: plots/<run_id>_racing)",
     )
+    parser.add_argument(
+        "--score-std-one-eval",
+        type=float,
+        default=0.07,
+        help="One-seed score standard deviation for error bars (default: 0.07)",
+    )
     args = parser.parse_args()
 
     run_dir = args.run_dir.resolve()
@@ -369,7 +410,11 @@ def main() -> None:
     else:
         out_dir = out_dir.resolve()
 
-    written = make_plots(run_dir, out_dir)
+    written = make_plots(
+        run_dir,
+        out_dir,
+        score_std_one_eval=args.score_std_one_eval,
+    )
     print(f"Wrote {len(written)} plots to {out_dir}")
     for path in written:
         print(path)
