@@ -2,8 +2,7 @@
 """Print generation-level racing eval accounting for a meta-SR run.
 
 Default target is runs/666286.  Counts named "evals" in the table are PySR
-task evals: one bundle/config evaluated on one dataset for one seed.  The final
-column multiplies that task count by the run's PySR max_evals budget.
+task evals: one bundle/config evaluated on one dataset for one seed.
 """
 
 from __future__ import annotations
@@ -158,8 +157,6 @@ def table_rows(gens: dict[int, Generation], config: dict) -> Iterable[list[str]]
     n_datasets = int_config(config, "n_datasets", len(config.get("dataset_names") or []))
     n_runs = int_config(config, "n_runs", 1)
     n_extra_runs = int_config(config, "n_extra_runs", 0)
-    max_evals = int((config.get("pysr_kwargs") or {}).get("max_evals") or 0)
-
     last_seeds_by_name: dict[str, int] = {}
 
     for gen_no in sorted(gens):
@@ -190,7 +187,6 @@ def table_rows(gens: dict[int, Generation], config: dict) -> Iterable[list[str]]
             last_seeds_by_name[item.name] = max(previous, item.seeds)
 
         total_evals = offspring_init_evals + reeval_evals
-        total_max_evals = total_evals * max_evals if max_evals else 0
         made_next = count_made_next_gen(gen, gens.get(gen_no + 1))
         status = "complete" if gen.complete else "incomplete"
 
@@ -203,7 +199,6 @@ def table_rows(gens: dict[int, Generation], config: dict) -> Iterable[list[str]]
             str(reeval_count(gen)),
             f"{reeval_evals:,}",
             f"{total_evals:,}",
-            f"{total_max_evals:,}" if max_evals else "?",
         ]
 
 
@@ -212,19 +207,16 @@ def print_table(run_dir: Path) -> None:
     gens = parse_log(run_dir / "run.log")
 
     n_datasets = int_config(config, "n_datasets", len(config.get("dataset_names") or []))
-    max_evals = int((config.get("pysr_kwargs") or {}).get("max_evals") or 0)
 
     print(f"# Racing eval accounting: {run_dir}")
     print(f"# task eval = 1 bundle/config x 1 dataset x 1 seed; datasets={n_datasets}")
-    if max_evals:
-        print(f"# total_max_evals = total_task_evals x {max_evals:,} max_evals/task")
     print()
     print(
         "| gen | status | lambda | offspring_init_evals | "
         "offspring_made_next_gen | reeval_bundles | reeval_evals | "
-        "total_task_evals | total_max_evals |"
+        "total_evals |"
     )
-    print("|---:|:---|---:|---:|---:|---:|---:|---:|---:|")
+    print("|---:|:---|---:|---:|---:|---:|---:|---:|")
     for row in table_rows(gens, config):
         print("| " + " | ".join(row) + " |")
 
