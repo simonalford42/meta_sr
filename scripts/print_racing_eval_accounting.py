@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Print generation-level racing eval accounting for a meta-SR run.
 
-Default target is runs/666286.  Counts named "evals" in the table are PySR
-task evals: one bundle/config evaluated on one dataset for one seed.
+Default target is runs/666286.  Counts named "evals" in the table are
+bundle-seed evals: one bundle evaluated for one seed across the split.
 """
 
 from __future__ import annotations
@@ -164,10 +164,10 @@ def table_rows(gens: dict[int, Generation], config: dict) -> Iterable[list[str]]
         lambda_value = gen.lambda_value or 1
 
         if gen.offspring:
-            offspring_init_evals = sum(item.seeds * n_datasets for item in gen.offspring)
+            offspring_init_evals = sum(item.seeds for item in gen.offspring)
         else:
             offspring_init_evals = (
-                offspring_count(gen) * n_runs * lambda_value * n_datasets
+                offspring_count(gen) * n_runs * lambda_value
             )
 
         if gen.extras:
@@ -175,11 +175,11 @@ def table_rows(gens: dict[int, Generation], config: dict) -> Iterable[list[str]]
             for item in gen.extras:
                 previous = last_seeds_by_name.get(item.name, n_runs)
                 added = max(0, item.seeds - previous)
-                reeval_evals += added * n_datasets
+                reeval_evals += added
                 last_seeds_by_name[item.name] = max(previous, item.seeds)
         else:
             reeval_evals = (
-                reeval_count(gen) * n_extra_runs * lambda_value * n_datasets
+                reeval_count(gen) * n_extra_runs * lambda_value
             )
 
         for item in gen.offspring:
@@ -243,7 +243,7 @@ def print_table(run_dir: Path) -> None:
         return "  ".join(cells)
 
     print(f"# Racing eval accounting: {run_dir}")
-    print(f"# task eval = 1 bundle/config x 1 dataset x 1 seed; datasets={n_datasets}")
+    print(f"# eval = 1 bundle x 1 seed across the split; datasets per eval={n_datasets}")
     print()
     print(format_row(headers))
     print("  ".join("-" * width for width in widths))
