@@ -207,18 +207,48 @@ def print_table(run_dir: Path) -> None:
     gens = parse_log(run_dir / "run.log")
 
     n_datasets = int_config(config, "n_datasets", len(config.get("dataset_names") or []))
+    headers = [
+        "gen",
+        "status",
+        "lambda",
+        "offspring_init_evals",
+        "offspring_made_next_gen",
+        "reeval_bundles",
+        "reeval_evals",
+        "total_evals",
+    ]
+    rows = list(table_rows(gens, config))
+    widths = [
+        max(len(headers[i]), *(len(row[i]) for row in rows))
+        for i in range(len(headers))
+    ]
+    right_aligned = {
+        "gen",
+        "lambda",
+        "offspring_init_evals",
+        "offspring_made_next_gen",
+        "reeval_bundles",
+        "reeval_evals",
+        "total_evals",
+    }
+
+    def format_row(row: list[str]) -> str:
+        cells = []
+        for idx, cell in enumerate(row):
+            header = headers[idx]
+            if header in right_aligned:
+                cells.append(cell.rjust(widths[idx]))
+            else:
+                cells.append(cell.ljust(widths[idx]))
+        return "  ".join(cells)
 
     print(f"# Racing eval accounting: {run_dir}")
     print(f"# task eval = 1 bundle/config x 1 dataset x 1 seed; datasets={n_datasets}")
     print()
-    print(
-        "| gen | status | lambda | offspring_init_evals | "
-        "offspring_made_next_gen | reeval_bundles | reeval_evals | "
-        "total_evals |"
-    )
-    print("|---:|:---|---:|---:|---:|---:|---:|---:|")
-    for row in table_rows(gens, config):
-        print("| " + " | ".join(row) + " |")
+    print(format_row(headers))
+    print("  ".join("-" * width for width in widths))
+    for row in rows:
+        print(format_row(row))
 
 
 def main() -> None:
