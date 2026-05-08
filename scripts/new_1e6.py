@@ -15,15 +15,15 @@ from utils import load_dataset_names_from_split
 def main() -> None:
     parser = argparse.ArgumentParser(
     )
-    parser.add_argument("--split_file", type=str, default="splits/srbench_all.txt")
-    parser.add_argument("--results_dir", type=str, default="results/pysr_1e6_3")
+    parser.add_argument("--split-file", type=str, default="splits/srbench_all.txt")
+    parser.add_argument("--results-dir", type=str, default="results/pysr_1e6_3")
     parser.add_argument("--partition", type=str, default="default_partition")
-    parser.add_argument("--max_samples", type=int, default=1000)
-    parser.add_argument("--max_evals", type=int, default=1000000)
+    parser.add_argument("--max-samples", type=int, default=1000)
+    parser.add_argument("--max-evals", type=int, default=1000000)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--n_runs", type=int, default=1)
-    parser.add_argument("--no_cache", action="store_true")
-    parser.add_argument("--job_timeout", type=float, default=None,
+    parser.add_argument("--n-runs", type=int, default=1)
+    parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--job-timeout", type=float, default=None,
                        help="Max time to wait for job completion in seconds")
     args = parser.parse_args()
 

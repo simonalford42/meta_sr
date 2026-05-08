@@ -75,7 +75,7 @@ def main():
                        help='Dataset to test on')
     parser.add_argument('--niterations', type=int, default=100,
                        help='Number of PySR iterations')
-    parser.add_argument('--max_samples', type=int, default=500)
+    parser.add_argument('--max-samples', type=int, default=500)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--runs', type=int, default=3,
                        help='Number of runs (to see compilation vs subsequent)')

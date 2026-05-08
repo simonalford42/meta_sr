@@ -159,23 +159,172 @@ def recompute_aggregate(
 def apply_racing_results(
     members: List[Any],
     results: List[Tuple[float, List[float], List[Dict]]],
-    n_runs: int,
     fitness_metric: str,
 ) -> None:
     """Merge fresh-seed evaluation results onto each member's state.
 
     For every member, appends the new per-run scores onto its existing
-    `result_details`, bumps `seeds_evaluated` by `n_runs`, and recomputes
-    `score` / `score_vector` from the accumulated history. Works for both
-    `JuliaOperator` and `OperatorBundle`.
+    `result_details`, bumps `seeds_evaluated` by however many seeds the new
+    eval actually contained (max length of run_*_scores across tasks), and
+    recomputes `score` / `score_vector` from the accumulated history.
+
+    Per-bundle seed counts can differ across `members` since racing extra-runs
+    may be capped per bundle.
+
+    Members whose `new_details` is empty (e.g. SLURM submission failure, where
+    `collect_bundle_futures` substitutes the placeholder `(-1.0, [], [])`) are
+    skipped entirely so a failed re-eval does not erase the member's
+    accumulated history. The caller is responsible for any retry/logging.
     """
+    score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
     for m, (_, _, new_details) in zip(members, results):
+        if not new_details:
+            # Failed extras eval — preserve existing state unchanged.
+            continue
+        n_added = max(
+            (len(d.get(score_key, []) or []) for d in new_details),
+            default=0,
+        )
+        if n_added == 0:
+            # Result list present but no per-seed scores — nothing to merge.
+            continue
         merged = merge_result_details(m.result_details, new_details)
         m.result_details = merged
-        m.seeds_evaluated = int(getattr(m, "seeds_evaluated", 0) or 0) + n_runs
+        m.seeds_evaluated = int(getattr(m, "seeds_evaluated", 0) or 0) + n_added
         avg, vec = recompute_aggregate(merged, fitness_metric)
         m.score = avg
         m.score_vector = vec
+
+
+def lambda_for_gen(gen: int, n_generations: int, lambda_target: int) -> int:
+    """Step schedule for the seed-count multiplier λ.
+
+    λ starts at 1 and rises to `lambda_target` in equal-width steps over the
+    run. With n_generations=50 and lambda_target=5: gens 0–9 → 1, 10–19 → 2,
+    20–29 → 3, 30–39 → 4, 40+ → 5.
+
+    Always clamped to [1, lambda_target]. Robust to lambda_target<=1 and to
+    n_generations < lambda_target.
+    """
+    if lambda_target <= 1:
+        return 1
+    step = max(1, n_generations // lambda_target)
+    return min(lambda_target, 1 + max(0, gen) // step)
+
+
+def pooled_sigma(bundles: List[Any], fitness_metric: str) -> float:
+    """Pooled within-bundle std of per-seed averages (Welch-style).
+
+    For each bundle with N_i ≥ 2 seeds, compute the sample variance of its
+    per-seed average scores. Pool with weights (N_i − 1). Returns 0.0 if no
+    bundle has enough samples.
+    """
+    num = 0.0
+    den = 0
+    for b in bundles:
+        N = int(getattr(b, "seeds_evaluated", 0) or 0)
+        if N < 2:
+            continue
+        details = getattr(b, "result_details", None)
+        if not details:
+            continue
+        per_seed = compute_per_run_avgs(details, n_runs=N, fitness_metric=fitness_metric)
+        if len(per_seed) < 2:
+            continue
+        s2 = float(np.var(per_seed, ddof=1))
+        num += (len(per_seed) - 1) * s2
+        den += len(per_seed) - 1
+    if den == 0:
+        return 0.0
+    return float(np.sqrt(num / den))
+
+
+def qualification_prob(
+    mu_i: float, N_i: int, mu_P: float, N_P: int, sigma: float,
+) -> float:
+    """P(true_i > true_P) under Gaussian per-seed noise with shared σ.
+
+    Uses Phi((mu_i - mu_P) / sqrt(σ²/N_i + σ²/N_P)). When σ ≤ 0 or counts are
+    invalid, treats the comparison as deterministic.
+    """
+    from scipy.stats import norm
+    if sigma <= 0 or N_i <= 0 or N_P <= 0:
+        return 1.0 if mu_i >= mu_P else 0.0
+    se = float(np.sqrt(sigma**2 / N_i + sigma**2 / N_P))
+    if se <= 0:
+        return 1.0 if mu_i >= mu_P else 0.0
+    return float(norm.cdf((mu_i - mu_P) / se))
+
+
+def select_qualifying_bundles(
+    archive: List[Any],
+    population_size: int,
+    n_extra_now: int,
+    cap_now: int,
+    sigma: float,
+    fitness_metric: str,
+    qual_threshold: float = 0.05,
+    max_qualifiers_factor: int = 2,
+) -> Tuple[List[Tuple[Any, int]], int]:
+    """Pick archive bundles that should get extra-runs evaluation this generation.
+
+    A bundle qualifies if P(true_i > true_P) ≥ `qual_threshold`, where the P-th
+    member is taken from the top-`population_size` of `archive` by mean score.
+    Bundles already at or beyond `cap_now` seeds are skipped. Among qualifiers,
+    we keep at most `max_qualifiers_factor * population_size`, preferring the
+    ones with the fewest accumulated seeds (variance-reduction first).
+
+    Returns (qualifiers, n_eligible) where:
+      - qualifiers is a list of (bundle, extra_runs_for_this_bundle), capped
+        at `max_qualifiers_factor * population_size`. extra_runs is clamped
+        so seeds_evaluated never exceeds `cap_now`.
+      - n_eligible is the pre-cap count of bundles that passed the
+        `qual_threshold` (or all candidates with cap headroom, when the
+        archive is too small to define a P-th threshold).
+    """
+    if not archive or n_extra_now <= 0 or cap_now <= 0:
+        return [], 0
+
+    ranked = sorted(
+        archive,
+        key=lambda b: (b.score if b.score is not None else float("-inf")),
+        reverse=True,
+    )
+
+    # Without a P-th member there's no threshold — every archive entry that
+    # has headroom under the cap is a candidate. Still rank by fewest seeds.
+    if len(ranked) < population_size:
+        candidates: List[Tuple[Any, int]] = []
+        for b in ranked:
+            N_i = int(getattr(b, "seeds_evaluated", 0) or 0)
+            extra = min(n_extra_now, cap_now - N_i)
+            if extra > 0:
+                candidates.append((b, extra))
+        candidates.sort(key=lambda be: int(getattr(be[0], "seeds_evaluated", 0) or 0))
+        return candidates[: max_qualifiers_factor * population_size], len(candidates)
+
+    pth = ranked[population_size - 1]
+    mu_P = float(pth.score) if pth.score is not None else 0.0
+    N_P = int(getattr(pth, "seeds_evaluated", 0) or 0)
+
+    qualifiers: List[Tuple[Any, int]] = []
+    for b in ranked:
+        N_i = int(getattr(b, "seeds_evaluated", 0) or 0)
+        if N_i >= cap_now:
+            continue
+        if b.score is None:
+            continue
+        prob = qualification_prob(float(b.score), N_i, mu_P, N_P, sigma)
+        if prob < qual_threshold:
+            continue
+        extra = min(n_extra_now, cap_now - N_i)
+        if extra <= 0:
+            continue
+        qualifiers.append((b, extra))
+
+    n_eligible = len(qualifiers)
+    qualifiers.sort(key=lambda be: int(getattr(be[0], "seeds_evaluated", 0) or 0))
+    return qualifiers[: max_qualifiers_factor * population_size], n_eligible
 
 def select_parent(population: list, rng: random.Random):
     """Select a parent using tournament selection (size 2)."""
@@ -472,6 +621,95 @@ def select_survivors(population: list, offspring: list, population_size: int) ->
     scored = [m for m in combined if m.score is not None]
     scored.sort(key=lambda m: m.score, reverse=True)
     return scored[:population_size]
+
+def _bundle_loc(bundle) -> int:
+    """Total non-blank lines of code across a bundle's operators."""
+    total = 0
+    for op in (getattr(bundle, "operators", {}) or {}).values():
+        if op is None or not getattr(op, "code", None):
+            continue
+        total += sum(1 for line in op.code.splitlines() if line.strip())
+    return total
+
+
+def select_survivors_complexity(
+    population: list, offspring: list, population_size: int,
+) -> list:
+    """Complexity-aware Pareto survivor selection.
+
+    Buckets candidates by total bundle LOC into `population_size` equal-width
+    buckets spanning [min_loc, max_loc]. Picks the top-fitness candidate in
+    each non-empty bucket, then drops anything Pareto-dominated by a
+    smaller-LOC bucket-best with at-least-as-good fitness. Backfills with
+    top-scored remaining candidates if the Pareto front is smaller than
+    population_size (so the search doesn't collapse).
+    """
+    combined = population + offspring
+    scored = [m for m in combined if m.score is not None]
+    if not scored:
+        return []
+    if len(scored) <= population_size:
+        scored.sort(key=lambda m: m.score, reverse=True)
+        return scored
+
+    locs = [_bundle_loc(b) for b in scored]
+    lo, hi = min(locs), max(locs)
+    if hi == lo or population_size <= 1:
+        scored.sort(key=lambda m: m.score, reverse=True)
+        return scored[:population_size]
+
+    width = (hi - lo) / population_size
+    buckets: List[List] = [[] for _ in range(population_size)]
+    for b, l in zip(scored, locs):
+        idx = int((l - lo) / width)
+        if idx >= population_size:
+            idx = population_size - 1
+        buckets[idx].append(b)
+
+    # One winner per non-empty bucket: highest fitness, tie-break by lower LOC.
+    bucket_bests = []
+    for bk in buckets:
+        if bk:
+            bk_sorted = sorted(bk, key=lambda b: (-b.score, _bundle_loc(b)))
+            bucket_bests.append(bk_sorted[0])
+
+    # Pareto sweep over bucket-bests sorted by LOC ascending: keep only those
+    # whose fitness strictly exceeds the running max — equivalent to "if a
+    # fewer-LOC bundle has at-least-as-good fitness, drop the higher-LOC one".
+    bucket_bests.sort(key=lambda b: (_bundle_loc(b), -b.score))
+    pareto = []
+    pareto_ids = set()
+    best_fit_so_far = float("-inf")
+    for b in bucket_bests:
+        if b.score > best_fit_so_far:
+            pareto.append(b)
+            pareto_ids.add(id(b))
+            best_fit_so_far = b.score
+
+    # Backfill with top-scored remaining candidates if the front is short of
+    # population_size, so the population doesn't collapse on flat fitness.
+    if len(pareto) < population_size:
+        remaining = [c for c in scored if id(c) not in pareto_ids]
+        remaining.sort(key=lambda m: m.score, reverse=True)
+        for c in remaining:
+            pareto.append(c)
+            pareto_ids.add(id(c))
+            if len(pareto) >= population_size:
+                break
+
+    pareto.sort(key=lambda m: m.score, reverse=True)
+
+    print(
+        f"  [complexity] Population: {len(pareto)} "
+        f"(buckets filled: {sum(1 for bk in buckets if bk)}/{population_size}, "
+        f"loc range: {lo}-{hi})"
+    )
+    for c in pareto:
+        loc = _bundle_loc(c)
+        print(f"    loc={loc:>3}  score={c.score:.4f}  {c.display_name}")
+
+    return pareto
+
 
 def select_survivors_diverse(
     population: list, offspring: list, min_population_size: int,

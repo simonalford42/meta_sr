@@ -166,13 +166,13 @@ def main():
     parser.add_argument('--datasets', type=str, default='feynman',
                         choices=['feynman', 'strogatz', 'all'],
                         help='Which datasets to evaluate')
-    parser.add_argument('--n_samples', type=int, default=1000,
+    parser.add_argument('--n-samples', type=int, default=1000,
                         help='Number of samples to use for training')
     parser.add_argument('--niterations', type=int, default=40,
                         help='Number of PySR iterations')
-    parser.add_argument('--max_datasets', type=int, default=10,
+    parser.add_argument('--max-datasets', type=int, default=10,
                         help='Maximum number of datasets to evaluate')
-    parser.add_argument('--results_dir', type=str, default='results_pysr',
+    parser.add_argument('--results-dir', type=str, default='results_pysr',
                         help='Directory to save results')
 
     args = parser.parse_args()

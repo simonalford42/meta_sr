@@ -7,7 +7,7 @@ SLURM array job (one task per dataset).
 Usage:
     python scripts/smoke_test_pysr_srbench.py --dataset feynman_I_15_10
     python scripts/smoke_test_pysr_srbench.py \\
-        --split_file splits/srbench_all.txt --array_index 0
+        --split-file splits/srbench_all.txt --array-index 0
 """
 
 import argparse
@@ -28,12 +28,12 @@ def main():
     parser = argparse.ArgumentParser(description="PySR SRBench smoke test")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--dataset", type=str)
-    group.add_argument("--split_file", type=str)
-    parser.add_argument("--array_index", type=int, default=None)
-    parser.add_argument("--max_evals", type=int, default=int(1e5))
-    parser.add_argument("--max_samples", type=int, default=1000)
+    group.add_argument("--split-file", type=str)
+    parser.add_argument("--array-index", type=int, default=None)
+    parser.add_argument("--max-evals", type=int, default=int(1e5))
+    parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--results_dir", type=str, default="results_pysr_smoke")
+    parser.add_argument("--results-dir", type=str, default="results_pysr_smoke")
     args = parser.parse_args()
 
     if args.dataset:

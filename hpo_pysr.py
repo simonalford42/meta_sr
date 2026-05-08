@@ -1126,7 +1126,7 @@ def main():
                         help="Seeds per config per dataset")
     parser.add_argument("--seed", type=int, default=42,
                         help="Master seed for reproducibility")
-    parser.add_argument("--fitness_metric", type=str, default="gt", choices=["r2", "gt"],
+    parser.add_argument("--fitness-metric", type=str, default="gt", choices=["r2", "gt"],
                         help="Fitness metric to optimize")
 
     # Dataset settings

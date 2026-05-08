@@ -21,7 +21,11 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
 from slurm_eval import BaseSlurmEvaluator, TERMINAL_SLURM_STATES, init_worker, _untrack_job
-from julia_env import configure_juliapkg_project
+from julia_env import (
+    clear_future_mtime_pidfiles,
+    clear_stale_juliapkg_lock,
+    configure_juliapkg_project,
+)
 
 
 _TRANSIENT_PYSR_ERROR_SNIPPETS = (
@@ -1704,6 +1708,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 )
                 for jid in job_ids:
                     self._cancel_job(jid)
+                clear_stale_juliapkg_lock(Path(self.repo_root) / ".juliapkg_env")
+                clear_future_mtime_pidfiles()
                 return False
 
             if (
@@ -1718,6 +1724,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 )
                 for jid in job_ids:
                     self._cancel_job(jid)
+                clear_stale_juliapkg_lock(Path(self.repo_root) / ".juliapkg_env")
+                clear_future_mtime_pidfiles()
                 return False
 
             statuses = [self._get_job_status(jid) for jid in job_ids]
@@ -2077,6 +2085,8 @@ python -u -m parallel_eval_pysr --worker \\
                 )
                 for jid in job_ids:
                     self._cancel_job(jid)
+                clear_stale_juliapkg_lock(Path(self.repo_root) / ".juliapkg_env")
+                clear_future_mtime_pidfiles()
                 return False
 
             if (
@@ -2091,6 +2101,8 @@ python -u -m parallel_eval_pysr --worker \\
                 )
                 for jid in job_ids:
                     self._cancel_job(jid)
+                clear_stale_juliapkg_lock(Path(self.repo_root) / ".juliapkg_env")
+                clear_future_mtime_pidfiles()
                 return False
 
             statuses = [self._get_job_status(jid) for jid in job_ids]
@@ -2159,6 +2171,10 @@ def run_pysr_worker(tasks_file: str, task_index: int, output_dir: str, use_cache
         disable_pysr_cache()
 
     init_worker(extra_env={'JULIA_NUM_THREADS': '1'})
+
+    repo_root = Path(__file__).resolve().parent
+    clear_stale_juliapkg_lock(repo_root / ".juliapkg_env")
+    clear_future_mtime_pidfiles()
 
     try:
         # Load task specification
@@ -2343,6 +2359,8 @@ if __name__ == "__main__":
         )
 
         init_worker(extra_env={'JULIA_NUM_THREADS': '1'})
+        clear_stale_juliapkg_lock(Path(__file__).resolve().parent / ".juliapkg_env")
+        clear_future_mtime_pidfiles()
         result = _evaluate_pysr_task(task, use_cache=False)
 
         print(f"\nResult:")

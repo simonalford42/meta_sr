@@ -49,7 +49,7 @@ import tempfile
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 import numpy as np
 
@@ -82,6 +82,11 @@ class EvolveResult:
     # Operator-specific tuned values (op_<type>__*) are already injected into
     # `code` by hpo_pysr.py and excluded here.
     best_hparams: Optional[Dict[str, Any]] = None
+    # Per-dataset evaluation breakdown from the evolve run (training-time score
+    # data). For bundle items this is the bundle's shared result_details; for
+    # single-operator runs it's the operator's own result_details. Each entry:
+    # {dataset, avg_r2, avg_gt, run_r2_scores, run_gt_scores, ...}.
+    result_details: Optional[List[Dict[str, Any]]] = None
 
 
 @dataclass
@@ -124,15 +129,29 @@ def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[E
     config = data.get("config", {})
 
     def find_best_bundle_so_far() -> tuple[Optional[Dict[str, Any]], Optional[int]]:
-        """Return the highest-scoring bundle in generation populations.
+        """Return the best-so-far bundle in generation populations.
 
         Some long-running bundle evolutions may be evaluated before finalize()
         writes a top-level best_bundle. In that case, use the best population
         member seen so far, matching scripts/evaluate_best_so_far.py.
+
+        Two complications:
+
+        1. Racing re-scores each unique bundle across multiple generations as
+           ``seeds_evaluated`` grows, so the same bundle appears in many
+           snapshots with progressively lower-variance scores. We deduplicate
+           by operator-name tuple and keep the most-evaluated snapshot per
+           unique bundle.
+
+        2. Newborn bundles get scored on very few seeds (~6-9) and any that
+           luck into 1.0 will trivially beat the stable established winners
+           that have settled at ~0.99 with 30+ seeds. We rank by a
+           confidence-bound-like score ``score - alpha / sqrt(seeds)`` to
+           penalize bundles whose score is statistically unreliable.
         """
-        best = None
-        best_score = float("-inf")
-        best_gen = None
+        alpha = 1.0  # confidence-bound penalty strength
+        # Operator-name tuple → (entry, generation, seeds_evaluated)
+        latest: Dict[Tuple, Tuple[Dict[str, Any], Optional[int], int]] = {}
         for gen in data.get("generations", []):
             for entry in gen.get("population", []):
                 if not isinstance(entry, dict) or "operators" not in entry:
@@ -146,10 +165,36 @@ def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[E
                     continue
                 if not np.isfinite(score_value):
                     continue
-                if best is None or score_value > best_score:
-                    best = entry
-                    best_score = score_value
-                    best_gen = gen.get("generation")
+                ops = entry.get("operators", {})
+                key = tuple(
+                    (ops.get(t) or {}).get("name")
+                    for t in ("mutation", "survival", "selection", "loss")
+                )
+                seeds = entry.get("seeds_evaluated", 0)
+                # ``seeds_evaluated`` may be a count (int) or a list; normalize.
+                seeds_count = len(seeds) if isinstance(seeds, list) else int(seeds or 0)
+                prev = latest.get(key)
+                if prev is None or seeds_count > prev[2]:
+                    latest[key] = (entry, gen.get("generation"), seeds_count)
+
+        best = None
+        best_lcb = float("-inf")
+        best_score = float("nan")
+        best_gen = None
+        best_seeds = 0
+        for entry, gen_num, seeds_count in latest.values():
+            score_value = float(entry["score"])
+            lcb = score_value - alpha / np.sqrt(max(seeds_count, 1))
+            if lcb > best_lcb:
+                best = entry
+                best_lcb = lcb
+                best_score = score_value
+                best_gen = gen_num
+                best_seeds = seeds_count
+        if best is not None:
+            print(f"  [evolve-load] dedup'd {len(latest)} unique bundle(s); "
+                  f"chose gen {best_gen} entry with score={best_score:.4f} "
+                  f"seeds_evaluated={best_seeds} (lcb={best_lcb:.4f}, alpha={alpha})")
         return best, best_gen
 
     # Handle bundle results (best_bundle with multiple operators).
@@ -182,6 +227,7 @@ def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[E
         # hpo_pysr.py; only PySR-level hparams need to be reapplied at eval time.
         raw_hparams = bundle.get("best_hparams") or {}
         bundle_hparams = {k: v for k, v in raw_hparams.items() if not k.startswith("op_")} or None
+        bundle_result_details = bundle.get("result_details")
         results = []
         for op_type_name, op_data in operators.items():
             if op_data is None:
@@ -195,6 +241,7 @@ def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[E
                 generation=op_data.get("generation", 0),
                 config=config,
                 best_hparams=bundle_hparams,
+                result_details=bundle_result_details,
             ))
         if results:
             return results
@@ -229,6 +276,7 @@ def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[E
         train_score=best.get("score", 0.0),
         generation=best.get("generation", 0),
         config=config,
+        result_details=best.get("result_details"),
     )
 
 
@@ -491,6 +539,36 @@ def build_method_kwargs(evolve_data, baseline_weights: Dict[str, float]):
             extra["custom_loss_code"] = item.code
 
     return weights, extra
+
+
+def build_evolve_kwargs(
+    method: "EvolveResult | List[EvolveResult]",
+    baseline_weights: Dict[str, float],
+    base_pysr_kwargs: Dict[str, Any],
+):
+    """Combine an evolved method (single or bundle) into final PySR kwargs.
+
+    Merges mutation weights, custom-operator code, and any HPO-tuned PySR
+    hparams carried in a bundle's ``best_hparams``.
+
+    Returns:
+        weights: ``weight_*`` kwargs to pass to PySRRegressor
+        pysr_kwargs: ``base_pysr_kwargs`` merged with the bundle's HPO-tuned
+            PySR-level hparams (population_size, parsimony, ...)
+        extra_code: ``custom_*_code`` + ``allow_custom_mutations`` kwargs,
+            usable by ``parallel_eval_pysr.PySRConfig`` or as inputs to the
+            ``_load_dynamic_*`` helpers in parallel_eval_pysr
+        items: list of EvolveResult (always wrapped in a list)
+    """
+    weights, extra_code = build_method_kwargs(method, baseline_weights)
+    pysr_kwargs = dict(base_pysr_kwargs)
+    items = method if isinstance(method, list) else [method]
+    bundle_hparams = items[0].best_hparams
+    if bundle_hparams:
+        pysr_overrides, hpo_weights = split_hpo_params(bundle_hparams)
+        pysr_kwargs = {**pysr_kwargs, **pysr_overrides}
+        weights = {**weights, **hpo_weights}
+    return weights, pysr_kwargs, extra_code, items
 
 
 def print_results(split_summaries: Dict[str, EvalSummary], n_runs: int, method_label: str) -> None:
@@ -900,15 +978,13 @@ def main() -> None:
         eval_pysr_kwargs = {**pysr_kwargs, **pysr_overrides}
         eval_weights = {**baseline_weights, **hpo_weights}
     elif method is not None:
-        eval_weights, eval_extra = build_method_kwargs(method, baseline_weights)
-        # If the bundle carries HPO-tuned hparams, apply them too so the eval
-        # matches the score reported by hpo_pysr.py.
-        items = method if isinstance(method, list) else [method]
+        # Bundle's best_hparams (if any) get merged in by build_evolve_kwargs so
+        # the eval matches the score reported by hpo_pysr.py.
+        eval_weights, eval_pysr_kwargs, eval_extra, items = build_evolve_kwargs(
+            method, baseline_weights, pysr_kwargs
+        )
         bundle_hparams = items[0].best_hparams
         if bundle_hparams:
-            pysr_overrides, hpo_weights = split_hpo_params(bundle_hparams)
-            eval_pysr_kwargs = {**pysr_kwargs, **pysr_overrides}
-            eval_weights = {**eval_weights, **hpo_weights}
             print(f"Applied {len(bundle_hparams)} HPO-tuned hparam(s) from bundle: "
                   f"{sorted(bundle_hparams.keys())}")
         # Print loaded method info

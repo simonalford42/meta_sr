@@ -63,7 +63,7 @@ def main():
                        help='Split file with dataset names')
     parser.add_argument('--niterations', type=int, default=1000,
                        help='Number of PySR iterations (default: 1000)')
-    parser.add_argument('--max_samples', type=int, default=1000,
+    parser.add_argument('--max-samples', type=int, default=1000,
                        help='Max samples per dataset (default: 1000)')
     parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()

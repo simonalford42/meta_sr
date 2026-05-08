@@ -25,14 +25,36 @@ def load_resume_state(path: str) -> Dict[str, Any]:
     Accepts either a run directory or a run_data.json path. Reconstructs the last
     generation's population, the all-time archive (dedup by display_name), the
     stored baseline, and counters needed to keep wandb plots monotonic.
+
+    Retries on JSONDecodeError so resuming an in-process job is safe even when
+    the source job is using the older non-atomic _save (read can otherwise
+    catch a partial write and crash).
     """
+    import time
     p = Path(path)
     run_data_path = p / "run_data.json" if p.is_dir() else p
     if not run_data_path.exists():
         raise FileNotFoundError(f"No run_data.json found at: {run_data_path}")
 
-    with open(run_data_path) as f:
-        data = json.load(f)
+    last_err: Optional[Exception] = None
+    data = None
+    for attempt in range(8):
+        try:
+            with open(run_data_path) as f:
+                data = json.load(f)
+            break
+        except json.JSONDecodeError as e:
+            last_err = e
+            print(
+                f"  load_resume_state: partial read of {run_data_path} "
+                f"(attempt {attempt + 1}/8): {e}. Retrying in 2s..."
+            )
+            time.sleep(2.0)
+    if data is None:
+        raise RuntimeError(
+            f"Failed to read {run_data_path} after retries — source job may "
+            f"still be writing. Last error: {last_err}"
+        )
 
     gens = data.get("generations", [])
     if not gens:

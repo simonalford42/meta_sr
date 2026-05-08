@@ -86,9 +86,9 @@ def main():
         description="Plot evolution GT solve rate and final evaluation scores"
     )
     parser.add_argument("--evolve-survival-results", type=str,
-                        help="Path to run_data.json from `evolve_pysr.py --operator_type survival`")
+                       help="Path to run_data.json from `evolve_pysr.py --operator-type survival`")
     parser.add_argument("--evolve-selection-results", type=str,
-                        help="Path to run_data.json from `evolve_pysr.py --operator_type selection`")
+                       help="Path to run_data.json from `evolve_pysr.py --operator-type selection`")
     parser.add_argument("--analysis-summary", type=str, required=True,
                         help="Path to analysis_summary.json from evaluate.py")
     parser.add_argument("--output", type=str, default="evolve_results.png",

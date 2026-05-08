@@ -25,6 +25,7 @@ import argparse
 import copy
 import json
 import random
+import re
 import sys
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -92,6 +93,9 @@ from evolution_helpers import (
     _evaluate_configs_with_noise_map,
     compute_per_run_avgs,
     apply_racing_results,
+    lambda_for_gen,
+    pooled_sigma,
+    select_qualifying_bundles,
     select_parent,
     format_solved_str,
     format_errors_str,
@@ -102,7 +106,66 @@ from evolution_helpers import (
     format_pareto_trace_for_task,
     select_survivors,
     select_survivors_diverse,
+    select_survivors_complexity,
+    _bundle_loc,
 )
+
+
+def _describe_operator_kind(type_name: str, code: str) -> str:
+    """Human-readable label for a generated operator. Mutations are split into
+    "mutation" (4-arg, structural) vs "smart mutation" (5-arg, data-aware)
+    based on whether the function signature accepts a `dataset` argument."""
+    if type_name != "mutation":
+        return type_name
+    m = re.search(r"function\s+\w+\s*\(([^)]*)\)", code, re.DOTALL)
+    if not m:
+        return type_name
+    arg_names = [
+        a.strip().split("::")[0].strip()
+        for a in m.group(1).split(",")
+        if a.strip()
+    ]
+    return "smart mutation" if "dataset" in arg_names else "mutation"
+
+
+def _make_complexity_pareto_figure(population: List[OperatorBundle], generation: int):
+    """Scatter of (LOC, score) for the selected population with the Pareto front
+    connected by a line. Returns a matplotlib Figure (caller closes it)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    pts = [
+        (_bundle_loc(b), b.score, b.display_name)
+        for b in population
+        if b.score is not None
+    ]
+    fig, ax = plt.subplots(figsize=(7, 5))
+    if pts:
+        locs = [p[0] for p in pts]
+        scores = [p[1] for p in pts]
+        ax.scatter(locs, scores, s=40, color="tab:blue", alpha=0.85, zorder=3)
+
+        # Pareto front: sort by LOC asc, keep strictly increasing score.
+        front = []
+        best = float("-inf")
+        for loc, score, _ in sorted(pts, key=lambda p: (p[0], -p[1])):
+            if score > best:
+                front.append((loc, score))
+                best = score
+        if len(front) >= 2:
+            fx = [p[0] for p in front]
+            fy = [p[1] for p in front]
+            ax.plot(fx, fy, color="tab:red", linewidth=1.5, zorder=2,
+                    label=f"Pareto front ({len(front)} pts)")
+            ax.legend(loc="lower right", fontsize=9)
+
+    ax.set_xlabel("Bundle complexity (LOC)")
+    ax.set_ylabel("Score")
+    ax.set_title(f"Complexity-Pareto population (gen {generation}, n={len(pts)})")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    return fig
 
 
 def _fmt_elapsed(seconds: float) -> str:
@@ -338,8 +401,14 @@ class EvolutionLogger:
                              f"# Score: {best.score}\n\n{best.code}")
 
     def _save(self):
-        with open(self.output_dir / "run_data.json", "w") as f:
+        # Atomic write so a concurrent reader (e.g. `--continue-from` pointed
+        # at an in-process job's dir) never sees a truncated JSON file.
+        target = self.output_dir / "run_data.json"
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        with open(tmp, "w") as f:
             json.dump(self.run_data, f, indent=2)
+        import os
+        os.replace(tmp, target)
 
     def log_bundle_generation(
         self,
@@ -420,9 +489,10 @@ def run_bundle_evolution(
     repo_root: Optional[str] = None,
     baseline_bundle: Optional[OperatorBundle] = None,
     wandb_run: Optional[Any] = None,
-    task_diverse_pop: bool = False,
-    racing: bool = False,
-    hof: bool = False,
+    population_type: str = "topk",
+    n_extra_runs: int = 0,
+    n_runs_max: int = 0,
+    lambda_target: int = 1,
     max_concurrent_jobs: Optional[int] = None,
     llm_max_workers: int = 16,
     resume_state: Optional[Dict[str, Any]] = None,
@@ -432,6 +502,7 @@ def run_bundle_evolution(
     val_n_runs: int = 10,
     pysr_wall_limit: int = 600,
     split_label: Optional[str] = None,
+    mutation_mode: str = "random",
 ) -> Tuple[OperatorBundle, Any, float]:
     """Run bundle evolution across multiple operator types.
 
@@ -444,8 +515,11 @@ def run_bundle_evolution(
     is kept as-is and the remaining slots are filled with LLM-generated
     variations that start from the baseline operator code.
 
-    If task_diverse_pop is True, uses task-diverse survivor selection that
-    keeps the best solver for each task on the Pareto frontier.
+    population_type controls survivor selection:
+        topk       — top fitness across population+offspring (default)
+        task       — task-diverse: keep best solver per task on the frontier
+        complexity — complexity-aware: bucket by total bundle LOC, take best
+                     in each bucket, then drop Pareto-dominated buckets
     """
     rng = random.Random(seed)
     np.random.seed(seed)
@@ -466,6 +540,7 @@ def run_bundle_evolution(
             "eval_score": score,
             "eval_running_best": _eval_log_state["best"],
             "eval_generation": generation,
+            "eval_bundle_loc": _bundle_loc(bundle),
         })
 
     references = {name: OPERATOR_TYPES[name].load_reference() for name in operator_type_names}
@@ -494,23 +569,40 @@ def run_bundle_evolution(
         "random_target_noise": random_target_noise,
         "fitness_metric": fitness_metric,
         "repo_root": repo_root,
-        "task_diverse_pop": task_diverse_pop,
-        "racing": racing,
-        "hof": hof,
+        "population_type": population_type,
+        "n_extra_runs": n_extra_runs,
+        "n_runs_max": n_runs_max,
+        "lambda_target": lambda_target,
         "llm_max_workers": llm_max_workers,
         "execution_feedback_n": execution_feedback_n,
         "execution_feedback_prob": execution_feedback_prob,
+        "mutation_mode": mutation_mode,
     })
     metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
 
-    if racing:
-        print(f"Racing enabled: re-evaluating bundle population each generation on {n_runs} fresh seeds")
-    if hof:
-        if not racing:
-            raise ValueError("--hof requires --racing")
-        print("Hall of Fame enabled: survivors chosen from all-time archive by avg score across accumulated seeds")
+    racing_on = n_extra_runs > 0
+    if racing_on:
+        if population_type != "topk":
+            raise ValueError(
+                f"--population-type={population_type} is incompatible with racing "
+                f"(--n-extra-runs > 0); only 'topk' is supported under racing."
+            )
+        # Mirror the CLI default for direct library callers: without a cap, no
+        # qualifier ever has headroom and racing silently no-ops.
+        if n_runs_max <= 0:
+            n_runs_max = 5 * n_extra_runs
+        if lambda_target < 1:
+            lambda_target = 1
+        print(
+            f"Racing enabled: λ-schedule target={lambda_target} over {n_generations} gens; "
+            f"per-gen extras={n_extra_runs}*λ for ≤{2*population_size} qualifiers, "
+            f"per-bundle cap={n_runs_max}*λ. "
+            f"Survivors selected from all-time archive."
+        )
 
-    # All-time archive of every bundle ever evaluated (for --hof survivor pool).
+    # All-time archive of every bundle ever evaluated. Survivor selection draws
+    # from this archive when racing is on (HoF default); otherwise it's used
+    # only for resume/inspection.
     # Dedup by display_name so resumed runs (deserialized bundles have fresh ids)
     # and fresh runs both behave correctly; names like f"{func_name}_gen{gen}_{idx}"
     # are unique per creation site, and racing updates bundles in place so the same
@@ -525,8 +617,10 @@ def run_bundle_evolution(
                 archive_names.add(key)
                 archive.append(b)
 
-    if task_diverse_pop:
+    if population_type == "task":
         print(f"Task-diverse population enabled (min={population_size}, max={len(dataset_names)})")
+    elif population_type == "complexity":
+        print(f"Complexity-aware Pareto population enabled (buckets={population_size})")
 
     evaluator = PySRSlurmEvaluator(
         results_dir=output_dir,
@@ -816,13 +910,19 @@ def run_bundle_evolution(
                 type_name = cand["type_name"]
                 op_type = OPERATOR_TYPES[type_name]
                 baseline_op = baseline_bundle.get_operator(type_name) if baseline_bundle else None
+                # Initial-pop mode: explore by default, but `mutation_mode`
+                # forces a single mode for the whole run. simplify/refine need
+                # a parent — fall back to explore if the baseline lacks one.
+                init_mode = "explore" if mutation_mode == "random" else mutation_mode
+                if init_mode in ("refine", "simplify") and baseline_op is None:
+                    init_mode = "explore"
                 specs.append(OperatorGenerationSpec(
                     op_type=op_type,
                     reference=references[type_name],
                     parent=baseline_op,
                     model=model,
                     model_ensemble=model_ensemble,
-                    mode="explore",
+                    mode=init_mode,
                     variation_seed=cand["bundle_idx"] * 100 + cand["attempt"],
                     temperature=temperature,
                     use_cache=use_cache,
@@ -853,7 +953,7 @@ def run_bundle_evolution(
 
                     is_valid, error = validate_julia_code(unique_name, code, op_type)
                     append_validation_log(
-                        prompts_log_dir, op_type, "explore", 0,
+                        prompts_log_dir, op_type, spec.mode, 0,
                         bundle_idx * 100 + attempt,
                         is_valid, error, unique_name,
                     )
@@ -870,13 +970,17 @@ def run_bundle_evolution(
                         operator = op_type.create_operator(
                             name=unique_name, code=code, generation=0,
                             parent_name=baseline_op.name if baseline_op else None,
-                            mode="explore",
+                            mode=spec.mode,
                         )
                         operator.model = selected_model
                         if baseline_op and baseline_op.weight is not None:
                             operator.weight = baseline_op.weight
                         bundle = bundle.copy_with(type_name, operator)
-                        print(f"  {type_name}: {unique_name} (model={selected_model})")
+                        kind_label = _describe_operator_kind(type_name, code)
+                        print(
+                            f"  {spec.mode} / {kind_label}: {unique_name} "
+                            f"(model={selected_model})"
+                        )
                         population.append(bundle)
                         _submit_init(bundle)
                         continue
@@ -958,6 +1062,11 @@ def run_bundle_evolution(
         summary = format_population_summary(population, dataset_names)
         if summary:
             print(summary)
+        locs_init = [_bundle_loc(b) for b in population]
+        print(f"  loc range: {min(locs_init)}-{max(locs_init)}")
+        for b, l in zip(population, locs_init):
+            score_str = f"{b.score:.4f}" if b.score is not None else "nan"
+            print(f"    loc={l:>3}  score={score_str}  {b.display_name}")
 
         if wandb_run is not None:
             import wandb
@@ -996,35 +1105,53 @@ def run_bundle_evolution(
         max_offspring_attempts = n_offspring * 3
         offspring_gen_start = time.perf_counter()
 
+        # λ schedule spans the absolute timeline (0 .. start_gen+n_generations),
+        # so resumed runs continue smoothly instead of jumping to a clamped λ.
+        # For fresh runs start_gen=0 → identical to using n_generations directly.
+        schedule_total_gens = start_gen + n_generations
+        lambda_now = lambda_for_gen(gen, schedule_total_gens, lambda_target) if racing_on else 1
+        n_runs_now = n_runs * lambda_now
+        n_extra_now = n_extra_runs * lambda_now if racing_on else 0
+        cap_now = n_runs_max * lambda_now if racing_on else 0
+
         # Background thread pool for non-blocking SLURM submissions. We want
         # sbatch + cache pre-filter to run off the main thread so the LLM can
         # immediately start generating the next candidate. The pool is sized
-        # for racing's pop re-eval + every offspring slot.
+        # for racing's per-gen extra-runs (≤2*P qualifiers) + every offspring slot.
         submit_executor = ThreadPoolExecutor(
-            max_workers=max(1, n_offspring + (population_size if racing else 0)),
+            max_workers=max(1, n_offspring + (2 * population_size if racing_on else 0)),
             thread_name_prefix="slurm-submit",
         )
 
-        # In racing mode we also re-evaluate the current population on fresh
-        # seeds. Submit those jobs up-front so SLURM can churn on them while
-        # we generate offspring with the LLM.
+        # In racing mode we also re-evaluate the qualifying-bundle subset of
+        # the all-time archive on fresh seeds. Qualifiers = bundles with ≥5%
+        # chance of being in the population, capped at 2*P, ranked by fewest
+        # seeds. Submit up-front so SLURM churns on them while we generate
+        # offspring with the LLM.
         pop_futs: List[Tuple[OperatorBundle, Future]] = []
-        pop_members_snapshot: List[OperatorBundle] = []
-        pop_starts: List[int] = []
-        if racing:
-            pop_members_snapshot = list(population)
-            pop_starts = [int(getattr(m, "seeds_evaluated", 0) or 0) for m in pop_members_snapshot]
-            print(
-                f"\nRacing: submitting re-eval of {len(pop_members_snapshot)} pop members "
-                f"on {n_runs} fresh seeds each (in background)..."
+        pop_extras_per_member: List[int] = []
+        n_qualifiers_eligible = 0
+        if racing_on:
+            sigma_est = pooled_sigma(archive, fitness_metric)
+            qualifiers, n_qualifiers_eligible = select_qualifying_bundles(
+                archive, population_size, n_extra_now, cap_now,
+                sigma=sigma_est, fitness_metric=fitness_metric,
             )
-            for member, start in zip(pop_members_snapshot, pop_starts):
+            print(
+                f"\nRacing gen {gen}: λ={lambda_now}, σ̂={sigma_est:.4f}, "
+                f"{n_qualifiers_eligible}/{len(archive)} archive bundles qualify "
+                f"({len(qualifiers)} kept after 2*P cap; +{n_extra_now} seeds each, "
+                f"cap={cap_now})."
+            )
+            for member, extra in qualifiers:
+                start = int(getattr(member, "seeds_evaluated", 0) or 0)
                 fut = submit_bundle_future(
                     submit_executor, member, evaluator, dataset_names, pysr_kwargs,
-                    seed=seed, n_runs=n_runs, target_noise_map=target_noise_map,
+                    seed=seed, n_runs=extra, target_noise_map=target_noise_map,
                     fitness_metric=fitness_metric, run_index_start=start,
                 )
                 pop_futs.append((member, fut))
+                pop_extras_per_member.append(extra)
 
         def _plan_offspring_candidate(slot_idx: int, attempt_idx: int) -> Dict[str, Any]:
             # Pick which operator type this slot evolves — stays fixed across
@@ -1043,7 +1170,10 @@ def run_bundle_evolution(
             # an operator from any population member that has one. If the
             # population can't supply enough parents for the chosen mode, fall
             # back along: crossover -> refine -> explore, simplify -> explore.
-            mode = rng.choice(["explore", "refine", "simplify", "crossover"])
+            if mutation_mode == "random":
+                mode = rng.choice(["explore", "refine", "simplify", "crossover"])
+            else:
+                mode = mutation_mode
             parent = None
             parent2 = None
             type_candidates = [
@@ -1167,14 +1297,18 @@ def run_bundle_evolution(
                         # Create new bundle: keep all other operators from parent, replace evolved type
                         new_bundle = parent_bundle.copy_with(current_type_name, new_op)
                         offspring_by_slot[slot_idx] = new_bundle
-                        print(f"  Created: {unique_name} (mode={mode}, model={selected_model})")
+                        kind_label = _describe_operator_kind(current_type_name, code)
+                        print(
+                            f"  Created {mode} / {kind_label}: {unique_name} "
+                            f"(model={selected_model})"
+                        )
 
                         # Kick off this offspring's SLURM submission on a background thread
                         # so remaining validation/top-up can continue without waiting on
-                        # sbatch or cache pre-filter.
+                        # sbatch or cache pre-filter. Initial seeds scale with λ.
                         fut = submit_bundle_future(
                             submit_executor, new_bundle, evaluator, dataset_names, pysr_kwargs,
-                            seed=seed, n_runs=n_runs, target_noise_map=target_noise_map,
+                            seed=seed, n_runs=n_runs_now, target_noise_map=target_noise_map,
                             fitness_metric=fitness_metric, run_index_start=0,
                         )
                         offspring_futs_by_slot[slot_idx] = (new_bundle, fut)
@@ -1216,29 +1350,56 @@ def run_bundle_evolution(
         )
 
         offspring_eval_start = time.perf_counter()
-        if racing:
-            # Resolve every submission, then wait for all batches (pop + offspring)
-            # with one unified progress stream and one shared retry round.
+        if racing_on:
+            # Resolve every submission, then wait for all batches (extras +
+            # offspring) with one unified progress stream.
             combined_futs = list(pop_futs) + list(offspring_futs)
             print(
-                f"\nRacing: waiting on {len(pop_futs)} pop + "
+                f"\nRacing: waiting on {len(pop_futs)} extra-runs + "
                 f"{len(offspring_futs)} offspring batches..."
             )
-            pairs = collect_bundle_futures(evaluator, combined_futs, n_runs)
+            pairs = collect_bundle_futures(evaluator, combined_futs, n_runs_now)
             # Shut down the pool — all submissions are resolved
             submit_executor.shutdown(wait=True)
 
-            members = [b for b, _ in pairs]
-            results = [r for _, r in pairs]
+            extras_pairs = pairs[: len(pop_futs)]
+            offspring_pairs = pairs[len(pop_futs):]
+
             try:
-                apply_racing_results(members, results, n_runs, fitness_metric)
-                for bundle in members:
+                # Apply extras: per-bundle seed counts vary, so let
+                # apply_racing_results derive the count from the new details.
+                extras_members = [b for b, _ in extras_pairs]
+                extras_results = [r for _, r in extras_pairs]
+                apply_racing_results(extras_members, extras_results, fitness_metric)
+                for bundle in extras_members:
                     _log_bundle_eval(bundle, generation=gen)
                     solved_str = format_solved_str(bundle.result_details)
                     errs_str = format_errors_str(bundle.result_details)
                     suffix = f" {errs_str}" if errs_str else ""
                     print(
-                        f"  Avg {bundle.score:.4f} {bundle.display_name}: "
+                        f"  [extras] Avg {bundle.score:.4f} {bundle.display_name}: "
+                        f"(seeds={bundle.seeds_evaluated}) {solved_str}{suffix}"
+                    )
+                # Apply offspring: each one is a fresh bundle, so just write
+                # the result fields directly (don't merge with empty history).
+                for bundle, (avg_score, score_vector, result_details) in offspring_pairs:
+                    bundle.score = avg_score
+                    bundle.score_vector = score_vector
+                    bundle.result_details = result_details
+                    score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
+                    if result_details:
+                        bundle.seeds_evaluated = max(
+                            (len(d.get(score_key, []) or []) for d in result_details),
+                            default=n_runs_now,
+                        )
+                    else:
+                        bundle.seeds_evaluated = n_runs_now
+                    _log_bundle_eval(bundle, generation=gen)
+                    solved_str = format_solved_str(result_details)
+                    errs_str = format_errors_str(result_details)
+                    suffix = f" {errs_str}" if errs_str else ""
+                    print(
+                        f"  [offspring] Avg {avg_score:.4f} {bundle.display_name}: "
                         f"(seeds={bundle.seeds_evaluated}) {solved_str}{suffix}"
                     )
             except Exception as e:
@@ -1249,15 +1410,8 @@ def run_bundle_evolution(
                         bundle.score_vector = []
                     _log_bundle_eval(bundle, generation=gen)
             _extend_archive(offspring_bundles)
-            if hof:
-                pool = archive
-                print(f"  [hof] Selecting survivors from all-time archive of {len(pool)} bundles")
-            else:
-                pool = members
-            if task_diverse_pop:
-                population = select_survivors_diverse(pool, [], population_size, dataset_names)
-            else:
-                population = select_survivors(pool, [], population_size)
+            print(f"  [hof] Selecting survivors from all-time archive of {len(archive)} bundles")
+            population = select_survivors(archive, [], population_size)
         else:
             print(f"\nWaiting on {len(offspring_futs)} offspring batches...")
             pairs = collect_bundle_futures(evaluator, offspring_futs, n_runs)
@@ -1278,8 +1432,10 @@ def run_bundle_evolution(
                 else:
                     print(f"  {avg_score:.4f} {bundle.display_name}: {solved_str}{suffix}")
 
-            if task_diverse_pop:
+            if population_type == "task":
                 population = select_survivors_diverse(population, offspring_bundles, population_size, dataset_names)
+            elif population_type == "complexity":
+                population = select_survivors_complexity(population, offspring_bundles, population_size)
             else:
                 population = select_survivors(population, offspring_bundles, population_size)
         best = population[0]
@@ -1309,13 +1465,17 @@ def run_bundle_evolution(
             f"(offspring gen {_fmt_elapsed(offspring_gen_elapsed)}, "
             f"offspring eval {_fmt_elapsed(offspring_eval_elapsed)})"
         )
-        # When task_diverse_pop is on, select_survivors_diverse already printed
-        # the population summary. Otherwise, emit it here so non-diverse runs
-        # still see per-task-best info.
-        if not task_diverse_pop:
-            summary = format_population_summary(population, dataset_names)
-            if summary:
-                print(summary)
+        # task / complexity selectors also print their own selection summary
+        # higher up, but always emit the generic per-task-best + LOC table so
+        # the population is described identically across modes.
+        summary = format_population_summary(population, dataset_names)
+        if summary:
+            print(summary)
+        locs_pop = [_bundle_loc(b) for b in population]
+        print(f"  loc range: {min(locs_pop)}-{max(locs_pop)}")
+        for b, l in zip(population, locs_pop):
+            score_str = f"{b.score:.4f}" if b.score is not None else "nan"
+            print(f"    loc={l:>3}  score={score_str}  {b.display_name}")
 
         logger.log_bundle_generation(gen, population, offspring_bundles, best, evolved_type_label)
 
@@ -1336,12 +1496,42 @@ def run_bundle_evolution(
             offspring_scores = [c.score for c in offspring_bundles if c.score is not None]
             if offspring_scores:
                 log_data["avg_offspring_score"] = sum(offspring_scores) / len(offspring_scores)
-            if task_diverse_pop:
+            if population_type == "task":
                 avg_best, n_covered, n_tasks = compute_per_task_best_stats(
                     population, dataset_names
                 )
                 log_data["per_task_best_avg"] = avg_best
                 log_data["per_task_covered"] = n_covered
+            if racing_on:
+                # One "eval" = one seed for one bundle. Initial eval covers
+                # every offspring at n_runs_now seeds; extras are the per-
+                # qualifier seed counts accumulated above.
+                seeds_offspring_init = len(offspring_bundles) * n_runs_now
+                seeds_extras = sum(pop_extras_per_member)
+                log_data["lambda"] = lambda_now
+                log_data["seeds_offspring_init"] = seeds_offspring_init
+                log_data["seeds_extras"] = seeds_extras
+                log_data["seeds_total"] = seeds_offspring_init + seeds_extras
+                # n_qualifiers_eligible: bundles that passed the >=5%
+                # threshold this gen (pre-cap). n_qualifiers_evaluated:
+                # those actually scheduled for extras after the 2*P cap.
+                log_data["n_qualifiers_eligible"] = n_qualifiers_eligible
+                log_data["n_qualifiers_evaluated"] = len(pop_futs)
+                log_data["n_offspring_evaluated"] = len(offspring_bundles)
+                # Average accumulated seeds per current-population member —
+                # rises over time as repeated qualifiers pick up extras.
+                pop_seed_counts = [
+                    int(getattr(c, "seeds_evaluated", 0) or 0) for c in population
+                ]
+                if pop_seed_counts:
+                    log_data["avg_seeds_per_pop_member"] = (
+                        sum(pop_seed_counts) / len(pop_seed_counts)
+                    )
+            if population_type == "complexity":
+                fig = _make_complexity_pareto_figure(population, gen)
+                log_data["pareto_plot"] = wandb.Image(fig)
+                import matplotlib.pyplot as plt
+                plt.close(fig)
             wandb.log(log_data)
             log_cpu_usage(wandb_run)
 
@@ -1439,24 +1629,34 @@ def main():
 
     parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--no-cache", action="store_true")
-    parser.add_argument("--task-diverse-pop", action="store_true",
-                        help="Use task-diverse population selection: keep the best solver for each task, "
-                             "allowing population to grow up to #tasks. Requires fitness_metric=gt.")
-    parser.add_argument("--racing", action="store_true",
-                        help="Racing population maintenance: each generation, re-evaluate "
-                             "current population members on n_runs fresh seeds (beyond what "
-                             "they've already seen) alongside offspring, accumulate results, "
-                             "and select survivors from the combined pool using the mean "
-                             "across all accumulated seeds.")
-    parser.add_argument("--hof", action="store_true",
-                        help="Hall of Fame: select survivors from the all-time archive of every "
-                             "bundle ever evaluated, ranked by avg score across all accumulated "
-                             "seeds. Requires --racing so scores remain comparable as seeds grow.")
+    parser.add_argument("--population-type", type=str, default="topk",
+                        choices=["topk", "task", "complexity"],
+                        help="Survivor selection mode: "
+                             "'topk' = top fitness across pop+offspring (default); "
+                             "'task' = task-diverse Pareto (best solver per task, requires fitness_metric=gt); "
+                             "'complexity' = complexity-aware Pareto (bucket by total bundle LOC, "
+                             "best per bucket, then drop Pareto-dominated buckets). "
+                             "'task' and 'complexity' are incompatible with racing (--n-extra-runs > 0).")
+    parser.add_argument("--n-extra-runs", type=int, default=0,
+                        help="Racing extra-runs per generation. When >0, racing turns on: each "
+                             "generation, every archive bundle with ≥5%% chance of being in the "
+                             "population (computed via Phi((mu_i-mu_P)/sqrt(sigma^2/N_i+sigma^2/N_P))) "
+                             "gets up to n_extra_runs more seeds, capped at 2*population_size "
+                             "qualifiers ranked by fewest seeds. Survivors selected from full archive. "
+                             "Incompatible with --task-diverse-pop.")
+    parser.add_argument("--n-runs-max", type=int, default=0,
+                        help="Per-bundle cap on accumulated seeds (used only when --n-extra-runs > 0). "
+                             "Defaults to 5 * n_extra_runs. Effective cap each gen is n_runs_max * λ.")
+    parser.add_argument("--lambda-target", type=int, default=1,
+                        help="Target value of the seed-count multiplier λ at the end of evolution "
+                             "(used only when --n-extra-runs > 0). λ steps from 1 up to lambda_target "
+                             "in equal-width chunks of generations. Initial seeds, extras, and the "
+                             "per-bundle cap all scale by λ. Default 1 (no scaling).")
 
     parser.add_argument("--continue-from", type=str, default=None,
                         help="Path to a prior evolve_pysr run dir (or run_data.json) to resume from. "
                              "Writes to a new output dir; --generations N means N ADDITIONAL generations. "
-                             "Works for all variants (racing, hof, task_diverse_pop, etc.). "
+                             "Works for all variants (racing, population_type, etc.). "
                              "Config flags should match the prior run; mismatches are warned, not enforced.")
 
     parser.add_argument("--baseline", type=str, default=None,
@@ -1469,10 +1669,28 @@ def main():
     parser.add_argument("--exec-feedback-prob", type=float, default=0.75,
                         help="Fraction of mutations that attach an execution-trace to the prompt when --exec-feedback-n > 0 (default 0.75)")
 
+    parser.add_argument("--mutation-mode", type=str, default="random",
+                        choices=["random", "explore", "refine", "simplify", "crossover"],
+                        help="Restrict the meta-mutation operator to a single mode for the entire run "
+                             "(applied to both the initial population and per-generation offspring). "
+                             "Default 'random' picks uniformly each time, matching prior behavior. "
+                             "If a non-'random' mode requires a parent the bundle lacks, falls back to explore.")
+
     args = parser.parse_args()
 
-    if args.hof and not args.racing:
-        parser.error("--hof requires --racing")
+    if args.n_extra_runs > 0:
+        if args.population_type != "topk":
+            parser.error(
+                f"--population-type={args.population_type} is incompatible with "
+                "--n-extra-runs > 0 (racing); only 'topk' is supported under racing."
+            )
+        if args.n_runs_max <= 0:
+            args.n_runs_max = 5 * args.n_extra_runs
+        if args.lambda_target < 1:
+            parser.error("--lambda-target must be >= 1")
+    else:
+        if args.n_runs_max != 0 or args.lambda_target != 1:
+            parser.error("--n-runs-max / --lambda-target only apply with --n-extra-runs > 0")
 
     # Parse operator type(s)
     if args.operator_type == "all":
@@ -1564,14 +1782,16 @@ def main():
         random_target_noise=args.random_target_noise,
         fitness_metric=args.fitness_metric,
         repo_root=args.repo_root,
-        task_diverse_pop=args.task_diverse_pop,
-        racing=args.racing,
-        hof=args.hof,
+        population_type=args.population_type,
+        n_extra_runs=args.n_extra_runs,
+        n_runs_max=args.n_runs_max,
+        lambda_target=args.lambda_target,
         resume_state=resume_state,
         execution_feedback_n=args.exec_feedback_n,
         execution_feedback_prob=args.exec_feedback_prob,
         val_split=args.val_split,
         val_n_runs=args.val_n_runs,
+        mutation_mode=args.mutation_mode,
     )
 
     if len(operator_type_names) > 1:
@@ -1603,12 +1823,14 @@ def main():
         "partition": args.partition,
         "baseline": args.baseline,
         "no_cache": args.no_cache,
-        "task_diverse_pop": args.task_diverse_pop,
-        "racing": args.racing,
-        "hof": args.hof,
+        "population_type": args.population_type,
+        "n_extra_runs": args.n_extra_runs,
+        "n_runs_max": args.n_runs_max,
+        "lambda_target": args.lambda_target,
         "exec_feedback_n": args.exec_feedback_n,
         "exec_feedback_prob": args.exec_feedback_prob,
         "continue_from": args.continue_from,
+        "mutation_mode": args.mutation_mode,
     }
     wandb_run = init_wandb(
         config=wandb_config,

@@ -13,7 +13,7 @@ Usage:
     python run_sr_srbench.py --dataset feynman_I_15_10 --bundle-dir results/run_20241220_123456
 
     # Run on all datasets in a split file (SLURM array job)
-    python run_sr_srbench.py --split_file splits/train.txt --array_index 5 --generations 500
+    python run_sr_srbench.py --split-file splits/train.txt --array-index 5 --generations 500
 """
 
 import argparse
@@ -270,11 +270,11 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--dataset', type=str,
                        help='Single dataset name to run (e.g., feynman_I_15_10)')
-    group.add_argument('--split_file', type=str,
+    group.add_argument('--split-file', type=str,
                        help='Path to split file with dataset names')
 
     # For SLURM array jobs
-    parser.add_argument('--array_index', type=int, default=None,
+    parser.add_argument('--array-index', type=int, default=None,
                        help='SLURM array task index (0-based). Uses SLURM_ARRAY_TASK_ID if not specified.')
 
     # Operator bundle
@@ -296,13 +296,13 @@ def main():
                        help='Constant optimization probability')
 
     # Data settings
-    parser.add_argument('--max_samples', type=int, default=1000,
+    parser.add_argument('--max-samples', type=int, default=1000,
                        help='Maximum samples to use from each dataset')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed')
 
     # Output settings
-    parser.add_argument('--results_dir', type=str, default='results_sr',
+    parser.add_argument('--results-dir', type=str, default='results_sr',
                        help='Directory to save results')
     parser.add_argument('--quiet', action='store_true',
                        help='Suppress verbose output')

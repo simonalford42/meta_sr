@@ -279,12 +279,14 @@ def summarize(points: list[Point]) -> list[dict[str, float | int]]:
     for n in sorted(grouped):
         vals = grouped[n]
         mean = statistics.fmean(vals)
+        median = statistics.median(vals)
         var = statistics.pvariance(vals) if len(vals) > 1 else 0.0
         rows.append(
             {
                 "N": n,
                 "n_points": len(vals),
                 "mean_s": round(mean, 3),
+                "median_s": round(median, 3),
                 "var_s2": round(var, 3),
                 "min_s": round(min(vals), 3),
                 "max_s": round(max(vals), 3),
@@ -365,23 +367,26 @@ def print_markdown(points: list[Point], stats_rows: list[dict[str, float | int]]
         print(f"| {jid} | {val['source']} | `{val['command']}` |")
     print()
 
-    print("Per-N summary")
-    print("| N | points | mean_s | var_s2 | min_s | max_s |")
-    print("|---:|---:|---:|---:|---:|---:|")
+    print("Per-N summary (N = uncached tasks actually submitted to SLURM)")
+    print("| N | points | mean_s | median_s | var_s2 | min_s | max_s |")
+    print("|---:|---:|---:|---:|---:|---:|---:|")
     for row in stats_rows:
         print(
             f"| {row['N']} | {row['n_points']} | {row['mean_s']:.1f} | "
-            f"{row['var_s2']:.1f} | {row['min_s']:.1f} | {row['max_s']:.1f} |"
+            f"{row['median_s']:.1f} | {row['var_s2']:.1f} | "
+            f"{row['min_s']:.1f} | {row['max_s']:.1f} |"
         )
     print()
 
     print("Data points")
-    print("| parent_slurm_id | line | batch | array_job_ids | N | T_s | source |")
-    print("|---:|---:|---|---|---:|---:|---|")
+    print("| parent_slurm_id | line | batch | array_job_ids | N | total | cached | T_s | source |")
+    print("|---:|---:|---|---|---:|---:|---:|---:|---|")
     for point in sorted(points, key=lambda p: (int(p.parent_slurm_id), p.batch)):
+        cached = max(0, point.total_tasks - point.submitted_tasks)
         print(
             f"| {point.parent_slurm_id} | {point.log_line} | {point.batch} | {point.initial_job_ids} | "
-            f"{point.submitted_tasks} | {point.t_seconds:.1f} | {point.source} |"
+            f"{point.submitted_tasks} | {point.total_tasks} | {cached} | "
+            f"{point.t_seconds:.1f} | {point.source} |"
         )
 
 

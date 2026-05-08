@@ -6,14 +6,14 @@ This script loads data directly from the pmlb/datasets directory structure,
 avoiding the SRBench harness that was causing issues.
 
 Usage:
-    # Run on a single dataset for 10 minutes
-    python run_pysr_srbench.py --dataset feynman_I_15_10 --time_minutes 10
+    # Run on a single dataset
+    python run_pysr_srbench.py --dataset feynman_I_15_10 --max-evals 100000
 
-    # Run on all datasets in a split file for 1 hour each
-    python run_pysr_srbench.py --split_file splits/train.txt --time_minutes 60
+    # Run on all datasets in a split file
+    python run_pysr_srbench.py --split-file splits/train.txt --max-evals 1000000
 
     # Run with specific SLURM array task
-    python run_pysr_srbench.py --split_file splits/train.txt --array_index 5 --time_minutes 60
+    python run_pysr_srbench.py --split-file splits/train.txt --array-index 5 --max-evals 1000000
 """
 
 import argparse
@@ -119,6 +119,7 @@ def load_dataset(dataset_name, pmlb_path=None, max_samples=None, seed=42):
         'original_feature_names': original_feature_names,
         'rename_map': rename_map,
     }
+    ground_truth_formula = ""
     if metadata_path.exists():
         try:
             import yaml
@@ -126,6 +127,17 @@ def load_dataset(dataset_name, pmlb_path=None, max_samples=None, seed=42):
                 metadata.update(yaml.safe_load(f))
         except Exception as e:
             print(f"Warning: Could not load metadata: {e}")
+
+    # Extract GT formula from description (mirrors utils.load_srbench_dataset).
+    desc = metadata.get('description', '') or ''
+    for line in desc.split('\n'):
+        line = line.strip()
+        if '=' in line and not line.startswith('#'):
+            if ' in [' not in line and ' in (' not in line:
+                from utils import rhs_only
+                ground_truth_formula = rhs_only(line)
+                break
+    metadata['ground_truth_formula'] = ground_truth_formula
 
     # Subsample if needed
     if max_samples is not None and len(X) > max_samples:
@@ -227,6 +239,7 @@ def run_pysr_on_dataset(
     max_evals=None,
     target_noise=0.0,
     hof_n=3,
+    evolve_results=None,
 ):
     """
     Run PySR on a single dataset.
@@ -271,6 +284,41 @@ def run_pysr_on_dataset(
             print(f"Milestones: {milestones}")
         print(f"=" * 60)
 
+    # Resolve evolve method (custom mutation/survival/selection/loss + any
+    # bundle-tuned PySR hparams). The dynamic Julia code is loaded just before
+    # PySRRegressor construction below.
+    evolve_weights = {}
+    evolve_pysr_overrides = {}
+    evolve_extra_code = {}
+    if evolve_results is not None:
+        from evaluate_new_pysr import load_evolve_results, build_evolve_kwargs
+        method = load_evolve_results(evolve_results, None)
+        evolve_weights, evolve_pysr_overrides, evolve_extra_code, items = (
+            build_evolve_kwargs(method, baseline_weights={}, base_pysr_kwargs={})
+        )
+        if verbose:
+            # Look up whether this dataset was solved during the evolve run.
+            # Solved = at least one seed scored gt_match >= 1.0
+            # (matches get_solved_tasks in evolution_helpers.py).
+            solve_status = "UNKNOWN"
+            details = items[0].result_details or []
+            for detail in details:
+                if detail.get("dataset") == dataset_name:
+                    run_gt = detail.get("run_gt_scores") or []
+                    solve_status = "SOLVED" if any(g >= 1.0 for g in run_gt) else "NOT SOLVED"
+                    break
+            print(f"[{dataset_name}] {solve_status} during evolve run")
+            for m in items:
+                print(
+                    f"Loaded [{m.operator_type}] {m.name} "
+                    f"(gen {m.generation}, train_score {m.train_score:.4f})"
+                )
+            if items[0].best_hparams:
+                print(
+                    f"Applied {len(items[0].best_hparams)} HPO-tuned hparam(s) "
+                    f"from bundle: {sorted(items[0].best_hparams.keys())}"
+                )
+
     # Load data
     X, y, feature_names, metadata = load_dataset(
         dataset_name,
@@ -311,8 +359,26 @@ def run_pysr_on_dataset(
     except (TypeError, ValueError):
         n_cpus = 1
 
+    # Load any custom Julia code from --evolve-results before constructing the
+    # model so the new operators are visible to PySR's initialization.
+    if evolve_extra_code:
+        from parallel_eval_pysr import (
+            _load_dynamic_loss,
+            _load_dynamic_mutations,
+            _load_dynamic_selection,
+            _load_dynamic_survival,
+        )
+        if evolve_extra_code.get("custom_mutation_code"):
+            _load_dynamic_mutations(evolve_extra_code["custom_mutation_code"])
+        if evolve_extra_code.get("custom_survival_code"):
+            _load_dynamic_survival(evolve_extra_code["custom_survival_code"])
+        if evolve_extra_code.get("custom_selection_code"):
+            _load_dynamic_selection(evolve_extra_code["custom_selection_code"])
+        if evolve_extra_code.get("custom_loss_code"):
+            _load_dynamic_loss(evolve_extra_code["custom_loss_code"])
+
     # Configure PySR
-    model = PySRRegressor(
+    pysr_model_kwargs = dict(
         # timeout_in_seconds=int(time_minutes * 60),
         binary_operators=["+", "-", "*", "/"],
         unary_operators=["sin", "cos", "exp", "log", "sqrt", "square"],
@@ -363,6 +429,12 @@ def run_pysr_on_dataset(
             )
         ),
     )
+    # Bundle-tuned PySR hparams take precedence over the defaults above; the
+    # weight_* mutation weights are layered on top and only include
+    # weight_custom_mutation_* when a custom mutation was actually loaded.
+    pysr_model_kwargs.update(evolve_pysr_overrides)
+    pysr_model_kwargs.update(evolve_weights)
+    model = PySRRegressor(**pysr_model_kwargs)
 
     if verbose:
         print(f"\nStarting PySR fit...")
@@ -419,6 +491,63 @@ def run_pysr_on_dataset(
     else:
         best_equation_str = str(best_eq)
 
+    # Check GT symbolic match across the full Pareto frontier (matches the
+    # gt_match_score used by parallel_eval_pysr / evaluate_new_pysr). Any
+    # expression in the frontier matching the GT scores 1.0.
+    from evaluation import check_pysr_frontier_symbolic_match
+    from parallel_eval_pysr import _remap_formula_variables
+
+    gt_formula = metadata.get('ground_truth_formula', '') or ''
+    # If feature names were renamed (e.g. gamma -> var_3), apply the same
+    # rename to GT formula so symbolic matching uses consistent variables.
+    gt_formula_for_match = gt_formula
+    if rename_map and gt_formula:
+        gt_formula_for_match = _remap_formula_variables(
+            gt_formula, original_feature_names, feature_names
+        )
+
+    best_df_index = best_eq.name if best_eq is not None and hasattr(best_eq, 'name') else None
+    gt_match_score = 0.0
+    matched_df_index = None
+    matched_equation_str = None
+    if gt_formula_for_match and model.equations_ is not None and len(model.equations_) > 0:
+        try:
+            gt_match_result = check_pysr_frontier_symbolic_match(
+                equations_df=model.equations_,
+                best_df_index=best_df_index,
+                ground_truth_str=gt_formula_for_match,
+                var_names=feature_names,
+                timeout_seconds_per_expression=3,
+            )
+            if gt_match_result.get("match", False):
+                gt_match_score = 1.0
+                matched_df_index = gt_match_result.get("matched_df_index")
+                if matched_df_index is not None:
+                    matched_equation_str = str(model.equations_.loc[matched_df_index]["equation"])
+        except Exception as e:
+            print(f"GT match check failed: {e}")
+
+    if verbose:
+        print(f"\nGround truth formula: {gt_formula!r}")
+        if gt_formula_for_match != gt_formula:
+            print(f"  (after rename: {gt_formula_for_match!r})")
+        print(f"GT symbolic match: {bool(gt_match_score)}"
+              + (f"  (matched index {matched_df_index})" if matched_df_index is not None else ""))
+
+        # Print Pareto frontier with markers for best and GT match.
+        eqs = model.equations_
+        if eqs is not None and len(eqs) > 0:
+            print("\nPareto frontier:")
+            for idx, row in eqs.iterrows():
+                tag = ""
+                if idx == best_df_index:
+                    tag += " [best]"
+                if idx == matched_df_index:
+                    tag += " [GT MATCH]"
+                print(f"  [{idx}] complexity={int(row['complexity']):>3}  "
+                      f"loss={float(row['loss']):.4e}  "
+                      f"eq={row['equation']}{tag}")
+
     from parallel_eval_pysr import _get_pysr_num_evaluations
     execution_trace = None
     if milestones:
@@ -444,13 +573,20 @@ def run_pysr_on_dataset(
         'execution_traces': [execution_trace] if execution_trace else [],
         'rename_map': rename_map,
         'original_feature_names': metadata.get('original_feature_names', []),
+        'ground_truth_formula': gt_formula,
+        'gt_match_score': float(gt_match_score),
+        'gt_match_index': (int(matched_df_index) if matched_df_index is not None else None),
+        'gt_match_equation': matched_equation_str,
     }
 
     if verbose:
         print(f"\nResults:")
         print(f"  Test MSE: {mse:.4e}")
         print(f"  Test R²:  {r2:.4f}")
+        print(f"  GT match: {bool(gt_match_score)}")
         print(f"  Best equation: {best_equation_str}")
+        if matched_equation_str is not None:
+            print(f"  GT-matched equation: {matched_equation_str}")
 
     # Save results (include noise level in filename when > 0)
     if target_noise > 0:
@@ -476,32 +612,37 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--dataset', type=str,
                        help='Single dataset name to run (e.g., feynman_I_15_10)')
-    group.add_argument('--split_file', type=str,
+    group.add_argument('--split-file', type=str,
                        help='Path to split file with dataset names')
 
     # For SLURM array jobs
-    parser.add_argument('--array_index', type=int, default=None,
+    parser.add_argument('--array-index', type=int, default=None,
                        help='SLURM array task index (0-based). Uses SLURM_ARRAY_TASK_ID if not specified.')
 
     # Data settings
-    parser.add_argument('--max_samples', type=int, default=1000,
+    parser.add_argument('--max-samples', type=int, default=1000,
                        help='Maximum samples to use from each dataset')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed')
-    parser.add_argument('--target_noise', type=float, default=0.0,
+    parser.add_argument('--target-noise', type=float, default=0.0,
                        help='Gaussian noise level for target (SRBench standard levels: 0.0, 0.001, 0.01, 0.1)')
 
     # PySR settings
     # group = parser.add_mutually_exclusive_group(required=True)
     # group.add_argument('--niterations', type=int, default=None,
                     #    help='Maximum iterations')
-    parser.add_argument('--max_evals', type=int, default=int(1e6),
+    parser.add_argument('--max-evals', type=int, default=int(1e6),
                        help='Maximum evaluations')
-    parser.add_argument('--hof-n', type=int, default=3,
+    parser.add_argument('--hof-n', type=int, default=0,
                        help='Number of HOF checkpoints. If 0, no HOF trace file is saved.')
+    parser.add_argument('--evolve-results', type=str, default=None,
+                       help='Path to evolve_pysr run_data.json, a run directory, '
+                            'or a run id under runs/. Loads custom mutation/'
+                            'survival/selection/loss code (and any bundle-tuned '
+                            'PySR hparams) into this run.')
 
     # Output settings
-    parser.add_argument('--results_dir', type=str, default='results_pysr',
+    parser.add_argument('--results-dir', type=str, default='results_pysr',
                        help='Directory to save results')
     parser.add_argument('--quiet', action='store_true',
                        help='Suppress verbose output')
@@ -544,6 +685,7 @@ def main():
                 verbose=verbose,
                 target_noise=args.target_noise,
                 hof_n=args.hof_n,
+                evolve_results=args.evolve_results,
             )
 
             if verbose:

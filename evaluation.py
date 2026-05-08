@@ -165,6 +165,18 @@ def check_symbolic_match(predicted_expr, ground_truth_expr, n_vars=None):
     result['error_is_constant'] = _is_constant(sym_diff)
     result['fraction_is_constant'] = _is_constant(sym_frac)
 
+    # Guard against the degenerate case where round_floats() collapses the
+    # predicted expression to 0 (e.g. a leading multiplicative constant
+    # smaller than zero_threshold=1e-4 gets snapped to 0). In that case
+    # sym_frac = 0 / GT = 0 trivially reads as a constant, which would
+    # falsely declare every non-zero GT a match. A predicted "0" is only a
+    # genuine match when the GT itself is also 0.
+    predicted_is_zero = bool(predicted_simplified.equals(0))
+    if predicted_is_zero and not ground_truth_is_zero:
+        result['fraction_is_constant'] = False
+        result['error_is_constant'] = False
+        result['error_is_zero'] = False
+
     # A match is any of the three conditions
     result['match'] = (
         result['error_is_zero'] or

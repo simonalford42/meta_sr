@@ -1,6 +1,25 @@
+# 5/6
+# Simplify-only run: seed initial pop with the best bundle from 399313, then
+# only ever apply the simplify meta-mutation (init pop + every generation's
+# offspring). 10 gens, 10 offspring/gen, 10 seeds/eval.
+# sbatch -J simplify run.sh evolve_pysr.py --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 10 --max-evals 1000000 --baseline runs/399313 --mutation-mode simplify --population-type complexity --continue-from runs/666285
+sbatch -J race-train run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 3 --n-extra-runs 5 --n-runs-max 25 --lambda-target 5 --max-evals 1000000 --exec-feedback-n 3 --continue-from runs/666286 --split splits/train.txt --val-split splits/val.txt
+
+# 5/6
+# sbatch -J race2 run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 3 --n-extra-runs 5 --n-runs-max 25 --lambda-target 5 --max-evals 1000000 --exec-feedback-n 3
+# sbatch -J race4 run.sh evolve_pysr.py --operator-type all --generations 40 --population 10 --offspring 10 --n-runs 6 --n-extra-runs 10 --n-runs-max 50 --max-evals 1000000 --exec-feedback-n 3 --lambda-target 2 --continue-from runs/666286
+
+
+# 5/5
+
+
 # 5/4
-sbatch -J loss run.sh evolve_pysr.py --operator_type loss --generations 5 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3
-sbatch -J full run.sh evolve_pysr.py --operator_type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3
+# sbatch -J loss run.sh evolve_pysr.py --operator_type loss --generations 5 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3
+# sbatch -J full run.sh evolve_pysr.py --operator_type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max_evals 1000000 --task_diverse_pop --exec_feedback_n 3
+# sbatch -J racing --dependency=afterany:399304 run.sh evolve_pysr.py --operator_type all --generations 30 --population 10 --offspring 10 --n-runs 5 --max_evals 1000000 --racing --exec_feedback_n 3
+# sbatch -J train run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max-evals 1000000 --task-diverse-pop --exec-feedback-n 3 --split splits/train.txt --val-split splits/val.txt
+# sbatch -J train3 run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 3 --max-evals 1000000 --task-diverse-pop --exec-feedback-n 3 --split splits/train.txt --val-split splits/val.txt
+
 
 # sbatch -J test run.sh evolve_pysr.py --operator_type loss --generations 2 --population 3 --offspring 3 --n-runs 1 --max_evals 10000 --task_diverse_pop --exec_feedback_n 3
 

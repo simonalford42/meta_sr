@@ -3,8 +3,8 @@
 
 Usage:
     python scripts/collect_smoke_results.py \\
-        --results_dir results_pysr_smoke \\
-        --split_file splits/srbench_all.txt
+        --results-dir results_pysr_smoke \\
+        --split-file splits/srbench_all.txt
 """
 
 import argparse
@@ -15,8 +15,8 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--results_dir", type=str, default="results_pysr_smoke")
-    parser.add_argument("--split_file", type=str, default="splits/srbench_all.txt")
+    parser.add_argument("--results-dir", type=str, default="results_pysr_smoke")
+    parser.add_argument("--split-file", type=str, default="splits/srbench_all.txt")
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir)

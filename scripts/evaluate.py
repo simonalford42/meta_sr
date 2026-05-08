@@ -5,7 +5,7 @@ Evaluate evolved or HPO-tuned PySR configurations against baseline.
 This script:
 1) Loads results from:
    - HPO run: best-weights JSON (from hpo_pysr.py output)
-   - Evolve run: run_data.json (from `evolve_pysr.py --operator_type ...`)
+   - Evolve run: run_data.json (from `evolve_pysr.py --operator-type ...`)
    - OpenEvolve run: output directory (from `run_openevolve_pysr.py`)
 2) Evaluates baseline vs best config(s) for n_runs seeds on:
    - train split

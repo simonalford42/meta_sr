@@ -25,17 +25,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Evaluate PySR with and without custom mutations via SLURM."
     )
-    parser.add_argument("--split_file", type=str, default="splits/train.txt")
-    parser.add_argument("--results_dir", type=str, default="outputs/pysr_custom_vs_baseline")
+    parser.add_argument("--split-file", type=str, default="splits/train.txt")
+    parser.add_argument("--results-dir", type=str, default="outputs/pysr_custom_vs_baseline")
     parser.add_argument("--partition", type=str, default="default_partition")
-    parser.add_argument("--time_limit", type=str, default="00:30:00")  # 30 min per task
-    parser.add_argument("--mem_per_cpu", type=str, default="8G")  # PySR/Julia needs more memory
-    parser.add_argument("--max_samples", type=int, default=1000)
+    parser.add_argument("--time-limit", type=str, default="00:30:00")  # 30 min per task
+    parser.add_argument("--mem-per-cpu", type=str, default="8G")  # PySR/Julia needs more memory
+    parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--n_runs", type=int, default=1)
-    parser.add_argument("--custom_weight", type=float, default=1.0)
-    parser.add_argument("--no_cache", action="store_true")
-    parser.add_argument("--job_timeout", type=float, default=3600.0,
+    parser.add_argument("--n-runs", type=int, default=1)
+    parser.add_argument("--custom-weight", type=float, default=1.0)
+    parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--job-timeout", type=float, default=3600.0,
                        help="Max time to wait for job completion in seconds (default: 3600)")
     args = parser.parse_args()
 

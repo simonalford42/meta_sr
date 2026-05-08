@@ -972,13 +972,13 @@ if __name__ == "__main__":
     parser.add_argument('--split', type=str, default='splits/train_hard.txt',
                        help='Path to split file with dataset names (default: splits/train_hard.txt)')
     parser.add_argument('--max-samples', type=int, default=1000, help='Max samples per dataset (default: 1000)')
-    parser.add_argument('--target_noise', type=float, default=0.0,
+    parser.add_argument('--target-noise', type=float, default=0.0,
                        help='Fixed Gaussian noise level for target (SRBench standard levels: 0.0, 0.001, 0.01, 0.1)')
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--random_target_noise', action='store_true',
+    group.add_argument('--random-target-noise', action='store_true',
                        help='Assign per-dataset target noise from {0.0, 0.001, 0.01, 0.1} using the seed')
-    group.add_argument('--no_random_target_noise', dest='random_target_noise', action='store_false',
-                       help='Disable per-dataset target noise and use --target_noise instead')
+    group.add_argument('--no-random-target-noise', dest='random_target_noise', action='store_false',
+                       help='Disable per-dataset target noise and use --target-noise instead')
     parser.set_defaults(random_target_noise=False)
 
     # Model

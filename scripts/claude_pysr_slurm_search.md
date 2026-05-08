@@ -1,3 +1,54 @@
+# PySR SLURM parallel-eval timing — old all-at-once style, 1e6 max_evals
+
+Source script: `scripts/analyze_pysr_slurm_timing.py` (run with no args).
+
+## Methodology
+
+- Iterated all `out/<slurm_id>.out` files (parent driver logs).
+- Inferred the driver from the embedded command line or from log markers; kept only
+  `evolve_pysr.py` and `evaluate_new_pysr.py` runs (HPO/openevolve excluded).
+- For `evolve_pysr.py` runs, dropped the *new* implementation (one SLURM batch per
+  freshly created operator). The new style is detected by `Submitted SLURM job array
+  ... batch eval_...`, `Waiting on N ... batches`, or `submit_bundle_future` markers
+  in the log.
+- For each `PySR SLURM eval: N tasks in batch eval_NNNN ...` block, opened the
+  associated `tasks.json` to confirm every task uses `pysr_kwargs.max_evals == 1_000_000`.
+  Blocks where any task differs were dropped.
+- **N is the uncached count** — the number of tasks actually submitted to SLURM,
+  parsed from `Submitted SLURM job array: <jid> (<n> tasks)` (which is `len(chunk)`
+  over `uncached_indices`). For arrays larger than `MaxArraySize`, multiple
+  submissions are summed; the `array_job_ids` column lists every parent array id.
+  Of 338 data points, 30 had partial caching where N < total batch (e.g. one batch
+  had total=400 but only N=200 went to SLURM after cache hits).
+- Fully-cached blocks (`All N tasks served from cache - skipping SLURM`) are dropped.
+- `T_s` = `initial_seconds + retry_seconds`:
+  - `initial_seconds`: from `All N tasks completed in T s` or
+    `All N initial tasks completed in T s` (the wait timer starts on SLURM submission,
+    after caching, so T already excludes cache lookup time). If neither is present
+    (timeout/stall), falls back to `TIMEOUT: ... exceeded T s`, then to the last
+    `Progress: ... Ts elapsed` as a lower bound.
+  - `retry_seconds`: sum of `Retry completed in T s` (and last seen
+    `Retry progress: ... T s elapsed` for active retries that did not finish cleanly).
+- `T_s = 3000.0` corresponds to the 3000s parent-driver job timeout — values pinned
+  exactly at 3000.0 are right-censored (the SLURM eval was cancelled, not finished).
+
+## Plot
+
+![Per-N mean (with min/max bars) and per-N point counts](claude_pysr_slurm_search.png)
+
+Plot file: `scripts/claude_pysr_slurm_search.png`
+(identical copy at `plots/pysr_slurm_parallel_eval_1e6_oldstyle_timing.png`)
+
+CSV outputs from the helper script:
+- `plots/pysr_slurm_parallel_eval_1e6_oldstyle_points.csv` — every (parent, batch) data point
+- `plots/pysr_slurm_parallel_eval_1e6_oldstyle_stats.csv` — per-N summary
+- `plots/pysr_slurm_parallel_eval_1e6_oldstyle_jobs.csv` — parent job → command
+
+## Counts
+- 31 parent SLURM jobs
+- 338 (N, T) data points
+- 30 points had partial caching (N < total batch)
+
 Relevant parent SLURM jobs
 | slurm_id | source | command |
 |---:|---|---|
