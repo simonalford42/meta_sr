@@ -1,88 +1,95 @@
 # MinimalSR.jl Handoff Summary
 
-This summarizes the MinimalSR.jl work for review. The requested implementation was to add a side-by-side MinimalSR.jl engine with a bare default policy and a PySR/MiniSR compatibility policy, then stop after parity tests showed good results.
+This is the current MinimalSR implementation after replacing the earlier
+`MinimalSR.jl`/`MinimalSRConfig.jl` split. The old versions are preserved in git
+history only; the active implementation is now one `MinimalSR.jl` file.
 
-## Files Added Or Changed
+## Files Changed
 
 - `SymbolicRegression.jl/src/MinimalSR.jl`
-  - New module copied from `MiniSR.jl` and refactored into a policy-dispatching engine.
-  - Defines `AbstractMinimalSRPolicy`, `DefaultMinimalPolicy`, and `PySRCompatPolicy`.
-  - Adds entry points:
-    - `fit_minimal_sr(...; policy=:default | :pysr_compat)`
-    - `fit_default_sr(...)`
-    - `fit_pysr_compat_sr(...)`
-  - Keeps PythonCall interop compatibility but also supports plain Julia arrays via `as_matrix` and `as_vector`.
+  - Contains the reusable SR primitives, the generic policy-state engine, and
+    both default and PySR-compatible policy definitions.
+  - Defines `MinimalSRPolicy` with the fixed callback surface:
+    `init_state`, `loss_function`, `survival`, `selection`, `mutation`,
+    `acceptance`, `crossover`, `update_population`, and `update_state!`.
+  - Defines `MinimalSRConfig`, `EngineState`, `BasicPolicyState`, and
+    `PySRPolicyState`.
+  - Exposes `fit_minimal_sr`, `fit_default_sr`, and `fit_pysr_compat_sr`.
+
+- `SymbolicRegression.jl/src/MinimalSRConfig.jl`
+  - Deleted. Its active config/policy content was folded into `MinimalSR.jl`.
+
+- `SymbolicRegression.jl/src/MinimalSR2.jl`
+  - Deleted. Its pseudocode/prototype role is now superseded by the implemented
+    generic engine in `MinimalSR.jl`.
 
 - `SymbolicRegression.jl/src/SymbolicRegression.jl`
-  - Includes the new module after `MiniSR.jl`:
-    - `include("MinimalSR.jl")`
+  - Now includes `MiniSR.jl` and `MinimalSR.jl`; the `MinimalSR2.jl` include was
+    removed.
 
-- `SymbolicRegression.jl/test/unit/misc/test_minimal_sr.jl`
-  - Adds a focused test covering:
-    - Default MinimalSR policy smoke run.
-    - Exact parity between `MiniSR.fit_mini_sr` and `MinimalSR.fit_pysr_compat_sr`.
+## Architecture
 
-## Policy Structure
+The generic search loop is shared by default and PySR-compatible searches:
 
-`DefaultMinimalPolicy` is intentionally bare:
+- `fit_minimal_sr` initializes engine state, populations, and policy state.
+- `regularized_cycle!` handles the loop mechanics:
+  - choose crossover vs mutation,
+  - call policy selection,
+  - call policy mutation/crossover,
+  - evaluate with the policy loss function,
+  - call policy acceptance,
+  - call policy survival.
+- `update_state!` owns archive/stat/temperature updates for each policy.
+- `update_population` owns migration or other population-level replacement.
 
-- Tournament parent selection.
-- Mutation replaces a random node with a terminal or small random subtree.
-- Crossover swaps random subtrees.
-- Survival is top-k over population plus offspring by `(cost, loss, complexity, birth)`.
-- Archive is top-k best distinct expressions by loss.
-- No frequency weighting, annealing, migration, simplification, or constant optimization unless explicitly configured through the existing engine fields.
+The default policy is intentionally simple:
 
-`PySRCompatPolicy` preserves the original `MiniSR.jl` behavior:
+- MSE loss.
+- Tournament selection.
+- Random subtree replacement mutation.
+- Random subtree-swap crossover.
+- Always accept valid offspring.
+- Top-k survival/archive by best loss/cost.
+- No migration, no frequency stats, and no PySR-specific hall-of-fame logic.
 
-- Uses the original MiniSR regularized cycle.
-- Uses MiniSR weighted/conditioned mutation dispatch.
-- Uses MiniSR tournament selection with adaptive parsimony/frequency logic.
-- Uses age-based survival.
-- Uses MiniSR acceptance logic with optional annealing and frequency terms.
-- Uses MiniSR Pareto hall-of-fame by complexity/loss.
-- Uses MiniSR migration and HoF migration.
-- Uses MiniSR simplification and constant optimization integration.
+The PySR-compatible policy reproduces `MiniSR.jl` behavior:
 
-The compatibility path was kept very close to the original loop to preserve RNG call order and exact output parity.
+- MSE loss with the same normalization/cost calculation.
+- Adaptive parsimony tournament selection using running frequency stats.
+- Weighted PySR/MiniSR mutation dispatch inside one mega mutation callback.
+- Subtree-swap crossover with MiniSR's same-parent fallback behavior.
+- MiniSR annealing/frequency acceptance.
+- Age-based survival.
+- Pareto archive by complexity/loss.
+- Running search stats and temperature updated inside `pysr_update_state!`.
+- Migration and HoF migration in `pysr_update_population`.
+- JSONL hall-of-fame logging parity when `log_file` is set.
 
 ## Verification Results
 
-Direct parity script result:
+Focused smoke/parity command:
 
 ```text
-MiniSR evals: 194
-MinimalSR PySR evals: 194
-Rows equal: true
+parse ok
+default rows=5 evals=33
+pysr rows equal minisr=true evals=194/194
+pysr logs equal minisr=true
 ```
 
-The exact matching frontier rows were:
+Full `unit/misc` test slice:
 
 ```text
-complexity 1: -0.8844918972763947
-complexity 3: (-0.8844918972763947 + x0)
-complexity 4: (-0.8844918972763947 + sin(x0))
+Test Summary:         | Pass  Total     Time
+SymbolicRegression.jl |  118    118  2m22.0s
 ```
 
-Default policy smoke result:
+## Review Notes
 
-```text
-Default evals: 79
-Default rows: nonempty top-k rows under max_evals=120
-```
-
-Package test group result:
-
-```text
-unit/misc: 118 passed / 118 total
-```
-
-## Notes For Review
-
-- `MiniSR.jl` itself was intentionally not modified; it remains the parity oracle.
-- The PySR compatibility policy reproduces current MiniSR behavior, not full SymbolicRegression.jl/PySR.
-- Exact parity depends on preserving loop shape and RNG call order. Avoid “cleaning up” the compatibility loop unless parity tests are updated and rerun.
-- The default policy is deliberately simple and not tuned for benchmark performance.
-- Julia/PythonCall verification generated local `.CondaPkg` and ignored `Manifest.toml` files during testing; those generated artifacts were removed.
-- The worktree already had unrelated dirty changes before/around this work, including custom-loss files and Python evolution harness edits. Those were not part of the MinimalSR implementation.
-
+- `MiniSR.jl` remains the parity oracle and was not modified.
+- PySR parity is exact for the tested MiniSR configuration, including frontier
+  rows, eval count, and HOF log output.
+- Exact parity depends on RNG call order. The self-crossover fallback in the
+  generic loop is intentional because MiniSR samples two parents and then
+  deterministically advances the second parent if both indices match.
+- Temporary Julia test artifacts were moved to `~/trash`; no generated manifest
+  or `.CondaPkg` directory is left in the submodule worktree.
