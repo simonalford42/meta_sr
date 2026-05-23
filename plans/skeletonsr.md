@@ -13,16 +13,19 @@ preserved in git history.
     `acceptance`, `crossover`, `update_population`, and `update_state!`.
   - Defines `SkeletonSRConfig`, `EngineState`, and the abstract policy-state
     interface.
-  - Includes `BasicSRConfig.jl` and `PySRConfig.jl` from inside the
-    `SkeletonSR` module.
+  - Does not include concrete configs; configs import this module.
 
 - `SymbolicRegression.jl/src/BasicSRConfig.jl`
   - Contains the BasicSR policy implementation.
+  - Defines the sibling `SymbolicRegression.BasicSRConfig` module and imports
+    the generic skeleton from `SymbolicRegression.SkeletonSR`.
   - Defines `BasicSRState`, BasicSR kwargs, the configured policy, and
     `fit_basic_sr`.
 
 - `SymbolicRegression.jl/src/PySRConfig.jl`
   - Contains the PySR policy implementation.
+  - Defines the sibling `SymbolicRegression.PySRConfig` module and imports the
+    generic skeleton from `SymbolicRegression.SkeletonSR`.
   - Defines `PySRState`, PySR kwargs, mutation weights, the configured policy,
     and `fit_pysr_sr`.
   - Owns running search statistics, PySR tournament/survival/mutation/
@@ -30,7 +33,8 @@ preserved in git history.
     logging.
 
 - `SymbolicRegression.jl/src/SymbolicRegression.jl`
-  - Now includes `MiniSR.jl` and `SkeletonSR.jl`.
+  - Now includes `MiniSR.jl`, `SkeletonSR.jl`, `BasicSRConfig.jl`, and
+    `PySRConfig.jl`.
 
 ## Architecture
 
