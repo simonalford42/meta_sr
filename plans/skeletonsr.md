@@ -8,9 +8,13 @@ preserved in git history.
 
 - `SymbolicRegression.jl/src/SkeletonSR.jl`
   - Contains the reusable SR primitives and the generic policy-state engine.
+  - Keeps only skeleton-level engine configuration: population counts, loop
+    counts, tree limits, eval budget, operator/constant/constraint setup, and
+    RNG seed.
   - Defines `SkeletonSRPolicy` with the fixed callback surface:
     `init_state`, `loss_function`, `survival`, `selection`, `mutation`,
-    `acceptance`, `crossover`, `update_population`, and `update_state!`.
+    `acceptance`, `crossover`, loop-control callbacks, `update_population`,
+    and `update_state!`.
   - Defines `SkeletonSRConfig`, `EngineState`, and the abstract policy-state
     interface.
   - Does not include concrete configs; configs import this module.
@@ -19,15 +23,15 @@ preserved in git history.
   - Contains the BasicSR policy implementation.
   - Defines the sibling `SymbolicRegression.BasicSRConfig` module and imports
     the generic skeleton from `SymbolicRegression.SkeletonSR`.
-  - Defines `BasicSRState`, BasicSR kwargs, the configured policy, and
-    `fit_basic_sr`.
+  - Defines `BasicSROptions`, `BasicSRState`, BasicSR kwargs, the configured
+    policy, and `fit_basic_sr`.
 
 - `SymbolicRegression.jl/src/PySRConfig.jl`
   - Contains the PySR policy implementation.
   - Defines the sibling `SymbolicRegression.PySRConfig` module and imports the
     generic skeleton from `SymbolicRegression.SkeletonSR`.
-  - Defines `PySRState`, PySR kwargs, mutation weights, the configured policy,
-    and `fit_pysr_sr`.
+  - Defines `PySROptions`, `PySRState`, PySR kwargs, mutation weights, the
+    configured policy, and `fit_pysr_sr`.
   - Owns running search statistics, PySR tournament/survival/mutation/
     crossover/migration/acceptance helpers, Pareto archive helpers, and HOF
     logging.
