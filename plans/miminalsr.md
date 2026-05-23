@@ -20,6 +20,9 @@ preserved in git history.
   - Defines `BasicPolicyState`, `PySRPolicyState`, default/PySR kwargs,
     mutation weights, configured policies, and the configured entry points:
     `fit_default_sr` and `fit_pysr_compat_sr`.
+  - Owns running search statistics, PySR tournament/survival/mutation/
+    crossover/migration/acceptance helpers, Pareto archive helpers, and HOF
+    logging.
 
 - `SymbolicRegression.jl/src/MinimalSR2.jl`
   - Deleted. Its pseudocode/prototype role is now superseded by the implemented
@@ -34,7 +37,7 @@ preserved in git history.
 The generic search loop is shared by default and PySR-compatible searches:
 
 - `fit_minimal_sr` initializes engine state, populations, and policy state.
-- `regularized_cycle!` handles the loop mechanics:
+- `evolve_cycle!` handles the loop mechanics:
   - choose crossover vs mutation,
   - call policy selection,
   - call policy mutation/crossover,
