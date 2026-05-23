@@ -1,23 +1,25 @@
 # MinimalSR.jl Handoff Summary
 
-This is the current MinimalSR implementation after replacing the earlier
-`MinimalSR.jl`/`MinimalSRConfig.jl` split. The old versions are preserved in git
-history only; the active implementation is now one `MinimalSR.jl` file.
+This is the current MinimalSR implementation after splitting the generic engine
+from the default/PySR policy configs. The old one-file implementation is
+preserved in git history.
 
 ## Files Changed
 
 - `SymbolicRegression.jl/src/MinimalSR.jl`
-  - Contains the reusable SR primitives, the generic policy-state engine, and
-    both default and PySR-compatible policy definitions.
+  - Contains the reusable SR primitives and the generic policy-state engine.
   - Defines `MinimalSRPolicy` with the fixed callback surface:
     `init_state`, `loss_function`, `survival`, `selection`, `mutation`,
     `acceptance`, `crossover`, `update_population`, and `update_state!`.
-  - Defines `MinimalSRConfig`, `EngineState`, `BasicPolicyState`, and
-    `PySRPolicyState`.
-  - Exposes `fit_minimal_sr`, `fit_default_sr`, and `fit_pysr_compat_sr`.
+  - Defines `MinimalSRConfig`, `EngineState`, and the abstract policy-state
+    interface.
+  - Includes `MinimalSRConfig.jl` from inside the `MinimalSR` module.
 
 - `SymbolicRegression.jl/src/MinimalSRConfig.jl`
-  - Deleted. Its active config/policy content was folded into `MinimalSR.jl`.
+  - Contains the default and PySR-compatible policy implementations.
+  - Defines `BasicPolicyState`, `PySRPolicyState`, default/PySR kwargs,
+    mutation weights, configured policies, and the configured entry points:
+    `fit_default_sr` and `fit_pysr_compat_sr`.
 
 - `SymbolicRegression.jl/src/MinimalSR2.jl`
   - Deleted. Its pseudocode/prototype role is now superseded by the implemented
@@ -67,27 +69,29 @@ The PySR-compatible policy reproduces `MiniSR.jl` behavior:
 
 ## Verification Results
 
-Focused smoke/parity command:
+Parse check:
 
 ```text
 parse ok
-default rows=5 evals=33
-pysr rows equal minisr=true evals=194/194
-pysr logs equal minisr=true
 ```
+
+The `MinimalSR policies run and PySR policy matches MiniSR` test item covers the
+default policy smoke run and exact MiniSR/PySR-compatible row/eval parity.
 
 Full `unit/misc` test slice:
 
 ```text
 Test Summary:         | Pass  Total     Time
-SymbolicRegression.jl |  118    118  2m22.0s
+SymbolicRegression.jl |  118    118  4m40.2s
 ```
 
 ## Review Notes
 
 - `MiniSR.jl` remains the parity oracle and was not modified.
 - PySR parity is exact for the tested MiniSR configuration, including frontier
-  rows, eval count, and HOF log output.
+  rows and eval count.
+- MinimalSR-specific custom mutation names and handlers were removed from the
+  PySR-compatible mutation config.
 - Exact parity depends on RNG call order. The self-crossover fallback in the
   generic loop is intentional because MiniSR samples two parents and then
   deterministically advances the second parent if both indices match.
