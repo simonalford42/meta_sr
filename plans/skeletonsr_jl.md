@@ -1,10 +1,10 @@
-# MinimalSR.jl — A Configurable SR Skeleton
+# SkeletonSR.jl — A Configurable SR Skeleton
 
 ## Context
 
 The submodule `SymbolicRegression.jl/` (referred to in conversation as MiniSR.jl) is a powerful but heavily PySR-specific SR engine. Many algorithmic choices are baked into its core loop: tournament-with-adaptive-parsimony selection, age-regularized survival, Pareto-frontier hall-of-fame, multi-population with migration, RunningSearchStatistics for frequency-weighted parsimony, an annealing temperature schedule, scheduled constant optimization, simplification, multi-output dispatch, and 5 hard-wired `custom_mutation_*` slots. To eventually use the LLM-driven evolution machinery in `evolve_pysr.py` to discover *new SR algorithms* (rather than new mutation/selection/survival operators that drop into PySR's existing loop), we need a substrate where each of those choices is an explicit, swappable plug point with a working, simple default.
 
-MinimalSR.jl is that substrate. The goal is one minimal-but-real SR engine whose every algorithmic choice is an injected function. Two named configurations ship with it: `default_config()` (bare-bones, single population, tournament + topk + topk HoF, no annealing, no parsimony, no const-opt) and `pysr_config()` (functionally equivalent to the SymbolicRegression.jl loop, used as a baseline anchor and a reproduction sanity check).
+SkeletonSR.jl is that substrate. The goal is one small-but-real SR engine whose every algorithmic choice is an injected function. Two named configurations ship with it: `basic_config()` (bare-bones, single population, tournament + topk + topk HoF, no annealing, no parsimony, no const-opt) and `pysr_config()` (functionally equivalent to the SymbolicRegression.jl loop, used as a baseline anchor and a reproduction sanity check).
 
 Scope for v1, per the user's direction: build the Julia package and the PySR-parity reproduction. Multi-population and migration are in scope. Multi-output is out. LLM-driven evolution integration (`evolve_pysr.py`-style driver) is out — deferred until the substrate is solid.
 
@@ -12,25 +12,25 @@ Scope for v1, per the user's direction: build the Julia package and the PySR-par
 
 The skeleton is a single function `equation_search(X, y, config::SearchConfig)` whose body is a thin loop that calls into `config`. `SearchConfig` is a struct of *function fields*; swapping algorithms means swapping function fields (or constructing a new config). Per-run mutable bookkeeping lives in a `SearchState` struct passed by reference through every plug point — that is how RunningSearchStatistics, temperature, iteration counter, and birth counter are threaded.
 
-This deliberately mirrors how `CustomMutations.jl` / `CustomSurvival.jl` / `CustomSelection.jl` already work in the existing engine: dynamically-loaded functions swapped in at runtime. MinimalSR generalizes the pattern from "3 plug points" to "the whole algorithm is plug points," and consolidates them into one `SearchConfig` value rather than several module-level Refs.
+This deliberately mirrors how `CustomMutations.jl` / `CustomSurvival.jl` / `CustomSelection.jl` already work in the existing engine: dynamically-loaded functions swapped in at runtime. SkeletonSR generalizes the pattern from "3 plug points" to "the whole algorithm is plug points," and consolidates them into one `SearchConfig` value rather than several module-level Refs.
 
-Per package-layout decision: MinimalSR.jl is a **standalone sibling Julia package** (mirroring how SymbolicRegression.jl itself is structured — it's a registered package with its own `Project.toml`) that **depends on `SymbolicRegression`**. Tree representation, expression evaluation, loss computation, constant optimization, simplification, migration, and `RunningSearchStatistics` are reused directly from SR.jl rather than reinvented. This keeps MinimalSR small and makes faithful `pysr_config()` reproduction nearly free.
+Per package-layout decision: SkeletonSR.jl is a **standalone sibling Julia package** (mirroring how SymbolicRegression.jl itself is structured — it's a registered package with its own `Project.toml`) that **depends on `SymbolicRegression`**. Tree representation, expression evaluation, loss computation, constant optimization, simplification, migration, and `RunningSearchStatistics` are reused directly from SR.jl rather than reinvented. This keeps SkeletonSR small and makes faithful `pysr_config()` reproduction nearly free.
 
 ## Package Layout
 
-New top-level package `MinimalSR.jl/` (sibling to `SymbolicRegression.jl/`):
+New top-level package `SkeletonSR.jl/` (sibling to `SymbolicRegression.jl/`):
 
 ```
-MinimalSR.jl/
+SkeletonSR.jl/
   Project.toml                # depends on DynamicExpressions, SymbolicRegression, Random
   src/
-    MinimalSR.jl              # module root, exports equation_search, SearchConfig, default_config, pysr_config
+    SkeletonSR.jl              # module root, exports equation_search, SearchConfig, basic_config, pysr_config
     Types.jl                  # Member, Population, HallOfFame, SearchState, SearchConfig
     Search.jl                 # equation_search top-level loop (the skeleton)
-    Defaults.jl               # default_* implementations of every plug point
+    BasicSRConfig.jl           # basic_* implementations of every plug point
     PySRConfig.jl             # pysr_* implementations that reproduce SymbolicRegression.jl behavior
   test/
-    test_default.jl
+    test_basic.jl
     test_pysr_reproduction.jl # statistical parity vs SymbolicRegression.jl on a fixed problem
     runtests.jl
 ```
@@ -134,7 +134,7 @@ Everything algorithmically interesting happens *inside* a config function. The s
 
 ## Default vs PySR Configurations
 
-| Plug point | `default_config()` | `pysr_config()` |
+| Plug point | `basic_config()` | `pysr_config()` |
 |---|---|---|
 | `init_populations` | 1 population, random terminals/small subtrees | `options.populations` populations, full random init |
 | `init_hof` | empty `Vector{Member}` (top-k by loss) | per-complexity slots + `exists` array (Pareto) |
@@ -148,7 +148,7 @@ Everything algorithmically interesting happens *inside* a config function. The s
 | `manage_populations` | identity (single pop, no migration) | every iteration: `migrate!(best_subpops → cur_pop, fraction_replaced)`; if `hof_migration`, also migrate Pareto frontier in (delegate to `SymbolicRegression.MigrationModule.migrate!`) |
 | `update_state` | bumps iteration only | anneals temperature (`alpha` schedule), updates RunningSearchStatistics frequencies, grows `curmaxsize` toward `maxsize` |
 
-`default_config()` is intentionally trivial — it produces a working but weak SR engine in roughly 200 lines. `pysr_config()` calls into existing SymbolicRegression.jl modules where possible (`MutateModule.next_generation`, `AdaptiveParsimonyModule.update_frequencies!`, `MigrationModule.migrate!`, `ConstantOptimizationModule.optimize_constants`, `HallOfFameModule.calculate_pareto_frontier`, `SingleIterationModule`'s simplification calls) rather than reimplementing them.
+`basic_config()` is intentionally trivial — it produces a working but weak SR engine in roughly 200 lines. `pysr_config()` calls into existing SymbolicRegression.jl modules where possible (`MutateModule.next_generation`, `AdaptiveParsimonyModule.update_frequencies!`, `MigrationModule.migrate!`, `ConstantOptimizationModule.optimize_constants`, `HallOfFameModule.calculate_pareto_frontier`, `SingleIterationModule`'s simplification calls) rather than reimplementing them.
 
 ## State Threading via the Blackboard
 
@@ -159,14 +159,14 @@ Per-iteration mutable state that some configs need (`RunningSearchStatistics`, t
 
 This is what makes "add a new tracked statistic" a pure config change with no skeleton edits: extend `init_state` to seed the key, extend `update_state` to maintain it, extend whichever choice-point function consumes it.
 
-## Can MinimalSR Reproduce SymbolicRegression.jl Exactly?
+## Can SkeletonSR Reproduce SymbolicRegression.jl Exactly?
 
-**Behaviorally: yes, with effort.** Every choice listed in the table above is replaceable. By delegating to existing SymbolicRegression.jl modules inside the `pysr_config()` functions, MinimalSR running with `pysr_config()` should produce SR runs whose hall-of-fame quality is statistically indistinguishable from the existing engine's on the same problem.
+**Behaviorally: yes, with effort.** Every choice listed in the table above is replaceable. By delegating to existing SymbolicRegression.jl modules inside the `pysr_config()` functions, SkeletonSR running with `pysr_config()` should produce SR runs whose hall-of-fame quality is statistically indistinguishable from the existing engine's on the same problem.
 
 **Bit-exact: no, not without significant work.** Three known sources of divergence:
-1. **RNG threading.** SymbolicRegression.jl uses Distributed.jl with per-worker RNG state seeded by worker id; MinimalSR (single-process, in-band loop) cannot match that exactly without simulating the same partitioning. A single-worker SR.jl run is reproducible against MinimalSR; a multi-worker SR.jl run is not.
-2. **Multi-output dispatch.** SymbolicRegression.jl runs one search per output column. MinimalSR v1 handles scalar `y` only; multi-output is left as a future config layer wrapping `equation_search`.
-3. **Worker-local birth counters.** SR.jl's `get_birth_order()` increments a per-worker counter. Single-process MinimalSR uses a global counter; survival-order behavior matches in the limit but not step-for-step.
+1. **RNG threading.** SymbolicRegression.jl uses Distributed.jl with per-worker RNG state seeded by worker id; SkeletonSR (single-process, in-band loop) cannot match that exactly without simulating the same partitioning. A single-worker SR.jl run is reproducible against SkeletonSR; a multi-worker SR.jl run is not.
+2. **Multi-output dispatch.** SymbolicRegression.jl runs one search per output column. SkeletonSR v1 handles scalar `y` only; multi-output is left as a future config layer wrapping `equation_search`.
+3. **Worker-local birth counters.** SR.jl's `get_birth_order()` increments a per-worker counter. Single-process SkeletonSR uses a global counter; survival-order behavior matches in the limit but not step-for-step.
 
 The parity test (`test/test_pysr_reproduction.jl`) therefore asserts **statistical parity over a fixed seed and a small problem** (e.g., median best-loss after N iterations across 5 seeds is within ε of SymbolicRegression.jl's run with `numprocs=0`). It does *not* assert exact tree equality.
 
@@ -177,13 +177,13 @@ The eventual payoff is using `evolve_pysr.py`-style infrastructure to evolve the
 ## Critical Files to Create / Read
 
 **Create:**
-- `MinimalSR.jl/Project.toml`
-- `MinimalSR.jl/src/{MinimalSR,Types,Search,Defaults,PySRConfig}.jl`
-- `MinimalSR.jl/test/{runtests,test_default,test_pysr_reproduction}.jl`
+- `SkeletonSR.jl/Project.toml`
+- `SkeletonSR.jl/src/{SkeletonSR,Types,Search,BasicSRConfig,PySRConfig}.jl`
+- `SkeletonSR.jl/test/{runtests,test_basic,test_pysr_reproduction}.jl`
 
 **Read & reuse from `SymbolicRegression.jl/src/` (do not modify):**
 - `Mutate.jl:177-359` — `next_generation` for `pysr_config().mutate`
-- `MutationFunctions.jl` — leaf-level mutation primitives for `default_config().mutate`
+- `MutationFunctions.jl` — leaf-level mutation primitives for `basic_config().mutate`
 - `AdaptiveParsimony.jl:20-93` — `RunningSearchStatistics` + `update_frequencies!`
 - `Migration.jl` — `migrate!` for `pysr_config().manage_populations`
 - `ConstantOptimization.jl:29-59` — `optimize_constants`
@@ -196,14 +196,14 @@ The eventual payoff is using `evolve_pysr.py`-style infrastructure to evolve the
 
 ## Implementation Phases
 
-1. **Skeleton + types + defaults.** Create `MinimalSR.jl` package, `Types.jl`, `Search.jl`, `Defaults.jl`. Test on a small problem (e.g., `y = x₁ + x₂² + sin(x₃)`); confirm the engine finds *something* even if weak. ~2 days.
+1. **Skeleton + types + defaults.** Create `SkeletonSR.jl` package, `Types.jl`, `Search.jl`, `BasicSRConfig.jl`. Test on a small problem (e.g., `y = x₁ + x₂² + sin(x₃)`); confirm the engine finds *something* even if weak. ~2 days.
 2. **PySR config.** Implement `pysr_config()` by delegating to SymbolicRegression.jl modules. Build the parity test. Iterate until statistical parity holds within ε on the chosen toy problem. ~3 days.
 3. **Multi-pop + migration in pysr_config.** Verify `manage_populations` matches SR.jl's migration semantics (frequency, fraction_replaced, hof_migration). Extend the parity test to use `populations > 1`. ~1 day.
 4. **Polish + documentation.** README explaining the skeleton, the two configs, and the blackboard pattern. Ready to be picked up later by an `evolve_minimalsr.py` driver. ~0.5 days.
 
 ## Verification
 
-- `julia --project=MinimalSR.jl -e 'using Pkg; Pkg.test()'` — runs both default and parity tests.
-- **Default test (`test_default.jl`)**: run `equation_search` with `default_config()` on `y = x₁ + x₂` for 50 iterations, assert HoF non-empty and best loss < some loose threshold.
+- `julia --project=SkeletonSR.jl -e 'using Pkg; Pkg.test()'` — runs both BasicSR and parity tests.
+- **Default test (`test_basic.jl`)**: run `equation_search` with `basic_config()` on `y = x₁ + x₂` for 50 iterations, assert HoF non-empty and best loss < some loose threshold.
 - **Parity test (`test_pysr_reproduction.jl`)**: run `pysr_config()` and SymbolicRegression.jl `equation_search` on the same toy problem with 5 fixed seeds (using `numprocs=0` for single-process SR.jl); assert median best-loss after N iterations is within ε of SR.jl's, and that the Pareto frontier complexities recovered are the same set.
 - **Smoke test for multi-pop migration**: with `n_populations=4`, confirm migration actually moves members between populations (a member from pop 1 ends up in pop 2 within ≤ 2 iterations).
