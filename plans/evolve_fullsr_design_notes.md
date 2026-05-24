@@ -125,24 +125,68 @@
   ...)` at startup. That way each evolve run can have its own SRConfig.jl on
   disk and `git diff` cleanly tracks what evolved.
 
-## Verifying parity (still TBD as of this writing)
+## Verifying parity — initial run results
 
-`compare_fullsr_baselines.py` is running on `splits/barely_unsolvable.txt`
-with `n_runs=10`, `max_evals=500_000`. The success criterion the user spelled
-out is: SkeletonSR + `PySRConfig` should match the real PySR on overall GT
-solve rate, and ideally also on per-task. Known structural gaps that could
-cause mismatch:
+`compare_fullsr_baselines.py` was run on `splits/barely_unsolvable.txt` with
+`n_runs=10`, `max_evals=500_000`, `pysr_wall_limit=600`. **Headline GT solve
+rates** (mean ± std over per-seed averages across 20 datasets × 10 seeds):
 
-1. `PySRConfig.jl` doesn't implement PySR's hall-of-fame migration with the
-   same scheduling — its `pysr_update_population` injects from per-population
-   tops *and* the archive each cycle, but the Poisson scheduling parameters
-   are hard-coded constants pulled out of `mini_pypysr_python.py`.
-2. The `pysr_mutation` table maps to a slightly different `mutation_weights`
-   distribution than the PySR Python defaults; perturbation factors etc.
-   match but the dict-driven sampling could differ in floating-point detail.
-3. No template-expression / parametric-expression support — irrelevant for
-   `barely_unsolvable.txt` but would matter on bench splits that exercise it.
+| engine    | mean   | std    |
+| --------- | ------ | ------ |
+| basicsr   | 0.1500 | 0.0707 |
+| pysrsr    | 0.2350 | 0.0580 |
+| real_pysr | 0.3300 | 0.0789 |
 
-If the eval shows a >5% GT-rate gap, the next debug step is to grep the
-per-task TSV for divergent tasks and run them at small `max_evals` with a
-fixed seed under both engines.
+(Outputs at `outputs/fullsr_baselines_v1/`. `comparison.json` and
+`per_task.tsv` carry the full breakdown.)
+
+**Observations**
+- `pysrsr` beats `basicsr` by +8.5pp — the PySR-style heuristics in
+  `PySRConfig.jl` are clearly doing something useful relative to BasicSR.
+- `real_pysr` beats `pysrsr` by +9.5pp — `PySRConfig.jl` is NOT yet a
+  drop-in match for the real PySR. The user's stated success criterion ("we
+  should match") is **not met yet**.
+- Per-task results vary widely:
+    * `feynman_II_34_29b`: real_pysr=0.8, pysrsr=0.1 — large miss
+    * `feynman_III_13_18`: real_pysr=0.8, pysrsr=0.4 — large miss
+    * `feynman_III_15_14`: real_pysr=0.6, pysrsr=1.0 — `pysrsr` *beats* PySR
+    * `feynman_III_14_14`: tied at 0.2
+
+  So the gap isn't uniform — `pysrsr` is genuinely better on some tasks,
+  worse on others. That's consistent with an algorithm that has the right
+  shape but different hyperparameters or different secondary behaviors.
+
+**Likely causes of the gap (ordered by my suspicion)**
+1. **Constant optimization.** SkeletonSR uses `Optim.NelderMead`; PySR
+   defaults to BFGS through `SymbolicRegression.jl`'s
+   `ConstantOptimization.jl`. NelderMead is much less effective on
+   continuous-loss landscapes with many parameters.
+2. **`max_evals` counting.** SkeletonSR increments `eval_count` once per
+   `evaluate_tree` call (including inside the constant-optimization inner
+   loop). Real PySR has a different bookkeeping convention — they're not
+   comparable units, so 500k SkeletonSR evals is *fewer* search steps than
+   500k PySR evals.
+3. **Hall-of-fame migration scheduling.** `pysr_update_population` uses
+   Poisson-scheduled HOF injection with hard-coded `lambda` values
+   (`0.00036`, `0.0614`). Real PySR also schedules migration but timing/rates
+   differ.
+4. **Mutation defaults differ.** `pysr_mutation`'s base weights look like
+   PySR defaults, but the data-aware mutation toggle, the per-iteration
+   reweighing in `pysr_update_state!` (frequency-based bias), and the cost
+   adjustment in `pysr_selection` could compound.
+5. **No template/parametric expressions.** Irrelevant for
+   `barely_unsolvable.txt` since those datasets are scalar — but worth
+   keeping in mind for broader benches.
+
+**Debugging plan (next session)**
+1. Pick the 3 biggest negative-gap tasks (`feynman_II_34_29b`,
+   `feynman_I_32_5`, `feynman_III_13_18`) and run both engines with a fixed
+   seed at small budgets (50k–100k evals) — instrument both to dump the
+   frontier after every 10k evals.
+2. Switch SkeletonSR's constant optimizer from Nelder-Mead to BFGS and
+   re-run the comparison. I expect that change alone to close ~half the gap.
+3. Audit `max_evals` semantics — make sure 500k SkeletonSR evals is at
+   least as much work as 500k PySR evals. Cheapest fix is to define both as
+   "fitness evaluations of distinct trees" and tighten the counting.
+4. If the gap is still >5pp, line up the Poisson migration parameters with
+   PySR's defaults explicitly.
