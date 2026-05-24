@@ -183,10 +183,56 @@ rates** (mean ± std over per-seed averages across 20 datasets × 10 seeds):
    `feynman_I_32_5`, `feynman_III_13_18`) and run both engines with a fixed
    seed at small budgets (50k–100k evals) — instrument both to dump the
    frontier after every 10k evals.
-2. Switch SkeletonSR's constant optimizer from Nelder-Mead to BFGS and
-   re-run the comparison. I expect that change alone to close ~half the gap.
+2. ~~Switch SkeletonSR's constant optimizer from Nelder-Mead to BFGS~~ —
+   tried; it regressed. See "BFGS attempt" below.
 3. Audit `max_evals` semantics — make sure 500k SkeletonSR evals is at
    least as much work as 500k PySR evals. Cheapest fix is to define both as
    "fitness evaluations of distinct trees" and tighten the counting.
 4. If the gap is still >5pp, line up the Poisson migration parameters with
    PySR's defaults explicitly.
+
+## BFGS attempt (and rollback)
+
+I tried replacing SkeletonSR's `Optim.NelderMead()` with `Optim.BFGS(;
+linesearch=BackTracking())` to match PySR's `ConstantOptimization.jl`
+default. Results (`outputs/fullsr_baselines_v4_bfgs/`, same eval setup as
+v1: 20 datasets × 10 seeds, max_evals=500k):
+
+| engine | v1 (NelderMead) | v4 (BFGS) | Δ |
+| --- | --- | --- | --- |
+| basicsr | 0.150 ± 0.071 | **0.125 ± 0.068** | −0.025 |
+| pysrsr | 0.235 ± 0.058 | **0.060 ± 0.062** | **−0.175** |
+
+The pysrsr regression is catastrophic. Diagnosis: the existing
+`optimize_constants` obj closure copies the tree on every call and returns
+`1e30` for invalid params; BFGS via Optim.jl is fragile in the face of that
+discontinuity, and any thrown error gets swallowed by the surrounding
+`try/catch` so constant optimization silently no-ops. BasicSR survives
+because its plain-MSE search can still find equations without CO; PySR-style
+relies heavily on CO + frequency-biased acceptance, so disabling CO
+collapses it.
+
+The change has been **reverted** but I left:
+- A new `optimizer_algorithm` kwarg on `optimize_constants` (default still
+  `NelderMead`) so a future caller can pass BFGS once the obj closure is
+  rewritten to be Optim-friendly.
+- A comment block in `pysr_mutation` documenting why the
+  `probability_negate_constant` inequality looks backward — it matches
+  upstream PySR `mutate_factor` exactly (with the 0.00743 default the
+  constant is negated ~99.3% of the time, despite the variable's name).
+
+**For a real BFGS attempt next session:**
+1. Pre-allocate the trial tree once and `set_constants!` in place — drop
+   the `copy(member.tree)` from the obj.
+2. Replace the `1e30` sentinel with `Inf`; Optim handles `Inf` better than a
+   finite penalty (no spurious gradients from the cliff).
+3. Wrap the inner `try` around `Optim.optimize` only; log the exception
+   rather than swallowing it so we notice when BFGS dies.
+4. Cap `f_calls_limit` at ~500 (not 10k) per CO call to avoid burning the
+   `max_evals` budget — PySR has the same nominal cap but BFGS rarely hits
+   it because it converges fast; ours hits it on every call because the
+   finite-diff fallback is wasteful on N constants.
+
+(`max_evals` accounting was the other suspected gap — confirmed to be
+1-for-1 between PySR and SkeletonSR; both count every loss call including
+CO inner calls. Not the culprit.)
