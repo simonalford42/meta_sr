@@ -1060,20 +1060,19 @@ def run_fullsr_worker(tasks_file: str, task_index: int, output_dir: str):
 
 
 def get_default_engine_kwargs() -> Dict[str, Any]:
-    """Defaults matching SkeletonSR's `skeleton_sr_config` defaults.
+    """Defaults matching the real PySR SRBench evaluation wrapper.
 
-    These mirror what `BasicSRConfig.fit_basic_sr(...)` would supply if no
-    kwargs were passed: 27-member populations, 31 populations, 100 outer
-    iterations, 380 inner cycles, maxsize 30, maxdepth 16, the same
-    binary/unary operators and SRBench-style constraints as PySR.
+    The comparison harness uses `parallel_eval_pysr.get_default_pysr_kwargs`
+    for real PySR, so SkeletonSR baselines should see the same population
+    geometry and tree limits before we compare algorithmic behavior.
     """
     return {
-        "population_size": 27,
-        "populations": 31,
+        "population_size": 33,
+        "populations": 15,
         "niterations": 100,
         "ncycles_per_iteration": 380,
-        "maxsize": 30,
-        "maxdepth": 16,
+        "maxsize": 40,
+        "maxdepth": 10,
         "binary_operators": ["+", "-", "*", "/"],
         "unary_operators": ["sin", "cos", "exp", "log", "sqrt", "square"],
         "constants": [],
