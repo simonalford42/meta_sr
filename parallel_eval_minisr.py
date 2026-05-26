@@ -624,7 +624,7 @@ export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export JULIA_NUM_THREADS=1
 
-cd "$SLURM_SUBMIT_DIR"
+cd "{self.repo_root}"
 export PYTHONPATH="{self.repo_root}:$SLURM_SUBMIT_DIR:$PYTHONPATH"
 
 unset JULIA_PROJECT
@@ -710,7 +710,7 @@ export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export JULIA_NUM_THREADS=1
 
-cd "$SLURM_SUBMIT_DIR"
+cd "{self.repo_root}"
 export PYTHONPATH="{self.repo_root}:$SLURM_SUBMIT_DIR:$PYTHONPATH"
 
 # Point juliacall/juliapkg at the repo-local Julia environment (same as parallel_eval_pysr).
