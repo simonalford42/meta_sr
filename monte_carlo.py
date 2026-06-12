@@ -147,7 +147,7 @@ def _apply_selection_fn_chunked(batch_selection_fn, mu, sigma, N, max_rows):
 
 
 def batch_kg_select_arms(mu, sigma, N, batch_selection_fn, n_quad=8,
-                         prune_topk=None, max_rows=200_000):
+                         prune_topk=None, prune_z=None, max_rows=200_000):
     """
     One-step knowledge-gradient choice of which arm to reevaluate, batched over
     M posterior states.
@@ -168,7 +168,16 @@ def batch_kg_select_arms(mu, sigma, N, batch_selection_fn, n_quad=8,
     prune_topk: if the selection rule only puts mass on the top-`prune_topk`
     arms by mean (e.g. topk_tourney_batch_selection_fn), arms whose fantasy mean
     cannot reach the current k-th largest mean have exactly zero KG value (the
-    top-k set and its means are unchanged in every fantasy), so they are skipped.
+    top-k set and its means are unchanged in every fantasy) and are skipped.
+    Also enables exact column pruning: arms that can never appear in any
+    fantasy's top-k carry zero tournament probability, so they are dropped from
+    the selection-fn input entirely (results unchanged, cost no longer scales
+    with archive size).
+
+    prune_z: candidacy radius in sigma_tilde units. None (default) uses the
+    largest quadrature node (exact — only provably-zero-KG arms are skipped).
+    A value like 2.3 additionally skips arms with only a tail probability of
+    entering the top-k; their KG value is negligible but not exactly zero.
     """
     mu = np.asarray(mu, dtype=float)
     N = np.asarray(N, dtype=float)
@@ -178,34 +187,52 @@ def batch_kg_select_arms(mu, sigma, N, batch_selection_fn, n_quad=8,
     sigma_tilde = sigma / np.sqrt(N * (N + 1.0))  # [M, K]
 
     if prune_topk is not None and prune_topk < K:
-        # Largest reachable upward shift of mu_a across quadrature nodes.
-        delta = np.sqrt(2.0) * sigma_tilde * nodes.max()
+        z = np.sqrt(2.0) * nodes.max() if prune_z is None else prune_z
         kth = np.partition(mu, K - prune_topk, axis=1)[:, K - prune_topk]
-        cand = (mu + delta) >= kth[:, None]  # [M, K]
+        cand = (mu + z * sigma_tilde) >= kth[:, None]  # [M, K]
+        # Columns that some row's selection can put mass on: current top-k
+        # members or candidates (a fantasy only ever moves one candidate's mean).
+        keep = (mu >= kth[:, None]).any(axis=0) | cand.any(axis=0)
+        cols = np.flatnonzero(keep)
     else:
         cand = np.ones((M, K), dtype=bool)
+        cols = np.arange(K)
 
-    best_arm = np.zeros(M, dtype=int)
+    mu_s = mu[:, cols]
+    N_s = N[:, cols]
+    st_s = sigma_tilde[:, cols]
+    cand_s = cand[:, cols]
+    Ks = cols.size
+
+    # Flatten all (row, candidate-arm) fantasy pairs; row-major order.
+    r_idx, a_idx = np.nonzero(cand_s)
+    P = r_idx.size
+    ev_all = np.empty(P)
+    pair_chunk = max(1, max_rows // n_quad)
+    for s in range(0, P, pair_chunk):
+        rs = r_idx[s:s + pair_chunk]
+        as_ = a_idx[s:s + pair_chunk]
+        C = rs.size
+        mu_f = np.broadcast_to(mu_s[rs, None, :], (C, n_quad, Ks)).copy()
+        mu_f[np.arange(C), :, as_] = (mu_s[rs, as_][:, None]
+                                      + np.sqrt(2.0) * st_s[rs, as_][:, None]
+                                      * nodes[None, :])
+        N_f = np.broadcast_to(N_s[rs, None, :], (C, n_quad, Ks)).copy()
+        N_f[np.arange(C), :, as_] += 1.0
+        flat_mu = mu_f.reshape(C * n_quad, Ks)
+        probs = batch_selection_fn(flat_mu, sigma, N_f.reshape(C * n_quad, Ks))
+        V = (probs * flat_mu).sum(axis=1).reshape(C, n_quad)
+        ev_all[s:s + C] = V @ w
+
+    # Segmented argmax over each row's pairs (every row has >= prune_topk
+    # candidates since top-k members always qualify).
     best_ev = np.full(M, -np.inf)
-    for a in range(K):
-        rows = np.where(cand[:, a])[0]
-        if rows.size == 0:
-            continue
-        R = rows.size
-        mu_f = np.broadcast_to(mu[rows, None, :], (R, n_quad, K)).copy()
-        mu_f[:, :, a] = (mu[rows, a, None]
-                         + np.sqrt(2.0) * sigma_tilde[rows, a, None] * nodes[None, :])
-        N_f = np.broadcast_to(N[rows, None, :], (R, n_quad, K)).copy()
-        N_f[:, :, a] += 1.0
-        flat_mu = mu_f.reshape(R * n_quad, K)
-        flat_N = N_f.reshape(R * n_quad, K)
-        probs = _apply_selection_fn_chunked(batch_selection_fn, flat_mu, sigma,
-                                            flat_N, max_rows)
-        V = (probs * flat_mu).sum(axis=1).reshape(R, n_quad)
-        ev = V @ w  # [R]
-        upd = ev > best_ev[rows]
-        best_arm[rows[upd]] = a
-        best_ev[rows[upd]] = ev[upd]
+    np.maximum.at(best_ev, r_idx, ev_all)
+    hit = np.flatnonzero(ev_all >= best_ev[r_idx])
+    _, first = np.unique(r_idx[hit], return_index=True)
+    sel = hit[first]
+    best_arm = np.zeros(M, dtype=int)
+    best_arm[r_idx[sel]] = cols[a_idx[sel]]
     return best_arm
 
 
@@ -228,11 +255,12 @@ def ttts_reeval_policy(beta=0.5, max_tries=1000):
     return policy
 
 
-def kg_reeval_policy(batch_selection_fn, n_quad=8, prune_topk=None):
+def kg_reeval_policy(batch_selection_fn, n_quad=8, prune_topk=None, prune_z=None):
     """Sequential KG allocation matched to the given parent-selection rule."""
     def policy(mu, sigma, N, rng):
         return batch_kg_select_arms(mu, sigma, N, batch_selection_fn,
-                                    n_quad=n_quad, prune_topk=prune_topk)
+                                    n_quad=n_quad, prune_topk=prune_topk,
+                                    prune_z=prune_z)
     return policy
 
 
