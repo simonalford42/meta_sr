@@ -37,11 +37,6 @@ DEFAULT_NITERATIONS = 500000
 DEFAULT_MAX_SIZE = 30
 DEFAULT_N = 10000
 DEFAULT_BATCH_SIZE = 1000
-DEFAULT_SR_RESIDUAL = False
-DEFAULT_RESIDUAL = False
-DEFAULT_P = 0.5
-DEFAULT_PREVIOUS_SR_PATH = "sr_results/92985.pkl"
-DEFAULT_EQ_BOUND_MSE_THRESHOLD = 1
 
 
 def _json_default(obj: Any) -> Any:
@@ -150,14 +145,11 @@ def export_data(config_path: Path) -> None:
         max_size=int(config["max_size"]),
         seed=int(config["seed"]),
         target=config["target"],
-        residual=bool(config["residual"]),
+        residual=False,
         n=int(config["n"]),
         batch_size=int(config["batch_size"]),
-        sr_residual=bool(config["sr_residual"]),
+        sr_residual=False,
         loss_fn=config["loss_fn"],
-        p=float(config["p"]),
-        previous_sr_path=config["previous_sr_path"],
-        eq_bound_mse_threshold=float(config["eq_bound_mse_threshold"]),
     )
     sr_config = planet_sr.get_config(sr_args)
     X_train, y_train, variable_names, nn_std_arr = planet_sr.load_inputs_and_targets(sr_config)
@@ -584,11 +576,6 @@ def get_config(args: argparse.Namespace) -> Dict[str, Any]:
         "n": DEFAULT_N,
         "batch_size": DEFAULT_BATCH_SIZE,
         "seed": int(args.seed),
-        "residual": DEFAULT_RESIDUAL,
-        "sr_residual": DEFAULT_SR_RESIDUAL,
-        "p": DEFAULT_P,
-        "previous_sr_path": DEFAULT_PREVIOUS_SR_PATH,
-        "eq_bound_mse_threshold": DEFAULT_EQ_BOUND_MSE_THRESHOLD,
         "num_cpus": slurm_num_cpus(),
         "no_wandb": bool(args.no_log),
         "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
