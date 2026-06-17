@@ -26,6 +26,22 @@ import numpy as np
 META_ROOT = Path(__file__).resolve().parent
 DEFAULT_PLANET_ROOT = META_ROOT.parent / "planet_eqs"
 CONDA_SH = Path("/home/sca63/mambaforge/etc/profile.d/conda.sh")
+PHASE_ENV = "PLANET_EVAL_PHASE"
+CONFIG_ENV = "PLANET_EVAL_CONFIG"
+
+DEFAULT_NN_VERSION = 11003
+DEFAULT_TARGET = "f2"
+DEFAULT_LOSS_FN = "mse"
+DEFAULT_TIME_IN_HOURS = 8
+DEFAULT_NITERATIONS = 500000
+DEFAULT_MAX_SIZE = 30
+DEFAULT_N = 10000
+DEFAULT_BATCH_SIZE = 1000
+DEFAULT_SR_RESIDUAL = False
+DEFAULT_RESIDUAL = False
+DEFAULT_P = 0.5
+DEFAULT_PREVIOUS_SR_PATH = "sr_results/92985.pkl"
+DEFAULT_EQ_BOUND_MSE_THRESHOLD = 1
 
 
 def _json_default(obj: Any) -> Any:
@@ -81,13 +97,23 @@ def _safe_float(x: Any) -> Optional[float]:
     return value if math.isfinite(value) else None
 
 
+def slurm_num_cpus(default: int = 10) -> int:
+    """Mirror planet_eqs/sr.py's PySR worker count from the SLURM allocation."""
+    try:
+        return int(os.environ.get("SLURM_CPUS_ON_NODE")) * int(
+            os.environ.get("SLURM_JOB_NUM_NODES")
+        )
+    except (TypeError, ValueError):
+        return default
+
+
 def build_planet_sr_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
     """Match the default planet_eqs/sr.py PySR configuration."""
-    ntasks = int(config["ntasks"])
+    num_cpus = int(config["num_cpus"])
     equation_file = str(Path(config["output_dir"]) / "planet_pysr_equations.csv")
     return {
-        "procs": ntasks,
-        "populations": 3 * ntasks,
+        "procs": num_cpus,
+        "populations": 3 * num_cpus,
         "batching": True,
         "batch_size": int(config["batch_size"]),
         "equation_file": equation_file,
@@ -124,14 +150,14 @@ def export_data(config_path: Path) -> None:
         max_size=int(config["max_size"]),
         seed=int(config["seed"]),
         target=config["target"],
-        residual=False,
+        residual=bool(config["residual"]),
         n=int(config["n"]),
         batch_size=int(config["batch_size"]),
-        sr_residual=False,
+        sr_residual=bool(config["sr_residual"]),
         loss_fn=config["loss_fn"],
-        p=0.5,
-        previous_sr_path="sr_results/92985.pkl",
-        eq_bound_mse_threshold=1,
+        p=float(config["p"]),
+        previous_sr_path=config["previous_sr_path"],
+        eq_bound_mse_threshold=float(config["eq_bound_mse_threshold"]),
     )
     sr_config = planet_sr.get_config(sr_args)
     X_train, y_train, variable_names, nn_std_arr = planet_sr.load_inputs_and_targets(sr_config)
@@ -504,27 +530,20 @@ def log_planet_wandb(config: Dict[str, Any], result: Dict[str, Any]) -> None:
 
 def run_worker_phase(worker: str, conda_env: str, cwd: Path, config_path: Path) -> None:
     script_path = Path(__file__).resolve()
+    env = os.environ.copy()
+    env[PHASE_ENV] = worker
+    env[CONFIG_ENV] = str(config_path)
     shell_cmd = " && ".join(
         [
             "set -euo pipefail",
             f"source {shlex.quote(str(CONDA_SH))}",
             f"conda activate {shlex.quote(conda_env)}",
             f"cd {shlex.quote(str(cwd))}",
-            " ".join(
-                [
-                    "python",
-                    "-u",
-                    shlex.quote(str(script_path)),
-                    "--worker",
-                    shlex.quote(worker),
-                    "--config",
-                    shlex.quote(str(config_path)),
-                ]
-            ),
+            f"python -u {shlex.quote(str(script_path))}",
         ]
     )
     print(f"\n[planet_eval] running {worker} in conda env {conda_env}", flush=True)
-    subprocess.run(["bash", "-lc", shell_cmd], cwd=str(META_ROOT), check=True)
+    subprocess.run(["bash", "-lc", shell_cmd], cwd=str(META_ROOT), env=env, check=True)
 
 
 def summarize_result(output_dir: Path) -> None:
@@ -539,41 +558,53 @@ def summarize_result(output_dir: Path) -> None:
     print(f"  equation: {result.get('equation')}", flush=True)
 
 
-def driver(args: argparse.Namespace) -> None:
+def get_config(args: argparse.Namespace) -> Dict[str, Any]:
     _repo_imports()
     from utils import resolve_run_dir
+
+    if args.baseline and args.evolve_results:
+        raise SystemExit("--baseline and --evolve-results are mutually exclusive")
 
     output_dir = Path(resolve_run_dir(args.results_dir, label="planet_eval")).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     evolve_results = str(Path(args.evolve_results).expanduser()) if args.evolve_results else None
-    config = {
+    return {
         "output_dir": str(output_dir),
         "meta_root": str(META_ROOT),
-        "planet_root": str(Path(args.planet_root).expanduser().resolve()),
+        "planet_root": str(DEFAULT_PLANET_ROOT.expanduser().resolve()),
         "baseline": bool(args.baseline or not evolve_results),
         "evolve_results": evolve_results,
-        "nn_version": int(args.nn_version),
-        "target": args.target,
-        "loss_fn": args.loss_fn,
+        "nn_version": DEFAULT_NN_VERSION,
+        "target": DEFAULT_TARGET,
+        "loss_fn": DEFAULT_LOSS_FN,
         "max_size": int(args.max_size),
         "time_in_hours": float(args.time_in_hours),
-        "niterations": int(args.niterations),
-        "n": int(args.n),
-        "batch_size": int(args.batch_size),
+        "niterations": DEFAULT_NITERATIONS,
+        "n": DEFAULT_N,
+        "batch_size": DEFAULT_BATCH_SIZE,
         "seed": int(args.seed),
-        "partition": args.partition,
-        "slurm_time": args.slurm_time,
-        "mem": args.mem,
-        "ntasks": int(args.ntasks),
-        "no_wandb": bool(args.no_wandb),
+        "residual": DEFAULT_RESIDUAL,
+        "sr_residual": DEFAULT_SR_RESIDUAL,
+        "p": DEFAULT_P,
+        "previous_sr_path": DEFAULT_PREVIOUS_SR_PATH,
+        "eq_bound_mse_threshold": DEFAULT_EQ_BOUND_MSE_THRESHOLD,
+        "num_cpus": slurm_num_cpus(),
+        "no_wandb": bool(args.no_log),
         "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+        "slurm_name": os.environ.get("SLURM_JOB_NAME"),
     }
+
+
+def driver(args: argparse.Namespace) -> None:
+    config = get_config(args)
+    output_dir = Path(config["output_dir"])
     config_path = output_dir / "planet_eval_config.json"
     _write_json(config_path, config)
 
     print(f"Run directory: {output_dir}", flush=True)
     print(f"Config: {config_path}", flush=True)
+    print(f"PySR workers: {config['num_cpus']}", flush=True)
     if args.dry_run:
         print("Dry run requested; not running planet_eval worker phases.", flush=True)
         return
@@ -589,46 +620,40 @@ def parse_args() -> argparse.Namespace:
         description="Evaluate planet_eqs PySR baseline or evolved operators inside planet_eval.sh.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--baseline", action="store_true", help="Run baseline PySR.")
-    mode.add_argument("--evolve-results", type=str, default=None, help="Path/run id with run_data.json.")
-
-    parser.add_argument("--planet-root", type=str, default=str(DEFAULT_PLANET_ROOT))
-    parser.add_argument("--nn-version", type=int, default=11003)
-    parser.add_argument("--target", type=str, default="f2")
-    parser.add_argument("--loss-fn", type=str, default="mse")
-    parser.add_argument("--max-size", type=int, default=30)
-    parser.add_argument("--time-in-hours", type=float, default=8)
-    parser.add_argument("--niterations", type=int, default=500000)
-    parser.add_argument("--n", type=int, default=10000)
-    parser.add_argument("--batch-size", type=int, default=1000)
+    parser.add_argument("--evolve-results", type=str, default=None, help="Path/run id with run_data.json.")
+    parser.add_argument("--baseline", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--max-size", "--max_size", dest="max_size", type=int, default=DEFAULT_MAX_SIZE)
+    parser.add_argument(
+        "--time-in-hours",
+        "--time_in_hours",
+        dest="time_in_hours",
+        type=float,
+        default=DEFAULT_TIME_IN_HOURS,
+    )
     parser.add_argument("--seed", type=int, default=0)
-
-    parser.add_argument("--partition", type=str, default="default_partition", help=argparse.SUPPRESS)
-    parser.add_argument("--slurm-time", type=str, default="09:00:00", help=argparse.SUPPRESS)
-    parser.add_argument("--mem", type=str, default="200G", help=argparse.SUPPRESS)
-    parser.add_argument("--ntasks", type=int, default=32)
-    parser.add_argument("--poll-seconds", type=int, default=60, help=argparse.SUPPRESS)
-    parser.add_argument("--results-dir", type=str, default=None)
-    parser.add_argument("--no-wandb", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
-
-    parser.add_argument("--worker", choices=["export-data", "fit-eval"], default=None)
-    parser.add_argument("--config", type=str, default=None)
+    parser.add_argument("--no-log", "--no_log", dest="no_log", action="store_true", help="disable wandb logging")
+    parser.add_argument("--results-dir", type=str, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--no-wandb", dest="no_log", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
 def main() -> None:
-    args = parse_args()
-    if args.worker:
-        if not args.config:
-            raise SystemExit("--worker requires --config")
-        config_path = Path(args.config).expanduser().resolve()
-        if args.worker == "export-data":
+    phase = os.environ.pop(PHASE_ENV, None)
+    if phase:
+        config_raw = os.environ.pop(CONFIG_ENV, None)
+        if not config_raw:
+            raise SystemExit(f"{PHASE_ENV} requires {CONFIG_ENV}")
+        config_path = Path(config_raw).expanduser().resolve()
+        if phase == "export-data":
             export_data(config_path)
-        elif args.worker == "fit-eval":
+        elif phase == "fit-eval":
             fit_eval(config_path)
+        else:
+            raise SystemExit(f"Unknown {PHASE_ENV}: {phase}")
         return
+
+    args = parse_args()
     driver(args)
 
 
