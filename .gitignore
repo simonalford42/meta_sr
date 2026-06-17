@@ -21,3 +21,4 @@ wandb
 .julia_depot/
 .juliapkg_env/
 openevolve_noise_exp/outputs
+planet_eval_data.pkl

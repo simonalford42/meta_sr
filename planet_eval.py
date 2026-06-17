@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Evaluate baseline/evolved PySR on the planet_eqs 11003 f2 task.
+"""Evaluate baseline/evolved PySR on the planet_eqs 24880 f2 task.
 
 Submit this through planet_eval.sh, which requests the SLURM allocation
-matching planet_eqs/sr.sh (-N 1, -n 32, 200G, default_partition). Driver mode
-runs inside that allocation: it first uses the new_bnn environment to export
-the 11003 NN-derived SR arrays, then uses the meta_sr environment to run PySR
-and log resonant-test metrics to the meta-sr wandb project.
+matching planet_eqs/sr.sh (-N 1, -n 32, 200G, default_partition). The
+pre-exported planet_eval_data.pkl cache is created once outside this script;
+this script only runs PySR and logs resonant-test metrics.
 """
 
 from __future__ import annotations
@@ -14,22 +13,18 @@ import argparse
 import json
 import math
 import os
-import shlex
-import subprocess
+import pickle
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
 
 META_ROOT = Path(__file__).resolve().parent
-DEFAULT_PLANET_ROOT = META_ROOT.parent / "planet_eqs"
-CONDA_SH = Path("/home/sca63/mambaforge/etc/profile.d/conda.sh")
-PHASE_ENV = "PLANET_EVAL_PHASE"
-CONFIG_ENV = "PLANET_EVAL_CONFIG"
+PLANET_EVAL_DATA_PATH = META_ROOT / "planet_eval_data.pkl"
 
-DEFAULT_NN_VERSION = 11003
+DEFAULT_NN_VERSION = 24880
 DEFAULT_TARGET = "f2"
 DEFAULT_LOSS_FN = "mse"
 DEFAULT_TIME_IN_HOURS = 8
@@ -63,12 +58,6 @@ def _read_json(path: Path) -> Dict[str, Any]:
 def _repo_imports() -> None:
     if str(META_ROOT) not in sys.path:
         sys.path.insert(0, str(META_ROOT))
-
-
-def _planet_imports(planet_root: Path) -> None:
-    if str(planet_root) not in sys.path:
-        sys.path.insert(0, str(planet_root))
-    os.chdir(planet_root)
 
 
 def _method_label(config: Dict[str, Any]) -> str:
@@ -120,94 +109,6 @@ def build_planet_sr_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
         "ncyclesperiteration": 1000,
         "random_state": int(config["seed"]),
     }
-
-
-def export_data(config_path: Path) -> None:
-    """Run under new_bnn: save train and resonant-test arrays from planet_eqs."""
-    config = _read_json(config_path)
-    planet_root = Path(config["planet_root"]).expanduser().resolve()
-    output_dir = Path(config["output_dir"]).expanduser().resolve()
-    cache_dir = output_dir / "planet_data"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-
-    _planet_imports(planet_root)
-
-    import torch
-    import sr as planet_sr
-    import spock_reg_model
-
-    sr_args = argparse.Namespace(
-        no_log=True,
-        nn_version=int(config["nn_version"]),
-        version=0,
-        time_in_hours=float(config["time_in_hours"]),
-        niterations=int(config["niterations"]),
-        max_size=int(config["max_size"]),
-        seed=int(config["seed"]),
-        target=config["target"],
-        residual=False,
-        n=int(config["n"]),
-        batch_size=int(config["batch_size"]),
-        sr_residual=False,
-        loss_fn=config["loss_fn"],
-    )
-    sr_config = planet_sr.get_config(sr_args)
-    X_train, y_train, variable_names, nn_std_arr = planet_sr.load_inputs_and_targets(sr_config)
-
-    model = spock_reg_model.load(version=int(config["nn_version"]))
-    model.eval()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    model.make_dataloaders(train=True, plot=True)
-    dataloader = model._val_dataloader
-
-    summaries: List[np.ndarray] = []
-    truths: List[np.ndarray] = []
-    with torch.no_grad():
-        for x_batch, y_batch in dataloader:
-            out = model(
-                x_batch.to(device),
-                noisy_val=False,
-                deterministic=True,
-                return_intermediates=True,
-            )
-            summaries.append(out["summary_stats"].detach().cpu().numpy())
-            truths.append(y_batch.detach().cpu().numpy())
-
-    X_test = np.concatenate(summaries, axis=0).astype(np.float32)
-    y_test = np.concatenate(truths, axis=0).astype(np.float32)
-
-    data_path = cache_dir / "planet_sr_data.npz"
-    np.savez_compressed(
-        data_path,
-        X_train=np.asarray(X_train, dtype=np.float32),
-        y_train=np.asarray(y_train, dtype=np.float32),
-        X_test=X_test,
-        y_test=y_test,
-        nn_std_arr=(
-            np.asarray(nn_std_arr, dtype=np.float32)
-            if nn_std_arr is not None
-            else np.asarray([], dtype=np.float32)
-        ),
-    )
-    _write_json(
-        cache_dir / "planet_sr_data.json",
-        {
-            "data_path": str(data_path),
-            "nn_version": config["nn_version"],
-            "target": config["target"],
-            "loss_fn": config["loss_fn"],
-            "n_train": int(np.asarray(X_train).shape[0]),
-            "n_test": int(X_test.shape[0]),
-            "n_features": int(X_test.shape[1]),
-            "variable_names": list(variable_names),
-            "train_shape": list(np.asarray(X_train).shape),
-            "target_shape": list(np.asarray(y_train).shape),
-            "test_shape": list(X_test.shape),
-            "test_truth_shape": list(y_test.shape),
-        },
-    )
-    print(f"Saved planet arrays to {data_path}", flush=True)
 
 
 def safe_log_erf_np(x: np.ndarray) -> np.ndarray:
@@ -299,40 +200,41 @@ def build_method(config: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]
     if not config.get("evolve_results"):
         return base_kwargs, {}, method_meta
 
-    from evaluate_new_pysr import build_evolve_kwargs, load_evolve_results
-    from parallel_eval_pysr import get_default_mutation_weights
+    from baseline_loader import load_baseline_bundle
 
     source = str(Path(config["evolve_results"]).expanduser())
-    method = load_evolve_results(source, None)
-    weights, pysr_kwargs, extra_code, items = build_evolve_kwargs(
-        method,
-        get_default_mutation_weights(),
-        base_kwargs,
-    )
-    allow_custom = bool(extra_code.get("allow_custom_mutations", False))
+    bundle = load_baseline_bundle(source)
+    cfg = bundle.to_pysr_config(base_kwargs)
+    allow_custom = bool(cfg.allow_custom_mutations)
+    extra_code = {
+        "custom_mutation_code": cfg.custom_mutation_code,
+        "custom_survival_code": cfg.custom_survival_code,
+        "custom_selection_code": cfg.custom_selection_code,
+        "custom_loss_code": cfg.custom_loss_code,
+        "allow_custom_mutations": allow_custom,
+    }
     mutation_kwargs = {}
-    for key, value in weights.items():
+    for key, value in cfg.mutation_weights.items():
         if not key.startswith("weight_"):
             key = f"weight_{key}"
         if "custom_mutation" in key and not allow_custom:
             continue
         mutation_kwargs[key] = value
-    pysr_kwargs = {**mutation_kwargs, **pysr_kwargs}
+    pysr_kwargs = {**mutation_kwargs, **cfg.pysr_kwargs}
 
     method_meta = {
         "mode": "evolve",
         "source": source,
         "operators": [
             {
-                "operator_type": item.operator_type,
-                "name": item.name,
-                "generation": item.generation,
-                "train_score": item.train_score,
-                "weight": item.weight,
+                "operator_type": t,
+                "name": op.name,
+                "generation": op.generation,
+                "weight": op.weight,
             }
-            for item in items
+            for t, op in bundle.operators.items() if op is not None
         ],
-        "best_hparams": items[0].best_hparams,
+        "best_hparams": bundle.best_hparams,
     }
     return pysr_kwargs, extra_code, method_meta
 
@@ -363,18 +265,45 @@ def _load_dynamic_code(extra_code: Dict[str, Any]) -> None:
             pass
 
 
-def fit_eval(config_path: Path) -> None:
-    """Run under meta_sr: fit PySR, evaluate resonant test, log wandb table."""
+def load_planet_eval_data(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Missing {path}. Build it once with: "
+            "conda activate new_bnn && python scripts/export_planet_eval_data.py"
+        )
+
+    with open(path, "rb") as f:
+        data = pickle.load(f)
+
+    meta = data.get("meta", {})
+    expected = {
+        "nn_version": DEFAULT_NN_VERSION,
+        "target": DEFAULT_TARGET,
+        "loss_fn": DEFAULT_LOSS_FN,
+        "n": DEFAULT_N,
+        "batch_size": DEFAULT_BATCH_SIZE,
+    }
+    mismatches = {
+        key: (meta.get(key), value)
+        for key, value in expected.items()
+        if meta.get(key) != value
+    }
+    if mismatches:
+        raise ValueError(f"{path} metadata does not match planet_eval.py defaults: {mismatches}")
+
+    return data
+
+
+def fit_eval(config: Dict[str, Any]) -> None:
+    """Fit PySR, evaluate resonant test, log wandb table."""
     _repo_imports()
-    config = _read_json(config_path)
     output_dir = Path(config["output_dir"]).expanduser().resolve()
-    data_meta = _read_json(output_dir / "planet_data" / "planet_sr_data.json")
-    data = np.load(data_meta["data_path"], allow_pickle=True)
+    data = load_planet_eval_data(Path(config["data_path"]).expanduser().resolve())
     X_train = np.asarray(data["X_train"], dtype=np.float32)
     y_train = np.asarray(data["y_train"], dtype=np.float32).reshape(-1)
     X_test = np.asarray(data["X_test"], dtype=np.float32)
     y_test = np.asarray(data["y_test"], dtype=np.float32)
-    variable_names = list(data_meta["variable_names"])
+    variable_names = list(data["variable_names"])
 
     from parallel_eval_pysr import _import_pysr_regressor
 
@@ -520,24 +449,6 @@ def log_planet_wandb(config: Dict[str, Any], result: Dict[str, Any]) -> None:
     finish_wandb(run)
 
 
-def run_worker_phase(worker: str, conda_env: str, cwd: Path, config_path: Path) -> None:
-    script_path = Path(__file__).resolve()
-    env = os.environ.copy()
-    env[PHASE_ENV] = worker
-    env[CONFIG_ENV] = str(config_path)
-    shell_cmd = " && ".join(
-        [
-            "set -euo pipefail",
-            f"source {shlex.quote(str(CONDA_SH))}",
-            f"conda activate {shlex.quote(conda_env)}",
-            f"cd {shlex.quote(str(cwd))}",
-            f"python -u {shlex.quote(str(script_path))}",
-        ]
-    )
-    print(f"\n[planet_eval] running {worker} in conda env {conda_env}", flush=True)
-    subprocess.run(["bash", "-lc", shell_cmd], cwd=str(META_ROOT), env=env, check=True)
-
-
 def summarize_result(output_dir: Path) -> None:
     result_path = output_dir / "planet_eval_result.json"
     if not result_path.exists():
@@ -564,7 +475,7 @@ def get_config(args: argparse.Namespace) -> Dict[str, Any]:
     return {
         "output_dir": str(output_dir),
         "meta_root": str(META_ROOT),
-        "planet_root": str(DEFAULT_PLANET_ROOT.expanduser().resolve()),
+        "data_path": str(PLANET_EVAL_DATA_PATH),
         "baseline": bool(args.baseline or not evolve_results),
         "evolve_results": evolve_results,
         "nn_version": DEFAULT_NN_VERSION,
@@ -591,14 +502,14 @@ def driver(args: argparse.Namespace) -> None:
 
     print(f"Run directory: {output_dir}", flush=True)
     print(f"Config: {config_path}", flush=True)
+    print(f"Data: {config['data_path']}", flush=True)
     print(f"PySR workers: {config['num_cpus']}", flush=True)
     if args.dry_run:
-        print("Dry run requested; not running planet_eval worker phases.", flush=True)
+        print("Dry run requested; not fitting PySR.", flush=True)
         return
 
     print(f"planet_eval job {os.environ.get('SLURM_JOB_ID', 'local')} on {os.uname().nodename}", flush=True)
-    run_worker_phase("export-data", "new_bnn", Path(config["planet_root"]), config_path)
-    run_worker_phase("fit-eval", "meta_sr", META_ROOT, config_path)
+    fit_eval(config)
     summarize_result(output_dir)
 
 
@@ -609,14 +520,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--evolve-results", type=str, default=None, help="Path/run id with run_data.json.")
     parser.add_argument("--baseline", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--max-size", "--max_size", dest="max_size", type=int, default=DEFAULT_MAX_SIZE)
-    parser.add_argument(
-        "--time-in-hours",
-        "--time_in_hours",
-        dest="time_in_hours",
-        type=float,
-        default=DEFAULT_TIME_IN_HOURS,
-    )
+    parser.add_argument("--max-size", type=int, default=DEFAULT_MAX_SIZE)
+    parser.add_argument("--time-in-hours", type=float, default=DEFAULT_TIME_IN_HOURS)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--no-log", "--no_log", dest="no_log", action="store_true", help="disable wandb logging")
     parser.add_argument("--results-dir", type=str, default=None, help=argparse.SUPPRESS)
@@ -626,20 +531,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    phase = os.environ.pop(PHASE_ENV, None)
-    if phase:
-        config_raw = os.environ.pop(CONFIG_ENV, None)
-        if not config_raw:
-            raise SystemExit(f"{PHASE_ENV} requires {CONFIG_ENV}")
-        config_path = Path(config_raw).expanduser().resolve()
-        if phase == "export-data":
-            export_data(config_path)
-        elif phase == "fit-eval":
-            fit_eval(config_path)
-        else:
-            raise SystemExit(f"Unknown {PHASE_ENV}: {phase}")
-        return
-
     args = parse_args()
     driver(args)
 
