@@ -14,6 +14,7 @@ import json
 import importlib
 import re
 import tempfile
+import time
 import traceback
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
@@ -25,6 +26,7 @@ from julia_env import (
     clear_future_mtime_pidfiles,
     clear_stale_juliapkg_lock,
     configure_juliapkg_project,
+    _redirect_fds_to_file,
 )
 
 
@@ -201,6 +203,7 @@ def _build_pysr_cache_entry(
         "dataset_name": spec.dataset_name,
         "r2_score": result.r2_score,
         "gt_match_score": result.gt_match_score,
+        "gt_matched_equation": result.gt_matched_equation,
         "best_equation": result.best_equation,
         "best_loss": result.best_loss,
         "error": result.error,
@@ -580,6 +583,11 @@ class PySRTaskResult:
     best_equation: Optional[str]  # Best equation found
     best_loss: float  # Loss of best equation
     gt_match_score: Optional[float] = None  # 1.0 if any frontier expression matches GT else 0.0
+    # The frontier expression that matched GT (when gt_match_score == 1.0).
+    # Lets evolve_pysr.py log "this is the expression we're claiming solved the
+    # task," which is generally different from `best_equation` (PySR's
+    # get_best() pick by complexity tradeoff).
+    gt_matched_equation: Optional[str] = None
     error: Optional[str] = None
     run_index: int = 0
     timed_out: bool = False
@@ -602,6 +610,7 @@ class PySRTaskResult:
         d.setdefault('runtime_seconds', 0.0)
         d.setdefault('num_evaluations', None)
         d.setdefault('execution_trace', None)
+        d.setdefault('gt_matched_equation', None)
         return cls(**d)
 
 
@@ -795,6 +804,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         best_equation = str(best["equation"]) if best is not None else None
         best_loss = float(best["loss"]) if best is not None else float("inf")
         gt_match_score = None
+        gt_matched_equation = None
         from evaluation import check_pysr_frontier_symbolic_match
         try:
             gt_match_result = check_pysr_frontier_symbolic_match(
@@ -803,8 +813,17 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 ground_truth_str=ground_truth_for_match,
                 var_names=variable_names,
                 timeout_seconds_per_expression=3,
+                predict_fn=lambda idx: model.predict(X_val, index=int(idx)),
+                y=y_val,
+                min_r2=0.5,
             )
             gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
+            matched_idx = gt_match_result.get("matched_df_index")
+            if matched_idx is not None and model.equations_ is not None:
+                try:
+                    gt_matched_equation = str(model.equations_.loc[matched_idx]["equation"])
+                except Exception:
+                    gt_matched_equation = None
         except Exception:
             gt_match_score = 0.0
 
@@ -839,6 +858,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             best_equation=best_equation,
             best_loss=best_loss,
             gt_match_score=gt_match_score,
+            gt_matched_equation=gt_matched_equation,
             error=None,
             run_index=spec.run_index,
             runtime_seconds=runtime,
@@ -903,7 +923,13 @@ def _aggregate_pysr_results(
 
         for dataset_name in dataset_names:
             key = (config_id, dataset_name)
-            all_run_results = results_by_config_dataset.get(key, [])
+            # Sort by run_index so per-seed-indexed fields (run_r2_scores[i],
+            # run_best_equations[i], ...) line up with seed i regardless of
+            # the order SLURM tasks completed in.
+            all_run_results = sorted(
+                results_by_config_dataset.get(key, []),
+                key=lambda r: r.run_index,
+            )
             good_runs = [r for r in all_run_results if r.error is None]
 
             if all_run_results:
@@ -912,10 +938,14 @@ def _aggregate_pysr_results(
                 # runs that survived.
                 run_r2_scores = []
                 run_gt_scores = []
+                run_best_equations: List[Optional[str]] = []
+                run_gt_matched_equations: List[Optional[str]] = []
                 for r in all_run_results:
                     if r.error is not None:
                         run_r2_scores.append(-1.0)
                         run_gt_scores.append(0.0)
+                        run_best_equations.append(None)
+                        run_gt_matched_equations.append(None)
                     else:
                         run_r2_scores.append(
                             r.r2_score if (r.r2_score is not None and not np.isnan(r.r2_score)) else -1.0
@@ -923,6 +953,8 @@ def _aggregate_pysr_results(
                         run_gt_scores.append(
                             r.gt_match_score if (r.gt_match_score is not None and not np.isnan(r.gt_match_score)) else 0.0
                         )
+                        run_best_equations.append(r.best_equation)
+                        run_gt_matched_equations.append(r.gt_matched_equation)
                 run_scores = run_gt_scores if fitness_metric == "gt" else run_r2_scores
                 avg_score = float(np.mean(run_scores))
 
@@ -943,6 +975,11 @@ def _aggregate_pysr_results(
                     "run_r2_scores": run_r2_scores,
                     "run_gt_scores": run_gt_scores,
                     "best_equations": all_equations,
+                    # Per-seed best/matched equations aligned with run_r2_scores
+                    # (None for errored seeds). best_equations above is the
+                    # filtered legacy view; these are for per-seed lookups.
+                    "run_best_equations": run_best_equations,
+                    "run_gt_matched_equations": run_gt_matched_equations,
                     "errors": errors if errors else None,
                     "run_num_evaluations": run_num_evals,
                     "avg_num_evaluations": avg_num_evals,
@@ -959,6 +996,8 @@ def _aggregate_pysr_results(
                     "avg_gt": 0.0,
                     "run_r2_scores": [],
                     "run_gt_scores": [],
+                    "run_best_equations": [],
+                    "run_gt_matched_equations": [],
                     "best_equations": [],
                     "errors": ["No results found"],
                     "run_num_evaluations": [],
@@ -1083,6 +1122,41 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self.pysr_wall_limit = pysr_wall_limit
         # Optional split label used by eval_log.log_bundle_eval (set by caller).
         self.split_label: Optional[str] = None
+        # Set once the shared .juliapkg_env has been resolved in this process.
+        self._julia_env_resolved = False
+
+    def _ensure_julia_env_resolved(self) -> None:
+        """Resolve/instantiate the shared juliapkg env once, in this driver process.
+
+        Workers run with PYTHON_JULIAPKG_OFFLINE=yes (see _build_worker_env_exports)
+        and so will never resolve the environment themselves. If the env were not
+        already fully resolved + instantiated + precompiled before they start, every
+        worker's Julia would fail to load PythonCall. Doing it once here, in a single
+        process, before any SLURM submission, guarantees the env is ready and avoids
+        the concurrent-resolve race that corrupts Manifest.toml. Idempotent: the
+        juliacall import is cached, so repeat calls (and drivers that already imported
+        PySR, e.g. evolve) are cheap no-ops.
+        """
+        if self._julia_env_resolved:
+            return
+        self._julia_env_resolved = True  # set first so a failure isn't retried per-batch
+        # The driver must resolve ONLINE even if the ambient env (or a wrapper)
+        # exported the worker's offline flag; otherwise this would be a no-op and
+        # the env might never get built.
+        os.environ.pop("PYTHON_JULIAPKG_OFFLINE", None)
+        warmup_log = Path(self.results_dir) / "julia_warmup.log"
+        t0 = time.time()
+        try:
+            with _redirect_fds_to_file(warmup_log):
+                _import_pysr_regressor()
+        except Exception as e:
+            # A genuine import failure means workers would fail identically; surface
+            # it now (before submitting a huge array) rather than after.
+            print(f"  WARNING: Julia env warmup raised {type(e).__name__}: {e} "
+                  f"(see {warmup_log})", flush=True)
+            raise
+        print(f"  Julia env resolved in {time.time() - t0:.1f}s "
+              f"(warmup log: {warmup_log})", flush=True)
 
     def _build_worker_env_exports(self) -> str:
         """Build shell exports for PySR worker environment isolation."""
@@ -1097,6 +1171,13 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             "unset JULIA_PROJECT",
             f'export PYTHON_JULIAPKG_PROJECT="{self.repo_root}/.juliapkg_env"',
             "export PYTHON_JULIACALL_HANDLE_SIGNALS=yes",
+            "# Workers must NEVER resolve the shared juliapkg env: with hundreds",
+            "# of array tasks starting at once, concurrent resolves delete and",
+            "# rewrite Manifest.toml mid-read, producing 'PythonCall ... required",
+            "# but does not seem to be installed' failures across the whole array.",
+            "# The driver resolves the env once up-front (see _ensure_julia_env_resolved);",
+            "# offline mode makes workers trust that pre-built env read-only.",
+            "export PYTHON_JULIAPKG_OFFLINE=yes",
         ]
         return "\n".join(lines)
 
@@ -1134,9 +1215,13 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         fitness_metric: str = "r2",
         run_index_start_per_config: Optional[List[int]] = None,
         hof_csv_map: Optional[Dict[str, List[str]]] = None,
+        pysr_wall_limit: Optional[int] = None,
     ) -> PySRBatchHandle:
         import time as _time_mod
         _bundle_submit_time = _time_mod.time()
+        # Resolve the shared juliapkg env once (single process) before fanning out
+        # to offline workers. See _ensure_julia_env_resolved for why.
+        self._ensure_julia_env_resolved()
         """
         Build task specs, pre-filter cache, and submit SLURM job(s) without waiting.
 
@@ -1204,7 +1289,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         fitness_metric=fitness_metric,
                         hof_csv_paths=hof_csv_paths,
                         hof_n_steps=self.hof_n_steps,
-                        pysr_wall_limit=self.pysr_wall_limit,
+                        pysr_wall_limit=(pysr_wall_limit if pysr_wall_limit is not None else self.pysr_wall_limit),
                     ))
 
         n_tasks = len(tasks)
@@ -1261,6 +1346,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                                 best_equation=cached["best_equation"],
                                 best_loss=best_loss,
                                 gt_match_score=cached.get("gt_match_score"),
+                                gt_matched_equation=cached.get("gt_matched_equation"),
                                 error=cached["error"],
                                 run_index=task.run_index,
                                 timed_out=cached.get("timed_out", False),
