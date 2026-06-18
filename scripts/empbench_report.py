@@ -44,13 +44,18 @@ def verdict(eq, ds):
 def vkey(r, path):
     ds = r.get("dataset", "?")
     method = r.get("method", "?")
+    base = os.path.basename(path)
+    # filenames are "<short>_<label>_r<seed>.json" or "<label>_r<seed>.json";
+    # strip optional planck_/rydberg_ prefix so the same variant from different
+    # source dirs groups together.
+    m = re.match(r"(?:(?:planck|rydberg)_)?(.+?)_r\d+\.json", base)
+    label = m.group(1) if m else None
     if method == "custom":
-        base = os.path.basename(path)
-        # filenames are "<short>_<label>_r<seed>.json" (phaseB) or
-        # "<label>_r<seed>.json" (rydextra); strip optional planck_/rydberg_
-        # prefix so the same variant from both sources groups together.
-        m = re.match(r"(?:(?:planck|rydberg)_)?(.+?)_r\d+\.json", base)
-        return ds, "custom:" + (m.group(1) if m else "custom")
+        return ds, "custom:" + (label or "custom")
+    if method == "evolve":
+        # derive the bundle/op-set label from the filename so different evolved
+        # bundles (e.g. evolve vs evolve40318) and op-sets stay separate.
+        return ds, (label or "evolve")
     return ds, method
 
 
