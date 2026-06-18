@@ -473,12 +473,25 @@ def check_pysr_frontier_symbolic_match(
     ground_truth_str,
     var_names=None,
     timeout_seconds_per_expression=3,
+    predict_fn=None,
+    y=None,
+    min_r2=0.5,
 ):
     """
     Check symbolic match across entire Pareto frontier.
 
     Returns True if any expression is symbolic match.
     Timeout on an expression is treated as non-match for that expression.
+
+    R² gate (mirrors SRBench's ``r2_test > 0.5`` safeguard in
+    ``assess_symbolic_model.py``): when ``predict_fn`` and ``y`` are both
+    provided, frontier entries whose R² is below ``min_r2`` are skipped
+    before the symbolic check. This guards against the
+    ``round_floats`` collapse-to-zero failure mode (a leading multiplicative
+    constant smaller than ``round_floats``'s zero_threshold makes the
+    simplified expression 0, then ``sym_frac = 0/GT = 0`` falsely reads as
+    a constant). ``predict_fn`` should accept a ``equations_df`` index and
+    return predictions for the held-out targets ``y``.
     """
     ordered_indices = get_pareto_df_indices_in_best_complexity_order(
         equations_df, best_df_index
@@ -490,13 +503,40 @@ def check_pysr_frontier_symbolic_match(
             "matched_df_index": None,
             "checked_count": 0,
             "timeouts": 0,
+            "skipped_low_r2": 0,
             "order": [],
         }
 
+    use_r2_gate = predict_fn is not None and y is not None
+    y_arr = np.asarray(y) if use_r2_gate else None
+    ss_tot = float(np.sum((y_arr - np.mean(y_arr)) ** 2)) if use_r2_gate else None
+
     n_timeouts = 0
+    n_skipped = 0
     for pos, idx in enumerate(ordered_indices, start=1):
         row = equations_df.loc[idx]
         expr = str(row["equation"])
+
+        if use_r2_gate:
+            try:
+                y_pred = predict_fn(idx)
+                y_pred = np.clip(np.asarray(y_pred), -1e10, 1e10)
+                if y_pred.shape != y_arr.shape:
+                    raise ValueError(
+                        f"predict_fn returned shape {y_pred.shape}, expected {y_arr.shape}"
+                    )
+                if np.any(~np.isfinite(y_pred)):
+                    n_skipped += 1
+                    continue
+                ss_res = float(np.sum((y_arr - y_pred) ** 2))
+                r2 = 1.0 - ss_res / (ss_tot + 1e-10)
+                if r2 < min_r2:
+                    n_skipped += 1
+                    continue
+            except Exception:
+                n_skipped += 1
+                continue
+
         res = check_pysr_symbolic_match(
             expr,
             ground_truth_str,
@@ -511,6 +551,7 @@ def check_pysr_frontier_symbolic_match(
                 "matched_df_index": idx,
                 "checked_count": pos,
                 "timeouts": n_timeouts,
+                "skipped_low_r2": n_skipped,
                 "order": ordered_indices,
             }
 
@@ -519,6 +560,7 @@ def check_pysr_frontier_symbolic_match(
         "matched_df_index": None,
         "checked_count": len(ordered_indices),
         "timeouts": n_timeouts,
+        "skipped_low_r2": n_skipped,
         "order": ordered_indices,
     }
 
