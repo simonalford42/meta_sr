@@ -56,6 +56,8 @@ The official criterion (`evaluation.check_pysr_frontier_symbolic_match`, used by
 
 (This is consistent with the earlier project note: EmpiricalBench recovery metric is broken.)
 
+**Does this break SRBench too?** No — checked. I inspected every solved (dataset, seed) at noise=0 from a full SRBench `srbench_full_eval` run of evolved-40318 (`runs/502920`, 80 solved datasets, 680 solves) for false positives (`scripts/inspect_srbench_false_solves.py` → `writeups/srbench_false_solves_502920.md`). **0 false positives.** The `round_floats` collapse never fires on SRBench because its synthetic Feynman/Strogatz equations sample variables and constants at O(1) magnitudes; the bug is specific to physics tasks with constants spanning many orders of magnitude (Planck's `h≈6.6e-34`). So the production metric is trustworthy on the standard benchmark — it's the *small-constant tail* (EmpiricalBench) where it fails.
+
 ---
 
 ## 4. Robust recovery check (`scripts/empbench_lib.py` + `scripts/empbench_verify.py`)
