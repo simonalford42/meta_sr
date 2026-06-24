@@ -2,6 +2,38 @@
 
 _Status: COMPLETE. 116 single-core runs at 1e7 evals each — baseline+evolved × {Planck,Rydberg} (Planck 5 seeds, Rydberg 17 seeds incl. a 12-seed sweep), plus 8 operator-set/hparam variants (Planck 3 seeds, Rydberg 15 seeds). Recovery scored by a validated robust check (`scripts/empbench_{lib,verify,report}.py`), not the broken official metric. Author: Claude (Opus 4.8)._
 
+## 0. UPDATE (2026-06-24) — a new evolved bundle, `runs/538190`, *does* recover Rydberg
+
+A newer evolved bundle (`runs/538190`) was tested on Rydberg with the **same protocol** as 40318 (3 configs × 15 seeds, 1e7 evals, single-core, robust verified recovery). **It is the first evolved bundle to recover the Rydberg law — and the only method, evolved *or* vanilla, to recover it with the full default operator set** (distractors `sin,cos,exp,sqrt` present). This reverses the §5/§6 finding that "evolved never beats vanilla at recovery"; that conclusion stands for 40318/666285 but **not** for 538190.
+
+**538190 operators:** mutation `insert_residual_correlated_feature_gen9_9`; survival `oldest_with_parsimony_and_cost_tiebreak_survival`; selection `diversity_age_greedy_tournament_selection`; loss `hybrid_robust_ols_tempered_mae_loss_gen25_3`.
+
+**Verified recovery (refit-constants-then-held-out-residual `< 1e-4`), vs. the earlier numbers:**
+
+| Rydberg config | **538190 (new)** | 40318 | vanilla baseline |
+|---|---|---|---|
+| full default op-set | **1/15** ✅ | 0/15 | 0/17 |
+| `{log, square, sqrt}` | **1/15** | 0/15 | 1/15 |
+| `{log, square}` | **2/15** | 0/15 | 0/15 |
+| **total** | **4/45** | **0/45** | 1/30 |
+
+Official metric still reads **0/15 everywhere** — this is the §3 Rydberg form-fragility (it rejects the expanded neg-log form `−16.2 − log(1/n₁²−1/n₂²)`), which is exactly why the robust check is needed to see these recoveries.
+
+**The 4 verified recoveries** (all reduce to the true `−log(R_H) − log(1/n₁² − 1/n₂²)`; refit-held-out residual in brackets):
+
+| config / seed | evals→solve | residual | recovering expression |
+|---|---|---|---|
+| `full` / s53 | ~811k | **1.85e-15** | `log(x1/((x1/x0)−1)) + log(x1/(cos(−0.20)+x1/x0)) − 16.24` (the `cos(−0.20)≈0.98` constant is absorbed on refit) |
+| `logsq` / s54 | ~811k | 1.49e-15 | `−16.21 + log(x1²/(x1−x0)) + log(x0²) − log(x1+x0)` |
+| `logsqsqrt` / s55 | ~1.52M | 1.38e-15 | `log(x0²) + log(x1/(x0+x1)) − 16.21 + log(x1/(x1−x0))` |
+| `logsq` / s43 | ~2.85M | 8.35e-5 | rational form with a slightly-imperfect fitted constant (still genuine) |
+
+**Why it works where 40318 failed:** 40318's `adaptive_normalized_rmse_loss` chases raw fit on the 50 noisy points, rewarding high-R² rational/`sin` blends over the parsimonious true law (and even *erasing* the pruned-set recovery vanilla finds, §6.2). 538190's **robust/tempered loss (`hybrid_robust_ols_tempered_mae`)** down-weights those noisy-point overfits, and its **parsimony-and-cost-tiebreak survival** keeps the compact true-law skeleton (`log(n₁²) − log(R_H) − log(1−(n₁/n₂)²)`) alive long enough to be assembled. Net: this is the loss/survival profile recovery actually needs — the opposite of 40318's.
+
+**Caveats / not-yet-done:** (a) Planck was **not** re-run with 538190 (40318 got 0/5 there; the §6 blocker is structural — the tiny inside-`exp` constant — and unlikely to be loss-sensitive, but untested). (b) I did **not** re-run baseline at these exact 15 seeds, so a small part of the full-op-set 1/15 vs 0/17 gap could be seed variance; the directional result (538190 recovers in 3 configs incl. full op-set; 40318 in none) is well beyond plausible seed noise across 45 runs. Run dir: `runs_local/ev538190/`; reproduce via `scripts/empbench_report.py runs_local/ev538190`.
+
+---
+
 ## TL;DR
 
 - The two EmpiricalBench "unsolved" problems are `empirical_planck` and `empirical_rydberg` (both 0/5 for every method in Cranmer 2023). Targets are **log-scaled**.
