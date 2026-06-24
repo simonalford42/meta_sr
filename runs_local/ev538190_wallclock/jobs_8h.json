@@ -1,0 +1,212 @@
+[
+  {
+    "method": "baseline",
+    "dataset": "empirical_planck",
+    "run_index": 0,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/planck_baseline_8h_r0.json"
+  },
+  {
+    "method": "baseline",
+    "dataset": "empirical_planck",
+    "run_index": 1,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/planck_baseline_8h_r1.json"
+  },
+  {
+    "method": "baseline",
+    "dataset": "empirical_planck",
+    "run_index": 2,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/planck_baseline_8h_r2.json"
+  },
+  {
+    "method": "baseline",
+    "dataset": "empirical_planck",
+    "run_index": 3,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/planck_baseline_8h_r3.json"
+  },
+  {
+    "method": "baseline",
+    "dataset": "empirical_planck",
+    "run_index": 4,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/planck_baseline_8h_r4.json"
+  },
+  {
+    "method": "evolve",
+    "dataset": "empirical_planck",
+    "run_index": 0,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/planck_evolve_8h_r0.json",
+    "evolve_results": "runs/538190"
+  },
+  {
+    "method": "evolve",
+    "dataset": "empirical_planck",
+    "run_index": 1,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/planck_evolve_8h_r1.json",
+    "evolve_results": "runs/538190"
+  },
+  {
+    "method": "evolve",
+    "dataset": "empirical_planck",
+    "run_index": 2,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/planck_evolve_8h_r2.json",
+    "evolve_results": "runs/538190"
+  },
+  {
+    "method": "evolve",
+    "dataset": "empirical_planck",
+    "run_index": 3,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/planck_evolve_8h_r3.json",
+    "evolve_results": "runs/538190"
+  },
+  {
+    "method": "evolve",
+    "dataset": "empirical_planck",
+    "run_index": 4,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/planck_evolve_8h_r4.json",
+    "evolve_results": "runs/538190"
+  },
+  {
+    "method": "baseline",
+    "dataset": "empirical_rydberg",
+    "run_index": 0,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/rydberg_baseline_8h_r0.json"
+  },
+  {
+    "method": "baseline",
+    "dataset": "empirical_rydberg",
+    "run_index": 1,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/rydberg_baseline_8h_r1.json"
+  },
+  {
+    "method": "baseline",
+    "dataset": "empirical_rydberg",
+    "run_index": 2,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/rydberg_baseline_8h_r2.json"
+  },
+  {
+    "method": "baseline",
+    "dataset": "empirical_rydberg",
+    "run_index": 3,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/rydberg_baseline_8h_r3.json"
+  },
+  {
+    "method": "baseline",
+    "dataset": "empirical_rydberg",
+    "run_index": 4,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/rydberg_baseline_8h_r4.json"
+  },
+  {
+    "method": "evolve",
+    "dataset": "empirical_rydberg",
+    "run_index": 0,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/rydberg_evolve_8h_r0.json",
+    "evolve_results": "runs/538190"
+  },
+  {
+    "method": "evolve",
+    "dataset": "empirical_rydberg",
+    "run_index": 1,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/rydberg_evolve_8h_r1.json",
+    "evolve_results": "runs/538190"
+  },
+  {
+    "method": "evolve",
+    "dataset": "empirical_rydberg",
+    "run_index": 2,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/rydberg_evolve_8h_r2.json",
+    "evolve_results": "runs/538190"
+  },
+  {
+    "method": "evolve",
+    "dataset": "empirical_rydberg",
+    "run_index": 3,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/rydberg_evolve_8h_r3.json",
+    "evolve_results": "runs/538190"
+  },
+  {
+    "method": "evolve",
+    "dataset": "empirical_rydberg",
+    "run_index": 4,
+    "timeout_seconds": 28800,
+    "parallelism": "multithreading",
+    "train_frac": 1.0,
+    "wall_limit": 32400,
+    "out": "runs_local/ev538190_wallclock/rydberg_evolve_8h_r4.json",
+    "evolve_results": "runs/538190"
+  }
+]

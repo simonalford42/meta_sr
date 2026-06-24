@@ -19,7 +19,7 @@ SBATCH_TMPL = """#!/bin/bash
 #SBATCH --error={logdir}/task_%a.out
 #SBATCH --array={array_spec}
 #SBATCH --time={time}
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task={cpus}
 #SBATCH --mem={mem}
 #SBATCH --partition={partition}
 #SBATCH --requeue
@@ -32,7 +32,7 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
-export JULIA_NUM_THREADS=1
+export JULIA_NUM_THREADS={julia_threads}
 
 cd "{repo}"
 export PYTHONPATH="{repo}:$PYTHONPATH"
@@ -51,6 +51,9 @@ def main():
     ap.add_argument("--jobname", default="empbench")
     ap.add_argument("--mem", default="24G")
     ap.add_argument("--time", default="03:00:00")
+    ap.add_argument("--cpus", type=int, default=1, help="cpus-per-task (cores)")
+    ap.add_argument("--julia-threads", type=int, default=1,
+                    help="JULIA_NUM_THREADS (set = --cpus for multithreaded PySR)")
     ap.add_argument("--partition", default="default_partition")
     ap.add_argument("--throttle", type=int, default=40, help="max concurrent array tasks")
     ap.add_argument("--logdir", default=None)
@@ -66,7 +69,8 @@ def main():
     script = SBATCH_TMPL.format(
         jobname=a.jobname, logdir=logdir, array_spec=array_spec, time=a.time,
         mem=a.mem, partition=a.partition, conda_sh=CONDA_SH, conda_env=CONDA_ENV,
-        repo=str(REPO), jobs=str(Path(a.jobs).resolve()))
+        repo=str(REPO), jobs=str(Path(a.jobs).resolve()),
+        cpus=a.cpus, julia_threads=a.julia_threads)
     script_path = Path(a.jobs).parent / f"{a.jobname}_array.sh"
     script_path.write_text(script)
     print(f"Wrote {script_path}  ({n} tasks, array={array_spec}, mem={a.mem}, time={a.time})")

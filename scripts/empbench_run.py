@@ -57,8 +57,8 @@ def build_pysr_kwargs_and_code(args):
     mutation_weights = get_default_mutation_weights()
 
     if args.method == "evolve":
-        from baseline_loader import load_baseline_bundle
-        bundle = load_baseline_bundle(args.evolve_results)
+        from bundle_loader import load_bundle
+        bundle = load_bundle(args.evolve_results)
         cfg = bundle.to_pysr_config(base)
         allow = bool(cfg.allow_custom_mutations)
         custom_code = {
@@ -106,8 +106,25 @@ def build_pysr_kwargs_and_code(args):
                 base[ckey] = {k: {ik: iv for ik, iv in v.items() if ik in ops}
                               for k, v in base[ckey].items()}
 
+    # Parallelism / wall-clock overrides (PySR-paper protocol: multi-core,
+    # time-boxed). Default path is unchanged (serial, max_evals milestones).
+    if args.parallelism is not None or args.procs is not None or args.timeout_seconds is not None:
+        par = args.parallelism or "serial"
+        base["parallelism"] = par
+        # procs only applies to multiprocessing; multithreading uses JULIA_NUM_THREADS
+        base["procs"] = (int(args.procs) if args.procs is not None
+                         else (0 if par != "multiprocessing" else 8))
+        # PySR forbids deterministic with non-serial parallelism
+        base["deterministic"] = (par == "serial")
+        if args.timeout_seconds is not None:
+            base["timeout_in_seconds"] = float(args.timeout_seconds)
+            base["niterations"] = 10_000_000  # let the wall clock govern
+            base.pop("max_evals", None)
+
     method_meta["binary_operators"] = base.get("binary_operators")
     method_meta["unary_operators"] = base.get("unary_operators")
+    method_meta["parallelism"] = base.get("parallelism")
+    method_meta["timeout_in_seconds"] = base.get("timeout_in_seconds")
 
     # Merge mutation weights into kwargs (PySR takes weight_* as kwargs)
     mut_kwargs = {}
@@ -223,6 +240,22 @@ def main():
     ap.add_argument("--run-index", type=int, default=0)
     ap.add_argument("--data-seed", type=int, default=42)
     ap.add_argument("--seed-base", type=int, default=42)
+    ap.add_argument("--train-frac", type=float, default=0.8,
+                    help="fraction of data used for training; 1.0 = PySR-paper "
+                         "protocol (train on the full dataset, val=train)")
+    ap.add_argument("--timeout-seconds", type=float, default=None,
+                    help="WALL-CLOCK mode: run a single fit time-boxed to this "
+                         "many seconds (PySR timeout_in_seconds), then score the "
+                         "final Pareto front once. Replaces the eval-milestone loop.")
+    ap.add_argument("--parallelism", default=None,
+                    choices=[None, "serial", "multithreading", "multiprocessing"],
+                    help="PySR parallelism. Use 'multithreading' for multi-core "
+                         "with custom (evolved) operators — threads share the one "
+                         "Julia process so the dynamically-loaded operators apply; "
+                         "multiprocessing workers would NOT see them.")
+    ap.add_argument("--procs", type=int, default=None,
+                    help="worker count for multiprocessing (ignored for "
+                         "multithreading, which uses JULIA_NUM_THREADS)")
     ap.add_argument("--max-evals", type=float, default=1e7)
     ap.add_argument("--n-milestones", type=int, default=12)
     ap.add_argument("--binary-ops", default=None)
@@ -249,8 +282,15 @@ def main():
     np.random.seed(run_seed)
     n = len(y)
     idx = np.random.permutation(n)
-    ntr = int(0.8 * n)
-    tr, va = idx[:ntr], idx[ntr:]
+    if args.train_frac >= 1.0:
+        # PySR-paper protocol: feed the ENTIRE dataset for training (the test is
+        # the output expression, scored on a clean grid by the robust check, not
+        # a held-out split). val = train so the in-sample R² gate still works.
+        tr = va = idx
+        ntr = n
+    else:
+        ntr = int(args.train_frac * n)
+        tr, va = idx[:ntr], idx[ntr:]
     X_train, y_train = X[tr], y[tr]
     X_val, y_val = X[va], y[va]
     n_features = X_train.shape[1]
@@ -303,6 +343,44 @@ def main():
         os.replace(tmp, args.out)
 
     try:
+        if args.timeout_seconds is not None:
+            # WALL-CLOCK mode: one time-boxed fit, score the final front once.
+            t0 = time.time()
+            model.fit(X_train, y_train, variable_names=xvars)
+            chunk_t = time.time() - t0
+            try:
+                from juliacall import Main as jl
+                nthreads = int(jl.seval("Threads.nthreads()"))
+            except Exception:
+                nthreads = None
+            sc = score_frontier(model, args.dataset, X_val, y_val, gt_x, xvars)
+            rec = {"milestone": "timeout", "wallclock_s": round(chunk_t, 1),
+                   "nthreads": nthreads,
+                   "parallelism": method_meta.get("parallelism"),
+                   "timeout_in_seconds": args.timeout_seconds,
+                   "official": sc["official"], "robust": sc["robust"],
+                   "best_val_r2": sc["best_r2"],
+                   "matched_official": sc["matched_official"],
+                   "matched_robust": sc["matched_robust"],
+                   "frontier": [{"complexity": row["complexity"],
+                                 "val_r2": row["val_r2"],
+                                 "equation": row["equation"]}
+                                for row in sc["frontier"]]}
+            result["milestones"].append(rec)
+            result["final_frontier"] = sc["frontier"]
+            result["wallclock_s"] = round(chunk_t, 1)
+            result["nthreads"] = nthreads
+            if sc["official"]:
+                result["official_solved_at"] = "timeout"
+            if sc["robust"]:
+                result["robust_solved_at"] = "timeout"
+            print(f"[{args.dataset}/{args.method}/r{args.run_index}] "
+                  f"WALLCLOCK t={chunk_t:.0f}s threads={nthreads} "
+                  f"off={sc['official']} rob={sc['robust']} "
+                  f"bestR2={sc['best_r2']} robmatch={sc['matched_robust']}", flush=True)
+            _dump()
+            result["completed"] = True
+            raise StopIteration  # skip the milestone loop below
         for ms in milestones:
             t0 = time.time()
             model.max_evals = int(ms)
@@ -338,6 +416,8 @@ def main():
             result["final_frontier"] = sc["frontier"]
             _dump()
         result["completed"] = True
+    except StopIteration:
+        pass  # wall-clock branch finished; skip the milestone loop
     except (TimeoutError, KeyboardInterrupt) as e:
         result["error"] = f"{type(e).__name__}: {e}"
         print(f"[{args.dataset}/{args.method}/r{args.run_index}] STOPPED: {e}", flush=True)
