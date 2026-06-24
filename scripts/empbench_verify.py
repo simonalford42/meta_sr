@@ -159,10 +159,18 @@ def planck_has_structure(expr_str):
                           "slope": slope})
         except Exception as ex:
             infos.append({"arg": str(arg)[:60], "err": str(ex)[:50]})
-    # structure plausible if some exp arg is strongly ~ linear in nu/T at ~5e-11
+    # Structure plausible if some exp arg is strongly ~ linear in nu/T with a
+    # coefficient close to the TRUE Wien-tail constant h/k_B = 4.798e-11. The
+    # window must be tight: an exp(c*nu/T) with the WRONG c (e.g. 2.5e-11, ~half)
+    # wrapped in cos/etc is a high-R² approximation, NOT the law — exactly the
+    # false-positive a loose (1e-11..2e-10, 200x-wide) window admits. BFGS leaves
+    # the fitted constant near 4.798e-11, so ±30% [3.36e-11, 6.24e-11] keeps a
+    # genuine recovery while rejecting coefficient-wrong approximations.
+    H_OVER_KB = 4.798e-11
     plausible = any(i.get("corr_with_nu/T", 0) is not None and
                     abs(i.get("corr_with_nu/T", 0)) > 0.98 and
-                    1e-11 < abs(i.get("slope", 0)) < 2e-10 for i in infos)
+                    0.70 * H_OVER_KB < abs(i.get("slope", 0)) < 1.30 * H_OVER_KB
+                    for i in infos)
     return {"has_exp": True, "exp_infos": infos, "structure_plausible": plausible}
 
 
