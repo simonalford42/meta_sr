@@ -15,7 +15,7 @@ Usage:
 Most of the previously-inline helpers now live in:
     operator_types.py     — JuliaOperator, OperatorBundle, OperatorType + subclasses,
                             ModelEnsemble, Julia validation, generate_operator_code
-    baseline_loader.py    — resume + baseline loading from evolve/hpo/openevolve/.jl
+    bundle_loader.py    — resume + baseline loading from evolve/hpo/openevolve/.jl
     evolution_helpers.py  — racing, task-aware selection, noise maps, survivor selection
 
 This module keeps the evolution-loop orchestration plus argparse/main.
@@ -28,6 +28,7 @@ import random
 import re
 import sys
 import time
+from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -49,21 +50,22 @@ from operator_types import (
     OperatorBundle,
     OperatorType,
     OPERATOR_TYPES,
+    META_COMPONENTS,
+    META_MUTATION_MODES,
     validate_julia_code,
     append_validation_log,
     generate_operator_code_batch,
     OperatorGenerationSpec,
 )
-from baseline_loader import (
+from bundle_loader import (
     load_resume_state,
-    load_baseline_bundle,
+    load_bundle,
 )
 MODEL_ENSEMBLE_PRESETS: Dict[str, str] = {
     "cheap": (
-        "openai/gpt-5.4-mini:0.20,"
-        "openai/gpt-5.4-nano:0.30,"
-        "google/gemini-3.1-flash-lite-preview:0.25,"
-        "x-ai/grok-4.1-fast:0.25"
+        "openai/gpt-5.4-mini:0.4,"
+        "openai/gpt-5.4-nano:0.3,"
+        "google/gemini-3.1-flash-lite-preview:0.3,"
     ),
     "medium": (
         "openai/gpt-5.4-mini:0.30,"
@@ -80,11 +82,32 @@ MODEL_ENSEMBLE_PRESETS: Dict[str, str] = {
 }
 
 
+# Reasoning effort paired with each model preset: cheaper ensembles think less.
+# Used when --reasoning-effort=auto (the default).
+MODEL_ENSEMBLE_PRESET_EFFORT: Dict[str, str] = {
+    "cheap": "low",
+    "medium": "medium",
+    "best": "high",
+}
+
+
 def resolve_models_arg(value: str) -> str:
     """Map a --models preset name to its ensemble string, or return as-is."""
     if value in MODEL_ENSEMBLE_PRESETS:
         return MODEL_ENSEMBLE_PRESETS[value]
     return value
+
+
+def resolve_reasoning_effort(effort_arg: str, models_arg: str) -> str:
+    """Resolve --reasoning-effort to a concrete level.
+
+    When "auto", derive from the --models preset name (cheap/medium/best); for
+    a raw ensemble string or unknown preset, fall back to "high" (the prior
+    default). An explicit low/medium/high always wins.
+    """
+    if effort_arg != "auto":
+        return effort_arg
+    return MODEL_ENSEMBLE_PRESET_EFFORT.get(models_arg, "high")
 
 
 from evolution_helpers import (
@@ -109,6 +132,13 @@ from evolution_helpers import (
     select_survivors_complexity,
     _bundle_loc,
 )
+from smart_reeval import compute_reeval_plan, parent_fitness, dedup_archive_by_code
+
+# Fixed per-seed noise σ for smart reeval, measured offline over all bundles of
+# run 414990 on the gt metric (scripts/estimate_sigma.py). Used by default
+# instead of a cumulative per-gen estimate so B*/TTTS planning works from gen 2
+# even before any bundle has accumulated ≥2 seeds.
+DEFAULT_SMART_SIGMA = 0.064689
 
 
 def _describe_operator_kind(type_name: str, code: str) -> str:
@@ -311,6 +341,110 @@ def collect_bundle_futures(
         pairs.append((bundle, result_by_idx.get(i, (-1.0, [], []))))
     return pairs
 
+
+def _smart_per_gen_limits(mu, N, sigma, alpha, psi, curve, margin, pad=0.05):
+    """Per-gen axis limits for the smart-reeval MC plot (single record)."""
+    mu = np.asarray(mu); N = np.asarray(N)
+    post_std = sigma / np.sqrt(np.where(N > 0, N, 1))
+    score_lo = float((mu - post_std).min()); score_hi = float((mu + post_std).max())
+    score_pad = (score_hi - score_lo) * pad or 1e-6
+    prob_hi = float(max(np.max(alpha), np.max(psi))) if len(mu) else 1.0
+    ei = np.asarray(curve)
+    ei_hi = float(ei.max()) if ei.size else 1.0
+    mei_hi = float((ei[margin:] - ei[:-margin]).max()) if ei.size > margin else 1.0
+    n_lo, n_hi = float(N.min()), float(N.max())
+    return {
+        "score_y": (score_lo - score_pad, score_hi + score_pad),
+        "prob_y": (0.0, max(prob_hi, 1e-6) * (1 + pad)),
+        "N_y": (n_lo - max(1.0, (n_hi - n_lo) * pad), n_hi + max(1.0, (n_hi - n_lo) * pad)),
+        "ei_y": (0.0, max(ei_hi, 1e-6) * (1 + pad)),
+        "mei_y": (0.0, max(mei_hi, 1e-6) * (1 + pad)),
+    }
+
+
+def _finalize_smart_reeval(
+    gen, plan, pre_snapshot, archive, population, population_size,
+    plot_dir, output_dir, wandb_run, eval_log_state,
+):
+    """Measure realized reeval improvement, render the per-gen MC plot, and log
+    smart-reeval metrics to wandb. No-op when this gen had no reeval plan."""
+    if plan is None or plan.get("skipped", True):
+        return
+
+    # Realized improvement: Δ expected-parent-fitness over the pre-reeval pool,
+    # treating the post-reeval μ as the best available truth proxy. Both terms
+    # multiply parent_dist by the same μ_post, so the difference isolates the
+    # *selection-quality* gain from sharpened posteriors (not the bookkeeping
+    # shift μ_post − μ_pre). Mirrors monte_carlo.simulate_reeval_expected_improvement
+    # which holds true_mu fixed across pre/post parent_dists. Guaranteed ≥ 0 by
+    # the rearrangement inequality: parent_dist(μ_post) · μ_post is the
+    # truth-maximizing arrangement among rank-based selection rules.
+    reeval_actual_improvement = None
+    if pre_snapshot is not None:
+        pre_bundles, mu_pre = pre_snapshot
+        mu_post = np.array(
+            [b.score if b.score is not None else -1.0 for b in pre_bundles],
+            dtype=float,
+        )
+        pre_fit = parent_fitness(mu_pre, mu_truth=mu_post,
+                                 topk=population_size, n=2)
+        post_fit = parent_fitness(mu_post, mu_truth=mu_post,
+                                  topk=population_size, n=2)
+        reeval_actual_improvement = float(post_fit - pre_fit)
+
+    offspring_EI = plan.get("offspring_EI")
+    B_star = plan.get("B_star")
+    status = plan.get("status")
+    print(
+        f"  [smart] gen {gen}: B*={B_star} status={status} "
+        f"offspring_EI={offspring_EI if offspring_EI is None else f'{offspring_EI:+.5f}'} "
+        f"reeval_actual_improvement={reeval_actual_improvement if reeval_actual_improvement is None else f'{reeval_actual_improvement:+.5f}'}"
+    )
+
+    # Per-gen MC plot mirroring monte_carlo_sweep's per-gen panel.
+    try:
+        from monte_carlo_sweep import _plot_per_gen
+        pre_bundles = pre_snapshot[0] if pre_snapshot is not None else list(archive)
+        pop_ids = {id(b) for b in population}
+        labels = []
+        for b in pre_bundles:
+            kind = "pop" if id(b) in pop_ids else "arc"
+            ops = getattr(b, "operators", {}) or {}
+            try:
+                name = "|".join(
+                    op.name for _, op in sorted(ops.items()) if op is not None
+                )
+            except Exception:
+                name = getattr(b, "display_name", "?")
+            labels.append((kind, name))
+        mu = plan["mu"]; N = plan["N"]; sigma = plan["sigma"]
+        alpha = plan["alpha"]; psi = plan["psi"]; curve = plan["curve"]
+        baseline = plan["baseline"]; B_max = plan["B_max"]; margin = plan["margin"]
+        limits = _smart_per_gen_limits(mu, N, sigma, alpha, psi, curve, margin)
+        job = Path(output_dir).name
+        _plot_per_gen(
+            job, gen, np.asarray(mu), np.asarray(N), labels, sigma,
+            np.asarray(alpha), np.asarray(psi), baseline, np.asarray(curve),
+            B_max, plot_dir, limits, offspring_k3=offspring_EI,
+        )
+    except Exception as e:
+        print(f"  [smart] per-gen plot failed: {e}")
+
+    # wandb: offspring EI for this gen, B*, status, realized improvement. The
+    # K=3 trailing average can be reconstructed downstream from per-gen values.
+    if wandb_run is not None:
+        import wandb
+        log = {"generation": gen, "smart/B_star": B_star, "smart/status": status}
+        sigma_est = plan.get("sigma")
+        if sigma_est is not None:
+            log["smart/sigma"] = float(sigma_est)
+        if offspring_EI is not None:
+            log["smart/offspring_EI"] = offspring_EI
+        if reeval_actual_improvement is not None:
+            log["smart/reeval_actual_improvement"] = reeval_actual_improvement
+        wandb.log(log, step=eval_log_state["idx"])
+
+
 def evaluate_baseline(
     op_type: OperatorType,
     evaluator: PySRSlurmEvaluator,
@@ -347,6 +481,34 @@ def _format_bundle_file(bundle: OperatorBundle, header: str = "") -> str:
             if not op.code.endswith("\n"):
                 sections.append("\n")
     return "".join(sections)
+
+
+def _format_bundle_equations(
+    bundle: OperatorBundle,
+    generation: int,
+    result_details: List[Dict],
+    baseline_solved_by_dataset: Optional[Dict[str, int]] = None,
+    baseline_n_runs: Optional[int] = None,
+) -> str:
+    """Render a (task, seed) -> (GT, predicted) report, ranked by Δ vs baseline.
+
+    Per-task block format defined in
+    ``evolution_helpers.format_bundle_equations_report``. When baseline
+    counts aren't available, falls back to ranking by bundle solved-count.
+    """
+    from evolution_helpers import format_bundle_equations_report
+
+    header_lines = [
+        f"# Best bundle from generation {generation}",
+        f"# Bundle: {bundle.display_name}",
+        f"# Bundle score: {bundle.score}",
+    ]
+    return format_bundle_equations_report(
+        result_details=result_details,
+        header_lines=header_lines,
+        baseline_solved_by_dataset=baseline_solved_by_dataset,
+        baseline_n_runs=baseline_n_runs,
+    )
 
 
 class EvolutionLogger:
@@ -400,6 +562,26 @@ class EvolutionLogger:
         best_file.write_text(f"# Best {self.operator_type} from generation {generation}\n"
                              f"# Score: {best.score}\n\n{best.code}")
 
+    def log_val_result(self, info: Dict[str, Any]):
+        """Persist a validation result, keyed by bundle display_name.
+
+        run_data.json is the only durable record of a run (val was previously
+        wandb-only), so this is what makes val-based bundle selection possible
+        after the fact. Val is evaluated only for the running best each
+        generation, so val_results holds a score for each distinct bundle that
+        was ever the train-best — exactly the candidates worth selecting among.
+        """
+        name = info.get("bundle_name")
+        if name is None:
+            return
+        vr = self.run_data.setdefault("val_results", {})
+        vr[name] = {
+            "avg_score": info.get("avg_score"),
+            "score_vector": info.get("score_vector"),
+            "gen_submitted": info.get("gen_submitted"),
+        }
+        self._save()
+
     def _save(self):
         # Atomic write so a concurrent reader (e.g. `--continue-from` pointed
         # at an in-process job's dir) never sees a truncated JSON file.
@@ -437,6 +619,35 @@ class EvolutionLogger:
             f"# Bundle score: {best.score}\n"
             f"# Operators: {best.display_name}\n"
         )))
+
+        # Per-(task, seed) GT-vs-predicted dump for the best bundle, ranked
+        # by Δ vs baseline so tasks-this-bundle-gained-over-baseline are at
+        # the top.
+        details = getattr(best, "result_details", None)
+        if details:
+            try:
+                baseline = self.run_data.get("baseline") or {}
+                vector = baseline.get("r2_vector") or []
+                n_runs = (self.run_data.get("config", {}) or {}).get("n_runs")
+                baseline_solved = None
+                baseline_n_runs = None
+                if vector and n_runs:
+                    dataset_names = [d.get("dataset", "?") for d in details]
+                    baseline_solved = {
+                        name: int(round(float(v) * int(n_runs)))
+                        for name, v in zip(dataset_names, vector)
+                    }
+                    baseline_n_runs = int(n_runs)
+                eqs_path = bundle_dir / f"best_gen{generation}_equations.txt"
+                eqs_path.write_text(
+                    _format_bundle_equations(
+                        best, generation, details,
+                        baseline_solved_by_dataset=baseline_solved,
+                        baseline_n_runs=baseline_n_runs,
+                    )
+                )
+            except Exception as e:
+                print(f"  [log] failed to write per-seed equation dump: {e}")
 
     def finalize(self, best: JuliaOperator):
         self.run_data["end_time"] = datetime.now().isoformat()
@@ -481,18 +692,23 @@ def run_bundle_evolution(
     max_samples: int,
     job_timeout: float,
     model_ensemble: Optional[ModelEnsemble] = None,
+    reasoning_effort: Optional[str] = None,
     use_cache: bool = True,
     n_runs: int = 1,
     target_noise: float = 0.0,
     random_target_noise: bool = False,
+    eval_all_noise_levels: bool = False,
     fitness_metric: str = "gt",
     repo_root: Optional[str] = None,
     baseline_bundle: Optional[OperatorBundle] = None,
     wandb_run: Optional[Any] = None,
     population_type: str = "topk",
+    reeval: str = "none",
     n_extra_runs: int = 0,
     n_runs_max: int = 0,
     lambda_target: int = 1,
+    max_runs_per_generation: int = 100,
+    smart_sigma: Optional[float] = DEFAULT_SMART_SIGMA,
     max_concurrent_jobs: Optional[int] = None,
     llm_max_workers: int = 16,
     resume_state: Optional[Dict[str, Any]] = None,
@@ -501,6 +717,8 @@ def run_bundle_evolution(
     val_split: Optional[str] = None,
     val_n_runs: int = 10,
     pysr_wall_limit: int = 600,
+    val_pysr_wall_limit: Optional[int] = None,
+    val_pysr_timeout: Optional[int] = None,
     split_label: Optional[str] = None,
     mutation_mode: str = "random",
 ) -> Tuple[OperatorBundle, Any, float]:
@@ -524,15 +742,26 @@ def run_bundle_evolution(
     rng = random.Random(seed)
     np.random.seed(seed)
 
+    # "smart" is the back-compat alias for "smart-TTTS"; resolve before the run
+    # config is recorded so the stored value names the concrete policy.
+    if reeval == "smart":
+        reeval = "smart-TTTS"
+
     # Per-individual wandb logging state for avg_gt-over-time plots.
     _eval_log_state = {"idx": 0, "best": float("-inf")}
 
-    def _log_bundle_eval(bundle: OperatorBundle, generation: int) -> None:
+    def _log_bundle_eval(bundle: OperatorBundle, generation: int, seeds_added: int) -> None:
+        # Step axis = cumulative seed-runs evaluated (one SLURM run = one seed
+        # for one bundle), so fresh offspring evals and racing/smart reevals
+        # contribute to "compute spent" on the same scale. Pass seeds_added=0
+        # for non-evaluation log calls; clamp negatives just in case.
+        if seeds_added < 0:
+            seeds_added = 0
+        _eval_log_state["idx"] += seeds_added
         if wandb_run is None:
             return
         import wandb
         score = bundle.score if bundle.score is not None else float("nan")
-        _eval_log_state["idx"] += 1
         if score == score and score > _eval_log_state["best"]:  # score == score: NaN guard
             _eval_log_state["best"] = score
         wandb.log({
@@ -541,13 +770,20 @@ def run_bundle_evolution(
             "eval_running_best": _eval_log_state["best"],
             "eval_generation": generation,
             "eval_bundle_loc": _bundle_loc(bundle),
-        })
+        }, step=_eval_log_state["idx"])
 
     references = {name: OPERATOR_TYPES[name].load_reference() for name in operator_type_names}
 
     logger = EvolutionLogger(output_dir, operator_type="bundle")
+    # All-noise mode evaluates every task at all four noise levels and averages;
+    # it overrides the per-task single-level assignment from --random-target-noise.
+    eval_noise_levels = list(TARGET_NOISE_LEVELS) if eval_all_noise_levels else None
     target_noise_map = None
-    if random_target_noise:
+    if eval_all_noise_levels:
+        if random_target_noise:
+            print("  --eval-all-noise-levels overrides --random-target-noise "
+                  "(every task is evaluated at all noise levels and averaged).")
+    elif random_target_noise:
         target_noise_map = _build_target_noise_map(dataset_names, seed, TARGET_NOISE_LEVELS)
 
     logger.set_config({
@@ -567,20 +803,37 @@ def run_bundle_evolution(
         "n_runs": n_runs,
         "target_noise": target_noise,
         "random_target_noise": random_target_noise,
+        "eval_all_noise_levels": eval_all_noise_levels,
         "fitness_metric": fitness_metric,
         "repo_root": repo_root,
         "population_type": population_type,
+        "reeval": reeval,
         "n_extra_runs": n_extra_runs,
         "n_runs_max": n_runs_max,
         "lambda_target": lambda_target,
+        "max_runs_per_generation": max_runs_per_generation,
+        "smart_sigma": smart_sigma,
         "llm_max_workers": llm_max_workers,
         "execution_feedback_n": execution_feedback_n,
         "execution_feedback_prob": execution_feedback_prob,
         "mutation_mode": mutation_mode,
     })
-    metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
+    metric_label = {
+        "r2": "frontier R²",
+        "gt": "GT match rate",
+        "gt-r2": "GT+R² reward",
+    }.get(fitness_metric, "GT match rate")
 
     racing_on = n_extra_runs > 0
+    # reeval is already resolved from the "smart" alias above. smart_policy
+    # selects the reeval-allocation policy passed to compute_reeval_plan.
+    smart_on = reeval in ("smart-TTTS", "smart-KG")
+    smart_policy = "kg" if reeval == "smart-KG" else "ttts"
+    if smart_on and population_type != "topk":
+        raise ValueError(
+            f"--population-type={population_type} is incompatible with "
+            f"--reeval {reeval}; only 'topk' is supported."
+        )
     if racing_on:
         if population_type != "topk":
             raise ValueError(
@@ -636,9 +889,24 @@ def run_bundle_evolution(
         hof_n_steps=execution_feedback_n,
         use_cache=use_cache,
         pysr_wall_limit=pysr_wall_limit,
+        eval_noise_levels=eval_noise_levels,
     )
     if split_label is not None:
         evaluator.split_label = split_label
+
+    # Fresh-seed reeval of the current best bundle on the **train split**, using
+    # a `run_index` offset disjoint from anything evolution could ever reach.
+    # The gap between the live train score and the reeval score is the
+    # winner's-curse estimate. The offset must exceed the max `run_index`
+    # produced during evolution: racing caps `seeds_evaluated` at
+    # `n_runs_max * lambda_target`, and non-racing paths use `run_index < n_runs`.
+    TRAIN_REEVAL_SEED_OFFSET = 100_000
+    _max_train_run_index = max(n_runs, n_runs_max * lambda_target)
+    if _max_train_run_index + val_n_runs > TRAIN_REEVAL_SEED_OFFSET:
+        raise ValueError(
+            f"Train-reeval seed offset {TRAIN_REEVAL_SEED_OFFSET} would collide with "
+            f"training run_index range (up to {_max_train_run_index})"
+        )
 
     # Periodic background validation on a held-out split.
     # Submits a single-bundle SLURM eval on `val_split` each generation
@@ -666,12 +934,19 @@ def run_bundle_evolution(
         print(f"Val eval: enabled on {val_split} ({len(val_dataset_names)} datasets, {val_n_runs} runs/bundle)")
 
     def _run_val_eval(bundle: OperatorBundle, gen_submitted: int) -> Dict[str, Any]:
-        config = bundle.to_pysr_config(pysr_kwargs)
+        # Val gets a longer per-task budget so generalization isn't measured
+        # under a train-tuned wall clock (val datasets are unstratified and
+        # include harder problems than the train band).
+        val_kwargs = dict(pysr_kwargs)
+        if val_pysr_timeout is not None:
+            val_kwargs["timeout_in_seconds"] = val_pysr_timeout
+        config = bundle.to_pysr_config(val_kwargs)
         handle = evaluator.submit_configs(
             [config], val_state["dataset_names"],
             seed=seed, n_runs=val_n_runs,
             target_noise_map=val_state["noise_map"],
             fitness_metric=fitness_metric,
+            pysr_wall_limit=val_pysr_wall_limit,
         )
         batch_results = evaluator.collect_batches([handle])
         avg, vec, details = batch_results[0][0] if batch_results and batch_results[0] else (-1.0, [], [])
@@ -695,7 +970,7 @@ def run_bundle_evolution(
             wandb.log({
                 "val_eval/avg_score": avg,
                 "val_eval/gen_submitted": info["gen_submitted"],
-            })
+            }, step=_eval_log_state["idx"])
 
     def _check_val_future(wait: bool = False) -> None:
         fut = val_state["pending_future"]
@@ -706,6 +981,7 @@ def run_bundle_evolution(
         try:
             info = fut.result()
             _log_val_result(info)
+            logger.log_val_result(info)
         except Exception as e:
             print(f"\n[val eval] failed: {e}")
         val_state["pending_future"] = None
@@ -722,6 +998,91 @@ def run_bundle_evolution(
             _run_val_eval, bundle, gen,
         )
         print(f"\n[val eval] submitted for gen {gen} best={bundle.display_name} (background)")
+
+    # Train-split reeval with disjoint seeds — measures winner's curse on the
+    # current best by re-scoring on the same datasets/noise/PySR budget used in
+    # evolution, but with fresh `run_index` values (offset by
+    # TRAIN_REEVAL_SEED_OFFSET) so the cache misses and we get a clean estimate.
+    train_reeval_state: Dict[str, Any] = {
+        "executor": ThreadPoolExecutor(max_workers=1, thread_name_prefix="train-reeval"),
+        "pending_future": None,
+        "last_bundle_name": None,
+    }
+    print(
+        f"Train reeval: enabled ({val_n_runs} runs/bundle, "
+        f"seed offset={TRAIN_REEVAL_SEED_OFFSET})"
+    )
+
+    def _run_train_reeval(bundle: OperatorBundle, gen_submitted: int,
+                          train_score_at_submit: Optional[float]) -> Dict[str, Any]:
+        config = bundle.to_pysr_config(pysr_kwargs)
+        handle = evaluator.submit_configs(
+            [config], dataset_names,
+            seed=seed, n_runs=val_n_runs,
+            target_noise_map=target_noise_map,
+            fitness_metric=fitness_metric,
+            run_index_start_per_config=[TRAIN_REEVAL_SEED_OFFSET],
+        )
+        batch_results = evaluator.collect_batches([handle])
+        avg, vec, details = batch_results[0][0] if batch_results and batch_results[0] else (-1.0, [], [])
+        return {
+            "gen_submitted": gen_submitted,
+            "bundle_name": bundle.display_name,
+            "train_score_at_submit": train_score_at_submit,
+            "avg_score": avg,
+            "score_vector": vec,
+            "result_details": details,
+        }
+
+    def _log_train_reeval_result(info: Dict[str, Any]) -> None:
+        avg = info["avg_score"]
+        live = info["train_score_at_submit"]
+        delta = (live - avg) if (live is not None and avg == avg) else None
+        solved_str = format_solved_str(info["result_details"])
+        delta_str = f"{delta:+.4f}" if delta is not None else "n/a"
+        live_str = f"{live:.4f}" if live is not None else "n/a"
+        print(
+            f"\n[train reeval] gen {info['gen_submitted']} {info['bundle_name']}: "
+            f"reeval {metric_label}={avg:.4f} (live={live_str}, winners_curse={delta_str}) {solved_str}"
+        )
+        if wandb_run is not None:
+            import wandb
+            log = {
+                "val_eval/train_avg_score": avg,
+                "val_eval/train_reeval_gen_submitted": info["gen_submitted"],
+            }
+            if live is not None:
+                log["val_eval/train_score_at_submit"] = live
+            if delta is not None:
+                log["val_eval/train_winners_curse_delta"] = delta
+            wandb.log(log, step=_eval_log_state["idx"])
+
+    def _check_train_reeval_future(wait: bool = False) -> None:
+        fut = train_reeval_state["pending_future"]
+        if fut is None:
+            return
+        if not wait and not fut.done():
+            return
+        try:
+            info = fut.result()
+            _log_train_reeval_result(info)
+        except Exception as e:
+            print(f"\n[train reeval] failed: {e}")
+        train_reeval_state["pending_future"] = None
+
+    def _maybe_submit_train_reeval(bundle: OperatorBundle, gen: int) -> None:
+        if train_reeval_state["pending_future"] is not None and not train_reeval_state["pending_future"].done():
+            return
+        if bundle.display_name == train_reeval_state["last_bundle_name"]:
+            return
+        train_reeval_state["last_bundle_name"] = bundle.display_name
+        # Snapshot the live train score now — racing may overwrite bundle.score
+        # before the future resolves.
+        train_score_at_submit = bundle.score
+        train_reeval_state["pending_future"] = train_reeval_state["executor"].submit(
+            _run_train_reeval, bundle, gen, train_score_at_submit,
+        )
+        print(f"\n[train reeval] submitted for gen {gen} best={bundle.display_name} (background)")
 
     # Evaluate baseline (default operators)
     baseline_details: Optional[List[Dict]] = None
@@ -788,7 +1149,7 @@ def run_bundle_evolution(
 
     if wandb_run is not None:
         import wandb
-        wandb.log({"baseline_score": baseline_score, "generation": 0})
+        wandb.log({"baseline_score": baseline_score, "generation": 0}, step=_eval_log_state["idx"])
         log_cpu_usage(wandb_run)
 
     if resume_state is not None:
@@ -804,6 +1165,9 @@ def run_bundle_evolution(
         _eval_log_state["best"] = resume_state["best_seen"]
         # Seed logger with prior history so run_data.json in the new dir is a full record.
         logger.run_data["generations"] = list(resume_state["prior_generations"])
+        # Carry prior val scores so val-based bundle selection still sees pre-resume bests.
+        if resume_state.get("prior_val_results"):
+            logger.run_data["val_results"] = dict(resume_state["prior_val_results"])
         logger._save()
         best = population[0]
         start_gen = resume_state["start_gen"]
@@ -814,7 +1178,7 @@ def run_bundle_evolution(
         print("=" * 60)
         if wandb_run is not None:
             import wandb
-            wandb.log({"best_score": best.score, "generation": start_gen - 1})
+            wandb.log({"best_score": best.score, "generation": start_gen - 1}, step=_eval_log_state["idx"])
     else:
         start_gen = 1
         init_pop_start = time.perf_counter()
@@ -926,6 +1290,7 @@ def run_bundle_evolution(
                     variation_seed=cand["bundle_idx"] * 100 + cand["attempt"],
                     temperature=temperature,
                     use_cache=use_cache,
+                    reasoning_effort=reasoning_effort,
                     log_prompt_dir=prompts_log_dir,
                     log_generation=0,
                 ))
@@ -975,7 +1340,10 @@ def run_bundle_evolution(
                         operator.model = selected_model
                         if baseline_op and baseline_op.weight is not None:
                             operator.weight = baseline_op.weight
-                        bundle = bundle.copy_with(type_name, operator)
+                        bundle = bundle.copy_with(
+                            type_name, operator,
+                            meta_mutation=(type_name, spec.mode),
+                        )
                         kind_label = _describe_operator_kind(type_name, code)
                         print(
                             f"  {spec.mode} / {kind_label}: {unique_name} "
@@ -1033,7 +1401,7 @@ def run_bundle_evolution(
                 bundle.score_vector = score_vector
                 bundle.result_details = result_details
                 bundle.seeds_evaluated = n_runs
-                _log_bundle_eval(bundle, generation=0)
+                _log_bundle_eval(bundle, generation=0, seeds_added=n_runs)
                 solved_str = format_solved_str(result_details)
                 errs_str = format_errors_str(result_details)
                 suffix = f" {errs_str}" if errs_str else ""
@@ -1049,7 +1417,7 @@ def run_bundle_evolution(
             for bundle in population:
                 bundle.score = -1.0
                 bundle.score_vector = []
-                _log_bundle_eval(bundle, generation=0)
+                _log_bundle_eval(bundle, generation=0, seeds_added=n_runs)
 
         init_eval_elapsed = time.perf_counter() - init_eval_start
         print(f"  [timing] initial-pop evaluation: {_fmt_elapsed(init_eval_elapsed)}")
@@ -1070,39 +1438,41 @@ def run_bundle_evolution(
 
         if wandb_run is not None:
             import wandb
-            wandb.log({"best_score": best.score, "generation": 0})
+            wandb.log({"best_score": best.score, "generation": 0}, step=_eval_log_state["idx"])
 
         _maybe_submit_val(best, gen=0)
+        _maybe_submit_train_reeval(best, gen=0)
+
+    # Smart-reeval state. Offspring posterior means from the last K generations
+    # form the empirical distribution for offspring EI. Plots go under
+    # <run>/smart_reeval/. A pending-improvement map lets us log the realized
+    # post-reeval improvement at the wandb step of the gen that submitted it.
+    SMART_K = 3
+    smart_offspring_hist: "deque[List[float]]" = deque(maxlen=SMART_K)
+    smart_rng = np.random.default_rng(seed)
+    smart_plot_dir = Path(output_dir) / "smart_reeval"
+    if smart_on:
+        smart_plot_dir.mkdir(parents=True, exist_ok=True)
+        # The per-gen MC plot helper reads offspring_improvement.MARGIN for its
+        # Δ; align it with this run's per-offspring seed cost (n_runs).
+        import offspring_improvement as _oi
+        _oi.MARGIN = n_runs
+        sigma_desc = (f"fixed σ={smart_sigma}" if (smart_sigma is not None and smart_sigma > 0)
+                      else "cumulative σ estimate")
+        print(f"Smart reeval enabled: max_runs_per_generation(B)={max_runs_per_generation}, "
+              f"K={SMART_K}, margin(n_runs)={n_runs}, {sigma_desc}. Plots → {smart_plot_dir}")
 
     # Evolution loop: each generation splits offspring evenly across operator types
     for gen in range(start_gen, start_gen + n_generations):
         gen_start = time.perf_counter()
 
-        # Split this generation's offspring slots evenly across operator types.
-        # For n_offspring=20 and 3 types we get 7/7/6, etc. Shuffle so the
-        # order of types in the gen log / parent selection isn't biased by the
-        # fixed operator_type_names order.
-        shuffled_types = list(operator_type_names)
-        rng.shuffle(shuffled_types)
-        target_types: List[str] = [
-            shuffled_types[i % len(shuffled_types)]
-            for i in range(n_offspring)
-        ]
-        rng.shuffle(target_types)
-        type_split = {t: target_types.count(t) for t in operator_type_names}
-        split_str = ", ".join(f"{t}={type_split[t]}" for t in operator_type_names)
-
         print("\n" + "=" * 60)
-        print(
-            f"Generation {gen}/{start_gen + n_generations - 1} — "
-            f"Evolving {len(operator_type_names)} operator types ({split_str})"
-        )
+        print(f"Generation {gen}/{start_gen + n_generations - 1}")
         print("=" * 60)
 
         offspring_bundles: List[OperatorBundle] = []
         offspring_futs: List[Tuple[OperatorBundle, Future]] = []
         offspring_attempts = 0
-        max_offspring_attempts = n_offspring * 3
         offspring_gen_start = time.perf_counter()
 
         # λ schedule spans the absolute timeline (0 .. start_gen+n_generations),
@@ -1119,7 +1489,12 @@ def run_bundle_evolution(
         # immediately start generating the next candidate. The pool is sized
         # for racing's per-gen extra-runs (≤2*P qualifiers) + every offspring slot.
         submit_executor = ThreadPoolExecutor(
-            max_workers=max(1, n_offspring + (2 * population_size if racing_on else 0)),
+            max_workers=max(
+                1,
+                n_offspring
+                + (2 * population_size if racing_on else 0)
+                + (max_runs_per_generation if smart_on else 0),
+            ),
             thread_name_prefix="slurm-submit",
         )
 
@@ -1132,7 +1507,12 @@ def run_bundle_evolution(
         pop_extras_per_member: List[int] = []
         n_qualifiers_eligible = 0
         if racing_on:
-            sigma_est = pooled_sigma(archive, fitness_metric)
+            # Fixed offline σ by default (matches smart reeval); fall back to the
+            # cumulative per-gen estimate only when --smart-sigma ≤ 0 was given.
+            if smart_sigma is not None and smart_sigma > 0:
+                sigma_est = float(smart_sigma)
+            else:
+                sigma_est = pooled_sigma(archive, fitness_metric)
             qualifiers, n_qualifiers_eligible = select_qualifying_bundles(
                 archive, population_size, n_extra_now, cap_now,
                 sigma=sigma_est, fitness_metric=fitness_metric,
@@ -1152,6 +1532,107 @@ def run_bundle_evolution(
                 )
                 pop_futs.append((member, fut))
                 pop_extras_per_member.append(extra)
+
+        # Smart reeval: decide B* and a per-arm seed allocation over the all-time
+        # archive, then submit those reevals up-front so they run concurrently
+        # with offspring generation/evaluation. Skipped until we have at least
+        # one prior generation of offspring to form the empirical distribution.
+        smart_plan = None
+        smart_pre_snapshot = None  # (bundles, mu_pre) for actual-improvement
+        # Per-generation eval budget B is shared between fresh offspring and
+        # archive reeval. We always run at least n_offspring offspring
+        # (n_offspring * n_runs seeds); the reeval plan is capped at whatever
+        # budget remains. Reeval budget the plan declines to spend is converted
+        # back into extra offspring below so total evals ≈ B.
+        reeval_budget = max(0, max_runs_per_generation - n_offspring * n_runs)
+        if smart_on:
+            empirical = np.array(
+                [s for batch in smart_offspring_hist for s in batch], dtype=float
+            )
+            if empirical.size == 0:
+                print(f"\nSmart reeval gen {gen}: no offspring history yet — skipping.")
+            else:
+                # Dedup the archive by operator code so the live pool matches the
+                # offline MC analysis (the live archive is keyed by display_name).
+                pool = dedup_archive_by_code(archive)
+                # Use the fixed offline σ by default; fall back to the cumulative
+                # per-gen estimate only when --smart-sigma ≤ 0 was requested.
+                if smart_sigma is not None and smart_sigma > 0:
+                    sigma_est = float(smart_sigma)
+                else:
+                    sigma_est = pooled_sigma(pool, fitness_metric)
+                mu_arc = np.array(
+                    [b.score if b.score is not None else -1.0 for b in pool],
+                    dtype=float,
+                )
+                N_arc = np.array(
+                    [int(getattr(b, "seeds_evaluated", 0) or 0) for b in pool],
+                    dtype=float,
+                )
+                smart_plan = compute_reeval_plan(
+                    mu_arc, N_arc, sigma_est, empirical,
+                    n_initial_evals=n_runs, max_reruns=reeval_budget,
+                    M=5000, topk=population_size, n=2,
+                    policy=smart_policy, rng=smart_rng,
+                )
+                alloc = smart_plan["allocation"]
+                ei = smart_plan["offspring_EI"]
+                ei_str = f"{ei:+.5f}" if ei is not None else "n/a"
+                print(
+                    f"\nSmart reeval gen {gen} [{smart_policy.upper()}]: "
+                    f"σ̂={sigma_est:.4f}, k={len(pool)} "
+                    f"(archive={len(archive)}), empirical={empirical.size}, "
+                    f"offspring_EI={ei_str}, status={smart_plan['status']}, "
+                    f"B*={smart_plan['B_star']}, arms_reeval={int((alloc > 0).sum())}, "
+                    f"reeval_budget={reeval_budget}."
+                )
+                # Snapshot pre-reeval μ over the reeval pool so we can measure the
+                # realized change after the batch lands.
+                smart_pre_snapshot = (list(pool), mu_arc.copy())
+                for idx in np.nonzero(alloc)[0]:
+                    member = pool[idx]
+                    extra = int(alloc[idx])
+                    start = int(getattr(member, "seeds_evaluated", 0) or 0)
+                    fut = submit_bundle_future(
+                        submit_executor, member, evaluator, dataset_names, pysr_kwargs,
+                        seed=seed, n_runs=extra, target_noise_map=target_noise_map,
+                        fitness_metric=fitness_metric, run_index_start=start,
+                    )
+                    pop_futs.append((member, fut))
+                    pop_extras_per_member.append(extra)
+
+        # Convert any unspent reeval budget back into extra offspring so each
+        # generation spends ≈ B = max_runs_per_generation total seeds. Outside
+        # smart mode n_offspring is used verbatim.
+        n_offspring_now = n_offspring
+        if smart_on:
+            reeval_used = int(smart_plan["allocation"].sum()) if smart_plan is not None else 0
+            leftover = max(0, reeval_budget - reeval_used)
+            extra_offspring = leftover // max(1, n_runs)
+            n_offspring_now = n_offspring + extra_offspring
+            print(
+                f"  [smart] budget B={max_runs_per_generation}: min offspring={n_offspring} "
+                f"({n_offspring * n_runs} seeds), reeval_budget={reeval_budget}, "
+                f"reeval_used={reeval_used}, leftover={leftover} → +{extra_offspring} offspring "
+                f"(total offspring={n_offspring_now}, "
+                f"≈{n_offspring_now * n_runs + reeval_used} seeds)"
+            )
+
+        # Split this generation's offspring slots evenly across operator types.
+        # For n_offspring_now=20 and 3 types we get 7/7/6, etc. Shuffle so the
+        # order of types in the gen log / parent selection isn't biased by the
+        # fixed operator_type_names order.
+        shuffled_types = list(operator_type_names)
+        rng.shuffle(shuffled_types)
+        target_types: List[str] = [
+            shuffled_types[i % len(shuffled_types)]
+            for i in range(n_offspring_now)
+        ]
+        rng.shuffle(target_types)
+        type_split = {t: target_types.count(t) for t in operator_type_names}
+        split_str = ", ".join(f"{t}={type_split[t]}" for t in operator_type_names)
+        print(f"Evolving {len(operator_type_names)} operator types ({split_str})")
+        max_offspring_attempts = n_offspring_now * 3
 
         def _plan_offspring_candidate(slot_idx: int, attempt_idx: int) -> Dict[str, Any]:
             # Pick which operator type this slot evolves — stays fixed across
@@ -1229,7 +1710,7 @@ def run_bundle_evolution(
 
         pending_offspring = [
             _plan_offspring_candidate(slot_idx, 0)
-            for slot_idx in range(n_offspring)
+            for slot_idx in range(n_offspring_now)
         ]
         offspring_by_slot: Dict[int, OperatorBundle] = {}
         offspring_futs_by_slot: Dict[int, Tuple[OperatorBundle, Future]] = {}
@@ -1247,6 +1728,7 @@ def run_bundle_evolution(
                     variation_seed=cand["variation_seed"],
                     temperature=temperature,
                     use_cache=use_cache,
+                    reasoning_effort=reasoning_effort,
                     task_info=cand["task_info"],
                     log_prompt_dir=prompts_log_dir if gen <= log_prompt_gens_max else None,
                     log_generation=gen,
@@ -1294,8 +1776,13 @@ def run_bundle_evolution(
                             parent_name=parent.name if parent else None, mode=mode,
                         )
                         new_op.model = selected_model
-                        # Create new bundle: keep all other operators from parent, replace evolved type
-                        new_bundle = parent_bundle.copy_with(current_type_name, new_op)
+                        # Create new bundle: keep all other operators from parent, replace evolved type.
+                        # Record the meta-mutation (which component was edited, in what mode) so
+                        # population-level meta-mix can be tracked over generations.
+                        new_bundle = parent_bundle.copy_with(
+                            current_type_name, new_op,
+                            meta_mutation=(current_type_name, mode),
+                        )
                         offspring_by_slot[slot_idx] = new_bundle
                         kind_label = _describe_operator_kind(current_type_name, code)
                         print(
@@ -1334,12 +1821,12 @@ def run_bundle_evolution(
 
         offspring_bundles = [
             offspring_by_slot[slot_idx]
-            for slot_idx in range(n_offspring)
+            for slot_idx in range(n_offspring_now)
             if slot_idx in offspring_by_slot
         ]
         offspring_futs = [
             offspring_futs_by_slot[slot_idx]
-            for slot_idx in range(n_offspring)
+            for slot_idx in range(n_offspring_now)
             if slot_idx in offspring_futs_by_slot
         ]
 
@@ -1350,12 +1837,13 @@ def run_bundle_evolution(
         )
 
         offspring_eval_start = time.perf_counter()
-        if racing_on:
-            # Resolve every submission, then wait for all batches (extras +
-            # offspring) with one unified progress stream.
+        if racing_on or smart_on:
+            # Resolve every submission, then wait for all batches (extras /
+            # reevals + offspring) with one unified progress stream.
             combined_futs = list(pop_futs) + list(offspring_futs)
+            label = "Racing" if racing_on else "Smart reeval"
             print(
-                f"\nRacing: waiting on {len(pop_futs)} extra-runs + "
+                f"\n{label}: waiting on {len(pop_futs)} reeval + "
                 f"{len(offspring_futs)} offspring batches..."
             )
             pairs = collect_bundle_futures(evaluator, combined_futs, n_runs_now)
@@ -1370,9 +1858,13 @@ def run_bundle_evolution(
                 # apply_racing_results derive the count from the new details.
                 extras_members = [b for b, _ in extras_pairs]
                 extras_results = [r for _, r in extras_pairs]
+                extras_pre_seeds = [
+                    int(getattr(b, "seeds_evaluated", 0) or 0) for b in extras_members
+                ]
                 apply_racing_results(extras_members, extras_results, fitness_metric)
-                for bundle in extras_members:
-                    _log_bundle_eval(bundle, generation=gen)
+                for bundle, pre in zip(extras_members, extras_pre_seeds):
+                    post = int(getattr(bundle, "seeds_evaluated", 0) or 0)
+                    _log_bundle_eval(bundle, generation=gen, seeds_added=max(0, post - pre))
                     solved_str = format_solved_str(bundle.result_details)
                     errs_str = format_errors_str(bundle.result_details)
                     suffix = f" {errs_str}" if errs_str else ""
@@ -1386,15 +1878,25 @@ def run_bundle_evolution(
                     bundle.score = avg_score
                     bundle.score_vector = score_vector
                     bundle.result_details = result_details
-                    score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
+                    # Seed count is the per-run array length (metric-independent;
+                    # all run_* arrays have one entry per seed).
                     if result_details:
                         bundle.seeds_evaluated = max(
-                            (len(d.get(score_key, []) or []) for d in result_details),
+                            (
+                                max(
+                                    len(d.get("run_r2_scores", []) or []),
+                                    len(d.get("run_gt_scores", []) or []),
+                                )
+                                for d in result_details
+                            ),
                             default=n_runs_now,
                         )
                     else:
                         bundle.seeds_evaluated = n_runs_now
-                    _log_bundle_eval(bundle, generation=gen)
+                    _log_bundle_eval(
+                        bundle, generation=gen,
+                        seeds_added=int(getattr(bundle, "seeds_evaluated", n_runs_now) or n_runs_now),
+                    )
                     solved_str = format_solved_str(result_details)
                     errs_str = format_errors_str(result_details)
                     suffix = f" {errs_str}" if errs_str else ""
@@ -1408,10 +1910,29 @@ def run_bundle_evolution(
                     if bundle.score is None:
                         bundle.score = -1.0
                         bundle.score_vector = []
-                    _log_bundle_eval(bundle, generation=gen)
+                    _log_bundle_eval(bundle, generation=gen, seeds_added=n_runs_now)
             _extend_archive(offspring_bundles)
-            print(f"  [hof] Selecting survivors from all-time archive of {len(archive)} bundles")
-            population = select_survivors(archive, [], population_size)
+            if smart_on:
+                # Survive from the same code-deduped pool used for B*/TTTS, so
+                # duplicate-code bundles can't occupy multiple population slots
+                # and parent selection matches the planning pool.
+                surv_pool = dedup_archive_by_code(archive)
+                print(f"  [hof] Selecting survivors from code-deduped archive of "
+                      f"{len(surv_pool)} (raw {len(archive)}) bundles")
+                population = select_survivors(surv_pool, [], population_size)
+            else:
+                print(f"  [hof] Selecting survivors from all-time archive of {len(archive)} bundles")
+                population = select_survivors(archive, [], population_size)
+
+            # Smart reeval: measure the realized improvement from the reeval
+            # batch (Δ in expected parent fitness over the pre-reeval pool),
+            # render the per-gen MC plot, and log to wandb at step=gen.
+            if smart_on:
+                _finalize_smart_reeval(
+                    gen, smart_plan, smart_pre_snapshot, archive, population,
+                    population_size, smart_plot_dir, output_dir, wandb_run,
+                    _eval_log_state,
+                )
         else:
             print(f"\nWaiting on {len(offspring_futs)} offspring batches...")
             pairs = collect_bundle_futures(evaluator, offspring_futs, n_runs)
@@ -1421,7 +1942,7 @@ def run_bundle_evolution(
                 bundle.score_vector = score_vector
                 bundle.result_details = result_details
                 bundle.seeds_evaluated = n_runs
-                _log_bundle_eval(bundle, generation=gen)
+                _log_bundle_eval(bundle, generation=gen, seeds_added=n_runs)
                 solved_str = format_solved_str(result_details)
                 errs_str = format_errors_str(result_details)
                 suffix = f" {errs_str}" if errs_str else ""
@@ -1439,6 +1960,16 @@ def run_bundle_evolution(
             else:
                 population = select_survivors(population, offspring_bundles, population_size)
         best = population[0]
+
+        # Record this generation's offspring posterior means (only those with the
+        # standard initial seed count) for the smart-reeval empirical window.
+        if smart_on:
+            gen_off_means = [
+                b.score for b in offspring_bundles
+                if b.score is not None
+                and int(getattr(b, "seeds_evaluated", 0) or 0) == n_runs
+            ]
+            smart_offspring_hist.append(gen_off_means)
 
         offspring_eval_elapsed = time.perf_counter() - offspring_eval_start
         print(f"  [timing] offspring evaluation: {_fmt_elapsed(offspring_eval_elapsed)}")
@@ -1527,22 +2058,58 @@ def run_bundle_evolution(
                     log_data["avg_seeds_per_pop_member"] = (
                         sum(pop_seed_counts) / len(pop_seed_counts)
                     )
+            if smart_on:
+                seeds_offspring_init = len(offspring_bundles) * n_runs
+                seeds_reeval = sum(pop_extras_per_member)
+                log_data["smart/seeds_offspring_init"] = seeds_offspring_init
+                log_data["smart/seeds_reeval"] = seeds_reeval
+                log_data["smart/seeds_total"] = seeds_offspring_init + seeds_reeval
+                log_data["smart/n_arms_reeval"] = len(pop_futs)
             if population_type == "complexity":
                 fig = _make_complexity_pareto_figure(population, gen)
                 log_data["pareto_plot"] = wandb.Image(fig)
                 import matplotlib.pyplot as plt
                 plt.close(fig)
-            wandb.log(log_data)
+            # Population-level meta-mutation mix: sum the per-bundle (component, mode)
+            # counts across the current population, then marginalize each way and
+            # normalize to a fraction. Each panel sums to 1 once any meta-mutations
+            # have been applied; both are 0 if the population is all-baseline.
+            pop_meta_counts = {
+                c: {m: 0 for m in META_MUTATION_MODES} for c in META_COMPONENTS
+            }
+            for b in population:
+                for c in META_COMPONENTS:
+                    for m in META_MUTATION_MODES:
+                        pop_meta_counts[c][m] += b.meta_mutation_counts[c][m]
+            meta_total = sum(
+                pop_meta_counts[c][m] for c in META_COMPONENTS for m in META_MUTATION_MODES
+            )
+            denom = meta_total if meta_total > 0 else 1
+            for c in META_COMPONENTS:
+                frac = sum(pop_meta_counts[c][m] for m in META_MUTATION_MODES) / denom
+                log_data[f"meta_mix/by_component/{c}"] = frac
+            for m in META_MUTATION_MODES:
+                frac = sum(pop_meta_counts[c][m] for c in META_COMPONENTS) / denom
+                log_data[f"meta_mix/by_type/{m}"] = frac
+            log_data["meta_mix/total_count"] = meta_total
+            wandb.log(log_data, step=_eval_log_state["idx"])
             log_cpu_usage(wandb_run)
 
         _check_val_future(wait=False)
         _maybe_submit_val(best, gen=gen)
+        _check_train_reeval_future(wait=False)
+        _maybe_submit_train_reeval(best, gen=gen)
 
     if val_state["enabled"]:
         if val_state["pending_future"] is not None:
             print("\nWaiting for pending val evaluation to complete...")
         _check_val_future(wait=True)
         val_state["executor"].shutdown(wait=True)
+
+    if train_reeval_state["pending_future"] is not None:
+        print("\nWaiting for pending train reeval to complete...")
+    _check_train_reeval_future(wait=True)
+    train_reeval_state["executor"].shutdown(wait=True)
 
     logger.finalize_bundle(best)
 
@@ -1571,8 +2138,13 @@ def main():
     parser.add_argument("--offspring", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=10)
-    parser.add_argument("--fitness-metric", type=str, default="gt", choices=["r2", "gt"],
-                        help="Meta-evolution fitness metric: r2 or gt (whole-frontier symbolic match rate)")
+    parser.add_argument("--fitness-metric", type=str, default="gt", choices=["r2", "gt", "gt-r2"],
+                        help="Meta-evolution fitness metric: "
+                             "'gt' = whole-frontier ground-truth symbolic match rate; "
+                             "'r2' = average validation R² across the fixed complexity grid "
+                             "1..maxsize (frontier-averaged R²); "
+                             "'gt-r2' = 1.0 if the task is solved (gt match), else "
+                             "the frontier-averaged R².")
 
     parser.add_argument("--split", type=str, default='splits/barely_unsolvable.txt',
                         help="Path to dataset split file")
@@ -1581,12 +2153,25 @@ def main():
                              "for background evaluation on this split (--val-n-runs seeds). ")
     parser.add_argument("--val-n-runs", type=int, default=10,
                         help="Number of seeds per val-split run (used when --val-split is set)")
+    parser.add_argument("--val-pysr-wall-limit", type=int, default=1800,
+                        help="Hard wall-clock limit for val PySR tasks (seconds). Val is "
+                             "unstratified and includes harder problems than the train band, "
+                             "so it gets a larger budget by default to avoid timeout clipping.")
+    parser.add_argument("--val-pysr-timeout", type=int, default=1500,
+                        help="PySR internal timeout_in_seconds override for val tasks. "
+                             "Must be < --val-pysr-wall-limit with slack.")
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--target-noise", type=float, default=0.0)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--random-target-noise", action="store_true")
     group.add_argument("--no-random-target-noise", dest="random_target_noise", action="store_false")
     parser.set_defaults(random_target_noise=False)
+    parser.add_argument("--eval-all-noise-levels", action="store_true",
+                        help=f"Evaluate every task at all noise levels {TARGET_NOISE_LEVELS} "
+                             "sequentially in one SLURM task and score as the mean across levels "
+                             "(~4x compute per eval). Overrides --random-target-noise. SLURM "
+                             "per-task wall and --job-timeout scale up automatically; the per-fit "
+                             "--pysr-wall-limit is unchanged.")
 
     parser.add_argument("--max-evals", type=int, default=1000000,
                         help="Maximum evaluations per PySR run")
@@ -1603,10 +2188,17 @@ def main():
         f"{name}={spec!r}" for name, spec in MODEL_ENSEMBLE_PRESETS.items()
     )
     parser.add_argument("--models", type=str, default="best",
-                        help="Ensemble of models with weights, or a preset name. "
+                        help="Ensemble of models with weights, or a preset name. "  # cheap, medium, best
                              "Overrides --model when set. "
                              f"Presets: {preset_help}")
     parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--reasoning-effort", type=str, default="auto",
+                        choices=["auto", "low", "medium", "high"],
+                        help="LLM reasoning effort for operator generation. "
+                             "'auto' derives it from the --models preset "
+                             "(cheap=low, medium=medium, best=high); a raw "
+                             "ensemble string defaults to high. An explicit "
+                             "value overrides the preset pairing.")
     parser.add_argument("--llm-max-workers", type=int, default=16,
                         help="Maximum concurrent LLM completion requests for operator generation. "
                              "Use 1 for sequential behavior; use 0 to launch every pending "
@@ -1637,6 +2229,36 @@ def main():
                              "'complexity' = complexity-aware Pareto (bucket by total bundle LOC, "
                              "best per bucket, then drop Pareto-dominated buckets). "
                              "'task' and 'complexity' are incompatible with racing (--n-extra-runs > 0).")
+    parser.add_argument("--reeval", type=str, default="none",
+                        choices=["none", "heuristic", "smart", "smart-TTTS", "smart-KG"],
+                        help="Reevaluation strategy. 'none' (default): each offspring is "
+                             "evaluated once on n_runs seeds, no reevaluation. "
+                             "'heuristic': qualifier-based racing reeval driven by "
+                             "--n-extra-runs / --n-runs-max. "
+                             "'smart' / 'smart-TTTS': monte-carlo B*-driven reeval — each "
+                             "generation has a fixed eval budget B (--max-runs-per-generation) "
+                             "shared between fresh offspring and reevaluating the all-time "
+                             "archive, where B* is the indifference budget between reeval and "
+                             "one new offspring. Unspent reeval budget is converted into extra "
+                             "offspring. 'smart-TTTS' (= 'smart') allocates reevals via Top-Two "
+                             "Thompson Sampling. 'smart-KG' instead uses the tournament-aware "
+                             "knowledge gradient for both the B* curve and the per-arm "
+                             "allocation — more accurate per eval, but adds ~1-3 min CPU/gen "
+                             "of synchronous planning.")
+    parser.add_argument("--max-runs-per-generation", type=int, default=None,
+                        help="Smart reeval only (--reeval smart): the per-generation eval budget B "
+                             "(total seeds). At least --offspring offspring are always run "
+                             "(--offspring * --n-runs seeds); the remaining budget caps the reeval "
+                             "plan, and any reeval budget the plan declines to spend is converted "
+                             "into additional offspring so total evals ≈ B. "
+                             "Default --offspring * --n-runs + 100 (the old --max-reruns=100 cap).")
+    parser.add_argument("--smart-sigma", type=float, default=DEFAULT_SMART_SIGMA,
+                        help="Per-seed noise σ used in reeval planning (both --reeval smart "
+                             "B*/TTTS and --reeval heuristic qualifier racing). By default a fixed "
+                             f"σ measured offline ({DEFAULT_SMART_SIGMA}, from run 414990 on the gt "
+                             "metric) is used so planning works from gen 2 even before any bundle "
+                             "has ≥2 seeds. Pass a value ≤ 0 to instead estimate σ cumulatively "
+                             "from the archive each generation (the old pooled_sigma behavior).")
     parser.add_argument("--n-extra-runs", type=int, default=0,
                         help="Racing extra-runs per generation. When >0, racing turns on: each "
                              "generation, every archive bundle with ≥5%% chance of being in the "
@@ -1664,7 +2286,7 @@ def main():
                              "Accepts: evolve_pysr output dir or run_data.json, "
                              "openevolve best_program.py, or a raw .jl file.")
 
-    parser.add_argument("--exec-feedback-n", type=int, default=0,
+    parser.add_argument("--exec-feedback-n", type=int, default=3,
                         help="Enable execution-trace prompt feedback and record this many search checkpoints per PySR fit (0 = disabled)")
     parser.add_argument("--exec-feedback-prob", type=float, default=0.75,
                         help="Fraction of mutations that attach an execution-trace to the prompt when --exec-feedback-n > 0 (default 0.75)")
@@ -1678,19 +2300,54 @@ def main():
 
     args = parser.parse_args()
 
-    if args.n_extra_runs > 0:
+    # --n-extra-runs / --n-runs-max belong to heuristic racing reeval.
+    if (args.n_extra_runs > 0 or args.n_runs_max > 0) and args.reeval != "heuristic":
+        parser.error(
+            "--n-extra-runs / --n-runs-max are for heuristic reeval; pass "
+            f"--reeval heuristic (got --reeval {args.reeval})."
+        )
+
+    if args.reeval == "heuristic":
+        if args.n_extra_runs <= 0:
+            parser.error("--reeval heuristic requires --n-extra-runs > 0.")
         if args.population_type != "topk":
             parser.error(
                 f"--population-type={args.population_type} is incompatible with "
-                "--n-extra-runs > 0 (racing); only 'topk' is supported under racing."
+                "--reeval heuristic (racing); only 'topk' is supported under racing."
             )
         if args.n_runs_max <= 0:
             args.n_runs_max = 5 * args.n_extra_runs
         if args.lambda_target < 1:
             parser.error("--lambda-target must be >= 1")
-    else:
+        if args.max_runs_per_generation is not None:
+            parser.error("--max-runs-per-generation only applies with --reeval smart")
+    elif args.reeval in ("smart", "smart-TTTS", "smart-KG"):
+        if args.population_type != "topk":
+            parser.error(
+                f"--population-type={args.population_type} is incompatible with "
+                f"--reeval {args.reeval}; only 'topk' is supported."
+            )
+        if args.lambda_target != 1:
+            parser.error("--lambda-target only applies to heuristic racing")
+        min_runs = args.offspring * args.n_runs
+        if args.max_runs_per_generation is None:
+            # Default budget = the minimum offspring cost plus 100 reeval seeds,
+            # matching the old --max-reruns=100 reeval cap.
+            args.max_runs_per_generation = min_runs + 100
+        if args.max_runs_per_generation <= 0:
+            parser.error("--max-runs-per-generation must be > 0")
+        if args.max_runs_per_generation < min_runs:
+            parser.error(
+                f"--max-runs-per-generation ({args.max_runs_per_generation}) must be >= "
+                f"--offspring * --n-runs ({args.offspring} * {args.n_runs} = {min_runs}), "
+                "the minimum offspring eval cost per generation."
+            )
+    else:  # none
         if args.n_runs_max != 0 or args.lambda_target != 1:
-            parser.error("--n-runs-max / --lambda-target only apply with --n-extra-runs > 0")
+            parser.error("--n-runs-max / --lambda-target only apply with --reeval heuristic")
+        if args.max_runs_per_generation is not None:
+            parser.error("--max-runs-per-generation only applies with --reeval smart")
+        args.max_runs_per_generation = 0
 
     # Parse operator type(s)
     if args.operator_type == "all":
@@ -1718,6 +2375,10 @@ def main():
     dataset_names = load_dataset_names_from_split(args.split)
     print(f"Loaded {len(dataset_names)} datasets from {args.split}")
 
+    # Resolve reasoning effort from the preset name before --models is rewritten
+    # to its ensemble string below.
+    reasoning_effort = resolve_reasoning_effort(args.reasoning_effort, args.models)
+
     # Build model ensemble if --models is specified
     model_ensemble = None
     if args.models:
@@ -1729,6 +2390,8 @@ def main():
         print(f"Model ensemble: {model_ensemble}")
     else:
         print(f"Model: {args.model}")
+    print(f"Reasoning effort: {reasoning_effort} "
+          f"(--reasoning-effort={args.reasoning_effort})")
 
     pysr_kwargs = get_default_pysr_kwargs()
     pysr_kwargs["max_evals"] = args.max_evals
@@ -1737,7 +2400,7 @@ def main():
     # Load baseline if specified
     baseline_bundle = None
     if args.baseline:
-        baseline_bundle = load_baseline_bundle(
+        baseline_bundle = load_bundle(
             args.baseline,
             operator_type=operator_type_names[0] if len(operator_type_names) == 1 else None,
         )
@@ -1765,6 +2428,7 @@ def main():
         temperature=args.temperature,
         llm_max_workers=args.llm_max_workers,
         model_ensemble=model_ensemble,
+        reasoning_effort=reasoning_effort,
         seed=args.seed,
         output_dir=args.output_dir,
         pysr_kwargs=pysr_kwargs,
@@ -1780,17 +2444,23 @@ def main():
         n_runs=args.n_runs,
         target_noise=args.target_noise,
         random_target_noise=args.random_target_noise,
+        eval_all_noise_levels=args.eval_all_noise_levels,
         fitness_metric=args.fitness_metric,
         repo_root=args.repo_root,
         population_type=args.population_type,
+        reeval=args.reeval,
         n_extra_runs=args.n_extra_runs,
         n_runs_max=args.n_runs_max,
         lambda_target=args.lambda_target,
+        max_runs_per_generation=args.max_runs_per_generation,
+        smart_sigma=args.smart_sigma,
         resume_state=resume_state,
         execution_feedback_n=args.exec_feedback_n,
         execution_feedback_prob=args.exec_feedback_prob,
         val_split=args.val_split,
         val_n_runs=args.val_n_runs,
+        val_pysr_wall_limit=args.val_pysr_wall_limit,
+        val_pysr_timeout=args.val_pysr_timeout,
         mutation_mode=args.mutation_mode,
     )
 
@@ -1814,6 +2484,7 @@ def main():
         "max_samples": args.max_samples,
         "target_noise": args.target_noise,
         "random_target_noise": args.random_target_noise,
+        "eval_all_noise_levels": args.eval_all_noise_levels,
         "max_evals": args.max_evals,
         "timeout": args.timeout,
         "model": args.model,
@@ -1824,9 +2495,12 @@ def main():
         "baseline": args.baseline,
         "no_cache": args.no_cache,
         "population_type": args.population_type,
+        "reeval": args.reeval,
         "n_extra_runs": args.n_extra_runs,
         "n_runs_max": args.n_runs_max,
         "lambda_target": args.lambda_target,
+        "max_runs_per_generation": args.max_runs_per_generation,
+        "smart_sigma": args.smart_sigma,
         "exec_feedback_n": args.exec_feedback_n,
         "exec_feedback_prob": args.exec_feedback_prob,
         "continue_from": args.continue_from,
@@ -1866,15 +2540,22 @@ def main():
             final_splits = [args.split]
             if args.val_split:
                 final_splits.append(args.val_split)
-            # Build noise map matching evolution settings
+            # Build noise map matching evolution settings. With --random-target-noise,
+            # also pass the full set of noise levels so the final eval runs every level
+            # (10 seeds each) and reports avg_gt (fixed per-task level, matching
+            # training/validation) and avg_gt_all_noise (averaged over all levels).
+            # --eval-all-noise-levels also runs every level at final eval so the
+            # reported metric matches the all-noise-averaged evolution objective.
             target_noise_map = None
-            if args.random_target_noise:
+            final_noise_levels = None
+            if args.random_target_noise or args.eval_all_noise_levels:
                 all_datasets = []
                 for sp in final_splits:
                     all_datasets.extend(load_dataset_names_from_split(sp))
                 target_noise_map = _build_target_noise_map(
                     list(dict.fromkeys(all_datasets)), args.seed, TARGET_NOISE_LEVELS,
                 )
+                final_noise_levels = list(TARGET_NOISE_LEVELS)
             final_eval_seed = 192
             run_final_evaluation(
                 output_dir=args.output_dir,
@@ -1894,6 +2575,7 @@ def main():
                 use_cache=not args.no_cache,
                 wandb_run=wandb_run,
                 target_noise_map=target_noise_map,
+                noise_levels=final_noise_levels,
             )
         except Exception as e:
             print(f"\nFinal evaluation failed: {e}")
