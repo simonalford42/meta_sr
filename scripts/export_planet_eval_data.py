@@ -63,25 +63,36 @@ def main() -> None:
     model.eval()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    model.make_dataloaders(train=True, plot=True)
 
-    summaries: List[np.ndarray] = []
-    truths: List[np.ndarray] = []
-    with torch.no_grad():
-        for x_batch, y_batch in model._val_dataloader:
-            out = model(
-                x_batch.to(device),
-                noisy_val=False,
-                deterministic=True,
-                return_intermediates=True,
-            )
-            summaries.append(out["summary_stats"].detach().cpu().numpy())
-            truths.append(y_batch.detach().cpu().numpy())
+    def extract_summaries(plot: bool) -> tuple[np.ndarray, np.ndarray]:
+        """Run the val_dataloader through the NN and return (summary_stats, truths).
+
+        plot=False -> 9% validation split (random_state=1, model selection).
+        plot=True  -> 10% held-out test split (random_state=0, final reporting).
+        """
+        model.make_dataloaders(train=True, plot=plot)
+        summaries: List[np.ndarray] = []
+        truths: List[np.ndarray] = []
+        with torch.no_grad():
+            for x_batch, y_batch in model._val_dataloader:
+                out = model(
+                    x_batch.to(device),
+                    noisy_val=False,
+                    deterministic=True,
+                    return_intermediates=True,
+                )
+                summaries.append(out["summary_stats"].detach().cpu().numpy())
+                truths.append(y_batch.detach().cpu().numpy())
+        return (
+            np.concatenate(summaries, axis=0).astype(np.float32),
+            np.concatenate(truths, axis=0).astype(np.float32),
+        )
+
+    X_val_np, y_val_np = extract_summaries(plot=False)
+    X_test_np, y_test_np = extract_summaries(plot=True)
 
     X_train_np = np.asarray(X_train, dtype=np.float32)
     y_train_np = np.asarray(y_train, dtype=np.float32)
-    X_test_np = np.concatenate(summaries, axis=0).astype(np.float32)
-    y_test_np = np.concatenate(truths, axis=0).astype(np.float32)
 
     payload: Dict[str, Any] = {
         "meta": {
@@ -91,16 +102,21 @@ def main() -> None:
             "n": N,
             "batch_size": BATCH_SIZE,
             "n_train": int(X_train_np.shape[0]),
+            "n_val": int(X_val_np.shape[0]),
             "n_test": int(X_test_np.shape[0]),
             "n_features": int(X_train_np.shape[1]),
             "variable_names": list(variable_names),
             "train_shape": list(X_train_np.shape),
             "target_shape": list(y_train_np.shape),
+            "val_shape": list(X_val_np.shape),
+            "val_truth_shape": list(y_val_np.shape),
             "test_shape": list(X_test_np.shape),
             "test_truth_shape": list(y_test_np.shape),
         },
         "X_train": X_train_np,
         "y_train": y_train_np,
+        "X_val": X_val_np,
+        "y_val": y_val_np,
         "X_test": X_test_np,
         "y_test": y_test_np,
         "variable_names": list(variable_names),
@@ -115,7 +131,10 @@ def main() -> None:
         pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     size_mb = OUTPUT_PATH.stat().st_size / 1e6
-    print(f"Saved {OUTPUT_PATH} ({size_mb:.1f} MB)")
+    print(
+        f"Saved {OUTPUT_PATH} ({size_mb:.1f} MB) "
+        f"train={X_train_np.shape[0]} val={X_val_np.shape[0]} test={X_test_np.shape[0]}"
+    )
 
 
 if __name__ == "__main__":

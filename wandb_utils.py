@@ -76,15 +76,17 @@ def _log_live_openrouter_usage(usage: Dict[str, Any]) -> None:
     try:
         wandb.log({
             "openrouter/total_cost": usage["total_cost"],
+            "openrouter/uncached_hypothetical_cost": usage.get("uncached_hypothetical_cost", 0.0),
             "openrouter/num_calls": usage["num_calls"],
             "openrouter/num_cached_calls": usage["num_cached_calls"],
             "openrouter/cache_fraction": cache_fraction,
             "openrouter/prompt_tokens": usage["prompt_tokens"],
             "openrouter/completion_tokens": usage["completion_tokens"],
             "openrouter/total_tokens": usage["total_tokens"],
-        })
+        }, step=wandb.run.step)
         # Mirror into summary so the current totals are prominent in the UI.
         wandb.run.summary["openrouter_cost"] = usage["total_cost"]
+        wandb.run.summary["openrouter_uncached_hypothetical_cost"] = usage.get("uncached_hypothetical_cost", 0.0)
         wandb.run.summary["openrouter_num_calls"] = usage["num_calls"]
         wandb.run.summary["openrouter_num_cached_calls"] = usage["num_cached_calls"]
         wandb.run.summary["openrouter_cache_fraction"] = cache_fraction
@@ -173,7 +175,7 @@ def log_cpu_usage(run: Any) -> None:
     import wandb
     snap = _get_cpu_snapshot()
     if snap:
-        wandb.log(snap)
+        wandb.log(snap, step=wandb.run.step)
 
 
 def log_wandb_summary(
@@ -200,6 +202,7 @@ def log_wandb_summary(
         from completions import get_usage
         usage = get_usage()
         summary["openrouter_cost"] = usage["total_cost"]
+        summary["openrouter_uncached_hypothetical_cost"] = usage.get("uncached_hypothetical_cost", 0.0)
         summary["openrouter_num_calls"] = usage["num_calls"]
         summary["openrouter_num_cached_calls"] = usage["num_cached_calls"]
         total_queries = usage["num_calls"] + usage["num_cached_calls"]

@@ -32,6 +32,7 @@ DEFAULT_NITERATIONS = 500000
 DEFAULT_MAX_SIZE = 30
 DEFAULT_N = 10000
 DEFAULT_BATCH_SIZE = 1000
+DEFAULT_CHECKPOINT_EVALS = 1_000_000
 
 
 def _json_default(obj: Any) -> Any:
@@ -94,20 +95,25 @@ def slurm_num_cpus(default: int = 10) -> int:
 def build_planet_sr_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
     """Match the default planet_eqs/sr.py PySR configuration."""
     num_cpus = int(config["num_cpus"])
-    equation_file = str(Path(config["output_dir"]) / "planet_pysr_equations.csv")
     return {
         "procs": num_cpus,
         "populations": 3 * num_cpus,
         "batching": True,
         "batch_size": int(config["batch_size"]),
-        "equation_file": equation_file,
+        "output_directory": str(config["output_dir"]),
         "niterations": int(config["niterations"]),
         "binary_operators": ["+", "*", "/", "-", "^"],
         "maxsize": int(config["max_size"]),
-        "timeout_in_seconds": int(60 * 60 * float(config["time_in_hours"])),
+        # timeout_in_seconds / max_evals are set per warm-start chunk in
+        # run_checkpointed_fit so we can snapshot at 1e6 evals / 1h / 8h.
         "constraints": {"^": (-1, 1)},
         "ncyclesperiteration": 1000,
         "random_state": int(config["seed"]),
+        # Keep the SLURM log clean: verbosity=0 silences PySR's periodic
+        # hall-of-fame printing (and forces the progress bar off). We log the
+        # frontier + per-checkpoint metrics ourselves and write hall_of_fame.csv.
+        "verbosity": 0,
+        "progress": False,
     }
 
 
@@ -165,7 +171,6 @@ def calculate_planet_metrics(truths_full: np.ndarray, mu_pred: np.ndarray) -> Di
     unstable = ~true_stable
 
     rmse = float(np.sqrt(np.mean(np.square(truths[unstable] - preds[unstable]))))
-    full_rmse = float(np.sqrt(np.mean(np.square(truths - preds))))
     acc = float(np.mean((preds >= 9) == (truths >= 9)))
     bias = float(np.mean(preds[truths < 9] - truths[truths < 9]))
 
@@ -181,7 +186,6 @@ def calculate_planet_metrics(truths_full: np.ndarray, mu_pred: np.ndarray) -> Di
 
     return {
         "rmse": rmse,
-        "full_rmse": full_rmse,
         "acc": acc,
         "ll": planet_ll(truths_full, roc_preds, fixed_std=1.0),
         "roc_auc": roc_auc,
@@ -189,6 +193,201 @@ def calculate_planet_metrics(truths_full: np.ndarray, mu_pred: np.ndarray) -> Di
         "fnr": fnr,
         "bias": bias,
     }
+
+
+def _predict_at_index(model: Any, X: np.ndarray, index: Any) -> np.ndarray:
+    preds = np.asarray(model.predict(X, index=index))
+    if preds.ndim == 2:
+        preds = preds[:, 0]
+    preds = preds.reshape(-1)
+    return np.where(np.isfinite(preds), preds, 4.0)
+
+
+def evaluate_frontier(
+    model: Any,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+) -> Tuple[list, Optional[Dict[str, Any]]]:
+    """Evaluate every Pareto-frontier equation on val + test.
+
+    Returns (records, best). Each record has complexity, loss (train), equation,
+    and full val/test metric dicts. ``best`` is the record maximizing validation
+    log-likelihood (mirrors planet_eqs/evaluation.py best-complexity selection).
+    """
+    records: list = []
+    try:
+        equations = model.equations_
+    except Exception as exc:
+        print(f"WARNING: could not read frontier: {exc}", flush=True)
+        return records, None
+
+    for idx, row in equations.iterrows():
+        rec = {
+            "complexity": _safe_float(row.get("complexity")),
+            "loss": _safe_float(row.get("loss")),
+            "equation": str(row.get("equation")),
+            "val_metrics": None,
+            "test_metrics": None,
+        }
+        try:
+            rec["val_metrics"] = calculate_planet_metrics(
+                y_val, _predict_at_index(model, X_val, idx)
+            )
+            rec["test_metrics"] = calculate_planet_metrics(
+                y_test, _predict_at_index(model, X_test, idx)
+            )
+        except Exception as exc:
+            print(f"WARNING: frontier predict failed at index {idx}: {exc}", flush=True)
+        records.append(rec)
+
+    scored = [
+        r
+        for r in records
+        if r["val_metrics"] is not None and _safe_float(r["val_metrics"].get("ll")) is not None
+    ]
+    best = max(scored, key=lambda r: r["val_metrics"]["ll"]) if scored else None
+    return records, best
+
+
+def _frontier_rows(records: list) -> list:
+    """Flatten records into JSON/CSV-friendly rows for logging."""
+    rows = []
+    for r in records:
+        val = r.get("val_metrics") or {}
+        test = r.get("test_metrics") or {}
+        rows.append(
+            {
+                "complexity": r.get("complexity"),
+                "loss": r.get("loss"),
+                "equation": r.get("equation"),
+                "val_ll": _safe_float(val.get("ll")),
+                "val_rmse": _safe_float(val.get("rmse")),
+                "test_rmse": _safe_float(test.get("rmse")),
+                "test_ll": _safe_float(test.get("ll")),
+                "test_acc": _safe_float(test.get("acc")),
+            }
+        )
+    return rows
+
+
+def _best_summary(best: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Headline summary for a val-selected equation."""
+    if best is None:
+        return {"equation": None, "complexity": None, "val_ll": None, "metrics": None}
+    return {
+        "equation": best.get("equation"),
+        "complexity": best.get("complexity"),
+        "val_ll": _safe_float((best.get("val_metrics") or {}).get("ll")),
+        "metrics": best.get("test_metrics"),
+    }
+
+
+def _fmt_evals(n: int) -> str:
+    n = int(n)
+    for suffix, base in (("e6", 1_000_000), ("e3", 1000)):
+        if n >= base and n % base == 0:
+            return f"{n // base}{suffix}"
+    return str(n)
+
+
+def build_checkpoints(config: Dict[str, Any]) -> list:
+    """Ordered warm-start checkpoints: 1e6 evals, 1h, then the full budget."""
+    total_seconds = int(60 * 60 * float(config["time_in_hours"]))
+    checkpoints = [
+        {"label": f"evals_{_fmt_evals(config['checkpoint_evals'])}", "kind": "evals", "value": int(config["checkpoint_evals"])},
+        {"label": "time_1h", "kind": "time", "value": 3600},
+        {"label": f"time_{config['time_in_hours']:g}h", "kind": "time", "value": total_seconds},
+    ]
+    # Drop time checkpoints at/after the final budget except the final one, and
+    # any non-positive budget, keeping order.
+    pruned = []
+    for ck in checkpoints:
+        if ck["kind"] == "time" and ck["value"] >= total_seconds and ck["label"] != checkpoints[-1]["label"]:
+            continue
+        pruned.append(ck)
+    return pruned
+
+
+# Sentinel "no eval cap" for time-bounded warm-start chunks.
+_EVALS_UNBOUNDED = 10 ** 12
+
+
+def run_checkpointed_fit(
+    model: Any,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    variable_names: list,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    checkpoints: list,
+) -> list:
+    """Warm-start PySR through each checkpoint, evaluating the frontier between.
+
+    Returns a list of per-checkpoint dicts with the val-selected best equation's
+    test metrics and the full frontier at that point. Checkpoints are cumulative;
+    if a time budget is already exceeded we snapshot the current state instead of
+    fitting further (chosen "skip overshoot" behavior).
+    """
+    import time
+
+    total_seconds = max(
+        (ck["value"] for ck in checkpoints if ck["kind"] == "time"), default=None
+    )
+    start = time.time()
+    results: list = []
+
+    for i, ck in enumerate(checkpoints):
+        model.warm_start = i > 0
+        elapsed = time.time() - start
+        did_fit = True
+
+        if ck["kind"] == "evals":
+            model.max_evals = int(ck["value"])
+            if total_seconds is not None:
+                model.timeout_in_seconds = max(1, int(total_seconds - elapsed))
+        else:  # time
+            model.max_evals = _EVALS_UNBOUNDED
+            remaining = ck["value"] - elapsed
+            if remaining <= 1:
+                did_fit = False  # already past this time budget; snapshot as-is
+            else:
+                model.timeout_in_seconds = int(remaining)
+
+        print(
+            f"\n=== checkpoint {ck['label']} ({ck['kind']}={ck['value']}) "
+            f"elapsed={elapsed:.0f}s fit={did_fit} ===",
+            flush=True,
+        )
+        if did_fit:
+            model.fit(X_train, y_train, variable_names=variable_names)
+
+        elapsed_after = time.time() - start
+        records, best = evaluate_frontier(model, X_val, y_val, X_test, y_test)
+        summary = _best_summary(best)
+        results.append(
+            {
+                "label": ck["label"],
+                "kind": ck["kind"],
+                "value": ck["value"],
+                "elapsed_s": round(elapsed_after, 1),
+                "did_fit": did_fit,
+                "best": summary,
+                "frontier": _frontier_rows(records),
+            }
+        )
+        m = summary.get("metrics") or {}
+        print(
+            f"  best complexity={summary.get('complexity')} val_ll={summary.get('val_ll')} "
+            f"test_rmse={m.get('rmse')} test_ll={m.get('ll')} test_acc={m.get('acc')}",
+            flush=True,
+        )
+        print(f"  equation: {summary.get('equation')}", flush=True)
+
+    return results
 
 
 def build_method(config: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
@@ -200,10 +399,10 @@ def build_method(config: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]
     if not config.get("evolve_results"):
         return base_kwargs, {}, method_meta
 
-    from baseline_loader import load_baseline_bundle
+    from bundle_loader import load_bundle
 
     source = str(Path(config["evolve_results"]).expanduser())
-    bundle = load_baseline_bundle(source)
+    bundle = load_bundle(source)
     cfg = bundle.to_pysr_config(base_kwargs)
     allow_custom = bool(cfg.allow_custom_mutations)
     extra_code = {
@@ -291,6 +490,12 @@ def load_planet_eval_data(path: Path) -> Dict[str, Any]:
     if mismatches:
         raise ValueError(f"{path} metadata does not match planet_eval.py defaults: {mismatches}")
 
+    if "X_val" not in data or "y_val" not in data:
+        raise ValueError(
+            f"{path} has no validation split. Re-export it with: "
+            "conda activate new_bnn && python scripts/export_planet_eval_data.py"
+        )
+
     return data
 
 
@@ -301,6 +506,8 @@ def fit_eval(config: Dict[str, Any]) -> None:
     data = load_planet_eval_data(Path(config["data_path"]).expanduser().resolve())
     X_train = np.asarray(data["X_train"], dtype=np.float32)
     y_train = np.asarray(data["y_train"], dtype=np.float32).reshape(-1)
+    X_val = np.asarray(data["X_val"], dtype=np.float32)
+    y_val = np.asarray(data["y_val"], dtype=np.float32)
     X_test = np.asarray(data["X_test"], dtype=np.float32)
     y_test = np.asarray(data["y_test"], dtype=np.float32)
     variable_names = list(data["variable_names"])
@@ -313,21 +520,19 @@ def fit_eval(config: Dict[str, Any]) -> None:
 
     print("PySR kwargs:", json.dumps(pysr_kwargs, indent=2, default=_json_default), flush=True)
     model = PySRRegressor(**pysr_kwargs)
-    model.fit(X_train, y_train, variable_names=variable_names)
+
+    checkpoints = build_checkpoints(config)
+    print(f"Checkpoints: {[c['label'] for c in checkpoints]}", flush=True)
+    checkpoint_results = run_checkpointed_fit(
+        model, X_train, y_train, variable_names, X_val, y_val, X_test, y_test, checkpoints
+    )
     print("Done running planet PySR", flush=True)
 
-    best = model.get_best()
-    best_equation = str(best["equation"]) if best is not None else None
-    best_loss = _safe_float(best["loss"]) if best is not None and "loss" in best else None
-    best_complexity = _safe_float(best["complexity"]) if best is not None and "complexity" in best else None
-
-    preds = np.asarray(model.predict(X_test))
-    if preds.ndim == 2:
-        preds = preds[:, 0]
-    preds = preds.reshape(-1)
-    preds = np.where(np.isfinite(preds), preds, 4.0)
-
-    metrics = calculate_planet_metrics(y_test, preds)
+    # Final checkpoint (full budget) carries the headline frontier + selection.
+    final = checkpoint_results[-1] if checkpoint_results else {"best": _best_summary(None), "frontier": []}
+    best = final["best"]
+    frontier = final["frontier"]
+    metrics = best.get("metrics") or {}
 
     equations_path = output_dir / "planet_equations.csv"
     try:
@@ -341,24 +546,37 @@ def fit_eval(config: Dict[str, Any]) -> None:
         "nn_version": config["nn_version"],
         "target": config["target"],
         "loss_fn": config["loss_fn"],
+        "selection": "val_ll",
         "n_train": int(X_train.shape[0]),
+        "n_val": int(X_val.shape[0]),
         "n_test": int(X_test.shape[0]),
         "n_features": int(X_train.shape[1]),
         "variable_names": variable_names,
-        "equation": best_equation,
-        "best_loss": best_loss,
-        "best_complexity": best_complexity,
+        "equation": best.get("equation"),
+        "best_complexity": best.get("complexity"),
+        "best_val_ll": best.get("val_ll"),
         "metrics": metrics,
+        "frontier": frontier,
+        "checkpoints": checkpoint_results,
         "equations_path": str(equations_path),
         "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
     }
     result_path = output_dir / "planet_eval_result.json"
     _write_json(result_path, result)
 
-    print("\nPlanet resonant-test metrics")
+    print("\nFinal val-selected equation (test metrics)")
     for key in ["rmse", "acc", "ll", "roc_auc", "fpr", "fnr", "bias"]:
-        print(f"  {key}: {metrics[key]}")
-    print(f"  equation: {best_equation}", flush=True)
+        print(f"  {key}: {metrics.get(key)}")
+    print(f"  complexity: {best.get('complexity')}  val_ll: {best.get('val_ll')}")
+    print(f"  equation: {best.get('equation')}", flush=True)
+
+    print("\nFinal Pareto frontier (complexity | val_ll | test_rmse | equation)")
+    for rec in frontier:
+        print(
+            f"  {rec.get('complexity')} | {rec.get('val_ll')} | "
+            f"{rec.get('test_rmse')} | {rec.get('equation')}",
+            flush=True,
+        )
 
     if not config.get("no_wandb"):
         log_planet_wandb(config, result)
@@ -391,6 +609,8 @@ def log_planet_wandb(config: Dict[str, Any], result: Dict[str, Any]) -> None:
 
     import wandb
 
+    metrics = result["metrics"] or {}
+
     columns = [
         "mode",
         "source",
@@ -398,10 +618,11 @@ def log_planet_wandb(config: Dict[str, Any], result: Dict[str, Any]) -> None:
         "target",
         "loss_fn",
         "n_train",
+        "n_val",
         "n_test",
         "equation",
-        "best_loss",
         "best_complexity",
+        "best_val_ll",
         "rmse",
         "acc",
         "ll",
@@ -411,7 +632,6 @@ def log_planet_wandb(config: Dict[str, Any], result: Dict[str, Any]) -> None:
         "bias",
         "slurm_job_id",
     ]
-    metrics = result["metrics"]
     table = wandb.Table(columns=columns)
     table.add_data(
         result["mode"],
@@ -420,20 +640,67 @@ def log_planet_wandb(config: Dict[str, Any], result: Dict[str, Any]) -> None:
         result["target"],
         result["loss_fn"],
         result["n_train"],
+        result.get("n_val"),
         result["n_test"],
         result["equation"],
-        result["best_loss"],
-        result["best_complexity"],
-        metrics["rmse"],
-        metrics["acc"],
-        metrics["ll"],
-        metrics["roc_auc"],
-        metrics["fpr"],
-        metrics["fnr"],
-        metrics["bias"],
+        result.get("best_complexity"),
+        result.get("best_val_ll"),
+        metrics.get("rmse"),
+        metrics.get("acc"),
+        metrics.get("ll"),
+        metrics.get("roc_auc"),
+        metrics.get("fpr"),
+        metrics.get("fnr"),
+        metrics.get("bias"),
         result.get("slurm_job_id"),
     )
     wandb.log({"planet_eval/results_table": table})
+
+    # Per-checkpoint table: val-selected best equation's test metrics at each of
+    # 1e6 evals / 1h / 8h, plus scalar series keyed by checkpoint label.
+    checkpoints = result.get("checkpoints") or []
+    if checkpoints:
+        ck_columns = [
+            "label", "kind", "value", "elapsed_s", "complexity",
+            "equation", "test_rmse", "test_ll", "test_acc", "val_ll",
+        ]
+        ck_table = wandb.Table(columns=ck_columns)
+        for ck in checkpoints:
+            best = ck.get("best") or {}
+            m = best.get("metrics") or {}
+            ck_table.add_data(
+                ck.get("label"), ck.get("kind"), ck.get("value"), ck.get("elapsed_s"),
+                best.get("complexity"), best.get("equation"),
+                _safe_float(m.get("rmse")), _safe_float(m.get("ll")),
+                _safe_float(m.get("acc")), best.get("val_ll"),
+            )
+            label = ck.get("label")
+            wandb.log({
+                f"planet_eval/{label}/test_rmse": _safe_float(m.get("rmse")),
+                f"planet_eval/{label}/test_ll": _safe_float(m.get("ll")),
+                f"planet_eval/{label}/test_acc": _safe_float(m.get("acc")),
+                f"planet_eval/{label}/val_ll": best.get("val_ll"),
+                f"planet_eval/{label}/complexity": best.get("complexity"),
+                f"planet_eval/{label}/elapsed_s": ck.get("elapsed_s"),
+            })
+        wandb.log({"planet_eval/checkpoints_table": ck_table})
+
+    frontier = result.get("frontier") or []
+    if frontier:
+        frontier_columns = [
+            "complexity", "loss", "val_ll", "val_rmse",
+            "test_rmse", "test_ll", "test_acc", "equation",
+        ]
+        frontier_table = wandb.Table(columns=frontier_columns)
+        for rec in frontier:
+            frontier_table.add_data(
+                rec.get("complexity"), rec.get("loss"),
+                rec.get("val_ll"), rec.get("val_rmse"),
+                rec.get("test_rmse"), rec.get("test_ll"), rec.get("test_acc"),
+                rec.get("equation"),
+            )
+        wandb.log({"planet_eval/frontier_table": frontier_table})
+
     wandb.log({f"planet_eval/{k}": v for k, v in metrics.items()})
     log_wandb_summary(
         run,
@@ -441,8 +708,8 @@ def log_planet_wandb(config: Dict[str, Any], result: Dict[str, Any]) -> None:
             f"planet_eval_{k}": v
             for k, v in {
                 **metrics,
-                "best_loss": result.get("best_loss"),
                 "best_complexity": result.get("best_complexity"),
+                "best_val_ll": result.get("best_val_ll"),
             }.items()
         },
     )
@@ -455,9 +722,18 @@ def summarize_result(output_dir: Path) -> None:
         raise FileNotFoundError(f"planet_eval did not write {result_path}")
 
     result = _read_json(result_path)
+    metrics = result.get("metrics") or {}
     print(f"Result: {result_path}", flush=True)
+    for ck in result.get("checkpoints") or []:
+        m = (ck.get("best") or {}).get("metrics") or {}
+        print(
+            f"  [{ck.get('label')}] complexity={(ck.get('best') or {}).get('complexity')} "
+            f"test_rmse={m.get('rmse')} test_ll={m.get('ll')} test_acc={m.get('acc')}",
+            flush=True,
+        )
+    print("  final (val-selected) test metrics:", flush=True)
     for key in ["rmse", "acc", "ll", "roc_auc", "fpr", "fnr", "bias"]:
-        print(f"  {key}: {result['metrics'].get(key)}", flush=True)
+        print(f"    {key}: {metrics.get(key)}", flush=True)
     print(f"  equation: {result.get('equation')}", flush=True)
 
 
@@ -483,6 +759,7 @@ def get_config(args: argparse.Namespace) -> Dict[str, Any]:
         "loss_fn": DEFAULT_LOSS_FN,
         "max_size": int(args.max_size),
         "time_in_hours": float(args.time_in_hours),
+        "checkpoint_evals": int(args.checkpoint_evals),
         "niterations": DEFAULT_NITERATIONS,
         "n": DEFAULT_N,
         "batch_size": DEFAULT_BATCH_SIZE,
@@ -522,6 +799,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--baseline", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--max-size", type=int, default=DEFAULT_MAX_SIZE)
     parser.add_argument("--time-in-hours", type=float, default=DEFAULT_TIME_IN_HOURS)
+    parser.add_argument(
+        "--checkpoint-evals", type=int, default=DEFAULT_CHECKPOINT_EVALS,
+        help="Cumulative eval count for the first warm-start checkpoint.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--no-log", "--no_log", dest="no_log", action="store_true", help="disable wandb logging")
     parser.add_argument("--results-dir", type=str, default=None, help=argparse.SUPPRESS)

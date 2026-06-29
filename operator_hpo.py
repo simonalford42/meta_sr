@@ -717,7 +717,7 @@ def main():
 
     from utils import load_dataset_names_from_split, copy_slurm_log
     from wandb_utils import init_wandb, finish_wandb
-    from baseline_loader import load_baseline_bundle
+    from bundle_loader import load_bundle
     from parallel_eval_pysr import get_default_pysr_kwargs
     from hpo_pysr import _build_target_noise_map, TARGET_NOISE_LEVELS
 
@@ -809,7 +809,7 @@ def main():
     pysr_kwargs["timeout_in_seconds"] = args.timeout
 
     # Load bundle
-    baseline_bundle = load_baseline_bundle(args.evolved_bundle)
+    baseline_bundle = load_bundle(args.evolved_bundle)
     if baseline_bundle is None or not any(op is not None for op in baseline_bundle.operators.values()):
         parser.error(
             f"--evolved-bundle {args.evolved_bundle} did not yield a bundle with any operator code."

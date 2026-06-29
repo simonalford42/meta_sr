@@ -27,7 +27,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from operator_types import JuliaOperator, OperatorBundle
-from baseline_loader import load_baseline_bundle
+from bundle_loader import load_bundle
 from evolution_helpers import _bundle_loc
 
 OPERATOR_ORDER = ["mutation", "survival", "selection", "loss"]
@@ -109,7 +109,7 @@ def render_comparison(
     if not population:
         raise ValueError(f"Generation {gen_used} has no population entries.")
     simplest = _pick_simplest(population)
-    baseline = load_baseline_bundle(baseline_path)
+    baseline = load_bundle(baseline_path)
 
     simp_score = simplest.score
     base_score = baseline.score

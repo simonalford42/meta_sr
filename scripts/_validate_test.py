@@ -27,7 +27,13 @@ from skeleton_operator_types import (
     SkeletonBundle,
     SLOTS_BY_NAME,
     validate_skeleton_code,
+    warmup_skeleton_validation,
 )
+
+print("Pre-compiling fit_skeleton_sr (tiny fit)...", flush=True)
+t0 = time.time()
+fit_warmup = warmup_skeleton_validation()
+print(f"  fit_skeleton_sr warm in {fit_warmup:.1f}s (wall {time.time()-t0:.1f}s)", flush=True)
 
 b = SkeletonBundle.from_default_sr_config()
 print(f"Bundle loaded; functions:", flush=True)

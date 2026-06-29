@@ -291,32 +291,40 @@ def run_pysr_on_dataset(
     evolve_pysr_overrides = {}
     evolve_extra_code = {}
     if evolve_results is not None:
-        from evaluate_new_pysr import load_evolve_results, build_evolve_kwargs
-        method = load_evolve_results(evolve_results, None)
-        evolve_weights, evolve_pysr_overrides, evolve_extra_code, items = (
-            build_evolve_kwargs(method, baseline_weights={}, base_pysr_kwargs={})
-        )
+        from bundle_loader import load_bundle
+        bundle = load_bundle(evolve_results)
+        # Convert to a PySRConfig with no base pysr_kwargs, so pysr_kwargs holds
+        # only the bundle's HPO-tuned overrides (layered onto the model kwargs
+        # below) and mutation_weights/custom_*_code carry the operators.
+        cfg = bundle.to_pysr_config({})
+        evolve_weights = cfg.mutation_weights
+        evolve_pysr_overrides = cfg.pysr_kwargs
+        evolve_extra_code = {
+            "custom_mutation_code": cfg.custom_mutation_code,
+            "custom_survival_code": cfg.custom_survival_code,
+            "custom_selection_code": cfg.custom_selection_code,
+            "custom_loss_code": cfg.custom_loss_code,
+        }
         if verbose:
             # Look up whether this dataset was solved during the evolve run.
             # Solved = at least one seed scored gt_match >= 1.0
             # (matches get_solved_tasks in evolution_helpers.py).
             solve_status = "UNKNOWN"
-            details = items[0].result_details or []
+            details = bundle.result_details or []
             for detail in details:
                 if detail.get("dataset") == dataset_name:
                     run_gt = detail.get("run_gt_scores") or []
                     solve_status = "SOLVED" if any(g >= 1.0 for g in run_gt) else "NOT SOLVED"
                     break
             print(f"[{dataset_name}] {solve_status} during evolve run")
-            for m in items:
+            score_str = f", train_score {bundle.score:.4f}" if bundle.score is not None else ""
+            for t, op in bundle.operators.items():
+                if op is not None:
+                    print(f"Loaded [{t}] {op.name} (gen {op.generation}){score_str}")
+            if bundle.best_hparams:
                 print(
-                    f"Loaded [{m.operator_type}] {m.name} "
-                    f"(gen {m.generation}, train_score {m.train_score:.4f})"
-                )
-            if items[0].best_hparams:
-                print(
-                    f"Applied {len(items[0].best_hparams)} HPO-tuned hparam(s) "
-                    f"from bundle: {sorted(items[0].best_hparams.keys())}"
+                    f"Applied {len(bundle.best_hparams)} HPO-tuned hparam(s) "
+                    f"from bundle: {sorted(bundle.best_hparams.keys())}"
                 )
 
     # Load data
@@ -518,6 +526,9 @@ def run_pysr_on_dataset(
                 ground_truth_str=gt_formula_for_match,
                 var_names=feature_names,
                 timeout_seconds_per_expression=3,
+                predict_fn=lambda idx: model.predict(X_test, index=int(idx)),
+                y=y_test,
+                min_r2=0.5,
             )
             if gt_match_result.get("match", False):
                 gt_match_score = 1.0

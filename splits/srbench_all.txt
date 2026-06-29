@@ -18,10 +18,12 @@ feynman_I_18_14
 feynman_I_18_4
 feynman_I_24_6
 feynman_I_25_13
+feynman_I_26_2
 feynman_I_27_6
 feynman_I_29_16
 feynman_I_29_4
 feynman_I_30_3
+feynman_I_30_5
 feynman_I_32_17
 feynman_I_32_5
 feynman_I_34_1
@@ -96,6 +98,7 @@ feynman_III_7_38
 feynman_III_8_54
 feynman_III_9_52
 feynman_test_1
+feynman_test_10
 feynman_test_11
 feynman_test_12
 feynman_test_13

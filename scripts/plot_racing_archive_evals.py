@@ -39,12 +39,29 @@ RESULT_RE = re.compile(
     rf"^\s+\[(?P<kind>extras|offspring)\]\s+Avg\s+"
     rf"(?P<score>{SCORE_RE})\s+(?P<name>.+?):\s+\(seeds=(?P<seeds>\d+)\)"
 )
-RACING_RE = re.compile(
+# Two log formats over time: old wrote "qualify for extras (cap=N seeds, +N
+# per qualifier)" with only the pre-cap eligibility count; new writes
+# "qualify (M kept after 2*P cap; +N seeds each, cap=K)" with both counts.
+RACING_RE_NEW = re.compile(
+    r"Racing gen (?P<gen>\d+): [λ\u03bb]=(?P<lambda>\d+), "
+    r"σ̂=(?P<sigma>[0-9.]+), "
+    r"(?P<eligible>\d+)/(?P<archive>\d+) archive bundles qualify "
+    r"\((?P<qualifiers>\d+) kept after 2\*P cap; "
+    r"\+(?P<extra>\d+) seeds each, cap=(?P<cap>\d+)\)"
+)
+RACING_RE_OLD = re.compile(
     r"Racing gen (?P<gen>\d+): [λ\u03bb]=(?P<lambda>\d+), "
     r"σ̂=(?P<sigma>[0-9.]+), "
     r"(?P<qualifiers>\d+)/(?P<archive>\d+) archive bundles qualify "
     r"for extras \(cap=(?P<cap>\d+) seeds, \+(?P<extra>\d+) per qualifier\)"
 )
+
+
+def match_racing(line: str):
+    return RACING_RE_NEW.search(line) or RACING_RE_OLD.search(line)
+
+
+RESUME_RE = re.compile(r"^Resuming:\s+start_gen=(?P<start_gen>\d+)")
 
 
 @dataclass
@@ -70,6 +87,7 @@ class RunTrace:
     initial_archive: list[BundleState]
     racing: dict[int, RacingMeta]
     updates: dict[int, dict[str, list[BundleState]]]
+    resume_start_gen: int | None = None
 
 
 def normalize_name(name: str) -> str:
@@ -81,15 +99,64 @@ def parse_float(text: str) -> float | None:
     return value if math.isfinite(value) else None
 
 
-def load_config(run_dir: Path) -> dict:
+def load_run_data(run_dir: Path) -> dict:
     with (run_dir / "run_data.json").open(encoding="utf-8") as f:
-        return (json.load(f).get("config") or {})
+        return json.load(f)
+
+
+def load_config(run_dir: Path) -> dict:
+    return load_run_data(run_dir).get("config") or {}
+
+
+def bundle_display_name_from_dict(b: dict) -> str:
+    ops = b.get("operators") or {}
+    parts = []
+    for t in ("mutation", "survival", "selection", "loss"):
+        op = ops.get(t)
+        parts.append(op.get("name") if op else "default")
+    return " | ".join(parts)
+
+
+def initial_archive_from_run_data(
+    run_dir: Path,
+    start_gen: int,
+    initial_seeds: int,
+) -> list[BundleState]:
+    """Reconstruct archive at the start of `start_gen` from run_data.json.
+
+    Mirrors load_resume_state in bundle_loader.py: walks generations <
+    start_gen, dedups by display_name, keeps the first occurrence per name.
+    """
+    data = load_run_data(run_dir)
+    seen: set[str] = set()
+    archive: list[BundleState] = []
+    for gen_entry in data.get("generations", []):
+        if gen_entry.get("generation", 0) >= start_gen:
+            continue
+        for key in ("population", "offspring"):
+            for b in gen_entry.get(key, []):
+                name = normalize_name(bundle_display_name_from_dict(b))
+                if name in seen:
+                    continue
+                score = b.get("score")
+                if score is None or not math.isfinite(score):
+                    continue
+                seen.add(name)
+                archive.append(
+                    BundleState(
+                        name=name,
+                        score=float(score),
+                        seeds=int(b.get("seeds_evaluated") or initial_seeds),
+                    )
+                )
+    return archive
 
 
 def parse_run_log(run_dir: Path, initial_seeds: int) -> RunTrace:
     initial_archive: list[BundleState] = []
     racing: dict[int, RacingMeta] = {}
     updates: dict[int, dict[str, list[BundleState]]] = {}
+    resume_start_gen: int | None = None
 
     in_initial_eval = False
     current_gen: int | None = None
@@ -97,6 +164,9 @@ def parse_run_log(run_dir: Path, initial_seeds: int) -> RunTrace:
     for line in (run_dir / "run.log").read_text(
         encoding="utf-8", errors="replace"
     ).splitlines():
+        if m := RESUME_RE.match(line):
+            resume_start_gen = int(m.group("start_gen"))
+            continue
         if "Evaluating initial population" in line:
             in_initial_eval = True
             continue
@@ -117,7 +187,7 @@ def parse_run_log(run_dir: Path, initial_seeds: int) -> RunTrace:
                     )
             continue
 
-        if m := RACING_RE.search(line):
+        if m := match_racing(line):
             current_gen = int(m.group("gen"))
             racing[current_gen] = RacingMeta(
                 gen=current_gen,
@@ -147,7 +217,12 @@ def parse_run_log(run_dir: Path, initial_seeds: int) -> RunTrace:
                 )
             )
 
-    return RunTrace(initial_archive=initial_archive, racing=racing, updates=updates)
+    return RunTrace(
+        initial_archive=initial_archive,
+        racing=racing,
+        updates=updates,
+        resume_start_gen=resume_start_gen,
+    )
 
 
 def normal_cdf(z: float) -> float:
@@ -341,6 +416,12 @@ def make_plots(run_dir: Path, out_dir: Path, score_std_one_eval: float) -> list[
     run_id = run_dir.name
 
     trace = parse_run_log(run_dir, initial_seeds=initial_seeds)
+    if not trace.initial_archive and trace.resume_start_gen is not None:
+        trace.initial_archive = initial_archive_from_run_data(
+            run_dir,
+            start_gen=trace.resume_start_gen,
+            initial_seeds=initial_seeds,
+        )
     if not trace.initial_archive:
         raise RuntimeError(f"No initial archive entries parsed from {run_dir / 'run.log'}")
 

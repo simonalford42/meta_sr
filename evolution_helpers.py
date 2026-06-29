@@ -17,7 +17,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from parallel_eval_pysr import PySRConfig, PySRSlurmEvaluator
+from parallel_eval_pysr import (
+    PySRConfig,
+    PySRSlurmEvaluator,
+    run_scores_for_metric,
+    metric_missing_fill,
+)
 from utils import PMLB_PATH, rhs_only
 
 TARGET_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
@@ -63,14 +68,13 @@ def compute_per_run_avgs(
     fitness_metric: str,
 ) -> List[float]:
     """Compute per-run averages using the same missing-score policy as aggregate scoring."""
-    score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
-    missing_fill = 0.0 if fitness_metric == "gt" else -1.0
+    missing_fill = metric_missing_fill(fitness_metric)
     per_run_avgs: List[float] = []
 
     for run_idx in range(n_runs):
         run_scores: List[float] = []
         for detail in result_details:
-            run_values = detail.get(score_key, [])
+            run_values = run_scores_for_metric(detail, fitness_metric)
             run_scores.append(run_values[run_idx] if len(run_values) > run_idx else missing_fill)
         per_run_avgs.append(float(np.mean(run_scores)) if run_scores else missing_fill)
 
@@ -102,6 +106,11 @@ def merge_result_details(
         new_gt = list(new_d.get("run_gt_scores", []) or [])
         run_r2 = old_r2 + new_r2
         run_gt = old_gt + new_gt
+        # Frontier-avg R² per seed (fall back to best-eq R² when absent so the
+        # accumulated history stays aligned for legacy details).
+        old_r2c = list(old_d.get("run_r2c_scores", old_r2) or [])
+        new_r2c = list(new_d.get("run_r2c_scores", new_r2) or [])
+        run_r2c = old_r2c + new_r2c
 
         old_eqs = list(old_d.get("best_equations", []) or [])
         new_eqs = list(new_d.get("best_equations", []) or [])
@@ -123,8 +132,10 @@ def merge_result_details(
         merged.append({
             "dataset": old_d.get("dataset") or new_d.get("dataset"),
             "avg_r2": float(np.mean(run_r2)) if run_r2 else -1.0,
+            "avg_r2c": float(np.mean(run_r2c)) if run_r2c else -1.0,
             "avg_gt": float(np.mean(run_gt)) if run_gt else 0.0,
             "run_r2_scores": run_r2,
+            "run_r2c_scores": run_r2c,
             "run_gt_scores": run_gt,
             "best_equations": all_eqs,
             "errors": all_errs if all_errs else None,
@@ -146,12 +157,11 @@ def recompute_aggregate(
     Uses the same missing-fill policy as `_aggregate_pysr_results`:
     an empty per-dataset run list maps to -1.0 (r2) or 0.0 (gt).
     """
-    score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
-    missing_fill = 0.0 if fitness_metric == "gt" else -1.0
+    missing_fill = metric_missing_fill(fitness_metric)
 
     per_dataset: List[float] = []
     for detail in result_details:
-        runs = detail.get(score_key, []) or []
+        runs = run_scores_for_metric(detail, fitness_metric)
         per_dataset.append(float(np.mean(runs)) if runs else missing_fill)
     avg = float(np.mean(per_dataset)) if per_dataset else missing_fill
     return avg, per_dataset
@@ -176,13 +186,20 @@ def apply_racing_results(
     skipped entirely so a failed re-eval does not erase the member's
     accumulated history. The caller is responsible for any retry/logging.
     """
-    score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
     for m, (_, _, new_details) in zip(members, results):
         if not new_details:
             # Failed extras eval — preserve existing state unchanged.
             continue
+        # Count newly added seeds from a metric-independent per-run array (all
+        # of run_r2/gt/r2c have one entry per seed).
         n_added = max(
-            (len(d.get(score_key, []) or []) for d in new_details),
+            (
+                max(
+                    len(d.get("run_r2_scores", []) or []),
+                    len(d.get("run_gt_scores", []) or []),
+                )
+                for d in new_details
+            ),
             default=0,
         )
         if n_added == 0:
@@ -549,6 +566,142 @@ def load_task_formulas(dataset_names: List[str]) -> Dict[str, str]:
                 formula = f"{formula} = {x_form}"
         formulas[name] = formula
     return formulas
+
+def format_bundle_equations_report(
+    result_details: List[Dict],
+    header_lines: List[str],
+    baseline_solved_by_dataset: Optional[Dict[str, int]] = None,
+    baseline_n_runs: Optional[int] = None,
+) -> str:
+    """Render per-(task, seed) GT-vs-predicted with per-task delta-vs-baseline.
+
+    Output format:
+
+        feynman_III_13_18 [Δ=+9; 10/10 vs baseline 1/10]  2*E_n*d**2*k/(h/(2*pi))
+          GT:                2*x0*x1**2*x2/(x3/(2*pi))
+          seed=0 [solved  ] (((x2 * x0) * 12.566382) / x3) * square(x1)
+          seed=1 [unsolved] ...
+
+    Tasks ranked by ``bundle solved - baseline solved`` desc (so the
+    tasks-this-bundle-gained-over-baseline cluster at the top). When
+    ``baseline_solved_by_dataset`` is None, ranks by bundle solved count only
+    and omits the delta annotation.
+    """
+    dataset_names = [d.get("dataset", "?") for d in result_details]
+    task_formulas = load_task_formulas(dataset_names)
+
+    tasks = []
+    for detail in result_details:
+        dataset = detail.get("dataset", "?")
+        run_gt_scores = detail.get("run_gt_scores") or []
+        run_best_eqs = detail.get("run_best_equations") or []
+        run_matched_eqs = detail.get("run_gt_matched_equations") or []
+        legacy_best = detail.get("best_equations") or []
+        n_succ = detail.get("n_successful_runs")
+        n_total = detail.get("n_total_runs") or len(run_gt_scores)
+
+        # Legacy alignment: only valid when every run succeeded and we have one
+        # equation per seed. Otherwise we can't tell which equation belongs to
+        # which seed.
+        legacy_aligned = (
+            not run_best_eqs
+            and n_succ is not None
+            and n_succ == n_total
+            and len(legacy_best) == n_total
+        )
+
+        formula_pair = task_formulas.get(dataset, "")
+        if "=" in formula_pair:
+            original_gt, x_gt = (s.strip() for s in formula_pair.split("=", 1))
+        else:
+            original_gt = formula_pair
+            x_gt = ""
+
+        n_runs = max(len(run_gt_scores), n_total)
+        seed_rows = []
+        bundle_solved = 0
+        for seed_idx in range(n_runs):
+            gt_score = run_gt_scores[seed_idx] if seed_idx < len(run_gt_scores) else 0.0
+            solved = bool(gt_score and gt_score >= 1.0)
+            if solved:
+                bundle_solved += 1
+
+            matched_eq = (
+                run_matched_eqs[seed_idx]
+                if seed_idx < len(run_matched_eqs) else None
+            )
+            best_eq: Optional[str] = None
+            if seed_idx < len(run_best_eqs):
+                best_eq = run_best_eqs[seed_idx]
+            elif legacy_aligned and seed_idx < len(legacy_best):
+                best_eq = legacy_best[seed_idx]
+            predicted = matched_eq if (solved and matched_eq) else best_eq
+            if predicted is None:
+                predicted = "(equation unavailable)"
+            seed_rows.append((seed_idx, solved, predicted))
+
+        baseline_solved = (
+            baseline_solved_by_dataset.get(dataset)
+            if baseline_solved_by_dataset is not None else None
+        )
+        if baseline_solved is None:
+            delta = None
+        else:
+            delta = bundle_solved - baseline_solved
+
+        tasks.append({
+            "dataset": dataset,
+            "original_gt": original_gt,
+            "x_gt": x_gt,
+            "seed_rows": seed_rows,
+            "n_runs": n_runs,
+            "bundle_solved": bundle_solved,
+            "baseline_solved": baseline_solved,
+            "delta": delta,
+        })
+
+    # Rank by delta desc when available; tiebreak by bundle solved desc, then
+    # dataset name. Without baseline, just by bundle solved + name.
+    def sort_key(t):
+        primary = -(t["delta"] if t["delta"] is not None else t["bundle_solved"])
+        return (primary, -t["bundle_solved"], t["dataset"])
+    tasks.sort(key=sort_key)
+
+    lines = list(header_lines)
+    lines.append("")
+
+    for t in tasks:
+        dataset = t["dataset"]
+        n_runs = t["n_runs"]
+        bundle_solved = t["bundle_solved"]
+        baseline_solved = t["baseline_solved"]
+        delta = t["delta"]
+
+        if delta is not None and baseline_n_runs is not None:
+            sign = "+" if delta >= 0 else ""
+            delta_str = (
+                f" [Δ={sign}{delta}; {bundle_solved}/{n_runs} vs "
+                f"baseline {baseline_solved}/{baseline_n_runs}]"
+            )
+        elif delta is not None:
+            sign = "+" if delta >= 0 else ""
+            delta_str = (
+                f" [Δ={sign}{delta}; {bundle_solved} vs baseline {baseline_solved}]"
+            )
+        else:
+            delta_str = f" [{bundle_solved}/{n_runs}]"
+
+        header_line = f"{dataset}{delta_str}  {t['original_gt']}"
+        lines.append(header_line)
+        if t["x_gt"]:
+            lines.append(f"  GT: {t['x_gt']}")
+        for seed_idx, solved, predicted in t["seed_rows"]:
+            status = "solved" if solved else "unsolved"
+            lines.append(f"  seed={seed_idx} [{status}] {predicted}")
+        lines.append("")
+
+    return "\n".join(lines)
+
 
 def _detail_has_trace(detail: Optional[Dict]) -> bool:
     if not detail:

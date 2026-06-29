@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import copy
 import re
+from functools import lru_cache
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -222,6 +223,12 @@ class SkeletonBundle:
     meta_mutation_counts: Dict[str, Dict[str, int]] = field(
         default_factory=_zero_meta_mutation_counts
     )
+    # When set (full-file-diff mode), this is the LLM's full module body —
+    # including any helpers, state struct edits, and sr_policy() rewrites that
+    # the per-function `functions` dict can't capture. `render_sr_module_body`
+    # returns this verbatim instead of splicing per-slot functions into the
+    # canonical SRConfig.jl body.
+    raw_module_body: Optional[str] = None
 
     @staticmethod
     def from_default_sr_config() -> "SkeletonBundle":
@@ -306,6 +313,95 @@ class SkeletonBundle:
 _FUNCTION_HEADER = re.compile(r"^\s*function\s+([A-Za-z_][\w!?]*)\s*\(", re.MULTILINE)
 
 
+# ─── Julia block scanning ──────────────────────────────────────────────────
+# Find the `end` that closes a `function` block. A naive scanner that only
+# pairs `function`/`end` breaks on any inner `if`/`for`/`while`/`let`/`do`/...
+# block: it hits the inner `end` first, truncates the function, and orphans
+# the tail at module scope (the root cause of the silently-broken
+# loss_function/mutation/crossover/update_state! slots). These helpers count
+# every Julia block opener and ignore keywords inside brackets so comprehensions
+# (`[x for x in y if z]`) and multi-line signatures don't fool the scan.
+
+_JULIA_BLOCK_OPENERS = frozenset(
+    {
+        "function",
+        "macro",
+        "if",
+        "for",
+        "while",
+        "let",
+        "do",
+        "begin",
+        "quote",
+        "try",
+        "struct",
+        "module",
+        "baremodule",
+    }
+)
+_JULIA_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[()\[\]{}]")
+
+
+def _strip_julia_line_noise(line: str) -> str:
+    """Drop `#` comments and double-quoted string contents from a line so the
+    block scanner is not fooled by keywords/brackets living in prose or data.
+
+    Single-line handling only (block comments and triple-quoted strings are
+    uncommon inside the function bodies we scan, and docstrings are handled
+    separately as preceding lines).
+    """
+    out: List[str] = []
+    i, n = 0, len(line)
+    while i < n:
+        c = line[i]
+        if c == "#":
+            break
+        if c == '"':
+            i += 1
+            while i < n and line[i] != '"':
+                if line[i] == "\\":
+                    i += 1
+                i += 1
+            i += 1  # skip the closing quote
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _julia_block_end(lines: List[str], start_idx: int) -> int:
+    """Index of the line *after* the `end` that closes the block opened on
+    `lines[start_idx]`.
+
+    Counts every Julia block opener (not just `function`) and tracks bracket
+    nesting, so inner `if`/`for`/`while`/`let`/`do` blocks and comprehensions no
+    longer terminate the scan prematurely. Returns ``len(lines)`` if no matching
+    `end` is found.
+    """
+    block_depth = 0
+    bracket_depth = 0
+    n = len(lines)
+    j = start_idx
+    while j < n:
+        cleaned = _strip_julia_line_noise(lines[j])
+        for tok in _JULIA_TOKEN_RE.finditer(cleaned):
+            t = tok.group()
+            if t in ("(", "[", "{"):
+                bracket_depth += 1
+            elif t in (")", "]", "}"):
+                if bracket_depth > 0:
+                    bracket_depth -= 1
+            elif bracket_depth == 0:
+                if t in _JULIA_BLOCK_OPENERS:
+                    block_depth += 1
+                elif t == "end":
+                    block_depth -= 1
+                    if block_depth == 0:
+                        return j + 1
+        j += 1
+    return n
+
+
 def parse_sr_config_module(module_text: str) -> Dict[str, str]:
     """Return a {function_name: full block} mapping for top-level functions.
 
@@ -324,27 +420,14 @@ def parse_sr_config_module(module_text: str) -> Dict[str, str]:
             i += 1
             continue
         fn_name = m.group(1)
-        # Walk the block, tracking `function`/`end` depth.
-        depth = 1
         # Pull the docstring on the preceding line, if there is one — many
         # SRConfig.jl functions have a `"""docstring"""` above. We don't strip
         # this, but include it for fidelity when round-tripping.
         block_start = i
         while block_start > 0 and lines[block_start - 1].strip().startswith('"'):
             block_start -= 1
-        j = i + 1
-        while j < n and depth > 0:
-            stripped = lines[j].strip()
-            if stripped.startswith("function ") or stripped.startswith("function("):
-                depth += 1
-            # `end` shows up alone, with comment, or with semicolon.
-            tokens = stripped.split()
-            if tokens and tokens[0] in ("end", "end;"):
-                depth -= 1
-                if depth == 0:
-                    j += 1
-                    break
-            j += 1
+        # Find the matching `end` for the whole function (handles inner blocks).
+        j = _julia_block_end(lines, i)
         block = "\n".join(lines[block_start:j])
         out[fn_name] = block
         i = j
@@ -359,7 +442,14 @@ def render_sr_module_body(bundle: SkeletonBundle) -> str:
     before constructing a `SkeletonSRPolicy`. The header / `using ..SkeletonSR`
     line / `SRState` definition / `sr_policy()` constructor are kept from the
     canonical SRConfig.jl on disk so we don't need to evolve those pieces.
+
+    When a bundle has `raw_module_body` set (full-file-diff mode), we return
+    that verbatim — so helper functions, state struct edits, import changes,
+    and sr_policy() rewrites that came from the LLM survive into the worker.
     """
+    if bundle.raw_module_body is not None:
+        return bundle.raw_module_body
+
     sr_src = SR_CONFIG_PATH.read_text()
     # Drop `module SRConfig` wrapper.
     body = sr_src
@@ -387,45 +477,26 @@ def render_sr_module_body(bundle: SkeletonBundle) -> str:
 
 def _replace_function_block(text: str, fn_name: str, new_code: str) -> str:
     """Swap the existing block named `fn_name` for `new_code` (whole block)."""
-    pattern = rf"^[ \t]*function[ \t]+{re.escape(fn_name)}[ \t]*\("
-    match = re.search(pattern, text, re.MULTILINE)
-    if not match:
+    header = re.compile(rf"^[ \t]*function[ \t]+{re.escape(fn_name)}[ \t]*\(")
+    lines = text.split("\n")
+    func_idx = next((k for k, ln in enumerate(lines) if header.match(ln)), None)
+    if func_idx is None:
         # Append at the end if it's missing — happens when the LLM renamed
         # the function but the policy struct still references the old name.
         return text.rstrip() + "\n\n" + new_code.rstrip() + "\n"
-    start = match.start()
     # Pull along any preceding docstring/comment lines.
-    line_start = text.rfind("\n", 0, start) + 1
-    pre_start = line_start
-    while pre_start > 0:
-        prev_line_end = text.rfind("\n", 0, pre_start - 1)
-        prev_line = text[max(0, prev_line_end + 1) : pre_start - 1]
-        s = prev_line.strip()
+    pre_idx = func_idx
+    while pre_idx > 0:
+        s = lines[pre_idx - 1].strip()
         if s.startswith('"""') or s.startswith("#"):
-            pre_start = max(0, prev_line_end + 1)
+            pre_idx -= 1
             continue
         break
-    # Walk forward, counting function/end nesting.
-    depth = 1
-    i = match.end()
-    n = len(text)
-    while i < n and depth > 0:
-        nl = text.find("\n", i)
-        line = text[i:nl] if nl >= 0 else text[i:]
-        stripped = line.strip()
-        if stripped.startswith("function ") or stripped.startswith("function("):
-            depth += 1
-        tokens = stripped.split()
-        if tokens and tokens[0] in ("end", "end;"):
-            depth -= 1
-            if depth == 0:
-                if nl < 0:
-                    i = n
-                else:
-                    i = nl + 1
-                break
-        i = nl + 1 if nl >= 0 else n
-    return text[:pre_start] + new_code.rstrip() + "\n\n" + text[i:]
+    # Find the matching `end` for the whole function (handles inner blocks).
+    end_idx = _julia_block_end(lines, func_idx)
+    prefix = ("\n".join(lines[:pre_idx]) + "\n") if pre_idx > 0 else ""
+    suffix = "\n".join(lines[end_idx:])
+    return prefix + new_code.rstrip() + "\n\n" + suffix
 
 
 # ─── Code extraction helpers ───────────────────────────────────────────────
@@ -458,9 +529,11 @@ def extract_function_name(code: str) -> str:
 
 _DEFAULT_INTRO = (
     "You are an expert in symbolic regression, physics, and genetic programming.\n"
-    "Our goal is to improve a symbolic-regression algorithm so it discovers the\n"
+    "Our goal is to improve a symbolic regression algorithm so it discovers the\n"
     "correct ground-truth equation for more SRBench tasks (e.g. equations like\n"
     "`0.5 sin(x - y) - sin(x)` or `q/(4*pi*epsilon*r*(1-v/c))`).\n"
+    "Your proposed improvement is being considered as part of a meta-evolutionary\n"
+    "loop that samples and evaluates many proposed improvements to the algorithm.\n"
 )
 
 
@@ -474,13 +547,61 @@ def _slot_explanation(slot: SkeletonSlot) -> str:
     )
 
 
+@lru_cache(maxsize=1)
+def _importable_symbols() -> Tuple[str, ...]:
+    """Exact names importable inside the SRConfig module.
+
+    Parsed from the `using ...:` blocks of SRConfig.jl so the prompt's
+    allow-list never drifts from what actually compiles. The LLM is shown the
+    full SkeletonSR.jl engine, which *defines* many more helpers (isleaf,
+    tree_size, tree_height, ...) — but only the names re-exported here are in
+    scope inside SRConfig, so the prompt must say so explicitly.
+    """
+    try:
+        lines = SR_CONFIG_PATH.read_text().splitlines()
+    except OSError:
+        return ()
+    using_re = re.compile(r"^\s*using\s+[\w.]+:\s*(.*)$")
+    cont_re = re.compile(r"^[\w!?,\s]+$")
+    names: List[str] = []
+    i, n = 0, len(lines)
+    while i < n:
+        m = using_re.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        collected = m.group(1)
+        i += 1
+        # Names may continue on following indented lines until a blank line,
+        # comment, or a line that is no longer a plain name list.
+        while i < n:
+            s = lines[i].strip()
+            if not s or s.startswith("#") or not cont_re.match(s):
+                break
+            collected += " " + s
+            i += 1
+        for raw in collected.split(","):
+            tok = raw.strip()
+            if re.fullmatch(r"[A-Za-z_][\w!?]*", tok):
+                names.append(tok)
+    # Dedupe, preserve order.
+    seen: set = set()
+    return tuple(x for x in names if not (x in seen or seen.add(x)))
+
+
 def _common_requirements(slot: SkeletonSlot) -> List[str]:
+    importable = ", ".join(_importable_symbols())
     return [
         "Use proper Julia syntax that compiles inside the `SymbolicRegression.SRConfig` module.",
-        "Only use names already imported by SRConfig.jl (Node, OpNode, ConstNode, VarNode, "
-        "Individual, Population, EngineState, EvolutionEngine, evaluate_tree, "
-        "nodes_with_parent, sample_operator, sample_operator_arity, random_terminal, "
-        "replace_subtree, valid_tree, weighted_choice, node_string, randperm, etc.).",
+        "Only use names already in scope inside SRConfig: the function arguments, "
+        "Julia/Base built-ins, and exactly these names imported by SRConfig.jl — "
+        f"{importable}. "
+        "Helpers that appear in the SkeletonSR.jl reference but are NOT in that list "
+        "(e.g. `isleaf`, `tree_size`, `tree_height`, `_mean`) are NOT imported into "
+        "SRConfig: either define them locally inside your function, or work with the "
+        "node structs directly (`x isa ConstNode`/`VarNode`/`OpNode`, `x.left`, "
+        "`x.right`, `isnothing(x.right)`). Do not assume any other SkeletonSR internals "
+        "are in scope.",
         f"Match the required signature for slot `{slot.name}`: "
         f"`{slot.signature.format(name='<new_name>')}`.",
         "Give the function a fresh, descriptive name (do NOT reuse the existing default name).",
@@ -517,11 +638,7 @@ def build_explore_prompt(slot: SkeletonSlot, bundle: SkeletonBundle) -> str:
         f"{_slot_explanation(slot)}\n"
         "## Task\n"
         f"Propose a NEW implementation of the `{slot.name}` function from scratch. "
-        "Be creative — try a meaningfully different strategy from the current one. "
-        "Common ideas worth considering: adaptive parsimony pressure, tournament "
-        "selection variants, age-based survival, novelty/diversity scoring, "
-        "data-aware mutations (consult `state.engine.X` / `state.engine.y`), "
-        "frequency-based bias toward under-explored complexities, etc.\n\n"
+        "Be creative — explore new ideas to come up with an effective variant.\n\n"
         "## Requirements\n"
         f"{reqs}\n"
     )
@@ -538,9 +655,7 @@ def build_refine_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_code:
         f"```julia\n{parent_code}\n```\n\n"
         "## Task\n"
         f"REFINE the parent `{slot.name}` above. Keep its core idea but improve "
-        "the implementation, fix likely bugs, or sharpen a heuristic. The new "
-        "version should be a strict variation on the parent — do NOT throw the "
-        "approach away.\n\n"
+        "the implementation, or generate a variant that improves on the parent.\n\n"
         "## Requirements\n"
         f"{reqs}\n"
     )
@@ -556,11 +671,13 @@ def build_simplify_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_cod
         "## Parent implementation to simplify\n"
         f"```julia\n{parent_code}\n```\n\n"
         "## Task\n"
-        f"SIMPLIFY the parent `{slot.name}` above while keeping its core behavior "
-        "intact. Drop redundant branches, fold special cases into the common path, "
-        "or trim heuristics. The simplified version must be functionally different "
-        "from a trivial alias of the parent — keep the dominant heuristic(s) and "
-        "explain in the docstring what was removed and why.\n\n"
+        f"SIMPLIFY the parent `{slot.name}` above, removing complexity while keeping "
+        "its core behavior intact. Drop redundant branches, fold special cases "
+        "into the common path, or trim heuristics. If the parent combines many "
+        "factors (e.g. five distinct heuristics), you might keep only the most "
+        "important three or four. The goal is to maintain performance while "
+        "simplifying the function.\n"
+        "Explain in the docstring what was removed and why.\n\n"
         "## Requirements\n"
         f"{reqs}\n"
     )
@@ -584,8 +701,7 @@ def build_crossover_prompt(
         f"```julia\n{parent2_code}\n```\n\n"
         "## Task\n"
         f"CROSSOVER the two parents above into a NEW `{slot.name}` that combines "
-        "the best ideas from each. Don't just concatenate — synthesize a coherent "
-        "new approach.\n\n"
+        "the functions into a new one.\n\n"
         "## Requirements\n"
         f"{reqs}\n"
     )
@@ -604,12 +720,19 @@ def build_full_file_prompt(
     if mode == "simplify":
         focus = (
             f"Focus your edit on the `{slot.name}` slot: SIMPLIFY its current "
-            "implementation while keeping its core behavior."
+            "implementation. Produce a streamlined version of the function that "
+            "keeps its core idea but removes complexity. For example, you might "
+            "drop redundant branches, fold special cases into the common path, or "
+            "trim heuristics. If the current version combines many factors "
+            "(e.g. five distinct heuristics), you might keep only the most "
+            "important three or four. The goal is to maintain performance while "
+            "simplifying the function."
         )
     elif mode == "refine":
         focus = (
             f"Focus your edit on the `{slot.name}` slot: REFINE its current "
-            "implementation (keep the core idea, sharpen the heuristics)."
+            "implementation. Keep the core idea but improve the implementation, "
+            "or generate a variant that improves on the parent."
         )
     elif mode == "crossover":
         focus = (
@@ -618,8 +741,8 @@ def build_full_file_prompt(
         )
     else:  # explore
         focus = (
-            f"Focus your edit on the `{slot.name}` slot: propose a meaningfully "
-            "DIFFERENT implementation from the current one."
+            f"Focus your edit on the `{slot.name}` slot: propose an "
+            "implementation that explores a new promising approach."
         )
     return (
         f"{_DEFAULT_INTRO}\n"
@@ -661,6 +784,9 @@ class SkeletonGenerationSpec:
     variation_seed: int = 0
     temperature: float = 0.0
     use_cache: bool = True
+    # Reasoning effort ("low"/"medium"/"high") forwarded to OpenRouter. None
+    # leaves it unset, so completions.py applies its default ("high").
+    reasoning_effort: Optional[str] = None
     log_prompt_dir: Optional[Path] = None
     log_generation: int = -1
     # When True, this spec is for the full-file diff baseline: the prompt
@@ -721,7 +847,7 @@ def _log_prompt(spec: SkeletonGenerationSpec, prompt: str, content: str, code: s
 
 
 def _operator_request(spec: SkeletonGenerationSpec, prompt: str, model: str, attempt: int) -> Dict[str, Any]:
-    return {
+    request: Dict[str, Any] = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": spec.temperature,
@@ -729,6 +855,11 @@ def _operator_request(spec: SkeletonGenerationSpec, prompt: str, model: str, att
         "use_cache": spec.use_cache,
         "max_tokens": 128_000,
     }
+    # When set, this overrides completions.py's default ("high") and becomes
+    # part of the cache key, so different effort levels are cached separately.
+    if spec.reasoning_effort:
+        request["reasoning"] = {"effort": spec.reasoning_effort}
+    return request
 
 
 def generate_skeleton_code_batch(
@@ -797,16 +928,115 @@ def generate_skeleton_code_batch(
 # ─── Validation ────────────────────────────────────────────────────────────
 
 
+# Common imports for both the warmup tiny-fit and per-validation tiny-fit.
+# Mirrors SRConfig.jl's import block — keep in sync.
+_VALIDATION_IMPORTS = """\
+    using Random: rand, randperm
+    using ..SymbolicRegression.SkeletonSR:
+        AbstractPolicyState,
+        ConstNode,
+        EngineConfig,
+        EngineState,
+        EvolutionEngine,
+        Individual,
+        Node,
+        OpNode,
+        Population,
+        SkeletonSRConfig,
+        SkeletonSRPolicy,
+        VarNode,
+        evaluate_tree,
+        fit_skeleton_sr,
+        node_string,
+        nodes_with_parent,
+        random_terminal,
+        replace_subtree,
+        sample_operator,
+        sample_operator_arity,
+        skeleton_sr_config,
+        valid_tree,
+        weighted_choice
+    using ..SymbolicRegression.SRConfig: SRState
+"""
+
+# Tiny config that touches every code path: 2 populations + crossover-friendly
+# tournament + at least one full evolution iteration.
+_TINY_FIT_CONFIG_KWARGS = (
+    "niterations=1, population_size=4, populations=2, "
+    "ncycles_per_iteration=2, max_evals=40, maxsize=8, maxdepth=6"
+)
+
+
+def _default_policy_kwargs_julia() -> str:
+    """Return the SkeletonSRPolicy(; ...) kwargs string for the all-defaults case."""
+    parts = [
+        "init_state=config -> SymbolicRegression.SRConfig.SRState(config.engine_config)"
+    ]
+    for s in SKELETON_SLOTS:
+        parts.append(
+            f"{s.policy_field} = SymbolicRegression.SRConfig.{s.default_name}"
+        )
+    return ",\n        ".join(parts)
+
+
+def warmup_skeleton_validation() -> float:
+    """Compile fit_skeleton_sr once via a tiny fit, so per-call validation is fast.
+
+    The first fit_skeleton_sr call in a juliacall session triggers heavy
+    specialization (genetic loop, evaluation, tree manipulation). Pay that
+    once here at startup so each subsequent validation pays only the small
+    cost of specializing on the new candidate function value.
+
+    Returns elapsed seconds.
+    """
+    import time as _t
+    from juliacall import Main as jl
+
+    jl.seval("using SymbolicRegression")
+    jl.seval("using SymbolicRegression.SkeletonSR")
+    jl.seval("using SymbolicRegression.SRConfig")
+
+    guard_mod = "_SkeletonValidationWarmup"
+    body = f"""
+module {guard_mod}
+{_VALIDATION_IMPORTS}
+    using ..SymbolicRegression
+    _policy = SkeletonSRPolicy(;
+        {_default_policy_kwargs_julia()}
+    )
+    _X = randn(Float64, 3, 20)
+    _y = randn(Float64, 20)
+    _var_names = ["x1", "x2", "x3"]
+    _cfg = skeleton_sr_config(_policy; {_TINY_FIT_CONFIG_KWARGS})
+    fit_skeleton_sr(_X, _y, _var_names; config=_cfg)
+end
+"""
+    start = _t.time()
+    jl.seval(body)
+    return _t.time() - start
+
+
 def validate_skeleton_code(
     name: str, code: str, slot: SkeletonSlot
 ) -> Tuple[bool, str]:
-    """Parse-only validation via juliacall.
+    """Validate a candidate slot function by actually running a tiny fit.
 
-    We don't actually try to construct a SkeletonSRPolicy or run a fit here:
-    that would force a heavy compile and isn't worth doing at LLM-generation
-    time. Instead we eval the function definition in a throwaway module and
-    confirm Julia accepts it. The SLURM worker re-runs the same eval inside
-    its per-task module and will surface any deeper errors as a task error.
+    Builds a SkeletonSRPolicy with the candidate function swapped into the
+    requested slot (other slots use SRConfig defaults) and runs
+    `fit_skeleton_sr` on a 3×20 synthetic dataset for one iteration with
+    population_size=4 and populations=2. If the fit returns without
+    throwing, validation passes.
+
+    Catches: UndefVar inside the function body, dispatch failures, return
+    type mismatches, cross-slot interaction bugs — anything that surfaces
+    during a real (tiny) run. Pre-warming via `warmup_skeleton_validation`
+    is required for this to be fast: the first call ever pays the full
+    fit_skeleton_sr compile cost (~30-60s); subsequent calls pay only
+    specialization on the new function value (~100ms-3s depending on body).
+
+    The candidate's `name` is the unique generated name (e.g.
+    `sr_mutation_gen3_slot5`); the bundle's `slot.policy_field` controls
+    which SkeletonSRPolicy slot it fills.
     """
     if not code or not code.strip():
         return False, "Empty code"
@@ -816,32 +1046,39 @@ def validate_skeleton_code(
         jl.seval("using SymbolicRegression")
         jl.seval("using SymbolicRegression.SkeletonSR")
         jl.seval("using SymbolicRegression.SRConfig")
-        # Wrap the code in a unique module so this validation doesn't leak
-        # definitions into the worker's namespace later. The module also
-        # re-imports the names the SR functions reference so we catch any
-        # undefined-symbol mistakes early.
         guard_mod = f"_SkeletonValidation_{abs(hash(name + code)) % (10**10)}"
+
+        # Build SkeletonSRPolicy kwargs: candidate fills `slot.policy_field`,
+        # all other slots get the SRConfig default function.
+        policy_parts = [
+            "init_state=config -> SymbolicRegression.SRConfig.SRState(config.engine_config)"
+        ]
+        for s in SKELETON_SLOTS:
+            if s.name == slot.name:
+                policy_parts.append(f"{s.policy_field} = {name}")
+            else:
+                policy_parts.append(
+                    f"{s.policy_field} = SymbolicRegression.SRConfig.{s.default_name}"
+                )
+        policy_kwargs = ",\n        ".join(policy_parts)
+
         wrapped = f"""
 module {guard_mod}
-    using SymbolicRegression.SkeletonSR
-    using SymbolicRegression.SRConfig
-    using ..SymbolicRegression.SkeletonSR: AbstractPolicyState, ConstNode, EngineConfig,
-        EngineState, EvolutionEngine, Individual, Node, OpNode, Population,
-        SkeletonSRConfig, SkeletonSRPolicy, VarNode, append_random_op,
-        evaluate_tree, fit_skeleton_sr, insert_random_op, isleaf, leaf_nodes,
-        next_birth!, next_ref!, nodes_with_parent, prepend_random_op,
-        random_tree_fixed_size, random_terminal, replace_subtree,
-        sample_operator, sample_operator_arity, skeleton_sr_config, tree_size,
-        valid_tree, weighted_choice, node_string
-    using ..SymbolicRegression.SRConfig: SRState
-    using Random: rand, randperm, AbstractRNG
+{_VALIDATION_IMPORTS}
+    using ..SymbolicRegression
     {code}
+
+    _policy = SkeletonSRPolicy(;
+        {policy_kwargs}
+    )
+    _X = randn(Float64, 3, 20)
+    _y = randn(Float64, 20)
+    _var_names = ["x1", "x2", "x3"]
+    _cfg = skeleton_sr_config(_policy; {_TINY_FIT_CONFIG_KWARGS})
+    fit_skeleton_sr(_X, _y, _var_names; config=_cfg)
 end
 """
         jl.seval(wrapped)
-        # Check the function is bound at the expected name. Use a double-quoted
-        # Julia string for the symbol name — `!r` produces single quotes and
-        # single quotes denote `Char` literals in Julia.
         bound = jl.seval(f'isdefined({guard_mod}, Symbol("{name}"))')
         if not bool(bound):
             return False, (
@@ -851,8 +1088,8 @@ end
         return True, ""
     except Exception as e:
         msg = str(e)
-        if len(msg) > 500:
-            msg = msg[:500] + "..."
+        if len(msg) > 800:
+            msg = msg[:800] + "..."
         return False, msg
 
 

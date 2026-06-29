@@ -47,6 +47,21 @@ TERMINAL_SLURM_STATES = frozenset({
 })
 
 
+def _normalize_slurm_state(raw: str) -> str:
+    """Canonicalize a raw squeue/sacct state token.
+
+    sacct emits modifiers polling loops must not choke on, e.g.
+    'CANCELLED by 1234' (squeue/sacct append the cancelling uid) or
+    'CANCELLED+'/'TIMEOUT+' (requeue marker) -- neither equals the plain
+    'CANCELLED'/'TIMEOUT' in TERMINAL_SLURM_STATES, so an un-normalized
+    comparison can spin forever waiting for a job that has already ended.
+    """
+    raw = raw.strip()
+    if not raw:
+        return 'UNKNOWN'
+    return raw.split()[0].rstrip('+')
+
+
 def _cancel_tracked_jobs(reason: str = "driver exiting") -> None:
     with _ACTIVE_JOB_IDS_LOCK:
         jobs = sorted(_ACTIVE_JOB_IDS)
@@ -342,7 +357,14 @@ class BaseSlurmEvaluator(ABC):
             print(f"    WARNING: Error cancelling job {job_id}: {e}")
 
     def _get_job_status(self, job_id: str) -> str:
-        """Get SLURM job status."""
+        """Get SLURM job status.
+
+        `job_id` may be an array job (e.g. '409710'), which can report one
+        state line per array task. If any task is still non-terminal we
+        return that state so callers waiting on
+        `status in TERMINAL_SLURM_STATES` keep polling; only when every
+        task line is terminal do we return a (canonical) terminal state.
+        """
         env = self._get_slurm_env()
         try:
             result = subprocess.run(
@@ -355,24 +377,32 @@ class BaseSlurmEvaluator(ABC):
         except subprocess.TimeoutExpired:
             return 'UNKNOWN'
 
-        if result.returncode != 0 or not result.stdout.strip():
-            # Job not in queue, check sacct
-            try:
-                result = subprocess.run(
-                    ['sacct', '-j', job_id, '-n', '-o', 'State', '-P'],
-                    capture_output=True,
-                    text=True,
-                    env=env,
-                    timeout=60,
-                )
-            except subprocess.TimeoutExpired:
-                return 'UNKNOWN'
-            states = result.stdout.strip().split('\n')
+        if result.returncode == 0 and result.stdout.strip():
+            states = [_normalize_slurm_state(l) for l in result.stdout.strip().split('\n') if l.strip()]
+            for s in states:
+                if s not in TERMINAL_SLURM_STATES:
+                    return s
             if states:
-                return states[0].split('|')[0] if '|' in states[0] else states[0]
-            return 'UNKNOWN'
+                return states[0]
 
-        return result.stdout.strip()
+        # Job not in queue (fully completed/cancelled/purged) -> check sacct.
+        try:
+            result = subprocess.run(
+                ['sacct', '-j', job_id, '-n', '-o', 'State', '-P'],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            return 'UNKNOWN'
+        states = [_normalize_slurm_state(l) for l in result.stdout.strip().split('\n') if l.strip()]
+        if not states:
+            return 'UNKNOWN'
+        for s in states:
+            if s not in TERMINAL_SLURM_STATES:
+                return s
+        return states[0]
 
     def _get_slurm_env(self) -> Dict[str, str]:
         """Return subprocess env for SLURM commands.

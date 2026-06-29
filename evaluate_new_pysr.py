@@ -68,28 +68,6 @@ from wandb_utils import init_wandb, log_wandb_summary, finish_wandb
 # =============================================================================
 
 @dataclass
-class EvolveResult:
-    """Results loaded from an evolve run (mutation, survival, selection, or loss)."""
-    operator_type: str
-    name: str
-    code: str
-    weight: float
-    train_score: float
-    generation: int
-    config: Dict[str, Any]
-    # For HPO bundles: the tuned PySR hparams (population_size, parsimony, ...).
-    # Set on bundle items only (and identical across them); None otherwise.
-    # Operator-specific tuned values (op_<type>__*) are already injected into
-    # `code` by hpo_pysr.py and excluded here.
-    best_hparams: Optional[Dict[str, Any]] = None
-    # Per-dataset evaluation breakdown from the evolve run (training-time score
-    # data). For bundle items this is the bundle's shared result_details; for
-    # single-operator runs it's the operator's own result_details. Each entry:
-    # {dataset, avg_r2, avg_gt, run_r2_scores, run_gt_scores, ...}.
-    result_details: Optional[List[Dict[str, Any]]] = None
-
-
-@dataclass
 class EvalSummary:
     split_name: str
     avg_r2: float
@@ -103,228 +81,57 @@ class EvalSummary:
 # Loaders
 # =============================================================================
 
-def resolve_evolve_results_path(path: str) -> Path:
-    """Resolve a run_data source passed to --evolve-results."""
-    candidate = Path(path)
-    if candidate.is_file():
-        return candidate
-    if candidate.is_dir() and (candidate / "run_data.json").is_file():
-        return candidate / "run_data.json"
-    run_candidate = Path("runs") / path / "run_data.json"
-    if run_candidate.is_file():
-        return run_candidate
-    raise FileNotFoundError(f"Could not resolve evolve results from {path!r}")
+def _bundle_label(bundle: "OperatorBundle", prefix: str) -> str:
+    """Build a label like 'evolve_mutation+survival:nameA+nameB'.
 
-
-def load_evolve_results(path: str, operator_type: str) -> "EvolveResult | List[EvolveResult]":
-    """Load results from an evolve run_data.json file.
-
-    For bundle runs (multiple operator types), returns a list of EvolveResult.
-    For single-operator runs, returns a single EvolveResult.
+    Returns just ``prefix`` when the bundle has no custom operators (baseline).
     """
-    source_path = resolve_evolve_results_path(path)
-    with open(source_path, "r") as f:
-        data = json.load(f)
+    types, names = [], []
+    for t, op in bundle.operators.items():
+        if op is not None:
+            types.append(t)
+            names.append(op.name)
+    if not types:
+        return prefix
+    return f"{prefix}_{'+'.join(types)}:{'+'.join(names)}"
 
-    config = data.get("config", {})
 
-    def find_best_bundle_so_far() -> tuple[Optional[Dict[str, Any]], Optional[int]]:
-        """Return the best-so-far bundle in generation populations.
+def load_method(method_source, method_path):
+    """Load a method as (OperatorBundle, label) via the single bundle_loader.
 
-        Some long-running bundle evolutions may be evaluated before finalize()
-        writes a top-level best_bundle. In that case, use the best population
-        member seen so far, matching scripts/evaluate_best_so_far.py.
+    method_source: 'evolve' | 'openevolve' | 'hpo' | 'baseline' | None.
+    baseline/None returns the default (no custom operators) bundle; everything
+    else is parsed by bundle_loader.load_bundle (run_data.json,
+    best_params.json / best_weights.json, or best/best_program.py).
+    """
+    from operator_types import OperatorBundle
+    if method_source in (None, "baseline"):
+        return OperatorBundle.create_default(), "baseline"
+    from bundle_loader import load_bundle
+    bundle = load_bundle(method_path)
+    if method_source == "hpo":
+        return bundle, "hpo_best"
+    prefix = "openevolve" if method_source == "openevolve" else "evolve"
+    return bundle, _bundle_label(bundle, prefix)
 
-        Two complications:
 
-        1. Racing re-scores each unique bundle across multiple generations as
-           ``seeds_evaluated`` grows, so the same bundle appears in many
-           snapshots with progressively lower-variance scores. We deduplicate
-           by operator-name tuple and keep the most-evaluated snapshot per
-           unique bundle.
-
-        2. Newborn bundles get scored on very few seeds (~6-9) and any that
-           luck into 1.0 will trivially beat the stable established winners
-           that have settled at ~0.99 with 30+ seeds. We rank by a
-           confidence-bound-like score ``score - alpha / sqrt(seeds)`` to
-           penalize bundles whose score is statistically unreliable.
-        """
-        alpha = 1.0  # confidence-bound penalty strength
-        # Operator-name tuple → (entry, generation, seeds_evaluated)
-        latest: Dict[Tuple, Tuple[Dict[str, Any], Optional[int], int]] = {}
-        for gen in data.get("generations", []):
-            for entry in gen.get("population", []):
-                if not isinstance(entry, dict) or "operators" not in entry:
-                    continue
-                score = entry.get("score")
-                if score is None:
-                    continue
-                try:
-                    score_value = float(score)
-                except (TypeError, ValueError):
-                    continue
-                if not np.isfinite(score_value):
-                    continue
-                ops = entry.get("operators", {})
-                key = tuple(
-                    (ops.get(t) or {}).get("name")
-                    for t in ("mutation", "survival", "selection", "loss")
-                )
-                seeds = entry.get("seeds_evaluated", 0)
-                # ``seeds_evaluated`` may be a count (int) or a list; normalize.
-                seeds_count = len(seeds) if isinstance(seeds, list) else int(seeds or 0)
-                prev = latest.get(key)
-                if prev is None or seeds_count > prev[2]:
-                    latest[key] = (entry, gen.get("generation"), seeds_count)
-
-        best = None
-        best_lcb = float("-inf")
-        best_score = float("nan")
-        best_gen = None
-        best_seeds = 0
-        for entry, gen_num, seeds_count in latest.values():
-            score_value = float(entry["score"])
-            lcb = score_value - alpha / np.sqrt(max(seeds_count, 1))
-            if lcb > best_lcb:
-                best = entry
-                best_lcb = lcb
-                best_score = score_value
-                best_gen = gen_num
-                best_seeds = seeds_count
-        if best is not None:
-            print(f"  [evolve-load] dedup'd {len(latest)} unique bundle(s); "
-                  f"chose gen {best_gen} entry with score={best_score:.4f} "
-                  f"seeds_evaluated={best_seeds} (lcb={best_lcb:.4f}, alpha={alpha})")
-        return best, best_gen
-
-    # Handle bundle results (best_bundle with multiple operators).
-    # Sources, in order of preference:
-    #   1. data["best_bundle"]                 (run_data.json with embedded bundle)
-    #   2. data itself, if shaped like a bundle (best_bundle.json passed directly)
-    #   3. sibling best_bundle.json next to the given path (HPO runs where the
-    #      embed step was missed, e.g. older runs from before the fix)
-    #   4. best-scoring bundle in generation populations (unfinished runs)
-    bundle = None
-    if data.get("best_bundle"):
-        bundle = data["best_bundle"]
-    elif "operators" in data and isinstance(data.get("operators"), dict):
-        bundle = data
+def _bundle_summary_fields(bundle) -> Dict[str, Any]:
+    """Operator/training-score fields for the eval summary JSON (empty for baseline)."""
+    ops = [(t, op) for t, op in bundle.operators.items() if op is not None]
+    if not ops:
+        return {}
+    fields: Dict[str, Any] = {}
+    if len(ops) == 1:
+        fields["operator_type"] = ops[0][0]
+        fields["operator_name"] = ops[0][1].name
+        fields["generation"] = ops[0][1].generation
     else:
-        sibling = source_path.parent / "best_bundle.json"
-        if sibling.exists():
-            with open(sibling, "r") as f:
-                bundle = json.load(f)
-        else:
-            bundle, bundle_generation = find_best_bundle_so_far()
-            if bundle is not None:
-                print(f"  Note: run has no finalized best_bundle. Using best "
-                      f"bundle from generation {bundle_generation}: "
-                      f"score={bundle.get('score', '?')}")
-
-    if bundle is not None:
-        operators = bundle.get("operators", {})
-        # op_<type>__* values are already injected into operator code by
-        # hpo_pysr.py; only PySR-level hparams need to be reapplied at eval time.
-        raw_hparams = bundle.get("best_hparams") or {}
-        bundle_hparams = {k: v for k, v in raw_hparams.items() if not k.startswith("op_")} or None
-        bundle_result_details = bundle.get("result_details")
-        results = []
-        for op_type_name, op_data in operators.items():
-            if op_data is None:
-                continue
-            results.append(EvolveResult(
-                operator_type=op_type_name,
-                name=op_data["name"],
-                code=op_data["code"],
-                weight=op_data.get("weight", 0.5),
-                train_score=bundle.get("score", 0.0),
-                generation=op_data.get("generation", 0),
-                config=config,
-                best_hparams=bundle_hparams,
-                result_details=bundle_result_details,
-            ))
-        if results:
-            return results
-
-    # Single-operator fallback
-    op_type = operator_type or config.get("operator_type", "mutation")
-
-    best = None
-    for key in [f"best_{op_type}", "best_mutation", "best_survival", "best_selection", "best_loss"]:
-        if key in data:
-            best = data[key]
-            break
-
-    if best is None:
-        generations = data.get("generations", [])
-        if not generations:
-            raise ValueError(f"File {source_path} has no finalized best-operator and no generations.")
-        last_gen = generations[-1]
-        population = last_gen.get("population", [])
-        if not population:
-            raise ValueError(f"File {source_path}: last generation has empty population.")
-        best = population[0]
-        print(f"  Note: run did not finalize. Using best from generation "
-              f"{last_gen.get('generation', '?')}: {best.get('name', '?')} "
-              f"(score={best.get('score', '?')})")
-
-    return EvolveResult(
-        operator_type=op_type,
-        name=best["name"],
-        code=best["code"],
-        weight=best.get("weight", 0.5),
-        train_score=best.get("score", 0.0),
-        generation=best.get("generation", 0),
-        config=config,
-        result_details=best.get("result_details"),
-    )
-
-
-def load_openevolve_results(output_dir: str, operator_type: str) -> EvolveResult:
-    """Load results from an OpenEvolve output directory."""
-    output_path = Path(output_dir)
-    best_dir = output_path / "best"
-    program_path = best_dir / "best_program.py"
-    info_path = best_dir / "best_program_info.json"
-
-    if not program_path.exists():
-        raise FileNotFoundError(f"No best_program.py found in {best_dir}")
-
-    spec = importlib.util.spec_from_file_location("_oe_best_program", str(program_path))
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {program_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    if not hasattr(module, "get_candidate"):
-        raise AttributeError(f"{program_path} does not define get_candidate()")
-
-    candidate = module.get_candidate()
-    code = str(candidate["code"]).strip()
-    op_type = operator_type or candidate.get("operator_type", "mutation")
-    weight = candidate.get("weight", 0.5) if op_type == "mutation" else candidate.get("weight", 0.0)
-
-    match = re.search(r"function\s+(\w+)\s*\(", code)
-    name = match.group(1) if match else "unknown_operator"
-
-    generation = 0
-    train_score = 0.0
-    if info_path.exists():
-        with open(info_path, "r") as f:
-            info = json.load(f)
-        generation = info.get("generation", info.get("iteration", 0))
-        metrics = info.get("metrics", {})
-        train_score = metrics.get("combined_score", metrics.get("avg_r2", 0.0))
-
-    return EvolveResult(
-        operator_type=op_type,
-        name=name,
-        code=code,
-        weight=float(weight),
-        train_score=float(train_score),
-        generation=generation,
-        config={"source": "openevolve", "output_dir": str(output_path)},
-    )
+        fields["operators"] = [
+            {"type": t, "name": op.name, "generation": op.generation}
+            for t, op in ops
+        ]
+    fields["evolve_train_score"] = bundle.score
+    return fields
 
 
 def _read_autoresearch_results_tsv() -> List[Dict[str, str]]:
@@ -418,42 +225,6 @@ def cleanup_sr_worktree(submodule_path: Path, wt_dir: Path) -> None:
     )
 
 
-def split_hpo_params(raw_params: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, float]]:
-    """Split a flat HPO param dict into (pysr_kwargs_overrides, mutation_weight_overrides)."""
-    default_weight_keys = set(get_default_mutation_weights().keys())
-    for i in range(1, 6):
-        default_weight_keys.add(f"weight_custom_mutation_{i}")
-
-    pysr_overrides: Dict[str, Any] = {}
-    mutation_weights: Dict[str, float] = {}
-
-    for key, value in raw_params.items():
-        normalized = key if key.startswith("weight_") else f"weight_{key}"
-        if key.startswith("weight_") or normalized in default_weight_keys:
-            mutation_weights[normalized] = float(value)
-        else:
-            pysr_overrides[key] = value
-
-    return pysr_overrides, mutation_weights
-
-
-def load_hpo_config(path: str) -> tuple[Dict[str, Any], Dict[str, float]]:
-    """Load HPO output JSON and split into PySR kwargs overrides and mutation weights."""
-    with open(path, "r") as f:
-        data = json.load(f)
-
-    if isinstance(data, dict) and "weights" in data:
-        raw_params = data["weights"]
-    elif isinstance(data, dict) and "best_params" in data:
-        raw_params = data["best_params"]
-    elif isinstance(data, dict) and "params" in data:
-        raw_params = data["params"]
-    else:
-        raw_params = data
-
-    return split_hpo_params(raw_params)
-
-
 # =============================================================================
 # Evaluation
 # =============================================================================
@@ -475,30 +246,14 @@ def compute_per_run_avgs(result_details: List[Dict], n_runs: int,
 def evaluate_config(
     evaluator: PySRSlurmEvaluator,
     dataset_names: List[str],
-    pysr_kwargs: Dict[str, Any],
-    mutation_weights: Dict[str, float],
+    config: PySRConfig,
     seed: int,
     n_runs: int,
     name: str,
-    custom_mutation_code: Optional[Dict[str, str]] = None,
-    allow_custom_mutations: bool = False,
-    custom_survival_code: Optional[str] = None,
-    custom_selection_code: Optional[str] = None,
-    custom_loss_code: Optional[str] = None,
     target_noise_map: Optional[Dict[str, float]] = None,
 ) -> EvalSummary:
-    """Evaluate a config and return summary. Cache stats are tracked on the evaluator."""
-    config = PySRConfig(
-        mutation_weights=mutation_weights,
-        pysr_kwargs=pysr_kwargs,
-        custom_mutation_code=custom_mutation_code,
-        allow_custom_mutations=allow_custom_mutations,
-        custom_survival_code=custom_survival_code,
-        custom_selection_code=custom_selection_code,
-        custom_loss_code=custom_loss_code,
-        name=name,
-    )
-
+    """Evaluate a PySRConfig and return summary. Cache stats tracked on evaluator."""
+    config.name = name
     results = evaluator.evaluate_configs(
         [config], dataset_names, seed=seed, n_runs=n_runs,
         target_noise_map=target_noise_map,
@@ -515,60 +270,6 @@ def evaluate_config(
         r2_vector=r2_vector,
         result_details=result_details,
     )
-
-
-def build_method_kwargs(evolve_data, baseline_weights: Dict[str, float]):
-    """Build evaluate_config kwargs for evolved operator(s).
-
-    evolve_data can be a single EvolveResult or a list of them (for bundles).
-    """
-    weights = baseline_weights.copy()
-    extra = {}
-
-    items = evolve_data if isinstance(evolve_data, list) else [evolve_data]
-    for item in items:
-        if item.operator_type == "mutation":
-            weights["weight_custom_mutation_1"] = item.weight
-            extra["custom_mutation_code"] = {item.name: item.code}
-            extra["allow_custom_mutations"] = True
-        elif item.operator_type == "survival":
-            extra["custom_survival_code"] = item.code
-        elif item.operator_type == "selection":
-            extra["custom_selection_code"] = item.code
-        elif item.operator_type == "loss":
-            extra["custom_loss_code"] = item.code
-
-    return weights, extra
-
-
-def build_evolve_kwargs(
-    method: "EvolveResult | List[EvolveResult]",
-    baseline_weights: Dict[str, float],
-    base_pysr_kwargs: Dict[str, Any],
-):
-    """Combine an evolved method (single or bundle) into final PySR kwargs.
-
-    Merges mutation weights, custom-operator code, and any HPO-tuned PySR
-    hparams carried in a bundle's ``best_hparams``.
-
-    Returns:
-        weights: ``weight_*`` kwargs to pass to PySRRegressor
-        pysr_kwargs: ``base_pysr_kwargs`` merged with the bundle's HPO-tuned
-            PySR-level hparams (population_size, parsimony, ...)
-        extra_code: ``custom_*_code`` + ``allow_custom_mutations`` kwargs,
-            usable by ``parallel_eval_pysr.PySRConfig`` or as inputs to the
-            ``_load_dynamic_*`` helpers in parallel_eval_pysr
-        items: list of EvolveResult (always wrapped in a list)
-    """
-    weights, extra_code = build_method_kwargs(method, baseline_weights)
-    pysr_kwargs = dict(base_pysr_kwargs)
-    items = method if isinstance(method, list) else [method]
-    bundle_hparams = items[0].best_hparams
-    if bundle_hparams:
-        pysr_overrides, hpo_weights = split_hpo_params(bundle_hparams)
-        pysr_kwargs = {**pysr_kwargs, **pysr_overrides}
-        weights = {**weights, **hpo_weights}
-    return weights, pysr_kwargs, extra_code, items
 
 
 def print_results(split_summaries: Dict[str, EvalSummary], n_runs: int, method_label: str) -> None:
@@ -605,6 +306,45 @@ def print_results(split_summaries: Dict[str, EvalSummary], n_runs: int, method_l
 # Programmatic Final Evaluation
 # =============================================================================
 
+def _build_fixed_summary(
+    split_name: str,
+    datasets: List[str],
+    per_level_summaries: Dict[float, "EvalSummary"],
+    target_noise_map: Dict[str, float],
+    n_runs: int,
+) -> "EvalSummary":
+    """Assemble an EvalSummary that, for each dataset, uses results from the noise
+    level matching its training-time fixed assignment (target_noise_map).
+
+    This reproduces what a single fixed-noise final eval would report, but pulls the
+    per-dataset results out of the already-computed per-noise-level summaries (no
+    extra compute, since each (dataset, noise) pair is cached).
+    """
+    detail_by_level_dataset = {
+        (level, d["dataset"]): d
+        for level, summ in per_level_summaries.items()
+        for d in summ.result_details
+    }
+    selected: List[Dict] = []
+    for ds in datasets:
+        level = target_noise_map[ds]
+        detail = detail_by_level_dataset.get((level, ds))
+        if detail is not None:
+            selected.append(detail)
+
+    per_run_r2 = compute_per_run_avgs(selected, n_runs, "run_r2_scores")
+    per_run_gt = compute_per_run_avgs(selected, n_runs, "run_gt_scores")
+    avg_r2 = float(np.mean(per_run_r2)) if per_run_r2 else float("nan")
+    return EvalSummary(
+        split_name=f"{split_name} (fixed-noise)",
+        avg_r2=avg_r2,
+        per_run_r2_avgs=per_run_r2,
+        per_run_gt_avgs=per_run_gt,
+        r2_vector=[d.get("avg_r2", float("nan")) for d in selected],
+        result_details=selected,
+    )
+
+
 def run_final_evaluation(
     output_dir: str,
     method_source: str,
@@ -623,6 +363,7 @@ def run_final_evaluation(
     use_cache: bool = True,
     wandb_run: Optional[Any] = None,
     target_noise_map: Optional[Dict[str, float]] = None,
+    noise_levels: Optional[List[float]] = None,
     pysr_wall_limit: int = 600,
 ) -> Dict[str, "EvalSummary"]:
     """Run final evaluation on train/val splits after an evolution, OpenEvolve, or HPO run.
@@ -642,7 +383,14 @@ def run_final_evaluation(
         time_limit/mem_per_cpu/job_timeout: SLURM config
         use_cache: Whether to use evaluation caching
         wandb_run: Existing wandb run to log to (or None)
-        target_noise_map: Optional per-dataset noise map
+        target_noise_map: Optional per-dataset noise map (the training-time fixed
+            noise assignment). Used both for single-noise eval and, in multi-noise
+            mode, to pick each dataset's fixed level for the avg_gt metric.
+        noise_levels: Optional list of noise levels. When provided together with
+            target_noise_map, each split is evaluated at every noise level (n_runs
+            seeds per level per dataset), and the report includes both avg_gt (the
+            per-dataset fixed-noise assignment, matching training/validation) and
+            avg_gt_all_noise (averaged across all noise levels).
 
     Returns:
         Dict mapping split name to EvalSummary
@@ -653,23 +401,8 @@ def run_final_evaluation(
     eval_dir = str(Path(output_dir) / "final_eval")
     Path(eval_dir).mkdir(parents=True, exist_ok=True)
 
-    # Load method
-    if method_source == "evolve":
-        method = load_evolve_results(method_path, None)
-        if isinstance(method, list):
-            types = "+".join(m.operator_type for m in method)
-            names = "+".join(m.name for m in method)
-            method_label = f"evolve_{types}:{names}"
-        else:
-            method_label = f"evolve_{method.operator_type}:{method.name}"
-    elif method_source == "openevolve":
-        method = load_openevolve_results(method_path, None)
-        method_label = f"openevolve_{method.operator_type}:{method.name}"
-    elif method_source == "hpo":
-        method = None
-        method_label = "hpo_best"
-    else:
-        raise ValueError(f"Unknown method_source: {method_source}")
+    # Load method as an OperatorBundle via the single loader (bundle_loader).
+    bundle, method_label = load_method(method_source, method_path)
 
     print(f"\n{'=' * 60}")
     print(f"Final Evaluation: {method_label}")
@@ -694,59 +427,109 @@ def run_final_evaluation(
         pysr_wall_limit=pysr_wall_limit,
     )
 
-    baseline_weights = get_default_mutation_weights()
-    for i in range(1, 6):
-        baseline_weights[f"weight_custom_mutation_{i}"] = 0.0
+    # Single converter: bundle -> PySRConfig (merges custom code + HPO hparams).
+    config = bundle.to_pysr_config(pysr_kwargs)
+    for t, op in bundle.operators.items():
+        if op is not None:
+            print(f"  Loaded [{t}] {op.name}")
+    if bundle.score is not None:
+        print(f"  Training score: {bundle.score:.4f}")
+    if bundle.best_hparams:
+        print(f"  Applied {len(bundle.best_hparams)} HPO-tuned hparam(s)")
 
-    eval_pysr_kwargs = pysr_kwargs
-    eval_weights = baseline_weights
-    eval_extra: Dict[str, Any] = {}
-
-    if method_source == "hpo":
-        pysr_overrides, hpo_weights = load_hpo_config(method_path)
-        eval_pysr_kwargs = {**pysr_kwargs, **pysr_overrides}
-        eval_weights = {**baseline_weights, **hpo_weights}
-    elif method is not None:
-        eval_weights, eval_extra = build_method_kwargs(method, baseline_weights)
-        items = method if isinstance(method, list) else [method]
-        for m in items:
-            print(f"  Loaded [{m.operator_type}] {m.name}")
-        print(f"  Training score: {items[0].train_score:.4f}")
+    multi_noise = bool(noise_levels) and target_noise_map is not None
+    if multi_noise:
+        print(f"  Multi-noise final eval: {len(noise_levels)} noise levels "
+              f"× {n_runs} seeds = {len(noise_levels) * n_runs} runs per dataset/split")
 
     split_summaries: Dict[str, EvalSummary] = {}
+    multi_noise_data: Dict[str, Any] = {}
     for split_path in splits:
         split_name = Path(split_path).stem
         datasets = load_dataset_names_from_split(split_path)
-        print(f"\nEvaluating on {split_name} ({len(datasets)} datasets, {n_runs} seeds)...")
 
-        evaluator.split_label = split_name
-        summary = evaluate_config(
-            evaluator, datasets, eval_pysr_kwargs, eval_weights,
-            seed, n_runs, f"final_{split_name}_{method_label}",
-            target_noise_map=target_noise_map,
-            **eval_extra,
-        )
-        split_summaries[split_name] = summary
+        if multi_noise:
+            print(f"\nEvaluating on {split_name} ({len(datasets)} datasets, "
+                  f"{n_runs} seeds × {len(noise_levels)} noise levels)...")
+            per_level_summaries: Dict[float, EvalSummary] = {}
+            for level in noise_levels:
+                uniform_map = {d: level for d in datasets}
+                evaluator.split_label = f"{split_name}@noise{level}"
+                per_level_summaries[level] = evaluate_config(
+                    evaluator, datasets, config,
+                    seed, n_runs, f"final_{split_name}_noise{level}_{method_label}",
+                    target_noise_map=uniform_map,
+                )
 
-        avg_r2 = float(np.mean(summary.per_run_r2_avgs)) if summary.per_run_r2_avgs else float("nan")
-        avg_gt = float(np.mean(summary.per_run_gt_avgs)) if summary.per_run_gt_avgs else float("nan")
-        print(f"  {split_name}: R²={avg_r2:.4f}, GT={avg_gt:.4f}")
+            # Fixed-noise summary: each dataset uses its training-time assigned level.
+            summary = _build_fixed_summary(
+                split_name, datasets, per_level_summaries, target_noise_map, n_runs,
+            )
+            split_summaries[split_name] = summary
 
-        if wandb_run is not None:
-            import wandb
-            wandb.log({
-                f"final_eval/{split_name}/avg_r2": avg_r2,
-                f"final_eval/{split_name}/avg_gt": avg_gt,
-                f"final_eval/{split_name}/n_datasets": len(datasets),
-            })
-            for seed_idx in range(n_runs):
-                if seed_idx < len(summary.per_run_r2_avgs):
-                    wandb.log({
-                        f"final_eval/{split_name}/seed_{seed_idx}_r2": summary.per_run_r2_avgs[seed_idx],
-                        f"final_eval/{split_name}/seed_{seed_idx}_gt": summary.per_run_gt_avgs[seed_idx],
-                    })
+            per_level_gt = {
+                lvl: (float(np.mean(s.per_run_gt_avgs)) if s.per_run_gt_avgs else float("nan"))
+                for lvl, s in per_level_summaries.items()
+            }
+            per_level_r2 = {
+                lvl: (float(np.mean(s.per_run_r2_avgs)) if s.per_run_r2_avgs else float("nan"))
+                for lvl, s in per_level_summaries.items()
+            }
+            avg_gt = float(np.mean(summary.per_run_gt_avgs)) if summary.per_run_gt_avgs else float("nan")
+            avg_r2 = float(np.mean(summary.per_run_r2_avgs)) if summary.per_run_r2_avgs else float("nan")
+            avg_gt_all_noise = float(np.mean(list(per_level_gt.values())))
+            avg_r2_all_noise = float(np.mean(list(per_level_r2.values())))
 
-    # Print full results table
+            multi_noise_data[split_name] = {
+                "avg_gt": avg_gt,
+                "avg_gt_all_noise": avg_gt_all_noise,
+                "avg_r2": avg_r2,
+                "avg_r2_all_noise": avg_r2_all_noise,
+                "per_noise_level": {
+                    str(lvl): {"avg_gt": per_level_gt[lvl], "avg_r2": per_level_r2[lvl]}
+                    for lvl in noise_levels
+                },
+            }
+
+            print(f"  {split_name}: GT(fixed)={avg_gt:.4f}  GT(all-noise)={avg_gt_all_noise:.4f}  "
+                  f"R²(fixed)={avg_r2:.4f}  R²(all-noise)={avg_r2_all_noise:.4f}")
+            for lvl in noise_levels:
+                print(f"      noise={lvl:<6}: GT={per_level_gt[lvl]:.4f}  R²={per_level_r2[lvl]:.4f}")
+
+            if wandb_run is not None:
+                import wandb
+                log_dict = {
+                    f"final_eval/{split_name}/avg_gt": avg_gt,
+                    f"final_eval/{split_name}/avg_gt_all_noise": avg_gt_all_noise,
+                    f"final_eval/{split_name}/avg_r2": avg_r2,
+                    f"final_eval/{split_name}/avg_r2_all_noise": avg_r2_all_noise,
+                }
+                for lvl in noise_levels:
+                    log_dict[f"final_eval/{split_name}/noise_{lvl}/avg_gt"] = per_level_gt[lvl]
+                    log_dict[f"final_eval/{split_name}/noise_{lvl}/avg_r2"] = per_level_r2[lvl]
+                wandb.log(log_dict)
+        else:
+            print(f"\nEvaluating on {split_name} ({len(datasets)} datasets, {n_runs} seeds)...")
+            evaluator.split_label = split_name
+            summary = evaluate_config(
+                evaluator, datasets, config,
+                seed, n_runs, f"final_{split_name}_{method_label}",
+                target_noise_map=target_noise_map,
+            )
+            split_summaries[split_name] = summary
+
+            avg_r2 = float(np.mean(summary.per_run_r2_avgs)) if summary.per_run_r2_avgs else float("nan")
+            avg_gt = float(np.mean(summary.per_run_gt_avgs)) if summary.per_run_gt_avgs else float("nan")
+            print(f"  {split_name}: R²={avg_r2:.4f}, GT={avg_gt:.4f}")
+
+            if wandb_run is not None:
+                import wandb
+                wandb.log({
+                    f"final_eval/{split_name}/avg_r2": avg_r2,
+                    f"final_eval/{split_name}/avg_gt": avg_gt,
+                })
+
+    # Print full results table (fixed-noise per-seed breakdown in multi-noise mode)
     print_results(split_summaries, n_runs, f"[Final Eval] {method_label}")
 
     # Save summary JSON
@@ -756,20 +539,12 @@ def run_final_evaluation(
         "n_runs": n_runs,
         "seed": seed,
     }
-    if method is not None:
-        items = method if isinstance(method, list) else [method]
-        if len(items) == 1:
-            summary_data["operator_type"] = items[0].operator_type
-            summary_data["operator_name"] = items[0].name
-            summary_data["generation"] = items[0].generation
-        else:
-            summary_data["operators"] = [
-                {"type": m.operator_type, "name": m.name, "generation": m.generation}
-                for m in items
-            ]
-        summary_data["evolve_train_score"] = items[0].train_score
+    summary_data.update(_bundle_summary_fields(bundle))
     for split_name, s in split_summaries.items():
         summary_data[split_name] = asdict(s)
+    if multi_noise:
+        summary_data["noise_levels"] = list(noise_levels)
+        summary_data["multi_noise"] = multi_noise_data
 
     summary_path = Path(output_dir) / "final_eval_summary.json"
     with open(summary_path, "w") as f:
@@ -784,6 +559,11 @@ def run_final_evaluation(
             avg_gt = float(np.mean(s.per_run_gt_avgs)) if s.per_run_gt_avgs else float("nan")
             wandb.summary[f"final_eval_{split_name}_avg_r2"] = avg_r2
             wandb.summary[f"final_eval_{split_name}_avg_gt"] = avg_gt
+            if multi_noise:
+                wandb.summary[f"final_eval_{split_name}_avg_gt_all_noise"] = \
+                    multi_noise_data[split_name]["avg_gt_all_noise"]
+                wandb.summary[f"final_eval_{split_name}_avg_r2_all_noise"] = \
+                    multi_noise_data[split_name]["avg_r2_all_noise"]
 
     return split_summaries
 
@@ -874,27 +654,18 @@ def main() -> None:
         # modified SR.jl source would otherwise collide with baseline cache entries.
         args.no_cache = True
 
-    # Determine method label
+    # Determine method (as an OperatorBundle) and label via the single loader.
     if args.evolve_results:
-        method = load_evolve_results(args.evolve_results, None)
-        if isinstance(method, list):
-            types = "+".join(m.operator_type for m in method)
-            names = "+".join(m.name for m in method)
-            method_label = f"evolve_{types}:{names}"
-        else:
-            method_label = f"evolve_{method.operator_type}:{method.name}"
+        bundle, method_label = load_method("evolve", args.evolve_results)
     elif args.openevolve_results:
-        method = load_openevolve_results(args.openevolve_results, None)
-        method_label = f"openevolve_{method.operator_type}:{method.name}"
+        bundle, method_label = load_method("openevolve", args.openevolve_results)
     elif args.best_weights:
-        method = None
-        method_label = "hpo_best"
+        bundle, method_label = load_method("hpo", args.best_weights)
     elif args.autoresearch:
-        method = None
+        bundle, method_label = load_method("baseline", None)
         method_label = f"autoresearch_{autoresearch_commit[:8]}"
     else:
-        method = None
-        method_label = "baseline"
+        bundle, method_label = load_method("baseline", None)
 
     args.output_dir = resolve_run_dir(args.output_dir, label="eval_pysr")
 
@@ -916,12 +687,12 @@ def main() -> None:
         "partition": args.partition,
         "no_cache": args.no_cache,
     }
-    if method is not None:
-        items = method if isinstance(method, list) else [method]
-        wandb_config["operator_type"] = "+".join(m.operator_type for m in items)
-        wandb_config["operator_name"] = "+".join(m.name for m in items)
-        wandb_config["generation"] = items[0].generation
-        wandb_config["evolve_train_score"] = items[0].train_score
+    _ops = [(t, op) for t, op in bundle.operators.items() if op is not None]
+    if _ops:
+        wandb_config["operator_type"] = "+".join(t for t, _ in _ops)
+        wandb_config["operator_name"] = "+".join(op.name for _, op in _ops)
+        wandb_config["generation"] = _ops[0][1].generation
+        wandb_config["evolve_train_score"] = bundle.score
 
     # W&B tags must be 1-64 chars. Prefer the SLURM job id of the eval run when
     # available (so the tag links straight to out/<id>.out); otherwise fall back
@@ -964,38 +735,21 @@ def main() -> None:
         **evaluator_kwargs,
     )
 
-    baseline_weights = get_default_mutation_weights()
-    for i in range(1, 6):
-        baseline_weights[f"weight_custom_mutation_{i}"] = 0.0
-
-    # Build config for the chosen method
-    eval_pysr_kwargs = pysr_kwargs
-    eval_weights = baseline_weights
-    eval_extra: Dict[str, Any] = {}
-
-    if args.best_weights:
-        pysr_overrides, hpo_weights = load_hpo_config(args.best_weights)
-        eval_pysr_kwargs = {**pysr_kwargs, **pysr_overrides}
-        eval_weights = {**baseline_weights, **hpo_weights}
-    elif method is not None:
-        # Bundle's best_hparams (if any) get merged in by build_evolve_kwargs so
-        # the eval matches the score reported by hpo_pysr.py.
-        eval_weights, eval_pysr_kwargs, eval_extra, items = build_evolve_kwargs(
-            method, baseline_weights, pysr_kwargs
-        )
-        bundle_hparams = items[0].best_hparams
-        if bundle_hparams:
-            print(f"Applied {len(bundle_hparams)} HPO-tuned hparam(s) from bundle: "
-                  f"{sorted(bundle_hparams.keys())}")
-        # Print loaded method info
-        for m in items:
-            print(f"Loaded [{m.operator_type}] {m.name}")
-            print(f"  Generation: {m.generation}")
-            code_file = output_dir / f"{m.name}.jl"
-            code_file.write_text(m.code)
+    # Single converter: bundle -> PySRConfig (merges custom code + HPO hparams).
+    config = bundle.to_pysr_config(pysr_kwargs)
+    if bundle.best_hparams:
+        print(f"Applied {len(bundle.best_hparams)} HPO-tuned hparam(s) from bundle: "
+              f"{sorted(bundle.best_hparams.keys())}")
+    for t, op in bundle.operators.items():
+        if op is not None:
+            print(f"Loaded [{t}] {op.name}")
+            print(f"  Generation: {op.generation}")
+            code_file = output_dir / f"{op.name}.jl"
+            code_file.write_text(op.code)
             print(f"  Saved code to: {code_file}")
-        print(f"  Training score (from evolve): {items[0].train_score:.4f}")
-        print()
+    if bundle.score is not None:
+        print(f"  Training score (from evolve): {bundle.score:.4f}")
+    print()
 
     # Evaluate on each split
     split_summaries: Dict[str, EvalSummary] = {}
@@ -1011,10 +765,9 @@ def main() -> None:
         )
 
         summary = evaluate_config(
-            evaluator, datasets, eval_pysr_kwargs, eval_weights,
+            evaluator, datasets, config,
             args.seed, args.n_runs, f"{split_name}_{method_label}",
             target_noise_map=target_noise_map,
-            **eval_extra,
         )
         split_summaries[split_name] = summary
 
@@ -1068,18 +821,7 @@ def main() -> None:
         "total_evals": total_evals,
         "total_cached": total_cached,
     }
-    if method is not None:
-        items = method if isinstance(method, list) else [method]
-        if len(items) == 1:
-            summary_data["operator_type"] = items[0].operator_type
-            summary_data["operator_name"] = items[0].name
-            summary_data["generation"] = items[0].generation
-        else:
-            summary_data["operators"] = [
-                {"type": m.operator_type, "name": m.name, "generation": m.generation}
-                for m in items
-            ]
-        summary_data["evolve_train_score"] = items[0].train_score
+    summary_data.update(_bundle_summary_fields(bundle))
     for split_name, s in split_summaries.items():
         summary_data[split_name] = asdict(s)
 

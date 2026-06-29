@@ -18,7 +18,7 @@ import time
 import traceback
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict, field, replace
 from pathlib import Path
 
 from slurm_eval import BaseSlurmEvaluator, TERMINAL_SLURM_STATES, init_worker, _untrack_job
@@ -121,6 +121,138 @@ def _has_usable_pysr_cached_result(cached: Optional[Dict[str, Any]]) -> bool:
     return cached is not None and cached.get("gt_match_score") is not None
 
 
+# =============================================================================
+# Fitness metrics
+# =============================================================================
+# Supported meta-evolution fitness metrics for the PySR pipeline:
+#   "gt"    — ground-truth symbolic solve rate (1.0 if any frontier eq matches GT)
+#   "r2"    — average validation R² across the Pareto frontier (see
+#             _compute_frontier_avg_r2). NOTE: as of the frontier-R² change this
+#             is the *whole-frontier* average, not PySR's single best equation.
+#   "gt-r2" — 1.0 if the task is solved (gt match), else 0.5 * frontier-avg R².
+PYSR_FITNESS_METRICS = ("gt", "r2", "gt-r2")
+
+# Metrics that require per-frontier R² (run_r2c / r2_frontier_score) to be present
+# in a cached result before it can be reused. Cache entries written before the
+# r2_frontier column existed lack it, so they are re-run when one of these metrics
+# is active (the "gt" metric reuses them unchanged).
+_FRONTIER_R2_METRICS = ("r2", "gt-r2")
+
+
+def metric_missing_fill(fitness_metric: str) -> float:
+    """Per-run score for a (dataset) with no successful runs.
+
+    R² uses -1.0 (a failure is worse than the worst real R², which is clipped at
+    0); the solve-rate–based metrics floor at 0.0 (no reward)."""
+    return -1.0 if fitness_metric == "r2" else 0.0
+
+
+def _blend_gt_r2(r2_scores: List[float], gt_scores: List[float]) -> List[float]:
+    """gt-r2 reward per run: 1.0 if solved, else frontier-avg R² (clipped at 0).
+
+    No coefficient on the R² term: the frontier-averaged R² is < 1 in practice
+    (PySR never has an equation at every complexity level), so a solved task
+    (reward 1.0) always outranks an unsolved one."""
+    out: List[float] = []
+    for i, r in enumerate(r2_scores):
+        g = gt_scores[i] if i < len(gt_scores) else 0.0
+        out.append(1.0 if (g is not None and g >= 1.0) else max(r, 0.0))
+    return out
+
+
+def select_run_scores(
+    run_r2: List[float],
+    run_gt: List[float],
+    run_r2c: Optional[List[float]],
+    fitness_metric: str,
+) -> List[float]:
+    """Pick the per-run fitness score array for a metric from raw score lists.
+
+    `run_r2c` is the frontier-averaged R² per run; when it is unavailable
+    (legacy detail / a backend that doesn't compute it) we fall back to the
+    best-equation R² in `run_r2`, so the metric still produces sensible numbers.
+    """
+    if fitness_metric == "gt":
+        return run_gt
+    base = run_r2c if run_r2c else run_r2
+    if fitness_metric == "r2":
+        return list(base)
+    if fitness_metric == "gt-r2":
+        return _blend_gt_r2(base, run_gt)
+    raise ValueError(f"Unknown fitness_metric: {fitness_metric!r}")
+
+
+def run_scores_for_metric(detail: Dict[str, Any], fitness_metric: str) -> List[float]:
+    """Per-run fitness scores for one dataset's `result_details` entry."""
+    return select_run_scores(
+        detail.get("run_r2_scores", []) or [],
+        detail.get("run_gt_scores", []) or [],
+        detail.get("run_r2c_scores"),
+        fitness_metric,
+    )
+
+
+def _compute_frontier_avg_r2(model, X_val, y_val, maxsize: int) -> float:
+    """Average validation R² across a FIXED complexity grid 1..maxsize.
+
+    For each complexity level c we take the Pareto *envelope*: the best
+    validation R² achievable by any frontier equation with complexity ≤ c
+    (clipped at 0). Levels below the simplest frontier entry get R²=0 (a
+    constant-mean predictor). The average is over the fixed grid 1..maxsize
+    (the number of complexity slots base PySR uses, = its `maxsize`), so a
+    sparser frontier can only *lower* the score: an evolved operator cannot
+    inflate it by reporting fewer complexity levels. Because it is an envelope,
+    dropping any frontier point can never raise any R²(c) — the metric is robust
+    to frontier pruning in both directions.
+    """
+    eqs = getattr(model, "equations_", None)
+    if eqs is None or len(eqs) == 0 or maxsize < 1:
+        return 0.0
+    y_val = np.asarray(y_val)
+    ss_tot = float(np.sum((y_val - np.mean(y_val)) ** 2)) + 1e-10
+
+    # Frontier rows in ascending complexity. PySR's equations_ is Pareto in
+    # train loss, but validation R² need not be monotone — the envelope (max so
+    # far) handles that.
+    rows = eqs.sort_values("complexity")
+    complexities: List[int] = []
+    r2_at: List[float] = []
+    for idx, row in rows.iterrows():
+        try:
+            c = int(row["complexity"])
+        except Exception:
+            continue
+        if c < 1 or c > maxsize:
+            continue
+        try:
+            y_pred = np.clip(np.asarray(model.predict(X_val, index=int(idx))), -1e10, 1e10)
+            if y_pred.shape != y_val.shape or np.any(~np.isfinite(y_pred)):
+                r2 = 0.0
+            else:
+                ss_res = float(np.sum((y_val - y_pred) ** 2))
+                r2 = max(1.0 - ss_res / ss_tot, 0.0)
+        except Exception:
+            r2 = 0.0
+        complexities.append(c)
+        r2_at.append(r2)
+
+    if not complexities:
+        return 0.0
+
+    # Step-function envelope over the fixed grid 1..maxsize.
+    total = 0.0
+    cur = 0.0  # best R² available so far (0 before the first frontier complexity)
+    j = 0
+    n = len(complexities)
+    for c_level in range(1, maxsize + 1):
+        while j < n and complexities[j] <= c_level:
+            if r2_at[j] > cur:
+                cur = r2_at[j]
+            j += 1
+        total += cur
+    return total / maxsize
+
+
 def _write_json_atomic(path: Path, payload: Any) -> None:
     """Atomically write JSON payloads so readers never see partial files."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -202,6 +334,7 @@ def _build_pysr_cache_entry(
         "config_hash": config_hash,
         "dataset_name": spec.dataset_name,
         "r2_score": result.r2_score,
+        "r2_frontier_score": result.r2_frontier_score,
         "gt_match_score": result.gt_match_score,
         "gt_matched_equation": result.gt_matched_equation,
         "best_equation": result.best_equation,
@@ -211,6 +344,195 @@ def _build_pysr_cache_entry(
         "runtime_seconds": result.runtime_seconds,
         "execution_trace_json": execution_trace_json,
     }
+
+
+def _build_pysr_cache_entries(
+    spec: "PySRTaskSpec",
+    result: "PySRTaskResult",
+) -> List[Dict[str, Any]]:
+    """Cache entries for a (spec, result). One per noise level for multi-noise
+    tasks (each keyed by its own target_noise, reusable by single-noise runs),
+    else a single entry. Failed levels are not cached (so they re-run)."""
+    if not result.noise_results:
+        return [_build_pysr_cache_entry(spec, result)]
+
+    entries: List[Dict[str, Any]] = []
+    for nr in result.noise_results:
+        if nr.get("error") is not None:
+            continue
+        level_spec = replace(
+            spec, target_noise=nr["target_noise"], target_noise_levels=None,
+        )
+        level_result = PySRTaskResult(
+            config_id=spec.config_id,
+            dataset_name=spec.dataset_name,
+            r2_score=nr.get("r2_score"),
+            r2_frontier_score=nr.get("r2_frontier_score"),
+            best_equation=nr.get("best_equation"),
+            best_loss=nr.get("best_loss", float("inf")),
+            gt_match_score=nr.get("gt_match_score"),
+            gt_matched_equation=nr.get("gt_matched_equation"),
+            error=None,
+            run_index=spec.run_index,
+            timed_out=nr.get("timed_out", False),
+            runtime_seconds=nr.get("runtime_seconds", 0.0),
+            num_evaluations=nr.get("num_evaluations"),
+            execution_trace=nr.get("execution_trace"),
+        )
+        entries.append(_build_pysr_cache_entry(level_spec, level_result))
+    return entries
+
+
+def _lookup_cached_level(
+    cache,
+    task: "PySRTaskSpec",
+    model_kwargs: Dict[str, Any],
+    pysr_mutation_kwargs: Dict[str, Any],
+    hof_n_steps: int,
+    noise_level: float,
+) -> Optional[Dict[str, Any]]:
+    """Cache lookup for one (task, noise_level), returning a per-level result dict
+    (the same shape _evaluate_pysr_task produces per level) when the entry is
+    complete enough to reuse, else None. Applies the same trace/frontier-R² gates
+    as the single-noise pre-filter."""
+    cached = cache.lookup(
+        mutation_weights=pysr_mutation_kwargs,
+        pysr_kwargs=task.pysr_kwargs,
+        dataset_name=task.dataset_name,
+        seed=task.seed,
+        data_seed=task.data_seed,
+        max_samples=task.max_samples,
+        run_index=task.run_index,
+        custom_mutation_code=task.custom_mutation_code,
+        allow_custom_mutations=task.allow_custom_mutations,
+        pysr_model_kwargs=model_kwargs,
+        target_noise=noise_level,
+        custom_selection_code=task.custom_selection_code,
+        custom_survival_code=task.custom_survival_code,
+        custom_loss_code=task.custom_loss_code,
+        hof_n_steps=hof_n_steps,
+    )
+    cached_has_required_trace = (
+        task.hof_n_steps <= 0
+        or (cached is not None and bool(cached.get("execution_trace")))
+    )
+    cached_has_required_r2c = (
+        task.fitness_metric not in _FRONTIER_R2_METRICS
+        or cached is None
+        or cached.get("r2_frontier_score") is not None
+        or cached.get("error") is not None
+    )
+    if not (
+        _has_usable_pysr_cached_result(cached)
+        and cached_has_required_trace
+        and cached_has_required_r2c
+    ):
+        return None
+    r2_score = cached["r2_score"]
+    if r2_score is None:
+        r2_score = -1.0
+    best_loss = cached["best_loss"]
+    if best_loss is None:
+        best_loss = float("inf")
+    return {
+        "target_noise": noise_level,
+        "r2_score": r2_score,
+        "r2_frontier_score": cached.get("r2_frontier_score"),
+        "best_equation": cached["best_equation"],
+        "best_loss": best_loss,
+        "gt_match_score": cached.get("gt_match_score"),
+        "gt_matched_equation": cached.get("gt_matched_equation"),
+        "error": cached["error"],
+        "timed_out": cached.get("timed_out", False),
+        "runtime_seconds": cached.get("runtime_seconds", 0.0),
+        "num_evaluations": None,
+        "execution_trace": cached.get("execution_trace"),
+    }
+
+
+def _spec_noise_levels(spec: "PySRTaskSpec") -> List[float]:
+    """Noise levels this task should be evaluated at (≥1). Single-noise → [target_noise]."""
+    if spec.target_noise_levels:
+        return list(spec.target_noise_levels)
+    return [spec.target_noise]
+
+
+def _combine_noise_level_results(
+    spec: "PySRTaskSpec",
+    level_dicts: List[Dict[str, Any]],
+) -> "PySRTaskResult":
+    """Collapse per-noise-level sub-results into one averaged PySRTaskResult.
+
+    The per-run score (r2/r2-frontier/gt) is the mean across noise levels, with a
+    failed level counted as a failure (r2=-1, frontier=-1, gt=0) — identical to
+    how _aggregate_pysr_results fills failed runs, so a member can't hide a crash
+    on one noise level behind the others. Representative fields (best equation,
+    matched equation, execution trace) come from the lowest-noise level that
+    succeeded, so execution-feedback shows the clean (noise=0) trace when present.
+    """
+    r2_vals: List[float] = []
+    r2c_vals: List[float] = []
+    gt_vals: List[float] = []
+    for d in level_dicts:
+        if d.get("error") is not None:
+            r2_vals.append(-1.0)
+            r2c_vals.append(-1.0)
+            gt_vals.append(0.0)
+            continue
+        r2 = d.get("r2_score")
+        r2 = -1.0 if (r2 is None or np.isnan(r2)) else float(r2)
+        r2c = d.get("r2_frontier_score")
+        r2c = r2 if (r2c is None or (isinstance(r2c, float) and np.isnan(r2c))) else float(r2c)
+        gt = d.get("gt_match_score")
+        gt = 0.0 if (gt is None or np.isnan(gt)) else float(gt)
+        r2_vals.append(r2)
+        r2c_vals.append(r2c)
+        gt_vals.append(gt)
+
+    successful = [d for d in level_dicts if d.get("error") is None]
+    rep = min(successful, key=lambda d: d["target_noise"]) if successful else None
+    all_failed = not successful
+    nevals = [d.get("num_evaluations") for d in successful if d.get("num_evaluations") is not None]
+
+    # Task-level error only when EVERY level failed. Preserve deterministic
+    # classification (e.g. wall-limit) by surfacing a level error verbatim when
+    # all failures are deterministic, so the parent doesn't pointlessly retry a
+    # task that would re-run all levels and fail identically.
+    if all_failed:
+        level_errs = [d.get("error") for d in level_dicts if d.get("error")]
+        transient = [e for e in level_errs if _classify_pysr_error(e) == "transient"]
+        if transient:
+            # A transient failure can succeed on retry — surface it so the parent
+            # retries (matches single-noise behavior).
+            combined_error = transient[0]
+        elif level_errs and all(_classify_pysr_error(e) == "deterministic" for e in level_errs):
+            # Every level failed deterministically (e.g. wall-limit) → don't retry.
+            combined_error = level_errs[0]
+        else:
+            combined_error = f"All {len(level_dicts)} noise levels failed"
+    else:
+        combined_error = None
+
+    return PySRTaskResult(
+        config_id=spec.config_id,
+        dataset_name=spec.dataset_name,
+        r2_score=float(np.mean(r2_vals)) if r2_vals else -1.0,
+        r2_frontier_score=float(np.mean(r2c_vals)) if r2c_vals else None,
+        best_equation=(rep.get("best_equation") if rep else None),
+        best_loss=(rep.get("best_loss", float("inf")) if rep else float("inf")),
+        gt_match_score=(
+            float(np.mean(gt_vals)) if gt_vals
+            else (0.0 if spec.fitness_metric == "gt" else None)
+        ),
+        gt_matched_equation=(rep.get("gt_matched_equation") if rep else None),
+        error=combined_error,
+        run_index=spec.run_index,
+        timed_out=(rep.get("timed_out", False) if rep else False),
+        runtime_seconds=float(sum(d.get("runtime_seconds", 0.0) or 0.0 for d in level_dicts)),
+        num_evaluations=(float(np.mean(nevals)) if nevals else None),
+        execution_trace=(rep.get("execution_trace") if rep else None),
+        noise_results=level_dicts,
+    )
 
 
 def _import_pysr_regressor():
@@ -555,6 +877,11 @@ class PySRTaskSpec:
     custom_mutation_code: Optional[Dict[str, str]] = None  # Julia code for custom mutations
     allow_custom_mutations: bool = False  # Pass custom mutation weights to PySR
     target_noise: float = 0.0  # Gaussian noise level for target (SRBench standard: 0.0, 0.001, 0.01, 0.1)
+    # When set, evaluate this task at EACH of these noise levels sequentially in
+    # one worker process (amortizing dataset load + Julia/PySR + operator
+    # compilation) and report the per-run score as the mean across levels. When
+    # None, the single `target_noise` above is used. See _evaluate_pysr_task.
+    target_noise_levels: Optional[List[float]] = None
     custom_selection_code: Optional[str] = None  # Julia code for custom selection operator
     custom_survival_code: Optional[str] = None  # Julia code for custom survival operator
     custom_loss_code: Optional[str] = None  # Julia code for custom loss operator
@@ -579,9 +906,13 @@ class PySRTaskResult:
     """Result from a single PySR evaluation task."""
     config_id: int
     dataset_name: str
-    r2_score: float  # R^2 score on validation set
+    r2_score: float  # R^2 score on validation set (PySR's single best equation)
     best_equation: Optional[str]  # Best equation found
     best_loss: float  # Loss of best equation
+    # Average validation R² across the fixed complexity grid 1..maxsize (the
+    # frontier-averaged R² used by the "r2"/"gt-r2" fitness metrics). None for
+    # results produced before this field existed / backends that don't compute it.
+    r2_frontier_score: Optional[float] = None
     gt_match_score: Optional[float] = None  # 1.0 if any frontier expression matches GT else 0.0
     # The frontier expression that matched GT (when gt_match_score == 1.0).
     # Lets evolve_pysr.py log "this is the expression we're claiming solved the
@@ -597,6 +928,15 @@ class PySRTaskResult:
     # Each entry is a dict with keys: milestone_evals, chunk_runtime, equations,
     # source_file. None if no HOF CSVs were provided or all failed to parse.
     execution_trace: Optional[List[Dict]] = None
+    # For multi-noise tasks (spec.target_noise_levels set): the per-level
+    # sub-results, one dict per noise level, carrying the fields needed to build
+    # a per-level cache entry (target_noise, r2_score, r2_frontier_score,
+    # gt_match_score, gt_matched_equation, best_equation, best_loss, error,
+    # timed_out, runtime_seconds, num_evaluations, execution_trace). The
+    # top-level fields above hold the mean across levels (scores) and the
+    # lowest-successful-noise level's representative values (equation/trace).
+    # None for single-noise tasks.
+    noise_results: Optional[List[Dict]] = None
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -611,6 +951,8 @@ class PySRTaskResult:
         d.setdefault('num_evaluations', None)
         d.setdefault('execution_trace', None)
         d.setdefault('gt_matched_equation', None)
+        d.setdefault('r2_frontier_score', None)
+        d.setdefault('noise_results', None)
         return cls(**d)
 
 
@@ -672,14 +1014,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         train_idx = indices[:n_train]
         val_idx = indices[n_train:]
 
-        X_train, y_train = X[train_idx], y[train_idx]
+        X_train, y_train_base = X[train_idx], y[train_idx]
         X_val, y_val = X[val_idx], y[val_idx]
-
-        # Apply noise to training target only (SRBench approach)
-        if spec.target_noise > 0:
-            noise_seed = run_seed + 1000  # Derived seed for reproducibility
-            y_train = add_noise(y_train, spec.target_noise, seed=noise_seed)
-            print(f"[{spec.dataset_name}] Applied target noise: {spec.target_noise}", flush=True)
 
         # Build PySR model with specified mutation weights
         t1 = _time.time()
@@ -721,9 +1057,6 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             jl.seval("using SymbolicRegression.CustomLossModule")
             jl.seval("clear_dynamic_losses!()")
 
-        # Create and fit model
-        model = PySRRegressor(**model_kwargs)
-
         # Always use safe x{i} variable names for PySR to avoid collisions
         # with reserved names (e.g., I, beta). Remap GT formula accordingly.
         n_features = X_train.shape[1]
@@ -741,9 +1074,6 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         except Exception:
             ground_truth_for_match = ground_truth_formula
 
-        t3 = _time.time()
-        print(f"[{spec.dataset_name}] Starting PySR search: {X_train.shape[0]} train samples, {n_features} features", flush=True)
-
         # Build HOF milestone list from spec. If hof_n_steps > 0 and max_evals is
         # set in pysr_kwargs, we checkpoint the HOF at evenly-spaced eval counts so
         # that _load_execution_trace() can read the trace back from disk.
@@ -758,115 +1088,178 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
         # Derive the HOF CSV path that run_pysr_with_hof_checkpoints() will write.
         # This must match _hof_csv_path() so that hof_csv_paths stays consistent.
-        hof_csv_out = spec.hof_csv_paths[0] if spec.hof_csv_paths else _hof_csv_path(spec.dataset_name)
-        hof_results_dir = os.path.dirname(hof_csv_out) or "."
+        hof_csv_base = spec.hof_csv_paths[0] if spec.hof_csv_paths else _hof_csv_path(spec.dataset_name)
+        hof_results_dir = os.path.dirname(hof_csv_base) or "."
 
         from run_pysr_srbench import run_pysr_with_hof_checkpoints
-
-        # Hard wall-clock guard. On overrun, raise PySRWallLimitExceeded so the
-        # outer except branch writes an error result (score=0). The error is
-        # tagged as deterministic so the parent evaluator does NOT retry it.
+        from evaluation import check_pysr_frontier_symbolic_match
         import signal as _signal
 
-        def _wall_alarm(_signum, _frame):
-            raise PySRWallLimitExceeded(
-                f"PySR wall-clock limit exceeded ({spec.pysr_wall_limit}s)"
-            )
+        noise_levels = _spec_noise_levels(spec)
+        multi_noise = bool(spec.target_noise_levels)
 
-        _prev_handler = _signal.signal(_signal.SIGALRM, _wall_alarm)
-        _signal.alarm(int(spec.pysr_wall_limit))
-        try:
-            model = run_pysr_with_hof_checkpoints(
-                X_train, y_train,
-                feature_names=variable_names,
-                dataset_name=spec.dataset_name,
-                results_dir=hof_results_dir,
-                milestones=hof_milestones,
-                model=model,
-                seed=run_seed,
-                hof_path=hof_csv_out,
-            )
-        finally:
-            _signal.alarm(0)
-            _signal.signal(_signal.SIGALRM, _prev_handler)
-
-        # Ensure hof_csv_paths reflects the file we just wrote (or tried to write)
-        # so _load_execution_trace() below finds it.
-        if hof_milestones and hof_csv_out not in spec.hof_csv_paths:
-            spec.hof_csv_paths = [hof_csv_out]
-
-        t_search = _time.time() - t3
-        num_evals_used = _get_pysr_num_evaluations(model)
-        print(f"[{spec.dataset_name}] PySR search complete in {t_search:.1f}s (total: {_time.time() - start_time:.1f}s, num_evals={num_evals_used})", flush=True)
-
-        # Get best equation
-        best = model.get_best()
-        best_equation = str(best["equation"]) if best is not None else None
-        best_loss = float(best["loss"]) if best is not None else float("inf")
-        gt_match_score = None
-        gt_matched_equation = None
-        from evaluation import check_pysr_frontier_symbolic_match
-        try:
-            gt_match_result = check_pysr_frontier_symbolic_match(
-                equations_df=model.equations_,
-                best_df_index=best.name if best is not None else None,
-                ground_truth_str=ground_truth_for_match,
-                var_names=variable_names,
-                timeout_seconds_per_expression=3,
-                predict_fn=lambda idx: model.predict(X_val, index=int(idx)),
-                y=y_val,
-                min_r2=0.5,
-            )
-            gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
-            matched_idx = gt_match_result.get("matched_df_index")
-            if matched_idx is not None and model.equations_ is not None:
-                try:
-                    gt_matched_equation = str(model.equations_.loc[matched_idx]["equation"])
-                except Exception:
-                    gt_matched_equation = None
-        except Exception:
-            gt_match_score = 0.0
-
-        # Evaluate on validation set
-        y_pred = model.predict(X_val)
-        y_pred = np.clip(y_pred, -1e10, 1e10)
-
-        # Compute R^2 score
-        ss_res = np.sum((y_val - y_pred) ** 2)
-        ss_tot = np.sum((y_val - np.mean(y_val)) ** 2)
-        r2 = 1 - (ss_res / (ss_tot + 1e-10))
-        r2 = max(r2, 0)  # Clip negative R^2 to 0
-
-        # Load execution trace from HOF CSVs written by run_pysr_srbench.
-        # Skip entirely when HOF logging wasn't requested — otherwise we'd warn
-        # about a file that was never written.
-        execution_trace = None
-        if spec.hof_n_steps > 0:
-            execution_trace = _load_execution_trace(spec.hof_csv_paths)
-            if execution_trace is not None:
-                print(f"[{spec.dataset_name}] Loaded execution trace: {len(execution_trace)} milestone(s)", flush=True)
+        def _run_one_noise(noise_level: float) -> Dict[str, Any]:
+            """Fit + score PySR at a single noise level. Reuses the shared dataset,
+            PySR import, and compiled operators above (the costly part); only the
+            fit itself is per-level. Returns a per-level result dict; a per-level
+            crash / wall-limit is captured as `error` so the other levels survive."""
+            level_start = _time.time()
+            # Per-level HOF file so concurrent levels don't append into one CSV.
+            if multi_noise:
+                root, ext = os.path.splitext(hof_csv_base)
+                tag = ("%g" % noise_level).replace(".", "p").replace("-", "m")
+                hof_csv_out = f"{root}_noise{tag}{ext}"
             else:
-                print(f"[{spec.dataset_name}] No execution trace available (hof_csv_paths={spec.hof_csv_paths})", flush=True)
+                hof_csv_out = hof_csv_base
+            try:
+                # Apply noise to a fresh copy of the training target (SRBench
+                # approach); the un-noised base is reused across levels.
+                y_train = np.array(y_train_base, copy=True)
+                if noise_level > 0:
+                    noise_seed = run_seed + 1000  # Derived seed for reproducibility
+                    y_train = add_noise(y_train, noise_level, seed=noise_seed)
+                    print(f"[{spec.dataset_name}] Applied target noise: {noise_level}", flush=True)
 
-        runtime = _time.time() - start_time
-        print(f"[{spec.dataset_name}] Done: R²={r2:.4f}, equation={best_equation}", flush=True)
+                model = PySRRegressor(**model_kwargs)
+                t3 = _time.time()
+                print(f"[{spec.dataset_name}] Starting PySR search (noise={noise_level}): "
+                      f"{X_train.shape[0]} train samples, {n_features} features", flush=True)
 
-        result = PySRTaskResult(
-            config_id=spec.config_id,
-            dataset_name=spec.dataset_name,
-            r2_score=float(r2),
-            best_equation=best_equation,
-            best_loss=best_loss,
-            gt_match_score=gt_match_score,
-            gt_matched_equation=gt_matched_equation,
-            error=None,
-            run_index=spec.run_index,
-            runtime_seconds=runtime,
-            num_evaluations=num_evals_used,
-            execution_trace=execution_trace,
-        )
+                # Hard per-fit wall-clock guard. On overrun raise PySRWallLimitExceeded;
+                # caught below so only this noise level fails (score counted as a
+                # failure in the mean), not the whole task.
+                def _wall_alarm(_signum, _frame):
+                    raise PySRWallLimitExceeded(
+                        f"PySR wall-clock limit exceeded ({spec.pysr_wall_limit}s)"
+                    )
 
-        return result
+                _prev_handler = _signal.signal(_signal.SIGALRM, _wall_alarm)
+                _signal.alarm(int(spec.pysr_wall_limit))
+                try:
+                    model = run_pysr_with_hof_checkpoints(
+                        X_train, y_train,
+                        feature_names=variable_names,
+                        dataset_name=spec.dataset_name,
+                        results_dir=hof_results_dir,
+                        milestones=hof_milestones,
+                        model=model,
+                        seed=run_seed,
+                        hof_path=hof_csv_out,
+                    )
+                finally:
+                    _signal.alarm(0)
+                    _signal.signal(_signal.SIGALRM, _prev_handler)
+
+                t_search = _time.time() - t3
+                num_evals_used = _get_pysr_num_evaluations(model)
+                print(f"[{spec.dataset_name}] PySR search complete (noise={noise_level}) in "
+                      f"{t_search:.1f}s, num_evals={num_evals_used}", flush=True)
+
+                # Get best equation
+                best = model.get_best()
+                best_equation = str(best["equation"]) if best is not None else None
+                best_loss = float(best["loss"]) if best is not None else float("inf")
+                gt_match_score = None
+                gt_matched_equation = None
+                try:
+                    gt_match_result = check_pysr_frontier_symbolic_match(
+                        equations_df=model.equations_,
+                        best_df_index=best.name if best is not None else None,
+                        ground_truth_str=ground_truth_for_match,
+                        var_names=variable_names,
+                        timeout_seconds_per_expression=3,
+                        predict_fn=lambda idx: model.predict(X_val, index=int(idx)),
+                        y=y_val,
+                        min_r2=0.5,
+                    )
+                    gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
+                    matched_idx = gt_match_result.get("matched_df_index")
+                    if matched_idx is not None and model.equations_ is not None:
+                        try:
+                            gt_matched_equation = str(model.equations_.loc[matched_idx]["equation"])
+                        except Exception:
+                            gt_matched_equation = None
+                except Exception:
+                    gt_match_score = 0.0
+
+                # Evaluate on validation set
+                y_pred = model.predict(X_val)
+                y_pred = np.clip(y_pred, -1e10, 1e10)
+                ss_res = np.sum((y_val - y_pred) ** 2)
+                ss_tot = np.sum((y_val - np.mean(y_val)) ** 2)
+                r2 = 1 - (ss_res / (ss_tot + 1e-10))
+                r2 = max(r2, 0)  # Clip negative R^2 to 0
+
+                # Frontier-averaged R² across the fixed complexity grid 1..maxsize.
+                frontier_maxsize = int(spec.pysr_kwargs.get("maxsize", 40))
+                try:
+                    r2_frontier = _compute_frontier_avg_r2(model, X_val, y_val, frontier_maxsize)
+                except Exception as _e:
+                    print(f"[{spec.dataset_name}] frontier-R² failed ({_e}); using best-eq R²", flush=True)
+                    r2_frontier = float(r2)
+
+                # Load this level's execution trace from the HOF CSV.
+                execution_trace = None
+                if spec.hof_n_steps > 0:
+                    execution_trace = _load_execution_trace([hof_csv_out])
+
+                print(f"[{spec.dataset_name}] Done (noise={noise_level}): R²={r2:.4f}, "
+                      f"equation={best_equation}", flush=True)
+                return {
+                    "target_noise": noise_level,
+                    "r2_score": float(r2),
+                    "r2_frontier_score": float(r2_frontier),
+                    "best_equation": best_equation,
+                    "best_loss": best_loss,
+                    "gt_match_score": gt_match_score,
+                    "gt_matched_equation": gt_matched_equation,
+                    "error": None,
+                    "timed_out": False,
+                    "runtime_seconds": _time.time() - level_start,
+                    "num_evaluations": num_evals_used,
+                    "execution_trace": execution_trace,
+                }
+            except Exception as e:
+                return {
+                    "target_noise": noise_level,
+                    "r2_score": -1.0,
+                    "r2_frontier_score": None,
+                    "best_equation": None,
+                    "best_loss": float("inf"),
+                    "gt_match_score": 0.0 if spec.fitness_metric == "gt" else None,
+                    "gt_matched_equation": None,
+                    "error": f"Error: {_summarize_error(str(e))}",
+                    "timed_out": isinstance(e, PySRWallLimitExceeded),
+                    "runtime_seconds": _time.time() - level_start,
+                    "num_evaluations": None,
+                    "execution_trace": None,
+                }
+
+        level_dicts = [_run_one_noise(lvl) for lvl in noise_levels]
+
+        # Single-noise: preserve the original flat result shape (no noise_results).
+        if not multi_noise:
+            nr = level_dicts[0]
+            return PySRTaskResult(
+                config_id=spec.config_id,
+                dataset_name=spec.dataset_name,
+                r2_score=nr["r2_score"],
+                r2_frontier_score=nr["r2_frontier_score"],
+                best_equation=nr["best_equation"],
+                best_loss=nr["best_loss"],
+                gt_match_score=nr["gt_match_score"],
+                gt_matched_equation=nr["gt_matched_equation"],
+                error=nr["error"],
+                run_index=spec.run_index,
+                timed_out=nr["timed_out"],
+                runtime_seconds=_time.time() - start_time,
+                num_evaluations=nr["num_evaluations"],
+                execution_trace=nr["execution_trace"],
+            )
+
+        # Multi-noise: per-run score is the mean across levels; representative
+        # (equation/trace) from the lowest successful noise level.
+        return _combine_noise_level_results(spec, level_dicts)
 
     except Exception as e:
         runtime = _time.time() - start_time
@@ -937,12 +1330,14 @@ def _aggregate_pysr_results(
                 # bundles that crash on most tasks can't hide behind the few
                 # runs that survived.
                 run_r2_scores = []
+                run_r2c_scores = []
                 run_gt_scores = []
                 run_best_equations: List[Optional[str]] = []
                 run_gt_matched_equations: List[Optional[str]] = []
                 for r in all_run_results:
                     if r.error is not None:
                         run_r2_scores.append(-1.0)
+                        run_r2c_scores.append(-1.0)
                         run_gt_scores.append(0.0)
                         run_best_equations.append(None)
                         run_gt_matched_equations.append(None)
@@ -950,12 +1345,20 @@ def _aggregate_pysr_results(
                         run_r2_scores.append(
                             r.r2_score if (r.r2_score is not None and not np.isnan(r.r2_score)) else -1.0
                         )
+                        # Frontier-avg R²; fall back to best-eq R² when absent
+                        # (legacy result without the frontier field).
+                        r2c = getattr(r, "r2_frontier_score", None)
+                        if r2c is None or np.isnan(r2c):
+                            r2c = run_r2_scores[-1]
+                        run_r2c_scores.append(float(r2c))
                         run_gt_scores.append(
                             r.gt_match_score if (r.gt_match_score is not None and not np.isnan(r.gt_match_score)) else 0.0
                         )
                         run_best_equations.append(r.best_equation)
                         run_gt_matched_equations.append(r.gt_matched_equation)
-                run_scores = run_gt_scores if fitness_metric == "gt" else run_r2_scores
+                run_scores = select_run_scores(
+                    run_r2_scores, run_gt_scores, run_r2c_scores, fitness_metric
+                )
                 avg_score = float(np.mean(run_scores))
 
                 all_equations = [r.best_equation for r in good_runs if r.best_equation]
@@ -971,8 +1374,10 @@ def _aggregate_pysr_results(
                 result_details.append({
                     "dataset": dataset_name,
                     "avg_r2": float(np.mean(run_r2_scores)),
+                    "avg_r2c": float(np.mean(run_r2c_scores)),
                     "avg_gt": float(np.mean(run_gt_scores)),
                     "run_r2_scores": run_r2_scores,
+                    "run_r2c_scores": run_r2c_scores,
                     "run_gt_scores": run_gt_scores,
                     "best_equations": all_equations,
                     # Per-seed best/matched equations aligned with run_r2_scores
@@ -989,12 +1394,14 @@ def _aggregate_pysr_results(
                 })
             else:
                 # No results for this (config, dataset) at all (not even errors).
-                r2_vector.append(0.0 if fitness_metric == "gt" else -1.0)
+                r2_vector.append(metric_missing_fill(fitness_metric))
                 result_details.append({
                     "dataset": dataset_name,
                     "avg_r2": -1.0,
+                    "avg_r2c": -1.0,
                     "avg_gt": 0.0,
                     "run_r2_scores": [],
+                    "run_r2c_scores": [],
                     "run_gt_scores": [],
                     "run_best_equations": [],
                     "run_gt_matched_equations": [],
@@ -1062,6 +1469,42 @@ class PySRBatchHandle:
     n_runs: int = 1
 
 
+def _scale_slurm_time(time_limit: str, factor: int) -> str:
+    """Multiply a SLURM --time string by an integer factor.
+
+    Returns "HH:MM:SS" (or "D-HH:MM:SS" beyond 24h). Falls back to the input
+    unchanged on any parse failure. Used so that an all-noise task (which runs
+    `factor` PySR fits sequentially in one worker) gets a proportionally larger
+    SLURM wall budget.
+    """
+    if factor <= 1:
+        return time_limit
+    try:
+        s = str(time_limit).strip()
+        days = 0
+        if "-" in s:
+            d, s = s.split("-", 1)
+            days = int(d)
+        parts = [int(p) for p in s.split(":")]
+        if len(parts) == 3:
+            h, m, sec = parts
+        elif len(parts) == 2:
+            h, m, sec = 0, parts[0], parts[1]
+        elif len(parts) == 1:
+            h, m, sec = 0, parts[0], 0  # bare minutes (SLURM convention)
+        else:
+            return time_limit
+        total = (((days * 24 + h) * 60 + m) * 60 + sec) * factor
+        d2, rem = divmod(total, 86400)
+        h2, rem = divmod(rem, 3600)
+        m2, s2 = divmod(rem, 60)
+        if d2 > 0:
+            return f"{d2}-{h2:02d}:{m2:02d}:{s2:02d}"
+        return f"{h2:02d}:{m2:02d}:{s2:02d}"
+    except Exception:
+        return time_limit
+
+
 class PySRSlurmEvaluator(BaseSlurmEvaluator):
     """
     SLURM job array-based parallel evaluation for PySR configurations.
@@ -1094,6 +1537,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         hof_results_dir: str= "results_pysr",
         hof_n_steps: int = 0,
         pysr_wall_limit: int = 600,
+        eval_noise_levels: Optional[List[float]] = None,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -1120,6 +1564,17 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self.hof_results_dir = hof_results_dir
         self.hof_n_steps = hof_n_steps
         self.pysr_wall_limit = pysr_wall_limit
+        # All-noise mode: when set, every task is evaluated at each of these noise
+        # levels sequentially in one worker and scored as the mean (see
+        # _evaluate_pysr_task). Each task then runs len(levels) PySR fits back to
+        # back, so the SLURM per-task wall and the Python job_timeout scale up to
+        # match (the per-fit pysr_wall_limit is unchanged — it guards each fit).
+        self.eval_noise_levels = list(eval_noise_levels) if eval_noise_levels else None
+        if self.eval_noise_levels:
+            n_lvls = len(self.eval_noise_levels)
+            self.time_limit = _scale_slurm_time(self.time_limit, n_lvls)
+            if self.job_timeout is not None:
+                self.job_timeout = self.job_timeout * n_lvls
         # Optional split label used by eval_log.log_bundle_eval (set by caller).
         self.split_label: Optional[str] = None
         # Set once the shared .juliapkg_env has been resolved in this process.
@@ -1252,8 +1707,15 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 else 0
             )
             for dataset_name in dataset_names:
-                # Use per-dataset noise if map provided, otherwise use evaluator default
-                noise = target_noise_map.get(dataset_name, self.target_noise) if target_noise_map else self.target_noise
+                # All-noise mode: evaluate every dataset at the full level set and
+                # average (overrides any per-dataset target_noise_map). Otherwise
+                # use the per-dataset map value, else the evaluator default.
+                if self.eval_noise_levels:
+                    target_noise_levels = list(self.eval_noise_levels)
+                    noise = self.eval_noise_levels[0]
+                else:
+                    target_noise_levels = None
+                    noise = target_noise_map.get(dataset_name, self.target_noise) if target_noise_map else self.target_noise
                 for local_run_idx in range(n_runs):
                     run_idx = run_start + local_run_idx
                     # Resolve HOF CSV paths. Prefer explicit map. Otherwise use a
@@ -1283,6 +1745,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         custom_mutation_code=config.custom_mutation_code,
                         allow_custom_mutations=config.allow_custom_mutations,
                         target_noise=noise,
+                        target_noise_levels=target_noise_levels,
                         custom_selection_code=config.custom_selection_code,
                         custom_survival_code=config.custom_survival_code,
                         custom_loss_code=config.custom_loss_code,
@@ -1306,6 +1769,29 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                     for task_idx, task in enumerate(tasks):
                         pysr_mutation_kwargs, model_kwargs, hof_n_steps = _build_cache_identity(task)
 
+                        # All-noise task: cached only if EVERY level is cached.
+                        # Reconstruct the averaged result from the per-level
+                        # entries; otherwise submit and re-run all levels (the
+                        # worker doesn't read cache, so partial hits re-run).
+                        if task.target_noise_levels:
+                            level_dicts = []
+                            for lvl in task.target_noise_levels:
+                                ld = _lookup_cached_level(
+                                    cache, task, model_kwargs, pysr_mutation_kwargs,
+                                    hof_n_steps, lvl,
+                                )
+                                if ld is None:
+                                    break
+                                level_dicts.append(ld)
+                            if len(level_dicts) == len(task.target_noise_levels):
+                                cached_result = _combine_noise_level_results(task, level_dicts)
+                                result_file = results_subdir / f"task_{task_idx:06d}.json"
+                                _write_json_atomic(result_file, cached_result.to_json_dict())
+                                n_cached += 1
+                            else:
+                                uncached_indices.append(task_idx)
+                            continue
+
                         cached = cache.lookup(
                             mutation_weights=pysr_mutation_kwargs,
                             pysr_kwargs=task.pysr_kwargs,
@@ -1327,7 +1813,21 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             task.hof_n_steps <= 0
                             or (cached is not None and bool(cached.get("execution_trace")))
                         )
-                        if _has_usable_pysr_cached_result(cached) and cached_has_required_trace:
+                        # Frontier-avg R² is only present in entries written
+                        # after that column was added. Metrics that need it must
+                        # re-run older entries (an errored entry, r2_score None,
+                        # is exempt — it has no frontier to recompute anyway).
+                        cached_has_required_r2c = (
+                            task.fitness_metric not in _FRONTIER_R2_METRICS
+                            or cached is None
+                            or cached.get("r2_frontier_score") is not None
+                            or cached.get("error") is not None
+                        )
+                        if (
+                            _has_usable_pysr_cached_result(cached)
+                            and cached_has_required_trace
+                            and cached_has_required_r2c
+                        ):
                             # Execution trace is persisted in the cache alongside
                             # the other result fields; None for entries written
                             # before that column existed.
@@ -1343,6 +1843,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                                 config_id=task.config_id,
                                 dataset_name=task.dataset_name,
                                 r2_score=r2_score,
+                                r2_frontier_score=cached.get("r2_frontier_score"),
                                 best_equation=cached["best_equation"],
                                 best_loss=best_loss,
                                 gt_match_score=cached.get("gt_match_score"),
@@ -1893,7 +2394,10 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             if result.error is not None:
                 continue
 
-            entries.append(_build_pysr_cache_entry(task, result))
+            # Multi-noise results expand into one cache entry per (successful)
+            # noise level, each keyed by its own target_noise so single-noise
+            # runs can reuse them; single-noise results yield one entry.
+            entries.extend(_build_pysr_cache_entries(task, result))
 
         if entries:
             self._pending_cache_entries.extend(entries)

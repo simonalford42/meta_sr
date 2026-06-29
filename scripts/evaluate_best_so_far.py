@@ -77,7 +77,8 @@ def main() -> None:
     for k, v in op_names.items():
         print(f"  {k}: {v}")
 
-    # Build a self-contained bundle dict that matches evaluate_new_pysr.load_evolve_results
+    # Inject the chosen bundle as best_bundle so bundle_loader.load_bundle
+    # (used by evaluate_new_pysr) picks it up directly from the snapshot.
     data["best_bundle"] = {
         "operators": best["operators"],
         "score": score,

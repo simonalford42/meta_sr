@@ -11,12 +11,7 @@
 
 set -euo pipefail
 
-if [ "$#" -lt 1 ]; then
-    echo "Usage: sbatch planet_eval.sh planet_eval.py [planet_eval.py args...]" >&2
-    exit 2
-fi
-
 source /home/sca63/mambaforge/etc/profile.d/conda.sh
 conda activate meta_sr
 
-python -u "$@"
+python -u planet_eval.py "$@"

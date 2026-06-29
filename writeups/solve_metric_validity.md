@@ -1,4 +1,4 @@
-# Is the symbolic "solve" metric valid? — false-solve investigation
+hh# Is the symbolic "solve" metric valid? — false-solve investigation
 
 _Author: Claude (Opus 4.8). Companion data: `writeups/srbench_false_solves_502920.md` (per-dataset listing); tooling: `scripts/inspect_srbench_false_solves.py`, `scripts/empbench_lib.py`._
 

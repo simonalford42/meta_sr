@@ -45,6 +45,19 @@ except ImportError:
 Base = declarative_base()
 
 
+class InsufficientCreditsError(BaseException):
+    """Raised when the API rejects a request because the account is out of credits.
+
+    Subclasses BaseException (not Exception) on purpose: this is a fatal,
+    operator-must-intervene condition. Every other API failure is retried or
+    swallowed (converted to an empty result so the run can continue), but
+    running out of API credits should stop the whole job immediately rather
+    than silently degrade it. Inheriting from BaseException means the many
+    `except Exception` handlers and the ThreadPoolExecutor error-swallowing in
+    chat_completion_batch let it propagate to the top of the program.
+    """
+
+
 class ChatCompletionCache(Base):
     """SQLite table for caching chat completions."""
     __tablename__ = "chat_completions"
@@ -172,6 +185,10 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Global usage tracking
 _usage = {
     "total_cost": 0.0,
+    # What total_cost would have been if caching were disabled, i.e. every
+    # sample paid for at the API. Cache hits add their stored cost here but
+    # not to total_cost.
+    "uncached_hypothetical_cost": 0.0,
     "total_tokens": 0,
     "prompt_tokens": 0,
     "completion_tokens": 0,
@@ -222,6 +239,7 @@ def reset_usage():
     with _usage_lock:
         _usage = {
             "total_cost": 0.0,
+            "uncached_hypothetical_cost": 0.0,
             "total_tokens": 0,
             "prompt_tokens": 0,
             "completion_tokens": 0,
@@ -243,6 +261,7 @@ def print_usage():
     print(f"  Completion tokens: {_usage['completion_tokens']:,}")
     print(f"  Total tokens: {_usage['total_tokens']:,}")
     print(f"  Total cost: ${_usage['total_cost']:.6f}")
+    print(f"  Uncached hypothetical cost: ${_usage['uncached_hypothetical_cost']:.6f}")
     print(f"========================")
 
 
@@ -292,6 +311,8 @@ def chat_completion(
     if use_cache and (n_samples > 1 or sample_index_offset > 0):
         cached_choices = []
         missing_indices = []
+        # Cost the cached samples would have incurred without caching.
+        cached_choices_cost = 0.0
 
         for i in range(n_samples):
             # Use unified 'sample_index' key for all cache lookups
@@ -302,6 +323,7 @@ def chat_completion(
             if cached is not None:
                 # Extract the single choice from cached response
                 cached_choices.append((i, cached['choices'][0]))
+                cached_choices_cost += cached.get('usage', {}).get('cost', 0.0)
             else:
                 missing_indices.append(i)
 
@@ -311,6 +333,7 @@ def chat_completion(
             print(f"      [API] cached (no API call)")
             with _usage_lock:
                 _usage["num_cached_calls"] += 1
+                _usage["uncached_hypothetical_cost"] += cached_choices_cost
             _fire_usage_callbacks()
             return {
                 'choices': [choice for _, choice in cached_choices],
@@ -324,6 +347,7 @@ def chat_completion(
         missing_indices = list(range(n_samples))
         n_to_fetch = n_samples
         cached_choices = []
+        cached_choices_cost = 0.0
 
     # Check cache for simple n=1 case (no sample_index offset)
     if use_cache and n_samples == 1 and sample_index_offset == 0:
@@ -333,6 +357,7 @@ def chat_completion(
             print(f"      [API] cached (no API call)")
             with _usage_lock:
                 _usage["num_cached_calls"] += 1
+                _usage["uncached_hypothetical_cost"] += cached_response.get('usage', {}).get('cost', 0.0)
             _fire_usage_callbacks()
             return cached_response
 
@@ -423,6 +448,11 @@ def chat_completion(
                     _usage["total_tokens"] += usage.get("total_tokens", 0)
                     if "cost" in usage:
                         _usage["total_cost"] += usage["cost"]
+                        _usage["uncached_hypothetical_cost"] += usage["cost"]
+                    # Add cost of any samples served from cache in this same
+                    # (partial cache hit) call, so the hypothetical reflects
+                    # all n samples paid for at the API.
+                    _usage["uncached_hypothetical_cost"] += cached_choices_cost
                 _fire_usage_callbacks()
 
             # Store in cache
@@ -432,8 +462,16 @@ def chat_completion(
                     with _cache_lock:
                         _cache.store(model, messages, temperature, max_tokens, cache_kwargs, data)
                 else:
+                    # Split the call's cost evenly across the freshly fetched
+                    # samples so each cached sample carries its share, for the
+                    # uncached-hypothetical-cost accounting on later cache hits.
+                    fresh_choices = data.get('choices', [])
+                    per_sample_cost = (
+                        data.get('usage', {}).get('cost', 0.0) / len(fresh_choices)
+                        if fresh_choices else 0.0
+                    )
                     # Store each choice separately with unified 'sample_index' key
-                    for fetch_idx, choice in enumerate(data.get('choices', [])):
+                    for fetch_idx, choice in enumerate(fresh_choices):
                         if fetch_idx < len(missing_indices):
                             # Map fetch index back to original sample index
                             original_idx = missing_indices[fetch_idx]
@@ -442,6 +480,7 @@ def chat_completion(
                             single_response = {
                                 'choices': [choice],
                                 'model': data.get('model', model),
+                                'usage': {'cost': per_sample_cost},
                             }
                             with _cache_lock:
                                 _cache.store(model, messages, temperature, max_tokens,
@@ -492,7 +531,9 @@ def chat_completion(
                             'choices': [choice for _, choice in all_choices],
                             'model': model,
                         }
-                except:
+                except InsufficientCreditsError:
+                    raise  # Out of credits: never swallow, stop the job
+                except Exception:
                     pass  # Fall through to normal retry logic
 
             # Fail fast on hard client errors (except 429), since retries won't help.
@@ -502,6 +543,27 @@ def chat_completion(
                 except Exception:
                     err_body = "<no response body>"
                 print(f"  Non-retryable HTTP {e.response.status_code}. Response body: {err_body}")
+                # Out of API credits / key spending limit hit: stop the entire job
+                # instead of silently degrading it. Raise a BaseException subclass so
+                # it bypasses the `except Exception` handlers / thread-pool swallowing
+                # downstream. Observed variants from OpenRouter:
+                #   - HTTP 402 "This request requires more credits, or fewer max_tokens"
+                #   - HTTP 403 "Key limit exceeded (total limit). Manage it using ..."
+                body_lc = (err_body or "").lower()
+                credit_signal = (
+                    e.response.status_code == 402
+                    or "requires more credits" in body_lc
+                    or "key limit exceeded" in body_lc
+                    or "limit exceeded (total limit)" in body_lc
+                    or "insufficient credit" in body_lc
+                )
+                if credit_signal:
+                    raise InsufficientCreditsError(
+                        f"OpenRouter rejected the request for lack of credits / key "
+                        f"limit (HTTP {e.response.status_code}). Stopping the job. "
+                        f"Add credits or raise the key limit at "
+                        f"https://openrouter.ai/ and rerun. Response body: {err_body}"
+                    ) from e
                 raise
 
             last_exception = e

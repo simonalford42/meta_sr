@@ -1,9 +1,178 @@
+
+# 6/29/26 — planet eval of the gt-r2 bundle (runs/120459).
+sbatch -J r2-gt-planet planet_eval.sh --evolve-results ~/meta_sr/runs/120459
+
+# 6/29/26 — smart-reeval comparison on the BEST model ensemble.
+COMMON="--operator-type all --generations 30 --population 10 --n-runs 1 --models best --random-target-noise"
+NONE="--offspring 20 --reeval none"
+KG="--offspring 5 --reeval smart-KG --max-runs-per-generation 20"
+TT="--offspring 5 --reeval smart-TTTS --max-runs-per-generation 20"
+# seed 0 (chain A)
+a1=$(sbatch --parsable                            -J re_none_s0 run.sh evolve_pysr.py $COMMON $NONE --seed 0)
+a2=$(sbatch --parsable --dependency=afterany:$a1  -J re_kg_s0   run.sh evolve_pysr.py $COMMON $KG   --seed 0)
+a3=$(sbatch --parsable --dependency=afterany:$a2  -J re_ttts_s0 run.sh evolve_pysr.py $COMMON $TT   --seed 0)
+# seed 1 (chain B)
+b1=$(sbatch --parsable                            -J re_none_s1 run.sh evolve_pysr.py $COMMON $NONE --seed 1)
+b2=$(sbatch --parsable --dependency=afterany:$b1  -J re_kg_s1   run.sh evolve_pysr.py $COMMON $KG   --seed 1)
+b3=$(sbatch --parsable --dependency=afterany:$b2  -J re_ttts_s1 run.sh evolve_pysr.py $COMMON $TT   --seed 1)
+
+# new fullSR evolution
+c1=$(sbatch --parsable -J fullsr --partition ellis run.sh evolve_fullsr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --models cheap --split splits/train.txt)
+
+# all noise evolution
+sbatch --dependency=afterany:$c1 -J all-noise --partition ellis run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --reeval none --models best --eval-all-noise-levels
+
+
+# 6/26/26
+# evolve R^2 or R^2 combined with GT
+# sbatch -J r2 run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 5 --n-runs 3 --models best --reeval smart --max-runs-per-generation 60 --random-target-noise --fitness-metric r2
+# sbatch -J gt-r2 run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 5 --n-runs 3 --models best --reeval smart --max-runs-per-generation 60 --random-target-noise --fitness-metric gt-r2
+# sbatch --dependency=afterany:120458 -J train run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 5 --n-runs 3 --models best --reeval smart --max-runs-per-generation 60 --random-target-noise --split splits/train.txt --val-split splits/val.txt
+
+# 6/26/26 — resubmit the two corrupted seed-0 "no reeval" runs. The originals
+# (825765 nn_n1o20_s0 and 825766 nn_n3o20_s0, the first two jobs submitted) died
+# at gen 2: code on disk was edited mid-run, so their long-running driver hit
+# `PySRTaskResult.__init__() got an unexpected keyword argument 'r2_frontier_score'`
+# and every offspring scored -1 thereafter (frozen population). Chained after each
+# pair's seed-4 job (825783 = chain A / n1 last, 825784 = chain B / n3 last) so we
+# keep at most 2 running. After they finish, point the plot GROUPS at the new ids.
+# SUBMITTED 6/26: nn_n1o20_s0 -> job 89281 (after 825783); nn_n3o20_s0 -> job 89282 (after 825784).
+# COMMON="--operator-type all --generations 15 --population 10 --models cheap --random-target-noise"
+# reA=$(sbatch --parsable --dependency=afterany:825783 -J nn_n1o20_s0_re run.sh evolve_pysr.py $COMMON --offspring 20 --n-runs 1 --reeval none --seed 0)
+# reB=$(sbatch --parsable --dependency=afterany:825784 -J nn_n3o20_s0_re run.sh evolve_pysr.py $COMMON --offspring 20 --n-runs 3 --reeval none --seed 0)
+# echo "resubmitted: nn_n1o20_s0 -> $reA (after 825783),  nn_n3o20_s0 -> $reB (after 825784)"
+
+# 6/24/26 — smart vs nonsmart budget-matched comparison (5 seeds each, 15 gens,
+# cheap ensemble, --random-target-noise). Per-generation eval budget B matched per pair:
+#   cond1 none  n1o20 (20 evals/gen)  vs  cond3 smart n1o5  B=20   ← chain A (odd jobs)
+#   cond2 none  n3o20 (60 evals/gen)  vs  cond4 smart n3o5  B=60   ← chain B (even jobs)
+# At most 2 jobs run at once: jobs 1 & 2 start immediately; job N depends on job N-2
+# (afterany), forming two parallel chains. Jobs are ordered seed-major (all 4 conditions
+# at seed s, then s+1), which makes chain A = the B=20 pair and chain B = the B=60 pair.
+# To launch: uncomment this whole block (it must run together — the $jidN vars chain
+# the dependencies), then run `bash submit_jobs.sh`.
+# COMMON="--operator-type all --generations 15 --population 10 --models cheap --random-target-noise"
+# C1="--offspring 20 --n-runs 1 --reeval none"
+# C2="--offspring 20 --n-runs 3 --reeval none"
+# C3="--offspring 5 --n-runs 1 --reeval smart --max-runs-per-generation 20"
+# C4="--offspring 5 --n-runs 3 --reeval smart --max-runs-per-generation 60"
+# #
+# # seed 0
+# jid1=$(sbatch --parsable                       -J nn_n1o20_s0   run.sh evolve_pysr.py $COMMON $C1 --seed 0)
+# jid2=$(sbatch --parsable                       -J nn_n3o20_s0   run.sh evolve_pysr.py $COMMON $C2 --seed 0)
+# jid3=$(sbatch --parsable --dependency=afterany:$jid1 -J sm_n1o5b20_s0 run.sh evolve_pysr.py $COMMON $C3 --seed 0)
+# jid4=$(sbatch --parsable --dependency=afterany:$jid2 -J sm_n3o5b60_s0 run.sh evolve_pysr.py $COMMON $C4 --seed 0)
+# # seed 1
+# jid5=$(sbatch --parsable --dependency=afterany:$jid3 -J nn_n1o20_s1   run.sh evolve_pysr.py $COMMON $C1 --seed 1)
+# jid6=$(sbatch --parsable --dependency=afterany:$jid4 -J nn_n3o20_s1   run.sh evolve_pysr.py $COMMON $C2 --seed 1)
+# jid7=$(sbatch --parsable --dependency=afterany:$jid5 -J sm_n1o5b20_s1 run.sh evolve_pysr.py $COMMON $C3 --seed 1)
+# jid8=$(sbatch --parsable --dependency=afterany:$jid6 -J sm_n3o5b60_s1 run.sh evolve_pysr.py $COMMON $C4 --seed 1)
+# # seed 2
+# jid9=$(sbatch  --parsable --dependency=afterany:$jid7 -J nn_n1o20_s2   run.sh evolve_pysr.py $COMMON $C1 --seed 2)
+# jid10=$(sbatch --parsable --dependency=afterany:$jid8 -J nn_n3o20_s2   run.sh evolve_pysr.py $COMMON $C2 --seed 2)
+# jid11=$(sbatch --parsable --dependency=afterany:$jid9 -J sm_n1o5b20_s2 run.sh evolve_pysr.py $COMMON $C3 --seed 2)
+# jid12=$(sbatch --parsable --dependency=afterany:$jid10 -J sm_n3o5b60_s2 run.sh evolve_pysr.py $COMMON $C4 --seed 2)
+# # seed 3
+# jid13=$(sbatch --parsable --dependency=afterany:$jid11 -J nn_n1o20_s3   run.sh evolve_pysr.py $COMMON $C1 --seed 3)
+# jid14=$(sbatch --parsable --dependency=afterany:$jid12 -J nn_n3o20_s3   run.sh evolve_pysr.py $COMMON $C2 --seed 3)
+# jid15=$(sbatch --parsable --dependency=afterany:$jid13 -J sm_n1o5b20_s3 run.sh evolve_pysr.py $COMMON $C3 --seed 3)
+# jid16=$(sbatch --parsable --dependency=afterany:$jid14 -J sm_n3o5b60_s3 run.sh evolve_pysr.py $COMMON $C4 --seed 3)
+# # seed 4
+# jid17=$(sbatch --parsable --dependency=afterany:$jid15 -J nn_n1o20_s4   run.sh evolve_pysr.py $COMMON $C1 --seed 4)
+# jid18=$(sbatch --parsable --dependency=afterany:$jid16 -J nn_n3o20_s4   run.sh evolve_pysr.py $COMMON $C2 --seed 4)
+# jid19=$(sbatch --parsable --dependency=afterany:$jid17 -J sm_n1o5b20_s4 run.sh evolve_pysr.py $COMMON $C3 --seed 4)
+# jid20=$(sbatch --parsable --dependency=afterany:$jid18 -J sm_n3o5b60_s4 run.sh evolve_pysr.py $COMMON $C4 --seed 4)
+# echo "Submitted 20 jobs"
+
+# 6/24/26 — fullsr evolution sanity check (does evolving improve over baseline?)
+# sbatch -J fullsr --partition ellis run.sh evolve_fullsr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --models cheap --split splits/train.txt
+
+# 6/23/26
+
+# sbatch -J train-split-n3o10smart-best run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models best --reeval smart --max-runs-per-generation 200 --random-target-noise --split splits/train.txt
+
+# sbatch -J test_full --partition default_partition run.sh evolve_fullsr.py --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 3 --models best --split splits/train.txt
+# sbatch -J fulleval --partition default_partition run.sh srbench_full_eval.py --evolve-results runs/538190
+# sbatch -J planetseval2 --partition default_partition planet_eval.sh --evolve-results runs/538190
+# sbatch -J planetsbaseline2 --partition default_partition planet_eval.sh --baseline
+
+# ##### SMART, N3O10 OR N1O10, S0 OR S1
+# jid1=$(sbatch --parsable -J n3o10s0smart run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --models best --reeval smart --max-reruns 100 --random-target-noise --seed 0)
+# jid2=$(sbatch --parsable -J n3o10s1smart run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --models best --reeval smart --max-reruns 100 --random-target-noise --seed 1)
+# jid3=$(sbatch --parsable -J n1o10s0smart run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 1 --models cheap --reeval smart --max-reruns 100 --random-target-noise --seed 0)
+# jid4=$(sbatch --parsable -J n1o10s1smart run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 1 --models cheap --reeval smart --max-reruns 100 --random-target-noise --seed 1)
+
+# ##### NONSMART, N3O10 OR N1O10, S0 OR S1
+# sbatch -J n3o10s0 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --models best --reeval none --random-target-noise --seed 0
+# sbatch -J n3o10s1 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --models best --reeval none --random-target-noise --seed 1
+# sbatch --dependency=afterany:$jid3 -J n1o10s0 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 1 --models cheap --reeval none --random-target-noise --seed 0
+# sbatch --dependency=afterany:$jid4 -J n1o10s1 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 1 --models cheap --reeval none --random-target-noise --seed 1
+
+# 6/18
+# sbatch -J n3o10smart-cheap run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models best --reeval smart --max-reruns 100 --random-target-noise
+# sbatch -J n3o10smart-best run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models cheap --reeval smart --max-reruns 100 --random-target-noise
+
+# 6/17 planet_eqs eval (planet_eval.py submits its own 1-node / 32-core Slurm job)
+# sbatch -J planets_baseline planet_eval.sh planet_eval.py --baseline --time-in-hours 8
+# sbatch -J planets40318 planet_eval.sh planet_eval.py --evolve-results ~/meta_sr/runs/40318
+
+# sbatch -J fulleval_666285 run.sh srbench_full_eval.py --evolve-results runs/666285 --max-evals 1000000
+
+# 6/4
+# sbatch -J n2o10 run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 14 --n-runs 2 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+# sbatch -J n2o10smart run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 14 --n-runs 2 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --reeval smart --max-reruns 100
+# sbatch --dependency=afterany:40319 -J n1o10smart_cont run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 1 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --reeval smart --max-reruns 100 --continue-from runs/40319
+
+# 6/3
+# sbatch -J n1o10_cont run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 1 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --continue-from runs/4901
+# sbatch -J n2o14 run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 14 --n-runs 2 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+# sbatch -J n1o30smart run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 30 --n-runs 1 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --reeval smart --max-reruns 100
+# sbatch -J n1o10smart run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 1 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --reeval smart --max-reruns 100
+
+
+# 6/1
+
+# sbatch -J n1o10_cont run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 1 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --continue-from runs/4901
+# sbatch --dependency=afterany:4903 -J n1o10smart_cont run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 1 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --continue-from runs/4903
+# sbatch -J n2o14 run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 14 --n-runs 2 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+
+# sbatch -J n1smartre run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 1 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --reeval smart --max-reruns 100
+# sbatch -J n2o14 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 14 --n-runs 2 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+# sbatch -J n1o10 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 1 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+# sbatch -J n1o30smart run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 30 --n-runs 1 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --reeval smart --max-reruns 100
+# sbatch -J n1o10smart run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 1 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --reeval smart --max-reruns 100
+# sbatch -J n4o7 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 7 --n-runs 4 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+# sbatch -J n5o18 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 18 --n-runs 5 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+
+
+# 5/28
+# sbatch -J smart-reeval run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium --reeval smart --max-reruns 100
+
+
+# 5/26
+# sbatch -J n3o30 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 30 --n-runs 3 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+# sbatch -J n3o9 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 9 --n-runs 3 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+# sbatch -J n1o30 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 30 --n-runs 3 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+# sbatch -J n10o9 run.sh evolve_pysr.py --operator-type all --generations 20 --population 10 --offspring 9 --n-runs 10 --max-evals 1000000 --population-type topk --exec-feedback-n 3 --models medium
+# sbatch -J topk_race run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 3 --n-extra-runs 5 --n-runs-max 25 --exec-feedback-n 3 --population-type topk --max-evals 1000000
+
+
+# 5/14
+# sbatch -J topk run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max-evals 1000000 --population-type topk --exec-feedback-n 3
+# p evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max-evals 1000000 --population-type topk --exec-feedback-n 3
+# sbatch -J topk_race run.sh evolve_pysr.py --operator-type all --generations 25 --population 10 --offspring 10 --n-runs 3 --n-extra-runs 5 --n-runs-max 25 --exec-feedback-n 3 --population-type topk
+
+# 5/8
+# sbatch -J full run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 10 --max-evals 1000000 --population-type task --exec-feedback-n 3
+# sbatch -J race run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 3 --n-extra-runs 5 --n-runs-max 25 --max-evals 1000000 --exec-feedback-n 3 --continue-from runs/982249
+# sbatch -J loss run.sh evolve_pysr.py --operator-type loss --generations 5 --population 10 --offspring 10 --n-runs 10 --max-evals 1000000 --population-type task --exec-feedback-n 3
+
 # 5/6
 # Simplify-only run: seed initial pop with the best bundle from 399313, then
 # only ever apply the simplify meta-mutation (init pop + every generation's
 # offspring). 10 gens, 10 offspring/gen, 10 seeds/eval.
 # sbatch -J simplify run.sh evolve_pysr.py --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 10 --max-evals 1000000 --baseline runs/399313 --mutation-mode simplify --population-type complexity --continue-from runs/666285
-sbatch -J race-train run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 3 --n-extra-runs 5 --n-runs-max 25 --lambda-target 5 --max-evals 1000000 --exec-feedback-n 3 --continue-from runs/666286 --split splits/train.txt --val-split splits/val.txt
+# sbatch -J race-train run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 3 --n-extra-runs 5 --n-runs-max 25 --lambda-target 5 --max-evals 1000000 --exec-feedback-n 3 --continue-from runs/666286 --split splits/train.txt --val-split splits/val.txt
 
 # 5/6
 # sbatch -J race2 run.sh evolve_pysr.py --operator-type all --generations 50 --population 10 --offspring 10 --n-runs 3 --n-extra-runs 5 --n-runs-max 25 --lambda-target 5 --max-evals 1000000 --exec-feedback-n 3

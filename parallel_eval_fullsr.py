@@ -14,6 +14,7 @@ Mirrors the structure of parallel_eval_minisr.py / parallel_eval_pysr.py:
     policy code, then calls the appropriate fit function.
 """
 import json
+import re
 import sys
 import traceback
 from dataclasses import asdict, dataclass, field
@@ -155,6 +156,70 @@ def _coerce_engine_kwargs_for_julia(engine_kwargs: Dict[str, Any]) -> Dict[str, 
     return out
 
 
+# Julia block openers used to find the `end` that closes a function. Mirrors
+# the scanner in skeleton_operator_types.py (duplicated here so the SLURM worker
+# doesn't import that module's heavy LLM dependencies). A scanner that only
+# pairs `function`/`end` truncates any body containing an inner `if`/`for`/`...`
+# block, which silently breaks those slots — see _julia_block_end below.
+_JULIA_BLOCK_OPENERS = frozenset(
+    {
+        "function", "macro", "if", "for", "while", "let", "do",
+        "begin", "quote", "try", "struct", "module", "baremodule",
+    }
+)
+_JULIA_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[()\[\]{}]")
+
+
+def _strip_julia_line_noise(line: str) -> str:
+    """Drop `#` comments and double-quoted string contents from a line so the
+    block scanner is not fooled by keywords/brackets inside prose or data."""
+    out: List[str] = []
+    i, n = 0, len(line)
+    while i < n:
+        c = line[i]
+        if c == "#":
+            break
+        if c == '"':
+            i += 1
+            while i < n and line[i] != '"':
+                if line[i] == "\\":
+                    i += 1
+                i += 1
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _julia_block_end(lines: List[str], start_idx: int) -> int:
+    """Index of the line after the `end` that closes the block opened on
+    `lines[start_idx]`, counting every Julia block opener and ignoring keywords
+    inside brackets. Returns len(lines) if no matching `end` is found."""
+    block_depth = 0
+    bracket_depth = 0
+    n = len(lines)
+    j = start_idx
+    while j < n:
+        cleaned = _strip_julia_line_noise(lines[j])
+        for tok in _JULIA_TOKEN_RE.finditer(cleaned):
+            t = tok.group()
+            if t in ("(", "[", "{"):
+                bracket_depth += 1
+            elif t in (")", "]", "}"):
+                if bracket_depth > 0:
+                    bracket_depth -= 1
+            elif bracket_depth == 0:
+                if t in _JULIA_BLOCK_OPENERS:
+                    block_depth += 1
+                elif t == "end":
+                    block_depth -= 1
+                    if block_depth == 0:
+                        return j + 1
+        j += 1
+    return n
+
+
 def _build_custom_policy_module(jl, spec: FullSRTaskSpec) -> str:
     """Splice per-function Julia code into a fresh module and return its name.
 
@@ -200,35 +265,16 @@ def _build_custom_policy_module(jl, spec: FullSRTaskSpec) -> str:
         if slot_name not in function_map:
             continue
         orig_name = function_map[slot_name]
-        # Crude block removal: find "function <name>(", then the matching
-        # top-level `end`. SR functions in SRConfig.jl have no nested
-        # `function` declarations, so counting `function`/`end` is simple.
-        marker = f"function {orig_name}("
-        start = body.find(marker)
-        if start < 0:
+        # Find "function <name>(" then its matching `end`, counting all Julia
+        # block openers so an inner if/for/while/let/do block doesn't truncate
+        # the body and orphan its tail at module scope.
+        lines = body.split("\n")
+        header = re.compile(rf"^[ \t]*function[ \t]+{re.escape(orig_name)}[ \t]*\(")
+        func_idx = next((k for k, ln in enumerate(lines) if header.match(ln)), None)
+        if func_idx is None:
             continue
-        # Walk forward, counting nested function/end tokens.
-        depth = 1
-        idx = body.find("\n", start) + 1
-        n = len(body)
-        while idx < n and depth > 0:
-            line = body[idx : body.find("\n", idx) if body.find("\n", idx) >= 0 else n]
-            stripped = line.strip()
-            if stripped.startswith("function ") or stripped.startswith("function("):
-                depth += 1
-            # `end` may appear inline ("end\n") or after a block close.
-            for tok in stripped.split():
-                if tok == "end" or tok == "end;":
-                    depth -= 1
-                    break
-            nl = body.find("\n", idx)
-            if nl < 0:
-                idx = n
-            else:
-                idx = nl + 1
-            if depth == 0:
-                break
-        body = body[:start] + body[idx:]
+        end_idx = _julia_block_end(lines, func_idx)
+        body = "\n".join(lines[:func_idx] + lines[end_idx:])
         body += "\n# === user-replaced " + slot_name + " ===\n"
         body += code.rstrip() + "\n"
 
@@ -237,8 +283,9 @@ def _build_custom_policy_module(jl, spec: FullSRTaskSpec) -> str:
     # user code redefines them.
 
     mod_name = f"CustomSRConfig_{spec.config_id}_{spec.run_index}"
-    full_module = f"module {mod_name}\n{body}\nend\n"
-    jl.seval(full_module)
+    # Same as policy_module_code path: define under SymbolicRegression so
+    # `using ..SkeletonSR` resolves and _run_fit finds it.
+    jl.seval(f"@eval SymbolicRegression module {mod_name}\n{body}\nend")
     return mod_name
 
 
@@ -320,7 +367,14 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
 
         if spec.policy_module_code:
             mod_name = f"CustomFullSR_{spec.config_id}_{spec.run_index}"
-            jl.seval(f"module {mod_name}\n{spec.policy_module_code}\nend\n")
+            # Must live under SymbolicRegression so `using ..SkeletonSR` in the
+            # rendered body resolves. `@eval Module expr` evaluates the module
+            # definition inside the SymbolicRegression namespace, matching
+            # where SRConfig / BasicSRConfig live (and how _run_fit looks it up).
+            jl.seval(
+                f"@eval SymbolicRegression module {mod_name}\n"
+                f"{spec.policy_module_code}\nend"
+            )
         elif spec.policy_code:
             mod_name = _build_custom_policy_module(jl, spec)
         else:

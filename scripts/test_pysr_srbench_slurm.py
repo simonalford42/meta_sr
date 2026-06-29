@@ -76,8 +76,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-evals",
         type=int,
-        default=int(5e5),
-        help="Max evaluations per dataset (default: 5e5)",
+        default=int(1e5),
+        help="Max evaluations per dataset (default: 1e5)",
     )
     parser.add_argument(
         "--partition",

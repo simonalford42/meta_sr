@@ -116,8 +116,17 @@ class PySRCacheEntry(Base):
     dataset_name = Column(String, index=True)
     # Result data
     r2_score = Column(Float)
+    # Average validation R² across the fixed complexity grid 1..maxsize
+    # (frontier-averaged R² used by the "r2"/"gt-r2" fitness metrics). Nullable:
+    # entries written before this column existed lack it and are re-run when one
+    # of those metrics is active.
+    r2_frontier_score = Column(Float, nullable=True)
     gt_match_score = Column(Float, nullable=True)
     best_equation = Column(Text, nullable=True)
+    # Frontier expression that matched GT (only set when gt_match_score == 1.0);
+    # generally != best_equation, since the matched entry often has higher
+    # complexity than PySR's get_best() pick.
+    gt_matched_equation = Column(Text, nullable=True)
     best_loss = Column(Float)
     error = Column(Text, nullable=True)
     timed_out = Column(Boolean, default=False)
@@ -360,6 +369,18 @@ class PySRCacheDB:
                     "ALTER TABLE pysr_evaluations ADD COLUMN execution_trace_json TEXT"
                 ))
                 conn.commit()
+        if "gt_matched_equation" not in columns:
+            with self.engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE pysr_evaluations ADD COLUMN gt_matched_equation TEXT"
+                ))
+                conn.commit()
+        if "r2_frontier_score" not in columns:
+            with self.engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE pysr_evaluations ADD COLUMN r2_frontier_score FLOAT"
+                ))
+                conn.commit()
 
     def _make_config_hash(
         self,
@@ -498,6 +519,8 @@ class PySRCacheDB:
             PySRCacheEntry.runtime_seconds,
             PySRCacheEntry.gt_match_score,
             PySRCacheEntry.execution_trace_json,
+            PySRCacheEntry.gt_matched_equation,
+            PySRCacheEntry.r2_frontier_score,
         ).where(PySRCacheEntry.request_hash == request_hash)
 
         with Session(self.engine) as session:
@@ -518,6 +541,8 @@ class PySRCacheDB:
                     "runtime_seconds": result[5],
                     "gt_match_score": result[6],
                     "execution_trace": trace,
+                    "gt_matched_equation": result[8],
+                    "r2_frontier_score": result[9],
                 }
         return None
 
@@ -535,6 +560,7 @@ class PySRCacheDB:
         pysr_model_kwargs: Optional[Dict] = None,
         target_noise: float = 0.0,
         r2_score: float = 0.0,
+        r2_frontier_score: Optional[float] = None,
         best_equation: Optional[str] = None,
         best_loss: float = float("inf"),
         error: Optional[str] = None,
@@ -546,6 +572,7 @@ class PySRCacheDB:
         gt_match_score: Optional[float] = None,
         execution_trace: Optional[List[Dict]] = None,
         hof_n_steps: int = 0,
+        gt_matched_equation: Optional[str] = None,
     ) -> None:
         """Store a PySR evaluation result in the cache."""
         config_hash = self._make_config_hash(
@@ -564,8 +591,10 @@ class PySRCacheDB:
             config_hash=config_hash,
             dataset_name=dataset_name,
             r2_score=r2_score,
+            r2_frontier_score=r2_frontier_score,
             gt_match_score=gt_match_score,
             best_equation=best_equation,
+            gt_matched_equation=gt_matched_equation,
             best_loss=best_loss,
             error=error,
             timed_out=timed_out,
@@ -610,8 +639,10 @@ class PySRCacheDB:
                 config_hash=entry["config_hash"],
                 dataset_name=entry["dataset_name"],
                 r2_score=entry["r2_score"],
+                r2_frontier_score=entry.get("r2_frontier_score"),
                 gt_match_score=entry.get("gt_match_score"),
                 best_equation=entry.get("best_equation"),
+                gt_matched_equation=entry.get("gt_matched_equation"),
                 best_loss=entry["best_loss"],
                 error=entry.get("error"),
                 timed_out=entry.get("timed_out", False),

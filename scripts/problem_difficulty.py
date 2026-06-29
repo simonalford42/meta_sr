@@ -809,6 +809,131 @@ def plot_split_coverage_vs_pysr_topk(
     plt.close(fig)
 
 
+def _read_split_file(name, splits_dir=None):
+    """Read a splits/*.txt task list into a set of dataset names."""
+    splits_dir = Path(splits_dir) if splits_dir is not None else SPLITS_DIR
+    path = splits_dir / name
+    if not path.exists():
+        return set()
+    return {ln.strip() for ln in path.read_text().splitlines() if ln.strip()}
+
+
+def plot_split_difficulty_bars(
+    difficulty_df,
+    out_path="plots/split_difficulty_bars.png",
+    splits_dir=None,
+    metric="n_solved",
+):
+    """
+    Bar chart of every srbench_all task sorted by difficulty, each bar colored by
+    membership in barely_unsolvable / barely_unsolvable_val2 / neither (grey).
+
+    Difficulty on the y-axis is ``metric`` (default ``n_solved`` — the number of
+    SRBench (algorithm, noise, trial) tuples that solved the task symbolically;
+    lower = harder), the same measure used to generate the splits. Tasks are
+    sorted hardest→easiest left→right.
+
+    This is a verification tool: barely_unsolvable_val2.txt is documented as a
+    *uniform random* sample of srbench_all (minus barely_unsolvable), so if it is
+    representative its bars should be spread across the whole difficulty range and
+    its mean difficulty should match srbench_all's. barely_unsolvable, by
+    contrast, is a focused difficulty band and should cluster.
+
+    Returns a dict of per-group difficulty stats (also printed).
+    """
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+
+    all_ds = _read_split_file("srbench_all.txt", splits_dir)
+    bu = _read_split_file("barely_unsolvable.txt", splits_dir)
+    val2 = _read_split_file("barely_unsolvable_val2.txt", splits_dir)
+
+    # Restrict to srbench_all tasks that exist in the difficulty table, sort
+    # hardest first (ascending metric, ties broken by n_high_acc when present).
+    df = difficulty_df[difficulty_df["dataset"].isin(all_ds)].copy()
+    missing = sorted(all_ds - set(df["dataset"]))
+    sort_cols = [metric] + (["n_high_acc"] if "n_high_acc" in df.columns else [])
+    df = df.sort_values(sort_cols, ascending=True).reset_index(drop=True)
+
+    def group(ds):
+        if ds in bu:
+            return "barely_unsolvable"
+        if ds in val2:
+            return "barely_unsolvable_val2"
+        return "neither"
+
+    df["group"] = df["dataset"].apply(group)
+    colors = {
+        "barely_unsolvable": "#d62728",      # red
+        "barely_unsolvable_val2": "#1f77b4",  # blue
+        "neither": "#cccccc",                 # grey
+    }
+    bar_colors = df["group"].map(colors).tolist()
+
+    fig, ax = plt.subplots(figsize=(15, 5))
+    x = list(range(len(df)))
+    ax.bar(x, df[metric].values, color=bar_colors, width=1.0, linewidth=0)
+
+    # Membership rug: hard tasks have n_solved≈0 so their colored bars are
+    # invisible. Draw a marker at each barely_unsolvable / val2 task position
+    # below the axis so membership is legible regardless of bar height.
+    ymax = float(df[metric].max())
+    rug_y = -0.045 * ymax
+    for g in ["barely_unsolvable", "barely_unsolvable_val2"]:
+        gx = [i for i in x if df.loc[i, "group"] == g]
+        ax.scatter(gx, [rug_y] * len(gx), marker="^", s=28,
+                   color=colors[g], clip_on=False, zorder=5)
+
+    # Per-group mean-difficulty reference lines + legend with counts/means.
+    stats = {}
+    import matplotlib.patches as mpatches
+    handles = []
+    for g in ["barely_unsolvable", "barely_unsolvable_val2", "neither"]:
+        vals = df.loc[df["group"] == g, metric]
+        stats[g] = {
+            "n": int(len(vals)),
+            "mean": float(vals.mean()) if len(vals) else float("nan"),
+            "median": float(vals.median()) if len(vals) else float("nan"),
+        }
+        if g != "neither" and len(vals):
+            ax.axhline(vals.mean(), color=colors[g], linestyle="--", linewidth=1.2, alpha=0.9)
+        handles.append(mpatches.Patch(
+            color=colors[g],
+            label=f"{g} (n={stats[g]['n']}, mean {metric}={stats[g]['mean']:.1f})",
+        ))
+
+    all_vals = df[metric]
+    stats["srbench_all"] = {
+        "n": int(len(all_vals)),
+        "mean": float(all_vals.mean()),
+        "median": float(all_vals.median()),
+    }
+    ax.axhline(all_vals.mean(), color="black", linestyle=":", linewidth=1.2,
+               label=f"srbench_all mean ({all_vals.mean():.1f})")
+    handles.append(mpatches.Patch(color="black", label=f"srbench_all (n={stats['srbench_all']['n']}, mean {metric}={all_vals.mean():.1f})"))
+
+    ax.set_xlabel("srbench_all tasks, sorted hardest → easiest")
+    ax.set_ylabel(f"{metric}  (SRBench symbolic solves; lower = harder)")
+    ax.set_title("SRBench task difficulty by split membership "
+                 "(dashed = group mean, dotted = srbench_all mean)")
+    ax.set_xlim(-0.5, len(df) - 0.5)
+    ax.set_ylim(bottom=-0.07 * float(df[metric].max()))
+    ax.legend(handles=handles, frameon=False, fontsize=9, loc="upper left")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=200)
+    plt.close(fig)
+
+    print("\n" + "=" * 72)
+    print("Split difficulty verification (metric = %s, lower = harder)" % metric)
+    print("=" * 72)
+    for g in ["srbench_all", "barely_unsolvable", "barely_unsolvable_val2", "neither"]:
+        s = stats[g]
+        print(f"  {g:24s} n={s['n']:3d}  mean={s['mean']:6.1f}  median={s['median']:6.1f}")
+    if missing:
+        print(f"  [note] {len(missing)} srbench_all tasks absent from difficulty feather: {missing}")
+    print(f"  saved: {out_path}")
+    return stats
+
+
 def generate_subset_split(full_split_df, subset_train_size=4, subset_val_size=4):
     """
     Generate a smaller subset split that is contained within a larger split.
@@ -918,6 +1043,15 @@ def generate_barely_unsolvable_splits(
     -------
     dict with 'train', 'val', 'band_ranks', 'harder_ranks', 'easier_ranks'.
     """
+    # Defensive: drop EXCLUDED_DATASETS so they can never enter the band /
+    # harder / easier rank windows. They rank at the hard extreme (never
+    # solved in SRBench) so this is a no-op today, but keeps every generated
+    # split free of excluded tasks regardless of future ranking shifts. Only
+    # splits/srbench_all.txt is allowed to contain them.
+    difficulty_df = difficulty_df[
+        ~difficulty_df['dataset'].isin(EXCLUDED_DATASETS)
+    ].reset_index(drop=True)
+
     train_tasks = split_df[split_df['split'] == 'train']['dataset'].tolist()
     # splits/train.txt is written in difficulty order (hardest first), so
     # index i corresponds to the i-th entry after stratified sampling.
@@ -1043,6 +1177,11 @@ def main():
     parser.add_argument('--barely-unsolvable', action='store_true',
                         help='Generate splits/barely_unsolvable.txt and barely_unsolvable_val.txt '
                              'centered on the solved→unsolved inflection at train.txt indices 8..12')
+    parser.add_argument('--plot-split-difficulty', action='store_true',
+                        help='Plot srbench_all tasks sorted by difficulty, bars colored by '
+                             'barely_unsolvable / barely_unsolvable_val2 / neither membership.')
+    parser.add_argument('--split-difficulty-out', default='plots/split_difficulty_bars.png',
+                        help='Output path for --plot-split-difficulty (default: plots/split_difficulty_bars.png)')
 
     args = parser.parse_args()
 
@@ -1104,6 +1243,9 @@ def main():
             pysr_difficulty=pysr_difficulty,
             out_dir=args.pysr_outdir,
         )
+
+    if args.plot_split_difficulty:
+        plot_split_difficulty_bars(difficulty, out_path=args.split_difficulty_out)
 
     if args.top_n:
         print(f"\nTop {args.top_n} HARDEST problems:")

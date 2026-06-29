@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+"""Inspect a full-SRBench evaluation run.
+
+Reads ``runs/<run-id>/`` (manifest.json + srbench_full_results.json, falling
+back to re-joining the per-batch task artifacts) and prints:
+  * X/Y runs completed (Y = tasks x seeds x noise levels) and what's missing.
+  * solve rate (per-run and per-task-any) + mean solve time for
+    srbench(all) / feynman / strogatz, broken down by noise level.
+
+Usage:
+    python inspect_srbench_results.py --run-id <run-id>
+    python inspect_srbench_results.py --run-id <run-id> --exclude-unsolvable
+    python inspect_srbench_results.py --run-id <run-id> --wandb
+    python inspect_srbench_results.py --see-all
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+import srbench_results_io as srio
+from utils import load_dataset_names_from_split
+
+# Default train / val splits used by evolve_pysr.py (its argparse defaults).
+TRAIN_SPLIT = "splits/barely_unsolvable.txt"
+VAL_SPLIT = "splits/barely_unsolvable_val2.txt"
+
+
+def _load_split_set(split_file: str) -> "set[str] | None":
+    try:
+        return set(load_dataset_names_from_split(split_file))
+    except Exception:
+        return None
+
+
+# Computed once; labels are the split-file stems (the "real names").
+TRAIN_LABEL = Path(TRAIN_SPLIT).stem
+VAL_LABEL = Path(VAL_SPLIT).stem
+TRAIN_SET = _load_split_set(TRAIN_SPLIT)
+VAL_SET = _load_split_set(VAL_SPLIT)
+
+
+def subset_solve_rate(keyed: "dict", datasets: "set[str]",
+                      noise: "float | None" = None) -> "float | None":
+    """solve%/run over runs whose dataset is in ``datasets``.
+
+    If ``noise`` is given, restrict to that noise level only; otherwise pool
+    across all noise levels.
+    """
+    noise_str = srio.fmt_noise(noise) if noise is not None else None
+    present = [e for e in keyed.values()
+               if e.get("present") and e.get("error") is None
+               and e["dataset"] in datasets
+               and (noise_str is None or srio.fmt_noise(e["noise"]) == noise_str)]
+    if not present:
+        return None
+    solved = sum(1 for e in present if e["solved"])
+    return solved / len(present)
+
+
+def find_full_srbench_runs(runs_root: "str | Path") -> "list[Path]":
+    """Return all run directories under ``runs_root`` that are full-SRBench runs.
+
+    A full-SRBench run is identified by a ``manifest.json`` carrying the
+    ``datasets`` / ``noise_levels`` / ``batches`` keys written by
+    ``srbench_full_eval.py`` (regardless of mode: baseline/hpo/evolve/...).
+    """
+    runs_root = Path(runs_root)
+    found = []
+    for manifest_path in sorted(runs_root.glob("*/manifest.json")):
+        try:
+            manifest = srio.load_manifest(manifest_path.parent)
+        except Exception:
+            continue
+        if all(k in manifest for k in ("datasets", "noise_levels", "batches")):
+            found.append(manifest_path.parent)
+    return found
+
+
+def bundle_id(manifest: dict) -> str:
+    """Run-id of the bundle being evaluated (the ``method_meta.source`` run).
+
+    Eval manifests record the operator/hparam bundle they were built from in
+    ``method_meta.source`` (e.g. ``"runs/666285"`` or
+    ``"runs/394789/best_params.json"``). Return just the run-id portion
+    (``"666285"`` / ``"394789"``), or ``"-"`` when there is no source bundle
+    (e.g. baseline runs).
+    """
+    source = (manifest.get("method_meta") or {}).get("source")
+    if not source:
+        return "-"
+    parts = Path(source).parts
+    # ".../runs/<id>/..." -> <id>; otherwise fall back to the first component.
+    if "runs" in parts:
+        i = parts.index("runs")
+        if i + 1 < len(parts):
+            return parts[i + 1]
+    return Path(source).name
+
+
+def summarize_run(run_dir: Path) -> "dict | None":
+    """One row of summary stats (scores averaged over all noise levels).
+
+    Returns None for runs that did not fully complete (any errored/missing run).
+    """
+    manifest = srio.load_manifest(run_dir)
+    noise_levels = manifest["noise_levels"]
+
+    keyed = srio.load_keyed_results(run_dir)
+    if keyed is None:
+        keyed = srio.build_keyed_results(run_dir, manifest)
+
+    expected = srio.expected_keys(manifest)
+    present = sum(1 for k, e in keyed.items()
+                  if e.get("present") and e.get("error") is None)
+    # Only the full 133 x 10 x 4 = 5320-run grid, fully completed.
+    if len(expected) != 5320 or present != len(expected):
+        return None
+
+    metrics = srio.aggregate_metrics(keyed, noise_levels)
+    row = {
+        "bundle": bundle_id(manifest),
+        "mode": manifest.get("mode") or "-",
+    }
+    # solve%/run and mean solve time for all / feynman / strogatz.
+    for fam in ("all", "feynman", "strogatz"):
+        m = metrics[fam]["all"]
+        row[f"{fam}_pct"] = m["solve_rate_per_run"]
+        row[f"{fam}_t"] = m["solve_time_mean_all"]
+        row[f"{fam}_r2"] = m["test_r2_mean"]
+    # solve%/run over all tasks at the noise=0 (clean) bucket only.
+    m0 = metrics["all"].get(srio.fmt_noise(0))
+    row["all0_pct"] = m0["solve_rate_per_run"] if m0 else None
+
+    # Per-subset solve%/run: train, val, and the rest (srbench - train - val).
+    if TRAIN_SET and VAL_SET:
+        all_ds = {e["dataset"] for e in keyed.values()}
+        rest_set = all_ds - TRAIN_SET - VAL_SET
+        row["train_pct"] = subset_solve_rate(keyed, TRAIN_SET)
+        row["val_pct"] = subset_solve_rate(keyed, VAL_SET)
+        row["rest_pct"] = subset_solve_rate(keyed, rest_set)
+        row["train0_pct"] = subset_solve_rate(keyed, TRAIN_SET, noise=0)
+        row["val0_pct"] = subset_solve_rate(keyed, VAL_SET, noise=0)
+    return row
+
+
+def format_summary_table(rows: "list[dict]") -> str:
+    """Render the --see-all summary rows as an aligned, boxed table."""
+    def _pct(x):
+        return f"{x*100:.1f}" if x is not None else "-"
+
+    def _time(x):
+        return f"{x:.1f}s" if x is not None else "-"
+
+    def _r2(x):
+        return f"{x:.3f}" if x is not None else "-"
+
+    has_subset = any("train_pct" in r for r in rows)
+
+    # (header, key-fn) for each column.
+    cols = [
+        ("bundle", lambda r: str(r["bundle"])),
+        ("mode", lambda r: str(r["mode"])),
+        ("all%", lambda r: _pct(r["all_pct"])),
+        ("all%(n0)", lambda r: _pct(r.get("all0_pct"))),
+        ("all_r2", lambda r: _r2(r["all_r2"])),
+        ("all_t", lambda r: _time(r["all_t"])),
+        ("feyn%", lambda r: _pct(r["feynman_pct"])),
+        ("feyn_t", lambda r: _time(r["feynman_t"])),
+        ("strog%", lambda r: _pct(r["strogatz_pct"])),
+        ("strog_t", lambda r: _time(r["strogatz_t"])),
+    ]
+    if has_subset:
+        cols += [
+            (TRAIN_LABEL, lambda r: _pct(r.get("train_pct"))),
+            ("bu(n0)", lambda r: _pct(r.get("train0_pct"))),
+            (VAL_LABEL, lambda r: _pct(r.get("val_pct"))),
+            ("bu2(n0)", lambda r: _pct(r.get("val0_pct"))),
+            ("rest", lambda r: _pct(r.get("rest_pct"))),
+        ]
+
+    headers = [h for h, _ in cols]
+    table = [headers] + [[fn(r) for _, fn in cols] for r in rows]
+    widths = [max(len(row[i]) for row in table) for i in range(len(headers))]
+
+    def _fmt_row(cells):
+        # First two columns left-aligned (text), the rest right-aligned (numbers).
+        parts = [cells[i].ljust(widths[i]) if i < 2 else cells[i].rjust(widths[i])
+                 for i in range(len(cells))]
+        return "│ " + " │ ".join(parts) + " │"
+
+    def _rule(left, mid, right):
+        return left + mid.join("─" * (w + 2) for w in widths) + right
+
+    lines = [_rule("┌", "┬", "┐"), _fmt_row(headers), _rule("├", "┼", "┤")]
+    lines += [_fmt_row(row) for row in table[1:]]
+    lines.append(_rule("└", "┴", "┘"))
+    return "\n".join(lines)
+
+
+def inspect_run(run_dir: Path, args) -> None:
+    """Print completion + stats (and optionally re-log to wandb) for one run."""
+    manifest = srio.load_manifest(run_dir)
+    noise_levels = manifest["noise_levels"]
+
+    # Prefer the aggregated JSON; fall back to re-joining batch artifacts.
+    keyed = srio.load_keyed_results(run_dir)
+    if keyed is None:
+        print("(srbench_full_results.json absent — rebuilding from batch artifacts)")
+        keyed = srio.build_keyed_results(run_dir, manifest)
+
+    # ---- completion ----
+    expected = srio.expected_keys(manifest)
+    n_expected = len(expected)
+    present = {k for k, e in keyed.items() if e.get("present") and e.get("error") is None}
+    errored = {k for k, e in keyed.items() if e.get("present") and e.get("error") is not None}
+    missing = [k for k in expected if k not in keyed or not keyed[k].get("present")]
+
+    print(f"Run: {run_dir}  (mode={manifest.get('mode')})")
+    print(f"Grid: {manifest['n_datasets']} tasks x {manifest['n_runs']} seeds "
+          f"x {len(noise_levels)} noise = {n_expected} runs")
+    print(f"Completed: {len(present)}/{n_expected}   "
+          f"(errored: {len(errored)}, missing: {len(missing)})")
+
+    if missing:
+        print(f"\nMissing ({len(missing)}):")
+        for k in missing[:args.show_missing]:
+            ds, seed, noise = k.split("|")
+            print(f"  {ds}  seed={seed}  noise={noise}")
+        if len(missing) > args.show_missing:
+            print(f"  ... and {len(missing) - args.show_missing} more")
+
+    # ---- stats ----
+    metrics = srio.aggregate_metrics(keyed, noise_levels)
+    print("\n" + "=" * 70)
+    print("STATS (all 133 tasks)")
+    print("=" * 70)
+    print(srio.format_metrics_console(metrics, noise_levels))
+
+    if args.exclude_unsolvable:
+        metrics_excl = srio.aggregate_metrics(keyed, noise_levels, exclude_unsolvable=True)
+        print("\n" + "=" * 70)
+        print(f"STATS (excluding {len(srio.UNSOLVABLE_TASKS)} inverse-trig unsolvables)")
+        print("=" * 70)
+        print(srio.format_metrics_console(metrics_excl, noise_levels))
+
+    if args.wandb:
+        from wandb_utils import init_wandb, finish_wandb
+        run = init_wandb(
+            config={"mode": manifest.get("mode"), "run_id": run_dir.name,
+                    "inspect": True},
+            script_name="inspect_srbench_results.py",
+            output_dir=str(run_dir),
+            extra_tags=["srbench_inspect"],
+        )
+        srio.log_wandb_table_and_metrics(run, keyed, noise_levels)
+        finish_wandb(run)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Inspect a full SRBench evaluation run.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("--run-id",
+                        help="Run id / directory name under --runs-root.")
+    parser.add_argument("--see-all", action="store_true",
+                        help="Inspect every full-SRBench run under --runs-root.")
+    parser.add_argument("--runs-root", type=str, default="runs")
+    parser.add_argument("--show-missing", type=int, default=50,
+                        help="Max number of missing (task,seed,noise) triples to print.")
+    parser.add_argument("--exclude-unsolvable", action="store_true",
+                        help="Also report stats excluding the 3 inverse-trig tasks.")
+    parser.add_argument("--wandb", action="store_true",
+                        help="Re-log the results table + metrics to wandb.")
+    args = parser.parse_args()
+
+    if args.see_all:
+        run_dirs = find_full_srbench_runs(args.runs_root)
+        if not run_dirs:
+            print(f"No full-SRBench runs found under {args.runs_root}")
+            sys.exit(1)
+        rows = []
+        for run_dir in run_dirs:
+            try:
+                summary = summarize_run(run_dir)
+            except Exception as e:
+                print(f"{run_dir.name}: ERROR {e}")
+                continue
+            if summary is None:
+                continue  # skip runs that didn't fully complete
+            rows.append(summary)
+        if rows:
+            print(format_summary_table(rows))
+        print(f"\n{len(rows)}/{len(run_dirs)} full-SRBench run(s) fully completed.")
+        return
+
+    if not args.run_id:
+        parser.error("one of --run-id or --see-all is required")
+
+    run_dir = Path(args.runs_root) / args.run_id
+    if not run_dir.is_dir():
+        print(f"ERROR: run directory not found: {run_dir}")
+        sys.exit(1)
+    inspect_run(run_dir, args)
+
+
+if __name__ == "__main__":
+    main()

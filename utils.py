@@ -182,6 +182,30 @@ def rhs_only(expr_like) -> str:
     return s
 
 
+def get_dataset_gt_formula(dataset_name: str) -> str:
+    """Read just the ground-truth formula from a PMLB dataset's metadata.yaml.
+
+    Returns the RHS of the first equation line in the description, or ""
+    if not found. Lightweight: doesn't load the TSV.
+    """
+    metadata_path = PMLB_PATH / dataset_name / "metadata.yaml"
+    if not metadata_path.exists():
+        return ""
+    try:
+        import yaml
+        with open(metadata_path, 'r') as f:
+            metadata = yaml.safe_load(f)
+    except Exception:
+        return ""
+    desc = (metadata or {}).get('description', '') or ''
+    for line in desc.split('\n'):
+        line = line.strip()
+        if '=' in line and not line.startswith('#'):
+            if ' in [' not in line and ' in (' not in line:
+                return rhs_only(line)
+    return ""
+
+
 def load_dataset_names_from_split(split_file: str) -> List[str]:
     with open(split_file, 'r') as f:
         dataset_names = [line.strip() for line in f if line.strip()]

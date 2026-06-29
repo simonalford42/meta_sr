@@ -142,6 +142,14 @@ class JuliaOperator:
         filtered = {k: v for k, v in d.items() if k in known_fields}
         return cls(**filtered)
 
+META_COMPONENTS = ("mutation", "survival", "selection", "loss")
+META_MUTATION_MODES = ("explore", "refine", "crossover", "simplify")
+
+
+def _zero_meta_mutation_counts() -> Dict[str, Dict[str, int]]:
+    return {c: {m: 0 for m in META_MUTATION_MODES} for c in META_COMPONENTS}
+
+
 @dataclass
 class OperatorBundle:
     """A bundle of operators (mutation, survival, selection) evaluated together.
@@ -156,6 +164,11 @@ class OperatorBundle:
     result_details: Optional[List[Dict]] = None  # Per-dataset evaluation details
     best_hparams: Optional[Dict[str, Any]] = None  # Best PySR hparams found by HPO
     seeds_evaluated: int = 0  # Number of PySR seeds accumulated in result_details (racing mode)
+    # Per-bundle history of meta-mutations along its lineage:
+    # counts[component][mode] is the number of times the (component, mode)
+    # meta-mutation was applied somewhere in this bundle's ancestry.
+    # Inherited (deep-copied) by copy_with and then incremented for the new edit.
+    meta_mutation_counts: Dict[str, Dict[str, int]] = field(default_factory=_zero_meta_mutation_counts)
 
     @staticmethod
     def create_default() -> 'OperatorBundle':
@@ -165,21 +178,33 @@ class OperatorBundle:
     def get_operator(self, type_name: str) -> Optional[JuliaOperator]:
         return self.operators.get(type_name)
 
-    def copy_with(self, type_name: str, operator: JuliaOperator) -> 'OperatorBundle':
+    def copy_with(
+        self,
+        type_name: str,
+        operator: JuliaOperator,
+        meta_mutation: Optional[Tuple[str, str]] = None,
+    ) -> 'OperatorBundle':
         """Create a copy with one operator replaced.
 
         Deep-copies all retained operators so bundles don't share mutable state
         (e.g., HPO mutating .code or .hp_specs on a shared operator).
-        Carries forward best_hparams from the parent bundle.
+        Carries forward best_hparams and meta_mutation_counts from the parent
+        bundle. If meta_mutation=(component, mode) is provided, increments that
+        cell on the (already copied) child counts.
         """
         new_ops = {
             k: copy.deepcopy(v) if k != type_name else operator
             for k, v in self.operators.items()
         }
         new_ops[type_name] = operator
+        new_counts = copy.deepcopy(self.meta_mutation_counts)
+        if meta_mutation is not None:
+            component, mode = meta_mutation
+            new_counts[component][mode] += 1
         return OperatorBundle(
             operators=new_ops,
             best_hparams=copy.deepcopy(self.best_hparams) if self.best_hparams else None,
+            meta_mutation_counts=new_counts,
         )
 
     def to_pysr_config(self, pysr_kwargs: Dict) -> PySRConfig:
@@ -251,6 +276,7 @@ class OperatorBundle:
             "result_details": self.result_details,
             "best_hparams": self.best_hparams,
             "seeds_evaluated": self.seeds_evaluated,
+            "meta_mutation_counts": copy.deepcopy(self.meta_mutation_counts),
         }
 
     @classmethod
@@ -258,6 +284,15 @@ class OperatorBundle:
         operators = {}
         for k, v in d.get("operators", {}).items():
             operators[k] = JuliaOperator.from_dict(v) if v is not None else None
+        # Backfill any missing component/mode keys so old run_data.json files
+        # produced before this field existed still load with a complete 4x4 grid.
+        counts = _zero_meta_mutation_counts()
+        for c, m_dict in (d.get("meta_mutation_counts") or {}).items():
+            if c not in counts:
+                continue
+            for m, v in (m_dict or {}).items():
+                if m in counts[c]:
+                    counts[c][m] = int(v)
         return cls(
             operators=operators,
             score=d.get("score"),
@@ -265,6 +300,7 @@ class OperatorBundle:
             result_details=d.get("result_details"),
             best_hparams=d.get("best_hparams"),
             seeds_evaluated=d.get("seeds_evaluated", 0),
+            meta_mutation_counts=counts,
         )
 
     @property
@@ -425,6 +461,7 @@ class OperatorType(ABC):
                 *self._extra_requirements(),
                 "Keep the same function signature shape as the parent",
                 "Use proper Julia syntax",
+                "The simplified operator should be functionally different to the original operator; an implementation that is simpler but computes the same result on all inputs is not valid."
                 "Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining the simplified operator's core idea, the steps it takes, and what was removed/merged from the parent (and why the simplification should still be sound).",
                 "Use inline comments as appropriate to explain the implementation of the function body.",
             ], start=1))
@@ -916,6 +953,9 @@ class OperatorGenerationSpec:
     variation_seed: int = 0
     temperature: float = 0.0
     use_cache: bool = True
+    # Reasoning effort ("low"/"medium"/"high") forwarded to OpenRouter. None
+    # leaves it unset, so completions.py applies its default ("high").
+    reasoning_effort: Optional[str] = None
     task_info: Optional[Dict[str, str]] = None
     log_prompt_dir: Optional[Path] = None
     log_generation: int = -1
@@ -1015,7 +1055,7 @@ def _operator_generation_chat_request(
     model_attempt: int,
 ) -> Dict[str, Any]:
     """Build kwargs for completions.chat_completion."""
-    return {
+    request: Dict[str, Any] = {
         "model": selected_model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": spec.temperature,
@@ -1023,6 +1063,11 @@ def _operator_generation_chat_request(
         "use_cache": spec.use_cache,
         "max_tokens": 128_000,
     }
+    # When set, this overrides completions.py's default ("high") and becomes
+    # part of the cache key, so different effort levels are cached separately.
+    if spec.reasoning_effort:
+        request["reasoning"] = {"effort": spec.reasoning_effort}
+    return request
 
 
 def _resample_operator_model(
@@ -1118,6 +1163,7 @@ def generate_operator_code(
     variation_seed: int = 0,
     temperature: float = 0.0,
     use_cache: bool = True,
+    reasoning_effort: Optional[str] = None,
     task_info: Optional[Dict[str, str]] = None,
     log_prompt_dir: Optional[Path] = None,
     log_generation: int = -1,
@@ -1137,6 +1183,7 @@ def generate_operator_code(
         variation_seed=variation_seed,
         temperature=temperature,
         use_cache=use_cache,
+        reasoning_effort=reasoning_effort,
         task_info=task_info,
         log_prompt_dir=log_prompt_dir,
         log_generation=log_generation,
