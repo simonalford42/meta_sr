@@ -2136,7 +2136,9 @@ def main():
 
     parser.add_argument("--generations", type=int, default=25)
     parser.add_argument("--population", type=int, default=10)
-    parser.add_argument("--offspring", type=int, default=20)
+    parser.add_argument("--offspring", type=int, default=None,
+                        help="Offspring per generation. Default 20, except under "
+                             "--reeval smart* where it defaults to --population // 2.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=10)
     parser.add_argument("--fitness-metric", type=str, default="gt", choices=["r2", "gt", "gt-r2"],
@@ -2266,7 +2268,8 @@ def main():
                              "(--offspring * --n-runs seeds); the remaining budget caps the reeval "
                              "plan, and any reeval budget the plan declines to spend is converted "
                              "into additional offspring so total evals ≈ B. "
-                             "Default --offspring * --n-runs + 100 (the old --max-reruns=100 cap).")
+                             "Default under --reeval smart*: --population * 2 * --n-runs. "
+                             "(Otherwise --offspring * --n-runs + 100, the old --max-reruns=100 cap.)")
     parser.add_argument("--smart-sigma", type=float, default=DEFAULT_SMART_SIGMA,
                         help="Per-seed noise σ used in reeval planning (both --reeval smart "
                              "B*/TTTS and --reeval heuristic qualifier racing). By default a fixed "
@@ -2314,6 +2317,15 @@ def main():
                              "If a non-'random' mode requires a parent the bundle lacks, falls back to explore.")
 
     args = parser.parse_args()
+
+    # Smart-reeval default sizing: when --offspring / --max-runs-per-generation
+    # are not given, scale them to the population and seed count. Done before the
+    # other reeval validation so downstream uses see the resolved values.
+    is_smart_reeval = args.reeval.startswith("smart")
+    if args.offspring is None:
+        args.offspring = max(1, args.population // 2) if is_smart_reeval else 20
+    if is_smart_reeval and args.max_runs_per_generation is None:
+        args.max_runs_per_generation = args.population * 2 * args.n_runs
 
     # --n-extra-runs / --n-runs-max belong to heuristic racing reeval.
     if (args.n_extra_runs > 0 or args.n_runs_max > 0) and args.reeval != "heuristic":
