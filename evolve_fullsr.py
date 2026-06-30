@@ -47,6 +47,7 @@ from evolution_helpers import (
     select_survivors,
 )
 from julia_env import warmup_julia
+from budget_utils import resolve_run_budget, describe_budget, DEFAULT_SECONDS_PER_1E6_EVALS
 from parallel_eval_fullsr import (
     FullSRConfig,
     FullSRSlurmEvaluator,
@@ -1170,18 +1171,31 @@ def main():
 
     # number of data points when running PySR on each dataset
     parser.add_argument("--max-samples", type=int, default=1000)
-    parser.add_argument("--max-evals", type=int, default=1_000_000)
+    parser.add_argument("--max-evals", type=int, default=1_000_000,
+                        help="Max evaluations per FullSR run (eval-budget mode; the default). "
+                             "Ignored when --max-time-in-seconds is set.")
+    parser.add_argument("--max-time-in-seconds", type=float, default=None,
+                        help="Use a wall-clock TIME budget per FullSR run instead of --max-evals. "
+                             "Sets timeout_in_seconds=T and drops the eval cap. The soft/hard/"
+                             "batch timeouts are auto-extrapolated by T/M (M=--seconds-per-1e6) "
+                             "unless explicitly overridden. See budget_utils.resolve_run_budget.")
+    parser.add_argument("--seconds-per-1e6", type=float, default=None,
+                        help="Reference M: avg wall-clock seconds a 1e6-eval run takes on this "
+                             "node, used to scale timeouts in --max-time-in-seconds mode "
+                             "(default 200s).")
     parser.add_argument(
         "--timeout",
         type=int,
-        default=500,
-        help="SkeletonSR soft internal timeout in seconds; checked between search steps.",
+        default=None,
+        help="SkeletonSR soft internal timeout in seconds; checked between search steps. "
+             "Default 500 (eval mode) or =T (time mode).",
     )
     parser.add_argument(
         "--fullsr-wall-limit",
         type=int,
-        default=600,
-        help="Hard wall-clock limit for each train FullSR task in seconds.",
+        default=None,
+        help="Hard wall-clock limit for each train FullSR task in seconds. "
+             "Default 600 (eval mode) or scaled by T/M (time mode).",
     )
     parser.add_argument(
         "--val-fullsr-wall-limit",
@@ -1214,9 +1228,13 @@ def main():
     parser.add_argument("--llm-max-workers", type=int, default=16)
 
     parser.add_argument("--partition", type=str, default="default_partition")
-    parser.add_argument("--time-limit", type=str, default="00:30:00")
+    parser.add_argument("--time-limit", type=str, default=None,
+                        help="SLURM --time per array task. "
+                             "Default 00:30:00 (eval mode) or scaled by T/M (time mode).")
     parser.add_argument("--mem-per-cpu", type=str, default="8G")
-    parser.add_argument("--job-timeout", type=float, default=1800.0)
+    parser.add_argument("--job-timeout", type=float, default=None,
+                        help="Parent watchdog for a whole batch (seconds). "
+                             "Default 1800 (eval mode) or scaled by T/M (time mode).")
     parser.add_argument("--max-concurrent-jobs", type=int, default=None)
 
     parser.add_argument(
@@ -1245,9 +1263,15 @@ def main():
 
     if args.target_noise < 0:
         parser.error("--target-noise must be >= 0")
-    if args.timeout <= 0 or args.fullsr_wall_limit <= 0:
-        parser.error("--timeout and --fullsr-wall-limit must both be > 0")
-    if args.timeout >= args.fullsr_wall_limit:
+    # --timeout / --fullsr-wall-limit default to None (auto-resolved below); only
+    # validate explicit overrides here. The resolved soft<hard invariant is
+    # checked after resolve_run_budget().
+    if args.timeout is not None and args.timeout <= 0:
+        parser.error("--timeout must be > 0")
+    if args.fullsr_wall_limit is not None and args.fullsr_wall_limit <= 0:
+        parser.error("--fullsr-wall-limit must be > 0")
+    if (args.timeout is not None and args.fullsr_wall_limit is not None
+            and args.timeout >= args.fullsr_wall_limit):
         parser.error("--timeout must be less than --fullsr-wall-limit")
     if args.val_fullsr_timeout <= 0 or args.val_fullsr_wall_limit <= 0:
         parser.error(
@@ -1316,6 +1340,25 @@ def main():
     fit_warmup_seconds = warmup_skeleton_validation()
     print(f"Validation tiny-fit warm ({fit_warmup_seconds:.1f}s)")
 
+    # Resolve eval-budget vs time-budget and the (auto-extrapolated) timeouts.
+    budget = resolve_run_budget(
+        max_evals=args.max_evals,
+        max_time_in_seconds=args.max_time_in_seconds,
+        timeout=args.timeout,
+        wall_limit=args.fullsr_wall_limit,
+        job_timeout=args.job_timeout,
+        slurm_time_limit=args.time_limit,
+        seconds_per_1e6=(args.seconds_per_1e6 if args.seconds_per_1e6 is not None
+                         else DEFAULT_SECONDS_PER_1E6_EVALS),
+        default_slurm_time_limit="00:30:00",
+    )
+    if budget["timeout_in_seconds"] >= budget["wall_limit"]:
+        parser.error(
+            f"resolved soft timeout ({budget['timeout_in_seconds']}s) must be < hard "
+            f"wall ({budget['wall_limit']}s); raise --fullsr-wall-limit or lower --timeout"
+        )
+    print(f"Run budget: {describe_budget(budget)}")
+
     # Resolve reasoning effort from the preset name before --models is rewritten
     # to its ensemble string below.
     reasoning_effort = resolve_reasoning_effort(args.reasoning_effort, args.models)
@@ -1343,9 +1386,12 @@ def main():
         "split": args.split,
         "val_split": args.val_split,
         "max_samples": args.max_samples,
-        "max_evals": args.max_evals,
-        "timeout": args.timeout,
-        "fullsr_wall_limit": args.fullsr_wall_limit,
+        "max_evals": budget["max_evals"],
+        "max_time_in_seconds": budget["max_time_in_seconds"],
+        "timeout": budget["timeout_in_seconds"],
+        "budget_mode": budget["mode"],
+        "seconds_per_1e6": budget["seconds_per_1e6"],
+        "fullsr_wall_limit": budget["wall_limit"],
         "val_fullsr_wall_limit": args.val_fullsr_wall_limit,
         "val_fullsr_timeout": args.val_fullsr_timeout,
         "model": args.model,
@@ -1380,9 +1426,9 @@ def main():
         n_runs=args.n_runs,
         val_n_runs=args.val_n_runs,
         max_samples=args.max_samples,
-        max_evals=args.max_evals,
-        timeout=args.timeout,
-        fullsr_wall_limit=args.fullsr_wall_limit,
+        max_evals=budget["max_evals"],
+        timeout=budget["timeout_in_seconds"],
+        fullsr_wall_limit=budget["wall_limit"],
         val_fullsr_wall_limit=args.val_fullsr_wall_limit,
         val_fullsr_timeout=args.val_fullsr_timeout,
         output_dir=args.output_dir,
@@ -1392,9 +1438,9 @@ def main():
         model_ensemble=model_ensemble,
         reasoning_effort=reasoning_effort,
         slurm_partition=args.partition,
-        slurm_time_limit=args.time_limit,
+        slurm_time_limit=budget["slurm_time_limit"],
         slurm_mem_per_cpu=args.mem_per_cpu,
-        job_timeout=args.job_timeout,
+        job_timeout=budget["job_timeout"],
         max_concurrent_jobs=args.max_concurrent_jobs,
         repo_root=args.repo_root,
         use_cache=not args.no_cache,

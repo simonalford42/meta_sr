@@ -43,6 +43,7 @@ from parallel_eval_pysr import (
 )
 from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log, resolve_run_dir
 from julia_env import warmup_julia
+from budget_utils import resolve_run_budget, describe_budget, DEFAULT_SECONDS_PER_1E6_EVALS
 
 from operator_types import (
     ModelEnsemble,
@@ -2174,13 +2175,25 @@ def main():
                              "--pysr-wall-limit is unchanged.")
 
     parser.add_argument("--max-evals", type=int, default=1000000,
-                        help="Maximum evaluations per PySR run")
-    parser.add_argument("--timeout", type=int, default=500,
-                        help="PySR soft timeout_in_seconds; PySR checks between iterations.")
-    parser.add_argument("--pysr-wall-limit", type=int, default=600,
+                        help="Maximum evaluations per PySR run (eval-budget mode; the default). "
+                             "Ignored when --max-time-in-seconds is set.")
+    parser.add_argument("--max-time-in-seconds", type=float, default=None,
+                        help="Use a wall-clock TIME budget per PySR run instead of --max-evals. "
+                             "Sets timeout_in_seconds=T and drops the eval cap. The soft/hard/"
+                             "batch timeouts are auto-extrapolated by T/M (M=--seconds-per-1e6) "
+                             "unless explicitly overridden. See budget_utils.resolve_run_budget.")
+    parser.add_argument("--seconds-per-1e6", type=float, default=None,
+                        help="Reference M: avg wall-clock seconds a 1e6-eval run takes on this "
+                             "node, used to scale timeouts in --max-time-in-seconds mode "
+                             "(default 200s; runs/414990: base ~127s, population mean ~211s).")
+    parser.add_argument("--timeout", type=int, default=None,
+                        help="PySR soft timeout_in_seconds; PySR checks between iterations. "
+                             "Default 500 (eval mode) or =T (time mode).")
+    parser.add_argument("--pysr-wall-limit", type=int, default=None,
                         help="Hard wall-clock limit per PySR task (seconds). Enforced in the "
                              "worker via SIGALRM; on overrun the task errors out with score=0 "
-                             "and is NOT retried. Must be >= --timeout, with some slack.")
+                             "and is NOT retried. Must be >= --timeout, with some slack. "
+                             "Default 600 (eval mode) or scaled by T/M (time mode).")
 
     parser.add_argument("--model", type=str, default="openai/gpt-5.4-mini",
                         help="Single LLM model (used as fallback if --models not set)")
@@ -2205,14 +2218,16 @@ def main():
                              "offspring request in the current wave.")
 
     parser.add_argument("--partition", type=str, default="default_partition")
-    parser.add_argument("--time-limit", type=str, default="00:15:00",
+    parser.add_argument("--time-limit", type=str, default=None,
                         help="SLURM --time per array task. Hard kill by SLURM; acts as a safety "
-                             "net if the worker's SIGALRM is swallowed by Julia.")
+                             "net if the worker's SIGALRM is swallowed by Julia. "
+                             "Default 00:15:00 (eval mode) or scaled by T/M (time mode).")
     parser.add_argument("--mem-per-cpu", type=str, default="8G")
-    parser.add_argument("--job-timeout", type=float, default=1800.0,
+    parser.add_argument("--job-timeout", type=float, default=None,
                         help="Parent watchdog for a whole batch (seconds). If the batch hasn't "
                              "finished by this time, remaining jobs are cancelled and the "
-                             "missing tasks are retried (up to --max-retries).")
+                             "missing tasks are retried (up to --max-retries). "
+                             "Default 1800 (eval mode) or scaled by T/M (time mode).")
     parser.add_argument("--max-concurrent-jobs", type=int, default=None,
                         help="Cap on concurrent SLURM array tasks (applies %%N to --array spec). "
                              "None = no limit.")
@@ -2393,9 +2408,28 @@ def main():
     print(f"Reasoning effort: {reasoning_effort} "
           f"(--reasoning-effort={args.reasoning_effort})")
 
+    # Resolve eval-budget vs time-budget and the (auto-extrapolated) timeouts.
+    budget = resolve_run_budget(
+        max_evals=args.max_evals,
+        max_time_in_seconds=args.max_time_in_seconds,
+        timeout=args.timeout,
+        wall_limit=args.pysr_wall_limit,
+        job_timeout=args.job_timeout,
+        slurm_time_limit=args.time_limit,
+        seconds_per_1e6=(args.seconds_per_1e6 if args.seconds_per_1e6 is not None
+                         else DEFAULT_SECONDS_PER_1E6_EVALS),
+        default_slurm_time_limit="00:15:00",
+    )
+    if budget["timeout_in_seconds"] >= budget["wall_limit"]:
+        parser.error(
+            f"resolved soft timeout ({budget['timeout_in_seconds']}s) must be < hard "
+            f"wall ({budget['wall_limit']}s); raise --pysr-wall-limit or lower --timeout"
+        )
+    print(f"Run budget: {describe_budget(budget)}")
+
     pysr_kwargs = get_default_pysr_kwargs()
-    pysr_kwargs["max_evals"] = args.max_evals
-    pysr_kwargs["timeout_in_seconds"] = args.timeout
+    pysr_kwargs["max_evals"] = budget["max_evals"]
+    pysr_kwargs["timeout_in_seconds"] = budget["timeout_in_seconds"]
 
     # Load baseline if specified
     baseline_bundle = None
@@ -2433,11 +2467,11 @@ def main():
         output_dir=args.output_dir,
         pysr_kwargs=pysr_kwargs,
         slurm_partition=args.partition,
-        slurm_time_limit=args.time_limit,
+        slurm_time_limit=budget["slurm_time_limit"],
         slurm_mem_per_cpu=args.mem_per_cpu,
         max_samples=args.max_samples,
-        job_timeout=args.job_timeout,
-        pysr_wall_limit=args.pysr_wall_limit,
+        job_timeout=budget["job_timeout"],
+        pysr_wall_limit=budget["wall_limit"],
         split_label=Path(args.split).stem if args.split else None,
         max_concurrent_jobs=args.max_concurrent_jobs,
         use_cache=not args.no_cache,
@@ -2485,8 +2519,12 @@ def main():
         "target_noise": args.target_noise,
         "random_target_noise": args.random_target_noise,
         "eval_all_noise_levels": args.eval_all_noise_levels,
-        "max_evals": args.max_evals,
-        "timeout": args.timeout,
+        "max_evals": budget["max_evals"],
+        "max_time_in_seconds": budget["max_time_in_seconds"],
+        "timeout": budget["timeout_in_seconds"],
+        "pysr_wall_limit": budget["wall_limit"],
+        "seconds_per_1e6": budget["seconds_per_1e6"],
+        "budget_mode": budget["mode"],
         "model": args.model,
         "models": args.models,
         "temperature": args.temperature,
@@ -2566,12 +2604,12 @@ def main():
                 n_runs=10,
                 seed=final_eval_seed,
                 max_samples=args.max_samples,
-                max_evals=args.max_evals,
-                timeout=args.timeout,
-                time_limit=args.time_limit,
+                max_evals=budget["max_evals"],
+                timeout=budget["timeout_in_seconds"],
+                time_limit=budget["slurm_time_limit"],
                 mem_per_cpu=args.mem_per_cpu,
-                job_timeout=args.job_timeout,
-                pysr_wall_limit=args.pysr_wall_limit,
+                job_timeout=budget["job_timeout"],
+                pysr_wall_limit=budget["wall_limit"],
                 use_cache=not args.no_cache,
                 wandb_run=wandb_run,
                 target_noise_map=target_noise_map,

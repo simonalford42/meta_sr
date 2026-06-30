@@ -1074,17 +1074,29 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         except Exception:
             ground_truth_for_match = ground_truth_formula
 
-        # Build HOF milestone list from spec. If hof_n_steps > 0 and max_evals is
-        # set in pysr_kwargs, we checkpoint the HOF at evenly-spaced eval counts so
-        # that _load_execution_trace() can read the trace back from disk.
+        # Build HOF milestone list from spec. If hof_n_steps > 0 we checkpoint the
+        # HOF at evenly-spaced points so _load_execution_trace() can read the trace
+        # back from disk. Eval-budget mode (max_evals set) spaces by eval count;
+        # time-budget mode (max_evals is None, timeout_in_seconds is the budget)
+        # spaces by cumulative wall-clock seconds.
         hof_milestones: List[int] = []
+        hof_milestone_kind = "evals"
         if spec.hof_n_steps > 0:
-            max_evals = spec.pysr_kwargs.get("max_evals") or spec.pysr_kwargs.get("niterations")
+            max_evals = spec.pysr_kwargs.get("max_evals")
             if max_evals is not None:
                 hof_milestones = [
                     int(round(max_evals * (i + 1) / spec.hof_n_steps))
                     for i in range(spec.hof_n_steps)
                 ]
+            else:
+                # Time-budget mode: cumulative wall-clock checkpoints up to T.
+                time_budget = spec.pysr_kwargs.get("timeout_in_seconds")
+                if time_budget is not None:
+                    hof_milestone_kind = "time"
+                    hof_milestones = [
+                        int(round(time_budget * (i + 1) / spec.hof_n_steps))
+                        for i in range(spec.hof_n_steps)
+                    ]
 
         # Derive the HOF CSV path that run_pysr_with_hof_checkpoints() will write.
         # This must match _hof_csv_path() so that hof_csv_paths stays consistent.
@@ -1145,6 +1157,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                         model=model,
                         seed=run_seed,
                         hof_path=hof_csv_out,
+                        milestone_kind=hof_milestone_kind,
                     )
                 finally:
                     _signal.alarm(0)

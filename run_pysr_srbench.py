@@ -178,11 +178,21 @@ def run_pysr_with_hof_checkpoints(
     model,
     seed=42,
     hof_path=None,
+    milestone_kind="evals",
 ):
     """
-    Run PySR with HOF checkpoint logging at each milestone eval count.
+    Run PySR with HOF checkpoint logging at each milestone.
     Writes a fresh hall-of-fame CSV with one block per milestone. If milestones
     is empty, runs a single fit with no HOF trace logging.
+
+    milestone_kind:
+      "evals" -> `milestones` are cumulative max_evals targets; each chunk fits
+                 with warm_start up to that eval count (the eval-budget regime).
+      "time"  -> `milestones` are cumulative wall-clock targets (seconds); each
+                 chunk fits with warm_start for the time slice since the previous
+                 milestone via `timeout_in_seconds` (the time-budget regime).
+    The `milestone_evals` CSV column holds the cumulative eval target (evals mode)
+    or the cumulative time budget in seconds (time mode).
     """
     os.makedirs(results_dir, exist_ok=True)
     hof_path = hof_path or os.path.join(results_dir, f"{dataset_name}_hof.csv")
@@ -199,13 +209,20 @@ def run_pysr_with_hof_checkpoints(
         if not milestones:
             model.fit(X_train, y_train, variable_names=feature_names)
         else:
+            prev_milestone = 0
             for milestone in milestones:
                 start_chunk = time.time()
 
-                model.max_evals = milestone
+                if milestone_kind == "time":
+                    # Per-chunk wall-time slice; timeout_in_seconds resets each
+                    # warm-started fit, so pass the increment, not the cumulative.
+                    model.timeout_in_seconds = max(1, int(round(milestone - prev_milestone)))
+                else:
+                    model.max_evals = milestone
                 model.fit(X_train, y_train, variable_names=feature_names)
 
                 chunk_time = time.time() - start_chunk
+                prev_milestone = milestone
 
                 if model.equations_ is not None:
                     df = model.equations_.copy()
