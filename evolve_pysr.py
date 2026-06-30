@@ -2430,6 +2430,12 @@ def main():
     pysr_kwargs = get_default_pysr_kwargs()
     pysr_kwargs["max_evals"] = budget["max_evals"]
     pysr_kwargs["timeout_in_seconds"] = budget["timeout_in_seconds"]
+    if budget["max_evals"] is None:
+        # Time-budget mode: ensure the wall clock is the sole stopping criterion
+        # (the default niterations=1e7 already far exceeds any wall budget, but
+        # keep the invariant explicit so the timeout always binds before evals).
+        pysr_kwargs["niterations"] = max(int(pysr_kwargs.get("niterations") or 0),
+                                         10_000_000)
 
     # Load baseline if specified
     baseline_bundle = None

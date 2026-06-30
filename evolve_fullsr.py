@@ -388,6 +388,13 @@ def run_evolution(
     engine_kwargs = get_default_engine_kwargs()
     engine_kwargs["max_evals"] = max_evals
     engine_kwargs["timeout_in_seconds"] = timeout
+    if max_evals is None:
+        # Time-budget mode: make the wall clock the SOLE stopping criterion. The
+        # default niterations=100 is only ~1.7M evals (100*populations*
+        # ncycles_per_iteration*ceil(pop_n/tournament_n) ≈ 100*15*380*3) ≈ a few
+        # hundred seconds, so it would silently cap any larger --max-time-in-seconds
+        # before the timeout fires. Lift it so the timeout binds.
+        engine_kwargs["niterations"] = 10_000_000
 
     logger = EvolutionLogger(output_dir)
     logger.set_config({
