@@ -86,10 +86,9 @@ from wandb_utils import (
 
 MODEL_ENSEMBLE_PRESETS: Dict[str, str] = {
     "cheap": (
-        "openai/gpt-5.4-mini:0.20,"
-        "openai/gpt-5.4-nano:0.30,"
-        "google/gemini-3.1-flash-lite-preview:0.25,"
-        "x-ai/grok-4.1-fast:0.25"
+        "openai/gpt-5.4-mini:0.4,"
+        "openai/gpt-5.4-nano:0.3,"
+        "google/gemini-3.1-flash-lite-preview:0.3,"
     ),
     "medium": (
         "openai/gpt-5.4-mini:0.30,"
@@ -189,6 +188,9 @@ class EvolutionLogger:
         self.run_data["best_bundle"] = best.to_dict()
         self._save()
         body = render_sr_module_body(best)
+        # Ensure the dir exists even if no generation ran (e.g. a resume with
+        # --generations 0), since log_generation normally creates it.
+        (self.output_dir / "best_bundles").mkdir(parents=True, exist_ok=True)
         (self.output_dir / "best_bundles" / "best_final.jl").write_text(
             f"# Best bundle from evolution run\n"
             f"# Score: {best.score}\n"
@@ -246,6 +248,77 @@ def _format_solved_str(result_details: Optional[List[Dict]]) -> str:
     return _shared_format_solved_str(result_details)
 
 
+def load_resume_state(path: str) -> Dict[str, Any]:
+    """Load state from a prior evolve_fullsr run so evolution can continue in a new dir.
+
+    Mirrors ``bundle_loader.load_resume_state`` (used by evolve_pysr.py) but for
+    SkeletonBundles. Accepts either a run directory or a run_data.json path, and
+    reconstructs the last generation's population, the stored baseline, and the
+    prior generation history so the new run_data.json stays a continuous record.
+
+    Fullsr is simpler than pysr here: there is no separate all-time archive and
+    no per-eval wandb step counter to restore, so we only carry the population,
+    baseline, and history.
+
+    Retries on JSONDecodeError so resuming a still-running source job is safe —
+    our ``_save`` is atomic, but a read can otherwise catch a partial write from
+    an older non-atomic writer.
+
+    NOTE: ``SkeletonBundle.to_dict`` does not persist ``raw_module_body``, so a
+    run that used ``--full-file-diff`` will have its resumed bundles rebuilt from
+    the per-slot ``functions`` (any helper/state-struct edits the diff carried
+    are not recoverable from run_data.json).
+    """
+    p = Path(path)
+    run_data_path = p / "run_data.json" if p.is_dir() else p
+    if not run_data_path.exists():
+        raise FileNotFoundError(f"No run_data.json found at: {run_data_path}")
+
+    last_err: Optional[Exception] = None
+    data: Optional[Dict[str, Any]] = None
+    for attempt in range(8):
+        try:
+            with open(run_data_path) as f:
+                data = json.load(f)
+            break
+        except json.JSONDecodeError as e:
+            last_err = e
+            print(
+                f"  load_resume_state: partial read of {run_data_path} "
+                f"(attempt {attempt + 1}/8): {e}. Retrying in 2s..."
+            )
+            time.sleep(2.0)
+    if data is None:
+        raise RuntimeError(
+            f"Failed to read {run_data_path} after retries — source job may "
+            f"still be writing. Last error: {last_err}"
+        )
+
+    gens = data.get("generations", [])
+    if not gens:
+        raise ValueError(f"No generations found in {run_data_path}")
+
+    last_gen_entry = gens[-1]
+    last_gen_num = last_gen_entry.get("generation", 0)
+
+    pop_dicts = last_gen_entry.get("population", [])
+    if not pop_dicts:
+        raise ValueError(f"Last generation has empty population in {run_data_path}")
+    population = [SkeletonBundle.from_dict(b) for b in pop_dicts]
+
+    baseline = data.get("baseline", {})
+    return {
+        "population": population,
+        "start_gen": last_gen_num + 1,
+        "baseline_score": baseline.get("score"),
+        "baseline_vector": baseline.get("vector", []),
+        "prior_generations": gens,
+        "prior_config": data.get("config", {}),
+        "prior_val_results": data.get("val_results", {}),
+        "source_path": str(run_data_path),
+    }
+
+
 # ─── Evolution loop ────────────────────────────────────────────────────────
 
 
@@ -261,7 +334,10 @@ def run_evolution(
     val_n_runs: int,
     max_samples: int,
     max_evals: int,
+    timeout: int,
     fullsr_wall_limit: int,
+    val_fullsr_wall_limit: int,
+    val_fullsr_timeout: int,
     output_dir: str,
     model: str,
     temperature: float,
@@ -278,9 +354,12 @@ def run_evolution(
     fitness_metric: str,
     mutation_mode: str,
     operator_slots: List[str],
+    target_noise: float,
     random_target_noise: bool,
+    eval_all_noise_levels: bool,
     full_file_diff: bool,
     wandb_run: Optional[Any],
+    resume_state: Optional[Dict[str, Any]] = None,
 ) -> Tuple[SkeletonBundle, FullSRSlurmEvaluator, float]:
     rng = random.Random(seed)
     np.random.seed(seed)
@@ -290,8 +369,15 @@ def run_evolution(
 
     # Per-dataset target-noise map (deterministic in `seed`). When disabled the
     # map stays None and every task runs noise-free.
+    eval_noise_levels = list(TARGET_NOISE_LEVELS) if eval_all_noise_levels else None
     target_noise_map: Optional[Dict[str, float]] = None
-    if random_target_noise:
+    if eval_all_noise_levels:
+        if random_target_noise:
+            print(
+                "  --eval-all-noise-levels overrides --random-target-noise "
+                "(every task is evaluated at all noise levels and averaged)."
+            )
+    elif random_target_noise:
         target_noise_map = _build_target_noise_map(dataset_names, seed, TARGET_NOISE_LEVELS)
         print(
             f"Random target noise: enabled "
@@ -300,6 +386,7 @@ def run_evolution(
 
     engine_kwargs = get_default_engine_kwargs()
     engine_kwargs["max_evals"] = max_evals
+    engine_kwargs["timeout_in_seconds"] = timeout
 
     logger = EvolutionLogger(output_dir)
     logger.set_config({
@@ -313,7 +400,10 @@ def run_evolution(
         "val_n_runs": val_n_runs,
         "max_samples": max_samples,
         "max_evals": max_evals,
+        "timeout": timeout,
         "fullsr_wall_limit": fullsr_wall_limit,
+        "val_fullsr_wall_limit": val_fullsr_wall_limit,
+        "val_fullsr_timeout": val_fullsr_timeout,
         "model": model,
         "model_ensemble": model_ensemble.to_config_dict() if model_ensemble else None,
         "temperature": temperature,
@@ -322,8 +412,11 @@ def run_evolution(
         "fitness_metric": fitness_metric,
         "mutation_mode": mutation_mode,
         "operator_slots": operator_slots,
+        "target_noise": target_noise,
         "random_target_noise": random_target_noise,
+        "eval_all_noise_levels": eval_all_noise_levels,
         "full_file_diff": full_file_diff,
+        "continued_from": resume_state["source_path"] if resume_state else None,
         "engine_kwargs": engine_kwargs,
     })
     print(f"Evolving {len(operator_slots)} operator slots: {', '.join(operator_slots)}")
@@ -339,7 +432,9 @@ def run_evolution(
         max_concurrent_jobs=max_concurrent_jobs,
         repo_root=repo_root,
         use_cache=use_cache,
+        target_noise=target_noise,
         wall_limit=fullsr_wall_limit,
+        eval_noise_levels=eval_noise_levels,
     )
     evaluator.split_label = Path(split).stem if split else None
 
@@ -359,7 +454,7 @@ def run_evolution(
     if val_split:
         val_dataset_names = load_dataset_names_from_split(val_split)
         val_noise_map = None
-        if random_target_noise:
+        if random_target_noise and not eval_all_noise_levels:
             val_noise_map = _build_target_noise_map(val_dataset_names, seed, TARGET_NOISE_LEVELS)
         val_state.update({
             "enabled": True,
@@ -373,7 +468,9 @@ def run_evolution(
         )
 
     def _run_val_eval(bundle: SkeletonBundle, gen_submitted: int) -> Dict[str, Any]:
-        config = _bundle_to_config(bundle, engine_kwargs)
+        val_engine_kwargs = dict(engine_kwargs)
+        val_engine_kwargs["timeout_in_seconds"] = val_fullsr_timeout
+        config = _bundle_to_config(bundle, val_engine_kwargs)
         results = evaluator.evaluate_configs(
             [config],
             val_state["dataset_names"],
@@ -381,6 +478,7 @@ def run_evolution(
             n_runs=val_n_runs,
             target_noise_map=val_state["noise_map"],
             fitness_metric=fitness_metric,
+            fullsr_wall_limit=val_fullsr_wall_limit,
         )
         avg, vec, details = results[0] if results else (-1.0, [], [])
         return {
@@ -431,146 +529,283 @@ def run_evolution(
         )
         print(f"\n[val eval] submitted for gen {gen} best={bundle.display_name} (background)")
 
-    # ─── Baseline (seed bundle from SRConfig.jl) ───────────────────────
-    baseline = SkeletonBundle.from_default_sr_config()
-    baseline_config = _bundle_to_config(baseline, engine_kwargs)
-    print("=" * 60)
-    print("Evaluating baseline (SRConfig.jl == BasicSR)...")
-    print("=" * 60)
-    t0 = time.time()
-    baseline_result = evaluator.evaluate_configs(
-        [baseline_config],
-        dataset_names,
-        seed=seed,
-        n_runs=n_runs,
-        target_noise_map=target_noise_map,
-        fitness_metric=fitness_metric,
-    )[0]
-    baseline_score, baseline_vec, baseline_details = baseline_result
-    baseline.score = baseline_score
-    baseline.score_vector = baseline_vec
-    baseline.result_details = baseline_details
-    baseline.seeds_evaluated = n_runs
-    logger.log_baseline(baseline_score, baseline_vec)
-    print(
-        f"Baseline avg {fitness_metric}={baseline_score:.4f} "
-        f"{_format_solved_str(baseline_details)} (eval took {_fmt_elapsed(time.time() - t0)})"
-    )
-    if wandb_run is not None:
-        import wandb
-        wandb.log({"baseline_score": baseline_score, "generation": 0})
-
-    # ─── Initial population: baseline + LLM variants ───────────────────
-    print("\n" + "=" * 60)
-    print(f"Generating initial population (population_size={population_size})")
-    print("=" * 60)
-    population: List[SkeletonBundle] = []
-    # Slot 0 = baseline as-is.
-    population.append(baseline)
-
-    # Even-split slot assignment across the init pop (mirrors pysr's
-    # operator-type rotation): shuffle slots, rotate i % len, shuffle again.
-    n_init_slots = max(0, population_size - 1)
-    shuffled_slot_names = list(operator_slots)
-    rng.shuffle(shuffled_slot_names)
-    init_target_slots: List[str] = [
-        shuffled_slot_names[i % len(shuffled_slot_names)]
-        for i in range(n_init_slots)
-    ]
-    rng.shuffle(init_target_slots)
-
-    # Init mode: "explore" when --mutation-mode random, else honor the user's
-    # restriction. Crossover/refine/simplify need a non-baseline parent we
-    # don't have at gen 0 from another bundle, so they fall back to explore.
-    init_mode = "explore" if mutation_mode == "random" else mutation_mode
-    if init_mode in ("crossover",):
-        init_mode = "explore"
-
-    pending_init: List[Tuple[int, str, int]] = [
-        (bundle_idx + 1, slot_name, 0)  # bundle_idx + 1 because slot 0 = baseline
-        for bundle_idx, slot_name in enumerate(init_target_slots)
-    ]
-
-    print(f"Generating {len(pending_init)} initial-pop bundles (up to 3 attempts each)...")
-    while pending_init:
-        next_pending: List[Tuple[int, str, int]] = []
-        wave_specs: List[SkeletonGenerationSpec] = []
-        wave_meta: List[Tuple[int, str, int, SkeletonBundle, SkeletonFunction]] = []
-        for bundle_idx, slot_name, attempt in pending_init:
-            slot = SLOTS_BY_NAME[slot_name]
-            parent_fn = baseline.functions[slot_name]
-            spec = SkeletonGenerationSpec(
-                bundle=baseline,
-                slot=slot,
-                mode=init_mode,
-                parent_code=parent_fn.code if init_mode in ("refine", "simplify") else None,
-                model=model,
-                model_ensemble=model_ensemble,
-                variation_seed=bundle_idx * 100 + attempt,
-                temperature=temperature,
-                use_cache=use_cache,
-                reasoning_effort=reasoning_effort,
-                log_prompt_dir=prompts_log_dir,
-                log_generation=0,
-                full_file=full_file_diff,
-            )
-            wave_specs.append(spec)
-            wave_meta.append((bundle_idx, slot_name, attempt, baseline, parent_fn))
-
-        results = generate_skeleton_code_batch(
-            wave_specs,
-            max_workers=max(1, min(llm_max_workers, len(wave_specs))) if llm_max_workers > 0 else len(wave_specs),
+    # Fresh-seed reevaluation on the train split. This measures winner's curse
+    # without changing the live evolutionary score: run indices start far above
+    # the range used by normal evaluations, forcing distinct train/validation
+    # splits and cache identities.
+    TRAIN_REEVAL_SEED_OFFSET = 100_000
+    if n_runs + val_n_runs > TRAIN_REEVAL_SEED_OFFSET:
+        raise ValueError(
+            f"Train-reeval seed offset {TRAIN_REEVAL_SEED_OFFSET} would collide "
+            f"with the normal run-index range (n_runs={n_runs})"
         )
-        for spec, (bundle_idx, slot_name, attempt, parent_bundle, parent_fn), (
-            code, func_name, selected_model,
-        ) in zip(wave_specs, wave_meta, results):
-            new_bundle = _build_offspring(
-                code, func_name, selected_model, parent_bundle, parent_fn, spec,
-                generation=0, slot_idx=bundle_idx, log_dir=prompts_log_dir,
-            )
-            if new_bundle is not None:
-                population.append(new_bundle)
-                continue
-            next_attempt = attempt + 1
-            if next_attempt < 3:
-                next_pending.append((bundle_idx, slot_name, next_attempt))
-            else:
-                print(f"  init slot {bundle_idx}/{slot_name}: failed after 3 attempts")
-        pending_init = next_pending
+    train_reeval_state: Dict[str, Any] = {
+        "executor": ThreadPoolExecutor(max_workers=1, thread_name_prefix="train-reeval"),
+        "pending_future": None,
+        "last_bundle_name": None,
+    }
+    print(
+        f"Train reeval: enabled ({val_n_runs} runs/bundle, "
+        f"seed offset={TRAIN_REEVAL_SEED_OFFSET})"
+    )
 
-    print(f"\nInitial population: {len(population)} bundles")
+    def _run_train_reeval(
+        bundle: SkeletonBundle,
+        gen_submitted: int,
+        train_score_at_submit: Optional[float],
+    ) -> Dict[str, Any]:
+        config = _bundle_to_config(bundle, engine_kwargs)
+        results = evaluator.evaluate_configs(
+            [config],
+            dataset_names,
+            seed=seed,
+            n_runs=val_n_runs,
+            target_noise_map=target_noise_map,
+            fitness_metric=fitness_metric,
+            run_index_start_per_config=[TRAIN_REEVAL_SEED_OFFSET],
+        )
+        avg, vec, details = results[0] if results else (-1.0, [], [])
+        return {
+            "gen_submitted": gen_submitted,
+            "bundle_name": bundle.display_name,
+            "train_score_at_submit": train_score_at_submit,
+            "avg_score": avg,
+            "score_vector": vec,
+            "result_details": details,
+        }
 
-    # Evaluate initial population (skip baseline at index 0 — already scored).
-    to_score = [b for b in population[1:]]
-    if to_score:
-        print("Evaluating initial population...")
-        init_results = evaluator.evaluate_configs(
-            [_bundle_to_config(b, engine_kwargs) for b in to_score],
+    def _log_train_reeval_result(info: Dict[str, Any]) -> None:
+        avg = info["avg_score"]
+        live = info["train_score_at_submit"]
+        delta = (live - avg) if (live is not None and avg == avg) else None
+        solved_str = _format_solved_str(info["result_details"])
+        delta_str = f"{delta:+.4f}" if delta is not None else "n/a"
+        live_str = f"{live:.4f}" if live is not None else "n/a"
+        print(
+            f"\n[train reeval] gen {info['gen_submitted']} {info['bundle_name']}: "
+            f"reeval {fitness_metric}={avg:.4f} "
+            f"(live={live_str}, winners_curse={delta_str}) {solved_str}"
+        )
+        if wandb_run is not None:
+            import wandb
+            log = {
+                "val_eval/train_avg_score": avg,
+                "val_eval/train_reeval_gen_submitted": info["gen_submitted"],
+            }
+            if live is not None:
+                log["val_eval/train_score_at_submit"] = live
+            if delta is not None:
+                log["val_eval/train_winners_curse_delta"] = delta
+            wandb.log(log)
+
+    def _check_train_reeval_future(wait: bool = False) -> None:
+        fut = train_reeval_state["pending_future"]
+        if fut is None:
+            return
+        if not wait and not fut.done():
+            return
+        try:
+            info = fut.result()
+            _log_train_reeval_result(info)
+        except Exception as e:
+            print(f"\n[train reeval] failed: {e}")
+        train_reeval_state["pending_future"] = None
+
+    def _maybe_submit_train_reeval(bundle: SkeletonBundle, gen: int) -> None:
+        pending = train_reeval_state["pending_future"]
+        if pending is not None and not pending.done():
+            return
+        if bundle.display_name == train_reeval_state["last_bundle_name"]:
+            return
+        train_reeval_state["last_bundle_name"] = bundle.display_name
+        train_score_at_submit = bundle.score
+        train_reeval_state["pending_future"] = train_reeval_state["executor"].submit(
+            _run_train_reeval, bundle, gen, train_score_at_submit,
+        )
+        print(
+            f"\n[train reeval] submitted for gen {gen} "
+            f"best={bundle.display_name} (background)"
+        )
+
+    # ─── Baseline (seed bundle from SRConfig.jl) ───────────────────────
+    # On resume we reuse the baseline score recorded by the source run rather
+    # than re-evaluating it (the baseline is the same BasicSR seed bundle).
+    if resume_state is None:
+        baseline = SkeletonBundle.from_default_sr_config()
+        baseline_config = _bundle_to_config(baseline, engine_kwargs)
+        print("=" * 60)
+        print("Evaluating baseline (SRConfig.jl == BasicSR)...")
+        print("=" * 60)
+        t0 = time.time()
+        baseline_result = evaluator.evaluate_configs(
+            [baseline_config],
             dataset_names,
             seed=seed,
             n_runs=n_runs,
             target_noise_map=target_noise_map,
             fitness_metric=fitness_metric,
+        )[0]
+        baseline_score, baseline_vec, baseline_details = baseline_result
+        baseline.score = baseline_score
+        baseline.score_vector = baseline_vec
+        baseline.result_details = baseline_details
+        baseline.seeds_evaluated = n_runs
+        print(
+            f"Baseline avg {fitness_metric}={baseline_score:.4f} "
+            f"{_format_solved_str(baseline_details)} (eval took {_fmt_elapsed(time.time() - t0)})"
         )
-        for bundle, (avg, vec, details) in zip(to_score, init_results):
-            bundle.score = avg
-            bundle.score_vector = vec
-            bundle.result_details = details
-            bundle.seeds_evaluated = n_runs
-            print(f"  {avg:.4f} {bundle.display_name}: {_format_solved_str(details)}")
+    else:
+        baseline_score = resume_state["baseline_score"] or 0.0
+        baseline_vec = resume_state["baseline_vector"] or []
+        print("=" * 60)
+        print(
+            f"Resume: reusing baseline score {baseline_score:.4f} "
+            f"from {resume_state['source_path']}"
+        )
+        print("=" * 60)
+    logger.log_baseline(baseline_score, baseline_vec)
+    if wandb_run is not None:
+        import wandb
+        wandb.log({"baseline_score": baseline_score, "generation": 0})
 
-    population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
-    best = population[0]
-    print(f"\nBest initial bundle: {best.display_name} (score={best.score:.4f})")
-    _maybe_submit_val(best, gen=0)
+    # ─── Initial population: baseline + LLM variants ───────────────────
+    if resume_state is not None:
+        # Resume: reuse the source run's last-generation population instead of
+        # generating a fresh one. select_survivors is elitist, so the prior
+        # population already contains the all-time best bundle.
+        population = resume_state["population"]
+        population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
+        # Seed the logger with the prior history so run_data.json in the new dir
+        # is a full, continuous record across the resume boundary.
+        logger.run_data["generations"] = list(resume_state["prior_generations"])
+        if resume_state.get("prior_val_results"):
+            logger.run_data["val_results"] = dict(resume_state["prior_val_results"])
+        logger._save()
+        best = population[0]
+        start_gen = resume_state["start_gen"]
+        print("\n" + "=" * 60)
+        print(
+            f"Resuming: start_gen={start_gen}, population={len(population)}, "
+            f"prior_gens={len(resume_state['prior_generations'])}"
+        )
+        print(f"  Current best: {best.display_name} (score={best.score:.4f})")
+        print("=" * 60)
+        _maybe_submit_val(best, gen=start_gen - 1)
+        _maybe_submit_train_reeval(best, gen=start_gen - 1)
+    else:
+        print("\n" + "=" * 60)
+        print(f"Generating initial population (population_size={population_size})")
+        print("=" * 60)
+        population: List[SkeletonBundle] = []
+        # Slot 0 = baseline as-is.
+        population.append(baseline)
+
+        # Even-split slot assignment across the init pop (mirrors pysr's
+        # operator-type rotation): shuffle slots, rotate i % len, shuffle again.
+        n_init_slots = max(0, population_size - 1)
+        shuffled_slot_names = list(operator_slots)
+        rng.shuffle(shuffled_slot_names)
+        init_target_slots: List[str] = [
+            shuffled_slot_names[i % len(shuffled_slot_names)]
+            for i in range(n_init_slots)
+        ]
+        rng.shuffle(init_target_slots)
+
+        # Init mode: "explore" when --mutation-mode random, else honor the user's
+        # restriction. Crossover/refine/simplify need a non-baseline parent we
+        # don't have at gen 0 from another bundle, so they fall back to explore.
+        init_mode = "explore" if mutation_mode == "random" else mutation_mode
+        if init_mode in ("crossover",):
+            init_mode = "explore"
+
+        pending_init: List[Tuple[int, str, int]] = [
+            (bundle_idx + 1, slot_name, 0)  # bundle_idx + 1 because slot 0 = baseline
+            for bundle_idx, slot_name in enumerate(init_target_slots)
+        ]
+
+        print(f"Generating {len(pending_init)} initial-pop bundles (up to 3 attempts each)...")
+        while pending_init:
+            next_pending: List[Tuple[int, str, int]] = []
+            wave_specs: List[SkeletonGenerationSpec] = []
+            wave_meta: List[Tuple[int, str, int, SkeletonBundle, SkeletonFunction]] = []
+            for bundle_idx, slot_name, attempt in pending_init:
+                slot = SLOTS_BY_NAME[slot_name]
+                parent_fn = baseline.functions[slot_name]
+                spec = SkeletonGenerationSpec(
+                    bundle=baseline,
+                    slot=slot,
+                    mode=init_mode,
+                    parent_code=parent_fn.code if init_mode in ("refine", "simplify") else None,
+                    model=model,
+                    model_ensemble=model_ensemble,
+                    variation_seed=bundle_idx * 100 + attempt,
+                    temperature=temperature,
+                    use_cache=use_cache,
+                    reasoning_effort=reasoning_effort,
+                    log_prompt_dir=prompts_log_dir,
+                    log_generation=0,
+                    full_file=full_file_diff,
+                )
+                wave_specs.append(spec)
+                wave_meta.append((bundle_idx, slot_name, attempt, baseline, parent_fn))
+
+            results = generate_skeleton_code_batch(
+                wave_specs,
+                max_workers=max(1, min(llm_max_workers, len(wave_specs))) if llm_max_workers > 0 else len(wave_specs),
+            )
+            for spec, (bundle_idx, slot_name, attempt, parent_bundle, parent_fn), (
+                code, func_name, selected_model,
+            ) in zip(wave_specs, wave_meta, results):
+                new_bundle = _build_offspring(
+                    code, func_name, selected_model, parent_bundle, parent_fn, spec,
+                    generation=0, slot_idx=bundle_idx, log_dir=prompts_log_dir,
+                )
+                if new_bundle is not None:
+                    population.append(new_bundle)
+                    continue
+                next_attempt = attempt + 1
+                if next_attempt < 3:
+                    next_pending.append((bundle_idx, slot_name, next_attempt))
+                else:
+                    print(f"  init slot {bundle_idx}/{slot_name}: failed after 3 attempts")
+            pending_init = next_pending
+
+        print(f"\nInitial population: {len(population)} bundles")
+
+        # Evaluate initial population (skip baseline at index 0 — already scored).
+        to_score = [b for b in population[1:]]
+        if to_score:
+            print("Evaluating initial population...")
+            init_results = evaluator.evaluate_configs(
+                [_bundle_to_config(b, engine_kwargs) for b in to_score],
+                dataset_names,
+                seed=seed,
+                n_runs=n_runs,
+                target_noise_map=target_noise_map,
+                fitness_metric=fitness_metric,
+            )
+            for bundle, (avg, vec, details) in zip(to_score, init_results):
+                bundle.score = avg
+                bundle.score_vector = vec
+                bundle.result_details = details
+                bundle.seeds_evaluated = n_runs
+                print(f"  {avg:.4f} {bundle.display_name}: {_format_solved_str(details)}")
+
+        population.sort(key=lambda b: b.score if b.score is not None else -1, reverse=True)
+        best = population[0]
+        print(f"\nBest initial bundle: {best.display_name} (score={best.score:.4f})")
+        _maybe_submit_val(best, gen=0)
+        _maybe_submit_train_reeval(best, gen=0)
+        start_gen = 1
 
     # ─── Per-generation loop ───────────────────────────────────────────
-    for gen in range(1, n_generations + 1):
+    for gen in range(start_gen, start_gen + n_generations):
         gen_start = time.time()
         print("\n" + "=" * 60)
-        print(f"Generation {gen}/{n_generations}")
+        print(f"Generation {gen}/{start_gen + n_generations - 1}")
         print("=" * 60)
         _check_val_future(wait=False)
+        _check_train_reeval_future(wait=False)
 
         # Even-split slot assignment across the offspring batch.
         shuffled_slot_names = list(operator_slots)
@@ -693,10 +928,11 @@ def run_evolution(
         )
         logger.log_generation(gen, population, offspring, best)
         _maybe_submit_val(best, gen=gen)
+        _maybe_submit_train_reeval(best, gen=gen)
 
         if wandb_run is not None:
             import wandb
-            wandb.log({
+            log_data = {
                 "generation": gen,
                 "best_score": best.score,
                 "improvement_over_baseline": best.score - baseline_score,
@@ -705,13 +941,22 @@ def run_evolution(
                     np.mean([b.score for b in population if b.score is not None])
                 ) if population else 0.0,
                 "n_offspring_evaluated": len(offspring),
-            })
+            }
+            offspring_scores = [b.score for b in offspring if b.score is not None]
+            if offspring_scores:
+                log_data["avg_offspring_score"] = float(np.mean(offspring_scores))
+            wandb.log(log_data)
             log_cpu_usage(wandb_run)
 
     # Drain any in-flight val eval before reporting.
     _check_val_future(wait=True)
     if val_state["executor"] is not None:
         val_state["executor"].shutdown(wait=True)
+
+    if train_reeval_state["pending_future"] is not None:
+        print("\nWaiting for pending train reeval to complete...")
+    _check_train_reeval_future(wait=True)
+    train_reeval_state["executor"].shutdown(wait=True)
 
     logger.finalize(best)
     print("\n" + "=" * 60)
@@ -878,13 +1123,39 @@ def main():
             f"{', '.join(ALL_SLOT_NAMES)}."
         ),
     )
-    parser.add_argument(
+    noise_group = parser.add_mutually_exclusive_group()
+    noise_group.add_argument(
         "--random-target-noise",
         action="store_true",
         help=(
             "Assign each dataset a deterministic target-noise level (seeded) "
             "drawn from the standard sweep, instead of running noise-free. "
             "Train and val splits get independent per-dataset maps."
+        ),
+    )
+    noise_group.add_argument(
+        "--no-random-target-noise",
+        dest="random_target_noise",
+        action="store_false",
+        help="Disable deterministic per-dataset random target noise.",
+    )
+    parser.set_defaults(random_target_noise=False)
+    parser.add_argument(
+        "--target-noise",
+        type=float,
+        default=0.0,
+        help=(
+            "Fixed target-noise level for every dataset. A per-dataset map from "
+            "--random-target-noise overrides this value."
+        ),
+    )
+    parser.add_argument(
+        "--eval-all-noise-levels",
+        action="store_true",
+        help=(
+            f"Evaluate every task at all target-noise levels {TARGET_NOISE_LEVELS} "
+            "and average across levels. Overrides --random-target-noise and "
+            "--target-noise."
         ),
     )
     parser.add_argument(
@@ -900,7 +1171,30 @@ def main():
     # number of data points when running PySR on each dataset
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--max-evals", type=int, default=1_000_000)
-    parser.add_argument("--fullsr-wall-limit", type=int, default=600)
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=500,
+        help="SkeletonSR soft internal timeout in seconds; checked between search steps.",
+    )
+    parser.add_argument(
+        "--fullsr-wall-limit",
+        type=int,
+        default=600,
+        help="Hard wall-clock limit for each train FullSR task in seconds.",
+    )
+    parser.add_argument(
+        "--val-fullsr-wall-limit",
+        type=int,
+        default=1800,
+        help="Hard wall-clock limit for each held-out validation FullSR task.",
+    )
+    parser.add_argument(
+        "--val-fullsr-timeout",
+        type=int,
+        default=1500,
+        help="SkeletonSR soft internal timeout for held-out validation tasks.",
+    )
 
     parser.add_argument("--model", type=str, default=None)
     parser.add_argument(
@@ -932,8 +1226,37 @@ def main():
     )
     parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument(
+        "--continue-from",
+        type=str,
+        default=None,
+        help=(
+            "Path to a prior evolve_fullsr run dir (or its run_data.json) to "
+            "resume from. Evolution continues in a NEW --output-dir: the last "
+            "generation's population and the stored baseline are restored, and "
+            "--generations runs that many ADDITIONAL generations. The new "
+            "run_data.json carries the prior generations so it stays a full "
+            "record. (Runs created with --full-file-diff lose their raw module "
+            "bodies on resume; bundles are rebuilt from per-slot functions.)"
+        ),
+    )
 
     args = parser.parse_args()
+
+    if args.target_noise < 0:
+        parser.error("--target-noise must be >= 0")
+    if args.timeout <= 0 or args.fullsr_wall_limit <= 0:
+        parser.error("--timeout and --fullsr-wall-limit must both be > 0")
+    if args.timeout >= args.fullsr_wall_limit:
+        parser.error("--timeout must be less than --fullsr-wall-limit")
+    if args.val_fullsr_timeout <= 0 or args.val_fullsr_wall_limit <= 0:
+        parser.error(
+            "--val-fullsr-timeout and --val-fullsr-wall-limit must both be > 0"
+        )
+    if args.val_fullsr_timeout >= args.val_fullsr_wall_limit:
+        parser.error(
+            "--val-fullsr-timeout must be less than --val-fullsr-wall-limit"
+        )
 
     # Resolve --operator-type into a concrete list of slot names.
     if args.operator_type == "all":
@@ -948,6 +1271,29 @@ def main():
                 )
         if not operator_slots:
             parser.error("--operator-type resolved to an empty slot list")
+
+    # Load resume state if continuing from a prior run.
+    resume_state = None
+    if args.continue_from:
+        resume_state = load_resume_state(args.continue_from)
+        prior_slots = resume_state["prior_config"].get("operator_slots", [])
+        if prior_slots and list(prior_slots) != list(operator_slots):
+            print(
+                f"WARNING: operator slots differ from prior run: "
+                f"prior={prior_slots}, now={operator_slots}"
+            )
+        if resume_state["prior_config"].get("full_file_diff") and not args.full_file_diff:
+            print(
+                "  NOTE: source run used --full-file-diff; resumed bundles are "
+                "rebuilt from per-slot functions (raw module bodies are not "
+                "persisted in run_data.json)."
+            )
+        print(
+            f"Resuming from {resume_state['source_path']}: "
+            f"start_gen={resume_state['start_gen']}, "
+            f"prior_gens={len(resume_state['prior_generations'])}, "
+            f"pop={len(resume_state['population'])}"
+        )
 
     label = "evolve_fullsr" + ("_diff" if args.full_file_diff else "")
     args.output_dir = resolve_run_dir(args.output_dir, label=label)
@@ -998,7 +1344,10 @@ def main():
         "val_split": args.val_split,
         "max_samples": args.max_samples,
         "max_evals": args.max_evals,
+        "timeout": args.timeout,
         "fullsr_wall_limit": args.fullsr_wall_limit,
+        "val_fullsr_wall_limit": args.val_fullsr_wall_limit,
+        "val_fullsr_timeout": args.val_fullsr_timeout,
         "model": args.model,
         "models": args.models,
         "temperature": args.temperature,
@@ -1007,9 +1356,12 @@ def main():
         "no_cache": args.no_cache,
         "mutation_mode": args.mutation_mode,
         "operator_type": args.operator_type,
+        "target_noise": args.target_noise,
         "random_target_noise": args.random_target_noise,
+        "eval_all_noise_levels": args.eval_all_noise_levels,
         "full_file_diff": args.full_file_diff,
         "fitness_metric": args.fitness_metric,
+        "continue_from": args.continue_from,
     }
     wandb_run = init_wandb(
         config=wandb_config,
@@ -1029,7 +1381,10 @@ def main():
         val_n_runs=args.val_n_runs,
         max_samples=args.max_samples,
         max_evals=args.max_evals,
+        timeout=args.timeout,
         fullsr_wall_limit=args.fullsr_wall_limit,
+        val_fullsr_wall_limit=args.val_fullsr_wall_limit,
+        val_fullsr_timeout=args.val_fullsr_timeout,
         output_dir=args.output_dir,
         model=args.model,
         temperature=args.temperature,
@@ -1046,9 +1401,12 @@ def main():
         fitness_metric=args.fitness_metric,
         mutation_mode=args.mutation_mode,
         operator_slots=operator_slots,
+        target_noise=args.target_noise,
         random_target_noise=args.random_target_noise,
+        eval_all_noise_levels=args.eval_all_noise_levels,
         full_file_diff=args.full_file_diff,
         wandb_run=wandb_run,
+        resume_state=resume_state,
     )
 
     log_wandb_summary(

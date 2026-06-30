@@ -99,6 +99,7 @@ class FullSRTaskResult:
     timed_out: bool = False
     runtime_seconds: float = 0.0
     n_evals: Optional[int] = None
+    target_noise: float = 0.0
 
     def to_json_dict(self) -> Dict:
         return asdict(self)
@@ -109,6 +110,7 @@ class FullSRTaskResult:
         d.setdefault("timed_out", False)
         d.setdefault("runtime_seconds", 0.0)
         d.setdefault("n_evals", None)
+        d.setdefault("target_noise", 0.0)
         return cls(**d)
 
 
@@ -153,6 +155,8 @@ def _coerce_engine_kwargs_for_julia(engine_kwargs: Dict[str, Any]) -> Dict[str, 
     # None instead of `nothing`).
     if out.get("max_evals") is None:
         out.pop("max_evals", None)
+    if out.get("timeout_in_seconds") is None:
+        out.pop("timeout_in_seconds", None)
     return out
 
 
@@ -512,6 +516,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             run_index=spec.run_index,
             runtime_seconds=float(_time.time() - start_time),
             n_evals=n_evals,
+            target_noise=spec.target_noise,
         )
     except Exception as e:
         return FullSRTaskResult(
@@ -525,6 +530,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             run_index=spec.run_index,
             runtime_seconds=float(_time.time() - start_time),
             n_evals=None,
+            target_noise=spec.target_noise,
         )
 
 
@@ -560,6 +566,7 @@ def _aggregate_fullsr_results(
                     for r in runs_sorted
                 ]
                 best_eqs = [r.best_equation for r in runs_sorted]
+                target_noises = [r.target_noise for r in runs_sorted]
                 scores = gts if fitness_metric == "gt" else r2s
                 score_vector.append(float(np.mean(scores)))
                 evals = [r.n_evals for r in runs_sorted if r.n_evals is not None]
@@ -573,6 +580,7 @@ def _aggregate_fullsr_results(
                         "run_gt_scores": gts,
                         "run_losses": losses,
                         "run_best_equations": best_eqs,
+                        "run_target_noises": target_noises,
                         "best_equations": [eq for eq in best_eqs if eq],
                         "errors": [r.error for r in runs_sorted if r.error] or None,
                     }
@@ -589,6 +597,7 @@ def _aggregate_fullsr_results(
                         "run_gt_scores": [],
                         "run_losses": [],
                         "run_best_equations": [],
+                        "run_target_noises": [],
                         "best_equations": [],
                         "errors": ["No results found"],
                     }
@@ -635,6 +644,7 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         warm_start: bool = True,
         warm_start_timeout: Optional[float] = None,
         wall_limit: int = 600,
+        eval_noise_levels: Optional[List[float]] = None,
         repo_root: Optional[str] = None,
     ):
         super().__init__(
@@ -658,6 +668,7 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         self.warm_start = warm_start
         self.warm_start_timeout = warm_start_timeout
         self.wall_limit = wall_limit
+        self.eval_noise_levels = list(eval_noise_levels) if eval_noise_levels else None
         self.repo_root = (
             Path(repo_root).resolve() if repo_root else Path(__file__).resolve().parent
         )
@@ -671,6 +682,8 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         n_runs: int = 1,
         target_noise_map: Optional[Dict[str, float]] = None,
         fitness_metric: str = "r2",
+        run_index_start_per_config: Optional[List[int]] = None,
+        fullsr_wall_limit: Optional[int] = None,
     ) -> List[Tuple[float, List[float], List[Dict]]]:
         import time as _time_mod
 
@@ -680,35 +693,54 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
 
         tasks: List[FullSRTaskSpec] = []
         for config_id, config in enumerate(configs):
+            run_start = (
+                run_index_start_per_config[config_id]
+                if run_index_start_per_config is not None
+                else 0
+            )
             for dataset_name in dataset_names:
-                noise = (
-                    target_noise_map.get(dataset_name, self.target_noise)
-                    if target_noise_map
-                    else self.target_noise
-                )
-                for run_idx in range(n_runs):
-                    tasks.append(
-                        FullSRTaskSpec(
-                            config_id=config_id,
-                            dataset_name=dataset_name,
-                            policy_name=config.policy_name,
-                            engine_kwargs=config.engine_kwargs,
-                            seed=seed,
-                            data_seed=self.data_seed,
-                            max_samples=self.dataset_max_samples,
-                            run_index=run_idx,
-                            target_noise=noise,
-                            fitness_metric=fitness_metric,
-                            policy_code=config.policy_code,
-                            policy_module_code=config.policy_module_code,
-                            wall_limit=self.wall_limit,
+                if self.eval_noise_levels:
+                    noise_levels = self.eval_noise_levels
+                else:
+                    noise_levels = [
+                        target_noise_map.get(dataset_name, self.target_noise)
+                        if target_noise_map
+                        else self.target_noise
+                    ]
+                for local_run_idx in range(n_runs):
+                    run_idx = run_start + local_run_idx
+                    for noise in noise_levels:
+                        tasks.append(
+                            FullSRTaskSpec(
+                                config_id=config_id,
+                                dataset_name=dataset_name,
+                                policy_name=config.policy_name,
+                                engine_kwargs=config.engine_kwargs,
+                                seed=seed,
+                                data_seed=self.data_seed,
+                                max_samples=self.dataset_max_samples,
+                                run_index=run_idx,
+                                target_noise=noise,
+                                fitness_metric=fitness_metric,
+                                policy_code=config.policy_code,
+                                policy_module_code=config.policy_module_code,
+                                wall_limit=(
+                                    fullsr_wall_limit
+                                    if fullsr_wall_limit is not None
+                                    else self.wall_limit
+                                ),
+                            )
                         )
-                    )
 
         n_tasks = len(tasks)
         print(
             f"  FullSR SLURM eval: {n_tasks} tasks "
-            f"({len(configs)} configs x {len(dataset_names)} datasets x {n_runs} runs)"
+            f"({len(configs)} configs x {len(dataset_names)} datasets x {n_runs} runs"
+            + (
+                f" x {len(self.eval_noise_levels)} noise levels)"
+                if self.eval_noise_levels
+                else ")"
+            )
         )
 
         tasks_file = batch_dir / "tasks.json"
