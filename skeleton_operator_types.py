@@ -547,6 +547,20 @@ def _slot_explanation(slot: SkeletonSlot) -> str:
     )
 
 
+def _slot_specific_design_guidance(slot: SkeletonSlot) -> str:
+    """Optional design guidance injected only into the relevant slot prompts."""
+    if slot.name != "mutation":
+        return ""
+    return (
+        "## Mutation-specific design guidance\n"
+        "Rather than implementing mutation as a single novel operation, consider "
+        "a portfolio mutation that randomly routes among multiple mutation "
+        "strategies. This can combine novel, high-upside transformations with "
+        "safer fallback mutations. Choose and document custom sampling weights "
+        "for the strategies so their relative likelihoods are deliberate.\n\n"
+    )
+
+
 @lru_cache(maxsize=1)
 def _importable_symbols() -> Tuple[str, ...]:
     """Exact names importable inside the SRConfig module.
@@ -639,6 +653,7 @@ def build_explore_prompt(slot: SkeletonSlot, bundle: SkeletonBundle) -> str:
         "## Task\n"
         f"Propose a NEW implementation of the `{slot.name}` function from scratch. "
         "Be creative — explore new ideas to come up with an effective variant.\n\n"
+        f"{_slot_specific_design_guidance(slot)}"
         "## Requirements\n"
         f"{reqs}\n"
     )
@@ -656,6 +671,7 @@ def build_refine_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_code:
         "## Task\n"
         f"REFINE the parent `{slot.name}` above. Keep its core idea but improve "
         "the implementation, or generate a variant that improves on the parent.\n\n"
+        f"{_slot_specific_design_guidance(slot)}"
         "## Requirements\n"
         f"{reqs}\n"
     )
@@ -678,6 +694,7 @@ def build_simplify_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_cod
         "important three or four. The goal is to maintain performance while "
         "simplifying the function.\n"
         "Explain in the docstring what was removed and why.\n\n"
+        f"{_slot_specific_design_guidance(slot)}"
         "## Requirements\n"
         f"{reqs}\n"
     )
@@ -702,6 +719,7 @@ def build_crossover_prompt(
         "## Task\n"
         f"CROSSOVER the two parents above into a NEW `{slot.name}` that combines "
         "the functions into a new one.\n\n"
+        f"{_slot_specific_design_guidance(slot)}"
         "## Requirements\n"
         f"{reqs}\n"
     )
@@ -749,6 +767,7 @@ def build_full_file_prompt(
         f"{context}\n\n"
         "## Task\n"
         f"{focus}\n\n"
+        f"{_slot_specific_design_guidance(slot)}"
         "Return the COMPLETE body of an updated SRConfig module (i.e. everything "
         "that goes between `module SRConfig` and the closing `end`, NOT including "
         "those two lines). The body must:\n"
