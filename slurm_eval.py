@@ -66,6 +66,22 @@ def _normalize_slurm_state(raw: str) -> str:
     return raw.split()[0].rstrip('+')
 
 
+def _slurm_cli_env() -> Dict[str, str]:
+    """Env for SLURM CLI subprocesses.
+
+    Some interactive environments export `SLURM_CONF` pointing to a path that
+    does not exist on login/submit hosts; SLURM CLIs then fail outright. Drop
+    it so they fall back to compiled/default config discovery. Shared by the
+    evaluator methods and the module-level exit-cleanup path so both behave
+    identically.
+    """
+    env = os.environ.copy()
+    slurm_conf = env.get("SLURM_CONF")
+    if slurm_conf and not Path(slurm_conf).exists():
+        env.pop("SLURM_CONF", None)
+    return env
+
+
 def _cancel_tracked_jobs(reason: str = "driver exiting") -> None:
     with _ACTIVE_JOB_IDS_LOCK:
         jobs = sorted(_ACTIVE_JOB_IDS)
@@ -82,6 +98,7 @@ def _cancel_tracked_jobs(reason: str = "driver exiting") -> None:
             capture_output=True,
             text=True,
             timeout=30,
+            env=_slurm_cli_env(),
         )
     except Exception as e:
         print(f"  WARNING: scancel failed: {e}", flush=True)
@@ -409,17 +426,42 @@ class BaseSlurmEvaluator(ABC):
         return states[0]
 
     def _get_slurm_env(self) -> Dict[str, str]:
-        """Return subprocess env for SLURM commands.
+        """Return subprocess env for SLURM commands (see _slurm_cli_env)."""
+        return _slurm_cli_env()
 
-        Some interactive environments export `SLURM_CONF` pointing to a path
-        that does not exist on login/submit hosts. In that case, unset it so
-        SLURM CLI falls back to its compiled/default config discovery.
+    # A single UNKNOWN from _get_job_status can be a transient slurmctld
+    # hiccup (squeue/sacct timeout, empty output) rather than job completion.
+    # Treating it as terminal ends the wait early and triggers a retry round
+    # that deletes result files of still-running tasks. Require this many
+    # consecutive UNKNOWN polls per job before believing it.
+    UNKNOWN_TERMINAL_POLLS = 3
+
+    def _poll_jobs_terminal(
+        self,
+        job_ids: List[str],
+        unknown_streaks: Dict[str, int],
+    ) -> Tuple[bool, List[str]]:
+        """Poll job statuses; True when every job is genuinely terminal.
+
+        UNKNOWN counts as terminal only after UNKNOWN_TERMINAL_POLLS
+        consecutive UNKNOWN polls for that job (any other status resets the
+        streak). Genuine terminal states are honored immediately.
+        `unknown_streaks` is caller-owned state, one dict per wait loop.
         """
-        env = os.environ.copy()
-        slurm_conf = env.get("SLURM_CONF")
-        if slurm_conf and not Path(slurm_conf).exists():
-            env.pop("SLURM_CONF", None)
-        return env
+        statuses = []
+        all_terminal = True
+        for jid in job_ids:
+            s = self._get_job_status(jid)
+            statuses.append(s)
+            if s == 'UNKNOWN':
+                unknown_streaks[jid] = unknown_streaks.get(jid, 0) + 1
+                if unknown_streaks[jid] < self.UNKNOWN_TERMINAL_POLLS:
+                    all_terminal = False
+            else:
+                unknown_streaks[jid] = 0
+                if s not in TERMINAL_SLURM_STATES:
+                    all_terminal = False
+        return all_terminal, statuses
 
     def _wait_for_job(
         self,
@@ -455,6 +497,7 @@ class BaseSlurmEvaluator(ABC):
         last_progress_time = start_time
         poll_interval = 10
         first_check = True
+        unknown_streaks: Dict[str, int] = {}
 
         while True:
             # Count completed result files
@@ -509,10 +552,10 @@ class BaseSlurmEvaluator(ABC):
                 return False
 
             # Also check job status
-            job_status = self._get_job_status(job_id)
-            if job_status in TERMINAL_SLURM_STATES:
+            terminal, statuses = self._poll_jobs_terminal([job_id], unknown_streaks)
+            if terminal:
                 if completed < n_tasks:
-                    print(f"  WARNING: Job {job_id} ended with status {job_status} "
+                    print(f"  WARNING: Job {job_id} ended with status {statuses[0]} "
                           f"but only {completed}/{n_tasks} results found")
                 _untrack_job(job_id)
                 return True
@@ -525,36 +568,14 @@ class BaseSlurmEvaluator(ABC):
         n_tasks: int,
         batch_dir: Path,
         task_indices: List[int],
+        stall_timeout: Optional[float] = _UNSET,
+        job_timeout: Optional[float] = _UNSET,
     ):
         """Wait for retry job to complete."""
-        start_time = time.time()
-        last_completed = 0
-        poll_interval = 5  # Faster polling for retries
-
-        while True:
-            # Count completed result files for the specific task indices
-            results_dir = batch_dir / "results"
-            completed = sum(1 for i in task_indices if (results_dir / f"task_{i:06d}.json").exists())
-
-            if completed != last_completed:
-                elapsed = time.time() - start_time
-                print(f"    Retry progress: {completed}/{n_tasks} tasks complete ({elapsed:.0f}s elapsed)")
-                last_completed = completed
-
-            if completed >= n_tasks:
-                print(f"    Retry completed in {time.time() - start_time:.1f}s")
-                _untrack_job(job_id)
-                break
-
-            # Check job status
-            job_status = self._get_job_status(job_id)
-            if job_status in TERMINAL_SLURM_STATES:
-                if completed < n_tasks:
-                    print(f"    Retry job ended with status {job_status}, {completed}/{n_tasks} results")
-                _untrack_job(job_id)
-                break
-
-            time.sleep(poll_interval)
+        return self._wait_for_retry_jobs(
+            [job_id], n_tasks, batch_dir, task_indices,
+            stall_timeout=stall_timeout, job_timeout=job_timeout,
+        )
 
     def _wait_for_retry_jobs(
         self,
@@ -562,16 +583,27 @@ class BaseSlurmEvaluator(ABC):
         n_tasks: int,
         batch_dir: Path,
         task_indices: List[int],
+        stall_timeout: Optional[float] = _UNSET,
+        job_timeout: Optional[float] = _UNSET,
     ):
-        """Wait for multiple retry job arrays to complete."""
-        if len(job_ids) == 1:
-            return self._wait_for_retry_job(
-                job_ids[0], n_tasks, batch_dir, task_indices
-            )
+        """Wait for one or more retry job arrays to complete.
+
+        Guarded by the same stall/total watchdogs as the initial wait (per-call
+        overrides fall back to the instance settings): a retry array stuck
+        PENDING forever (drained partition, hold) must not block the driver
+        indefinitely. On expiry the retry jobs are cancelled and we return;
+        the caller's re-collect turns still-missing tasks into failures.
+        """
+        if stall_timeout is _UNSET:
+            stall_timeout = self.stall_timeout
+        if job_timeout is _UNSET:
+            job_timeout = self.job_timeout
 
         start_time = time.time()
         last_completed = 0
-        poll_interval = 5
+        last_progress_time = start_time
+        poll_interval = 5  # Faster polling for retries
+        unknown_streaks: Dict[str, int] = {}
 
         while True:
             results_dir = batch_dir / "results"
@@ -580,13 +612,15 @@ class BaseSlurmEvaluator(ABC):
                 if (results_dir / f"task_{i:06d}.json").exists()
             )
 
+            now = time.time()
             if completed != last_completed:
-                elapsed = time.time() - start_time
+                elapsed = now - start_time
                 print(
                     f"    Retry progress: {completed}/{n_tasks} tasks complete "
                     f"({elapsed:.0f}s elapsed)"
                 )
                 last_completed = completed
+                last_progress_time = now
 
             if completed >= n_tasks:
                 print(f"    Retry completed in {time.time() - start_time:.1f}s")
@@ -594,8 +628,30 @@ class BaseSlurmEvaluator(ABC):
                     _untrack_job(jid)
                 break
 
-            statuses = [self._get_job_status(jid) for jid in job_ids]
-            if all(s in TERMINAL_SLURM_STATES for s in statuses):
+            if job_timeout is not None and (now - start_time) > job_timeout:
+                print(
+                    f"    RETRY TIMEOUT: jobs {job_ids} exceeded "
+                    f"{job_timeout:.0f}s ({completed}/{n_tasks} results); cancelling"
+                )
+                for jid in job_ids:
+                    self._cancel_job(jid)
+                break
+
+            if (
+                stall_timeout is not None
+                and (now - last_progress_time) > stall_timeout
+            ):
+                print(
+                    f"    RETRY STALL: jobs {job_ids} made no progress for "
+                    f"{now - last_progress_time:.0f}s "
+                    f"({completed}/{n_tasks} results); cancelling"
+                )
+                for jid in job_ids:
+                    self._cancel_job(jid)
+                break
+
+            terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
+            if terminal:
                 if completed < n_tasks:
                     print(
                         f"    Retry jobs ended with statuses={statuses}, "

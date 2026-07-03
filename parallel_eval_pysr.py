@@ -12,7 +12,9 @@ import os
 import sys
 import json
 import importlib
+import math
 import re
+import shutil
 import tempfile
 import time
 import traceback
@@ -21,13 +23,26 @@ from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, asdict, field, replace
 from pathlib import Path
 
-from slurm_eval import BaseSlurmEvaluator, TERMINAL_SLURM_STATES, init_worker, _untrack_job
+from slurm_eval import (
+    BaseSlurmEvaluator, TERMINAL_SLURM_STATES, init_worker, _untrack_job, _UNSET,
+)
 from julia_env import (
+    julia_load_operator,
     clear_future_mtime_pidfiles,
     clear_stale_juliapkg_lock,
     configure_juliapkg_project,
     _redirect_fds_to_file,
 )
+
+# Generous queue margin added on top of a batch's per-fit wall limit when
+# flooring the driver watchdogs. A task can wait in the SLURM queue and pay
+# Julia/PySR compile time before writing its first result, so a fixed 300s
+# stall floor would cancel a healthy array (each fit self-terminates via its
+# own SIGALRM, so being generous here is safe). Mirrors parallel_eval_fullsr.
+_WATCHDOG_MARGIN_S = 900
+# Smaller margin used when scaling the SLURM --time up to cover a batch whose
+# effective per-fit wall limit exceeds the configured --time.
+_SLURM_TIME_MARGIN_S = 300
 
 
 _TRANSIENT_PYSR_ERROR_SNIPPETS = (
@@ -119,6 +134,20 @@ def _classify_pysr_error(error_msg: Optional[str]) -> str:
 def _has_usable_pysr_cached_result(cached: Optional[Dict[str, Any]]) -> bool:
     """Return True when a cache entry is complete enough to reuse."""
     return cached is not None and cached.get("gt_match_score") is not None
+
+
+def _spec_expects_execution_trace(task: "PySRTaskSpec") -> bool:
+    """True when a HOF execution trace is expected on disk for this spec.
+
+    hof_n_steps>0 requests checkpoints, but with neither an eval budget
+    (max_evals) nor a time budget (timeout_in_seconds) the milestone list is
+    empty (see _evaluate_pysr_task), so no trace is ever written. Such specs
+    are trace-exempt; otherwise the trace cache gate would re-run them forever.
+    """
+    if task.hof_n_steps <= 0:
+        return False
+    pk = task.pysr_kwargs or {}
+    return pk.get("max_evals") is not None or pk.get("timeout_in_seconds") is not None
 
 
 # =============================================================================
@@ -342,6 +371,7 @@ def _build_pysr_cache_entry(
         "error": result.error,
         "timed_out": result.timed_out,
         "runtime_seconds": result.runtime_seconds,
+        "num_evaluations": result.num_evaluations,
         "execution_trace_json": execution_trace_json,
     }
 
@@ -413,7 +443,7 @@ def _lookup_cached_level(
         hof_n_steps=hof_n_steps,
     )
     cached_has_required_trace = (
-        task.hof_n_steps <= 0
+        not _spec_expects_execution_trace(task)
         or (cached is not None and bool(cached.get("execution_trace")))
     )
     cached_has_required_r2c = (
@@ -445,7 +475,7 @@ def _lookup_cached_level(
         "error": cached["error"],
         "timed_out": cached.get("timed_out", False),
         "runtime_seconds": cached.get("runtime_seconds", 0.0),
-        "num_evaluations": None,
+        "num_evaluations": cached.get("num_evaluations"),
         "execution_trace": cached.get("execution_trace"),
     }
 
@@ -640,8 +670,7 @@ def _load_dynamic_selection(custom_selection_code: str) -> None:
         raise ValueError("Could not extract function name from selection code")
     name = match.group(1)
 
-    escaped_code = custom_selection_code.replace('"""', '\\"\\"\\"')
-    jl.seval(f'load_selection_from_string!(:{name}, raw"""{escaped_code}""")')
+    julia_load_operator(jl, "load_selection_from_string!", name, custom_selection_code)
 
 
 def _load_dynamic_survival(custom_survival_code: str) -> None:
@@ -666,8 +695,7 @@ def _load_dynamic_survival(custom_survival_code: str) -> None:
         raise ValueError("Could not extract function name from survival code")
     name = match.group(1)
 
-    escaped_code = custom_survival_code.replace('"""', '\\"\\"\\"')
-    jl.seval(f'load_survival_from_string!(:{name}, raw"""{escaped_code}""")')
+    julia_load_operator(jl, "load_survival_from_string!", name, custom_survival_code)
 
 
 def _load_dynamic_loss(custom_loss_code: str) -> None:
@@ -692,8 +720,7 @@ def _load_dynamic_loss(custom_loss_code: str) -> None:
         raise ValueError("Could not extract function name from loss code")
     name = match.group(1)
 
-    escaped_code = custom_loss_code.replace('"""', '\\"\\"\\"')
-    jl.seval(f'load_loss_from_string!(:{name}, raw"""{escaped_code}""")')
+    julia_load_operator(jl, "load_loss_from_string!", name, custom_loss_code)
 
 
 def _load_dynamic_mutations(custom_mutation_code: Dict[str, str]) -> None:
@@ -725,10 +752,7 @@ def _load_dynamic_mutations(custom_mutation_code: Dict[str, str]) -> None:
             print(f"WARNING: More than 5 mutations provided, only first 5 will be used", flush=True)
             break
 
-        # Use triple-quoted raw string to handle multiline code with special chars
-        # raw"..." doesn't interpolate $, but we still need to escape the delimiter
-        escaped_code = code.replace('"""', '\\"\\"\\"')
-        jl.seval(f'load_mutation_from_string!(:{name}, raw"""{escaped_code}""")')
+        julia_load_operator(jl, "load_mutation_from_string!", name, code)
 
         # CRITICAL: Map the slot to the actual mutation name
         # This is what allows PySR to find and call the mutation!
@@ -1123,6 +1147,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 hof_csv_out = f"{root}_noise{tag}{ext}"
             else:
                 hof_csv_out = hof_csv_base
+            _tmp_output_dir = None
             try:
                 # Apply noise to a fresh copy of the training target (SRBench
                 # approach); the un-noised base is reused across levels.
@@ -1133,6 +1158,15 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     print(f"[{spec.dataset_name}] Applied target noise: {noise_level}", flush=True)
 
                 model = PySRRegressor(**model_kwargs)
+                # Redirect PySR's run output to a per-task temp dir so hof_n_steps=0
+                # fits don't leak a run dir under the shared "pysr_outputs" forever
+                # (the milestone path in run_pysr_with_hof_checkpoints overrides and
+                # cleans its own dir, so this only bites the no-milestone fit).
+                # Preserve an explicit caller override (any non-default value).
+                if getattr(model, "output_directory", None) in (None, "pysr_outputs"):
+                    _tmp_base = os.environ.get("TMPDIR") or None
+                    _tmp_output_dir = tempfile.mkdtemp(prefix="pysr_out_", dir=_tmp_base)
+                    model.output_directory = _tmp_output_dir
                 t3 = _time.time()
                 print(f"[{spec.dataset_name}] Starting PySR search (noise={noise_level}): "
                       f"{X_train.shape[0]} train samples, {n_features} features", flush=True)
@@ -1247,6 +1281,13 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     "num_evaluations": None,
                     "execution_trace": None,
                 }
+            finally:
+                # Best-effort cleanup of the per-task PySR output dir.
+                if _tmp_output_dir is not None and os.path.isdir(_tmp_output_dir):
+                    try:
+                        shutil.rmtree(_tmp_output_dir, ignore_errors=True)
+                    except Exception:
+                        pass
 
         level_dicts = [_run_one_noise(lvl) for lvl in noise_levels]
 
@@ -1480,6 +1521,11 @@ class PySRBatchHandle:
     submit_time: float = 0.0   # time.time() when tasks were first submitted
     operator_label: str = ""   # human-readable summary of configs for logging
     n_runs: int = 1
+    # Effective per-fit wall limit for this batch (val evals raise it above the
+    # evaluator default). Used to floor the wait watchdogs and to keep retries
+    # on the same, possibly-widened, SLURM --time.
+    pysr_wall_limit: int = 600
+    slurm_time_limit: Optional[str] = None
 
 
 def _scale_slurm_time(time_limit: str, factor: int) -> str:
@@ -1516,6 +1562,58 @@ def _scale_slurm_time(time_limit: str, factor: int) -> str:
         return f"{h2:02d}:{m2:02d}:{s2:02d}"
     except Exception:
         return time_limit
+
+
+def _slurm_time_to_seconds(time_limit: str) -> Optional[int]:
+    """Parse a SLURM --time string ("HH:MM:SS", "MM:SS", "MM", "D-HH:MM:SS")
+    into seconds. Returns None on any parse failure."""
+    try:
+        s = str(time_limit).strip()
+        days = 0
+        if "-" in s:
+            d, s = s.split("-", 1)
+            days = int(d)
+        parts = [int(p) for p in s.split(":")]
+        if len(parts) == 3:
+            h, m, sec = parts
+        elif len(parts) == 2:
+            h, m, sec = 0, parts[0], parts[1]
+        elif len(parts) == 1:
+            h, m, sec = 0, parts[0], 0  # bare minutes (SLURM convention)
+        else:
+            return None
+        return ((days * 24 + h) * 60 + m) * 60 + sec
+    except Exception:
+        return None
+
+
+def _seconds_to_slurm_time(total: int) -> str:
+    """Format seconds as a SLURM --time string (HH:MM:SS or D-HH:MM:SS)."""
+    total = max(0, int(total))
+    d, rem = divmod(total, 86400)
+    h, rem = divmod(rem, 3600)
+    m, s = divmod(rem, 60)
+    if d > 0:
+        return f"{d}-{h:02d}:{m:02d}:{s:02d}"
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _slurm_time_for_wall(base_time_limit: str, wall_limit: Optional[int]) -> str:
+    """SLURM --time covering `wall_limit` + margin, never below base_time_limit.
+
+    The evaluator-level base_time_limit is a floor. When a batch's effective
+    per-fit wall limit + margin exceeds it (e.g. val evals pass wall=1800 while
+    the default --time is 00:15:00), scale --time up (ceil to whole minutes) so
+    SLURM doesn't kill a fit mid-search.
+    """
+    if wall_limit is None:
+        return base_time_limit
+    needed_s = int(wall_limit) + _SLURM_TIME_MARGIN_S
+    base_s = _slurm_time_to_seconds(base_time_limit)
+    if base_s is not None and base_s >= needed_s:
+        return base_time_limit
+    minutes = int(math.ceil(needed_s / 60.0))
+    return _seconds_to_slurm_time(minutes * 60)
 
 
 class PySRSlurmEvaluator(BaseSlurmEvaluator):
@@ -1685,11 +1783,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         hof_csv_map: Optional[Dict[str, List[str]]] = None,
         pysr_wall_limit: Optional[int] = None,
     ) -> PySRBatchHandle:
-        import time as _time_mod
-        _bundle_submit_time = _time_mod.time()
-        # Resolve the shared juliapkg env once (single process) before fanning out
-        # to offline workers. See _ensure_julia_env_resolved for why.
-        self._ensure_julia_env_resolved()
         """
         Build task specs, pre-filter cache, and submit SLURM job(s) without waiting.
 
@@ -1706,7 +1799,15 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             hof_csv_map: Optional dict mapping dataset_name -> list of HOF CSV
                          file paths. When omitted, paths are derived automatically
                          as {self.hof_results_dir}/{dataset_name}_hof.csv.
+            pysr_wall_limit: Optional per-call override for the hard per-fit
+                             wall-clock limit (seconds). Falls back to the
+                             evaluator default when None.
         """
+        import time as _time_mod
+        _bundle_submit_time = _time_mod.time()
+        # Resolve the shared juliapkg env once (single process) before fanning out
+        # to offline workers. See _ensure_julia_env_resolved for why.
+        self._ensure_julia_env_resolved()
         batch_dir = self._new_batch_dir()
         results_subdir = batch_dir / "results"
         traces_batch_dir = Path(self.results_dir) / "traces" / batch_dir.name
@@ -1731,21 +1832,24 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                     noise = target_noise_map.get(dataset_name, self.target_noise) if target_noise_map else self.target_noise
                 for local_run_idx in range(n_runs):
                     run_idx = run_start + local_run_idx
-                    # Resolve HOF CSV paths. Prefer explicit map. Otherwise use a
-                    # per-spec path inside the batch dir so concurrent bundles/runs
-                    # on the same dataset don't share (and pollute) a single file.
+                    # Unique subdir per spec under <run_dir>/traces/<batch>/ so
+                    # concurrent bundles/runs on the same dataset don't share
+                    # (and pollute) a single {dataset}_hof.csv file.
+                    per_spec_dir = traces_batch_dir / f"config{config_id:03d}_run{run_idx:02d}"
+                    per_spec_hof_path = str(per_spec_dir / f"{dataset_name}_hof.csv")
+                    # Resolve HOF CSV paths. Prefer the explicit map, indexed by
+                    # the GLOBAL run_idx so different reeval rounds (nonzero
+                    # run_index_start) map to distinct HOF files. When the map is
+                    # shorter than n_runs, fall back to the per-spec path rather
+                    # than aliasing one path across concurrent runs.
                     if hof_csv_map is not None:
                         mapped_paths = hof_csv_map.get(dataset_name, [])
-                        if len(mapped_paths) > local_run_idx:
-                            hof_csv_paths = [mapped_paths[local_run_idx]]
+                        if len(mapped_paths) > run_idx:
+                            hof_csv_paths = [mapped_paths[run_idx]]
                         else:
-                            hof_csv_paths = list(mapped_paths)
+                            hof_csv_paths = [per_spec_hof_path]
                     else:
-                        # Unique subdir per spec under <run_dir>/traces/<batch>/ so
-                        # concurrent bundles/runs on the same dataset don't share
-                        # (and pollute) a single {dataset}_hof.csv file.
-                        per_spec_dir = traces_batch_dir / f"config{config_id:03d}_run{run_idx:02d}"
-                        hof_csv_paths = [str(per_spec_dir / f"{dataset_name}_hof.csv")]
+                        hof_csv_paths = [per_spec_hof_path]
                     tasks.append(PySRTaskSpec(
                         config_id=config_id,
                         dataset_name=dataset_name,
@@ -1823,7 +1927,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             hof_n_steps=hof_n_steps,
                         )
                         cached_has_required_trace = (
-                            task.hof_n_steps <= 0
+                            not _spec_expects_execution_trace(task)
                             or (cached is not None and bool(cached.get("execution_trace")))
                         )
                         # Frontier-avg R² is only present in entries written
@@ -1865,6 +1969,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                                 run_index=task.run_index,
                                 timed_out=cached.get("timed_out", False),
                                 runtime_seconds=cached.get("runtime_seconds", 0.0),
+                                num_evaluations=cached.get("num_evaluations"),
                                 execution_trace=execution_trace,
                             )
                             result_file = results_subdir / f"task_{task_idx:06d}.json"
@@ -1881,6 +1986,15 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
 
         self.total_sr_evals += n_tasks
         self.total_sr_cached += n_cached
+
+        # Effective per-fit wall limit for this batch and the SLURM --time that
+        # must cover it. The evaluator --time is a floor; when the batch wall
+        # (val evals pass a larger override) + margin exceeds it, --time scales
+        # up so SLURM doesn't kill a fit mid-search.
+        effective_wall = (
+            pysr_wall_limit if pysr_wall_limit is not None else self.pysr_wall_limit
+        )
+        slurm_time_limit = _slurm_time_for_wall(self.time_limit, effective_wall)
 
         batch_id = batch_dir.name
         print(f"  PySR SLURM eval: {n_tasks} tasks in batch {batch_id} "
@@ -1903,6 +2017,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             for chunk_num, chunk in enumerate(chunks):
                 job_script = self._create_chunk_job_script(
                     batch_dir, chunk, chunk_num, use_cache=use_cache_for_run,
+                    time_limit=slurm_time_limit,
                 )
                 jid = self._submit_job(job_script)
                 job_ids.append(jid)
@@ -1940,6 +2055,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             submit_time=_bundle_submit_time,
             operator_label=operator_label,
             n_runs=n_runs,
+            pysr_wall_limit=effective_wall,
+            slurm_time_limit=slurm_time_limit,
         )
 
     def collect_batch(
@@ -1955,12 +2072,17 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         use_cache_for_run = handle.use_cache_for_run
         retry_count = 0
 
+        # Floor the wait watchdogs at this batch's effective wall + queue margin
+        # so SLURM queue-wait / Julia-compile time isn't mistaken for a stall.
+        stall_t, job_t = self._floored_watchdogs(handle.pysr_wall_limit)
+
         if not handle.uncached_indices:
             results, failed_indices = self._collect_results(results_subdir, n_tasks, timed_out=False)
         else:
             # Wait for completion across all chunks
             job_completed = self._wait_for_jobs(
-                job_ids, n_tasks, batch_dir, initial_cached=n_cached
+                job_ids, n_tasks, batch_dir, initial_cached=n_cached,
+                stall_timeout=stall_t, job_timeout=job_t,
             )
 
             # Update bad nodes from logs
@@ -2001,6 +2123,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                     retry_job_script = self._create_chunk_job_script(
                         batch_dir, rc, chunk_num=1000 + retry_count * 100 + rc_num,
                         use_cache=use_cache_for_run,
+                        time_limit=handle.slurm_time_limit,
                     )
                     rjid = self._submit_job(retry_job_script)
                     retry_job_ids.append(rjid)
@@ -2011,7 +2134,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                     )
 
                 self._wait_for_retry_jobs(
-                    retry_job_ids, len(failed_indices), batch_dir, failed_indices
+                    retry_job_ids, len(failed_indices), batch_dir, failed_indices,
+                    stall_timeout=stall_t, job_timeout=job_t,
                 )
 
                 # Re-collect results for retried tasks
@@ -2032,7 +2156,14 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             if failed_indices:
                 print(f"  WARNING: {len(failed_indices)} tasks still failed")
 
-        self._queue_results_for_cache(tasks, results)
+        # Turn tasks the parent gave up on (no result file) into spec-based
+        # failure results so they count as failures in the aggregate mean
+        # instead of being dropped as config_id=-1 placeholders.
+        self._finalize_missing_placeholders(handle, results)
+
+        self._queue_results_for_cache(
+            tasks, results, uncached_indices=handle.uncached_indices
+        )
         self.flush_pending_cache()
 
         error_counts: Dict[str, int] = {}
@@ -2117,6 +2248,11 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         total_cached = sum(h.n_cached for h in handles)
         batch_dirs = [h.batch_dir for h in handles]
 
+        # Floor the watchdogs at the largest per-batch wall + queue margin so a
+        # slow/queued batch doesn't get the whole shared array cancelled.
+        max_wall = max((h.pysr_wall_limit for h in handles), default=self.pysr_wall_limit)
+        stall_t, job_t = self._floored_watchdogs(max_wall)
+
         if all_initial_jobs:
             job_completed = self._wait_for_jobs_multi_batch(
                 all_initial_jobs,
@@ -2124,6 +2260,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 batch_dirs,
                 initial_cached=total_cached,
                 label="initial",
+                stall_timeout=stall_t,
+                job_timeout=job_t,
             )
             for h in handles:
                 try:
@@ -2178,6 +2316,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         h.batch_dir, rc,
                         chunk_num=1000 + retry_count * 100 + rc_num,
                         use_cache=h.use_cache_for_run,
+                        time_limit=h.slurm_time_limit,
                     )
                     rjid = self._submit_job(retry_script)
                     retry_job_ids.append(rjid)
@@ -2197,6 +2336,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             ]
             self._wait_for_retry_jobs_multi_batch(
                 retry_job_ids, all_retry_indices,
+                stall_timeout=stall_t, job_timeout=job_t,
             )
 
             # Re-collect per batch
@@ -2227,7 +2367,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # Phase 4: per-batch cache + aggregation
         all_results: List[List[Tuple[float, List[float], List[Dict]]]] = []
         for h, results in zip(handles, per_batch_results):
-            self._queue_results_for_cache(h.tasks, results)
+            # Rebuild spec-based failure results for tasks with no result file so
+            # they count as failures instead of being dropped (config_id=-1).
+            self._finalize_missing_placeholders(h, results)
+            self._queue_results_for_cache(
+                h.tasks, results, uncached_indices=h.uncached_indices
+            )
 
             error_counts: Dict[str, int] = {}
             for result in results:
@@ -2265,16 +2410,24 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         batch_dirs: List[Path],
         initial_cached: int = 0,
         label: str = "initial",
+        stall_timeout: Optional[float] = _UNSET,
+        job_timeout: Optional[float] = _UNSET,
     ) -> bool:
         """Poll all batch dirs simultaneously until every job reaches a terminal
         state or we hit the total-task count. Prints a single progress line.
+        stall_timeout/job_timeout override the instance watchdogs.
         """
+        if stall_timeout is _UNSET:
+            stall_timeout = self.stall_timeout
+        if job_timeout is _UNSET:
+            job_timeout = self.job_timeout
         import time as _time
         start_time = _time.time()
         last_completed = initial_cached
         last_progress_time = start_time
         poll_interval = 10
         results_dirs = [bd / "results" for bd in batch_dirs]
+        unknown_streaks: Dict[str, int] = {}
 
         while True:
             completed = sum(
@@ -2301,9 +2454,9 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                     _untrack_job(jid)
                 return True
 
-            if self.job_timeout is not None and elapsed > self.job_timeout:
+            if job_timeout is not None and elapsed > job_timeout:
                 print(
-                    f"  TIMEOUT: {label} jobs exceeded {self.job_timeout}s "
+                    f"  TIMEOUT: {label} jobs exceeded {job_timeout:.0f}s "
                     f"({completed}/{n_tasks_total} tasks complete)"
                 )
                 for jid in job_ids:
@@ -2313,9 +2466,9 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 return False
 
             if (
-                self.stall_timeout is not None
+                stall_timeout is not None
                 and completed < n_tasks_total
-                and (now - last_progress_time) > self.stall_timeout
+                and (now - last_progress_time) > stall_timeout
             ):
                 print(
                     f"  STALL: {label} jobs made no progress for "
@@ -2328,8 +2481,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 clear_future_mtime_pidfiles()
                 return False
 
-            statuses = [self._get_job_status(jid) for jid in job_ids]
-            if all(s in TERMINAL_SLURM_STATES for s in statuses):
+            terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
+            if terminal:
                 if completed < n_tasks_total:
                     print(
                         f"  WARNING: all {label} jobs ended (statuses={statuses}) "
@@ -2345,39 +2498,76 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self,
         job_ids: List[str],
         batch_indices: List[Tuple[Path, int]],
+        stall_timeout: Optional[float] = _UNSET,
+        job_timeout: Optional[float] = _UNSET,
     ):
         """Wait for retry jobs spread across multiple batches.
 
         batch_indices is a flat list of (batch_dir, task_index) tuples covering
         every retried task. Completion is "result file exists for every pair".
+
+        Guarded by the same stall/total watchdogs as the initial wait: a retry
+        array stuck PENDING forever (drained partition, hold) must not block the
+        driver indefinitely. On expiry the retry jobs are cancelled and we
+        return; the caller's re-collect turns still-missing tasks into failures.
         """
+        if stall_timeout is _UNSET:
+            stall_timeout = self.stall_timeout
+        if job_timeout is _UNSET:
+            job_timeout = self.job_timeout
         import time as _time
         start_time = _time.time()
         last_completed = 0
+        last_progress_time = start_time
         poll_interval = 5
         n_total = len(batch_indices)
+        unknown_streaks: Dict[str, int] = {}
 
         while True:
             completed = sum(
                 1 for (bd, i) in batch_indices
                 if (bd / "results" / f"task_{i:06d}.json").exists()
             )
+            now = _time.time()
             if completed != last_completed:
-                elapsed = _time.time() - start_time
+                elapsed = now - start_time
                 print(
                     f"    Retry progress: {completed}/{n_total} tasks complete "
                     f"({elapsed:.0f}s elapsed)"
                 )
                 last_completed = completed
+                last_progress_time = now
 
             if completed >= n_total:
-                print(f"    Retry completed in {_time.time() - start_time:.1f}s")
+                print(f"    Retry completed in {now - start_time:.1f}s")
                 for jid in job_ids:
                     _untrack_job(jid)
                 return
 
-            statuses = [self._get_job_status(jid) for jid in job_ids]
-            if all(s in TERMINAL_SLURM_STATES for s in statuses):
+            if job_timeout is not None and (now - start_time) > job_timeout:
+                print(
+                    f"    RETRY TIMEOUT: jobs {job_ids} exceeded {job_timeout:.0f}s "
+                    f"({completed}/{n_total} results); cancelling"
+                )
+                for jid in job_ids:
+                    self._cancel_job(jid)
+                return
+
+            if (
+                stall_timeout is not None
+                and (now - last_progress_time) > stall_timeout
+            ):
+                print(
+                    f"    RETRY STALL: jobs {job_ids} made no progress for "
+                    f"{now - last_progress_time:.0f}s "
+                    f"({completed}/{n_total} results); cancelling"
+                )
+                for jid in job_ids:
+                    self._cancel_job(jid)
+                return
+
+            terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
+            if terminal:
                 if completed < n_total:
                     print(
                         f"    Retry jobs ended with statuses={statuses}, "
@@ -2393,13 +2583,30 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self,
         tasks: List[PySRTaskSpec],
         results: List[PySRTaskResult],
+        uncached_indices: Optional[List[int]] = None,
     ) -> int:
-        """Queue finished successful task results for later cache import."""
+        """Queue finished successful task results for later cache import.
+
+        When `uncached_indices` is given, only those task indices are queued:
+        the cached ones were read from (and already exist in) the cache, so
+        re-queuing them just rewrites identical rows under the fcntl writer lock
+        with synchronous=FULL over NFS on every collect.
+        """
         if not self.use_cache:
             return 0
 
+        if uncached_indices is not None:
+            index_set = set(uncached_indices)
+            pairs = [
+                (tasks[i], results[i])
+                for i in index_set
+                if 0 <= i < len(tasks) and i < len(results)
+            ]
+        else:
+            pairs = list(zip(tasks, results))
+
         entries = []
-        for task, result in zip(tasks, results):
+        for task, result in pairs:
             if result.config_id < 0:
                 continue
             if task.config_id != result.config_id:
@@ -2558,6 +2765,7 @@ python -u -m parallel_eval_pysr --worker \\
     def _create_chunk_job_script(
         self, batch_dir: Path, chunk_indices: List[int], chunk_num: int,
         use_cache: Optional[bool] = None,
+        time_limit: Optional[str] = None,
     ) -> Path:
         """Create SLURM job script for one chunk of a large batch.
 
@@ -2572,6 +2780,9 @@ python -u -m parallel_eval_pysr --worker \\
         """
         if use_cache is None:
             use_cache = self.use_cache
+        # self.time_limit is a floor; a per-call override (from submit_configs)
+        # raises --time to cover a larger effective wall limit (e.g. val evals).
+        slurm_time = time_limit if time_limit is not None else self.time_limit
         abs_batch = batch_dir.resolve()
         logs_dir = abs_batch / "logs"
         tasks_file = abs_batch / "tasks.json"
@@ -2592,7 +2803,7 @@ python -u -m parallel_eval_pysr --worker \\
 #SBATCH --output={logs_dir}/chunk{chunk_num}_slot_%a.out
 #SBATCH --error={logs_dir}/chunk{chunk_num}_slot_%a.err
 #SBATCH --array={array_spec}
-#SBATCH --time={self.time_limit}
+#SBATCH --time={slurm_time}
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu={self.mem_per_cpu}
 #SBATCH --partition={self.partition}
@@ -2632,23 +2843,52 @@ python -u -m parallel_eval_pysr --worker \\
 
         return script_path
 
+    def _floored_watchdogs(
+        self, wall_limit: Optional[int]
+    ) -> Tuple[Optional[float], Optional[float]]:
+        """Floor the instance stall/job watchdogs at wall_limit + queue margin.
+
+        A task can sit in the SLURM queue and pay Julia/PySR compile time before
+        writing its first result, so a fixed 300s stall floor would cancel a
+        healthy array (then rerun everything via retry, and a second stall
+        permanently loses tasks). Each fit self-terminates via its own SIGALRM,
+        so being generous here is safe. Returns (stall_timeout, job_timeout);
+        None entries stay None (watchdog disabled).
+        """
+        if wall_limit is None:
+            return self.stall_timeout, self.job_timeout
+        floor = wall_limit + _WATCHDOG_MARGIN_S
+        stall = (
+            None if self.stall_timeout is None else max(self.stall_timeout, floor)
+        )
+        job = None if self.job_timeout is None else max(self.job_timeout, floor)
+        return stall, job
+
     def _wait_for_jobs(
         self,
         job_ids: List[str],
         n_tasks: int,
         batch_dir: Path,
         initial_cached: int = 0,
+        stall_timeout: Optional[float] = _UNSET,
+        job_timeout: Optional[float] = _UNSET,
     ) -> bool:
         """Wait for multiple SLURM job arrays to complete.
 
         Polls the shared results directory for completed task files, and
         considers the batch done when either n_tasks results exist or all
         submitted jobs have reached a terminal status. Cancels all jobs on
-        timeout.
+        timeout. stall_timeout/job_timeout override the instance watchdogs
+        (left unset, the instance values are used).
         """
+        if stall_timeout is _UNSET:
+            stall_timeout = self.stall_timeout
+        if job_timeout is _UNSET:
+            job_timeout = self.job_timeout
         if len(job_ids) == 1:
             return self._wait_for_job(
-                job_ids[0], n_tasks, batch_dir, initial_cached=initial_cached
+                job_ids[0], n_tasks, batch_dir, initial_cached=initial_cached,
+                stall_timeout=stall_timeout, job_timeout=job_timeout,
             )
 
         import time as _time
@@ -2657,6 +2897,7 @@ python -u -m parallel_eval_pysr --worker \\
         last_progress_time = start_time
         poll_interval = 10
         results_dir = batch_dir / "results"
+        unknown_streaks: Dict[str, int] = {}
 
         while True:
             completed = len(list(results_dir.glob("task_*.json")))
@@ -2681,9 +2922,9 @@ python -u -m parallel_eval_pysr --worker \\
                     _untrack_job(jid)
                 return True
 
-            if self.job_timeout is not None and elapsed > self.job_timeout:
+            if job_timeout is not None and elapsed > job_timeout:
                 print(
-                    f"  TIMEOUT: Jobs {job_ids} exceeded {self.job_timeout}s limit "
+                    f"  TIMEOUT: Jobs {job_ids} exceeded {job_timeout:.0f}s limit "
                     f"({completed}/{n_tasks} tasks complete)"
                 )
                 for jid in job_ids:
@@ -2693,9 +2934,9 @@ python -u -m parallel_eval_pysr --worker \\
                 return False
 
             if (
-                self.stall_timeout is not None
+                stall_timeout is not None
                 and completed < n_tasks
-                and (now - last_progress_time) > self.stall_timeout
+                and (now - last_progress_time) > stall_timeout
             ):
                 print(
                     f"  STALL: Jobs {job_ids} made no progress for "
@@ -2708,8 +2949,8 @@ python -u -m parallel_eval_pysr --worker \\
                 clear_future_mtime_pidfiles()
                 return False
 
-            statuses = [self._get_job_status(jid) for jid in job_ids]
-            if all(s in TERMINAL_SLURM_STATES for s in statuses):
+            terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
+            if terminal:
                 if completed < n_tasks:
                     print(
                         f"  WARNING: All jobs ended (statuses={statuses}) "
@@ -2726,6 +2967,37 @@ python -u -m parallel_eval_pysr --worker \\
         with open(result_file, 'r') as f:
             data = json.load(f)
         return PySRTaskResult.from_json_dict(data)
+
+    def _finalize_missing_placeholders(
+        self, handle: PySRBatchHandle, results: List[PySRTaskResult],
+    ) -> None:
+        """Replace parent-built placeholders for still-missing result files with
+        spec-based failure results.
+
+        A missing result file means the parent gave up on the task (retries
+        exhausted / watchdog cancel). Its placeholder from _create_placeholder_result
+        carries config_id=-1, which _aggregate_pysr_results drops — silently
+        shrinking the denominator so crashy candidates get inflated scores.
+        Rebuild it from the known task spec (real config_id/dataset/run_index),
+        scored like an errored run (r2=-1, gt defaults to 0). Result files
+        present on disk are left as-is, so legacy config_id<0 files still drop.
+        """
+        results_subdir = handle.batch_dir / "results"
+        for idx, task in enumerate(handle.tasks):
+            if idx >= len(results):
+                break
+            if (results_subdir / f"task_{idx:06d}.json").exists():
+                continue
+            results[idx] = PySRTaskResult(
+                config_id=task.config_id,
+                dataset_name=task.dataset_name,
+                r2_score=-1.0,
+                best_equation=None,
+                best_loss=float("inf"),
+                error="no result file (cancelled/lost)",
+                run_index=task.run_index,
+                timed_out=False,
+            )
 
     def _create_placeholder_result(self, error_msg: str, timed_out: bool = False) -> PySRTaskResult:
         """Create a placeholder PySRTaskResult for missing/failed tasks."""
@@ -2779,6 +3051,7 @@ def run_pysr_worker(tasks_file: str, task_index: int, output_dir: str, use_cache
     clear_stale_juliapkg_lock(repo_root / ".juliapkg_env")
     clear_future_mtime_pidfiles()
 
+    task: Optional[PySRTaskSpec] = None
     try:
         # Load task specification
         print(f"Loading tasks from: {tasks_file}", flush=True)
@@ -2819,13 +3092,18 @@ def run_pysr_worker(tasks_file: str, task_index: int, output_dir: str, use_cache
             output_path.mkdir(parents=True, exist_ok=True)
             result_file = output_path / f"task_{task_index:06d}.json"
 
+            # Use the real task identity when the spec was loaded so the parent
+            # counts this crash as a failure (config_id>=0) instead of dropping
+            # it as a legacy config_id=-1 placeholder. Fall back to -1 only when
+            # the exception happened before the spec could be parsed.
             error_result = PySRTaskResult(
-                config_id=-1,
-                dataset_name="unknown",
+                config_id=task.config_id if task is not None else -1,
+                dataset_name=task.dataset_name if task is not None else "unknown",
                 r2_score=-1.0,
                 best_equation=None,
                 best_loss=float("inf"),
                 error=f"Worker exception: {_summarize_error(str(e))}",
+                run_index=task.run_index if task is not None else 0,
             )
 
             _write_json_atomic(result_file, error_result.to_json_dict())

@@ -214,3 +214,17 @@ def warmup_julia(
                 # subsequent validate_julia_code will surface it with context.
                 print(f"[warmup_julia] {stmt!r} failed: {e}")
     return time.time() - start
+
+
+def julia_load_operator(jl, load_func: str, name: str, code: str) -> None:
+    """Call a Julia `load_*_from_string!` loader with `code` as a String argument.
+
+    juliacall converts a Python str to a Julia String byte-for-byte. The
+    previous approach — interpolating the code into a seval'd raw\"\"\"...\"\"\"
+    literal — mangled any `\\\"` inside the code (Julia raw strings treat
+    backslash-before-quote as an escaped quote) and needed fragile escaping of
+    embedded triple quotes, so valid operators containing escaped quotes could
+    never load.
+    """
+    loader = jl.seval(load_func)
+    loader(jl.Symbol(name), code)
