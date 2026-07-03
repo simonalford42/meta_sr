@@ -1,0 +1,604 @@
+{
+  "api": "https://api.github.com/search/code",
+  "api_version": "2022-11-28",
+  "auth_identity": "not stored; validate separately with GET /user",
+  "auth_source": "git-credential-helper",
+  "base_query": "PySRRegressor",
+  "completed_at": "2026-07-03T16:22:00.869043+00:00",
+  "documented_scope_limits": [
+    "Only default branches are indexed.",
+    "Archived repositories are not searchable.",
+    "Files must be smaller than 384 KiB.",
+    "Forks are excluded unless they satisfy GitHub indexing rules and fork:true is used; this query mirrors the user's unqualified query.",
+    "GitHub reports approximate/inconsistent total_count values across related queries; retrieved files are deduplicated by repository, path, and blob SHA.",
+    "Authenticated search may include private repositories; private results are counted only in aggregate and omitted before writing repository or file rows."
+  ],
+  "duplicate_public_items": 310,
+  "elapsed_seconds": 323.818,
+  "indexed_size_range_bytes": [
+    0,
+    393215
+  ],
+  "max_results_per_query": 1000,
+  "observations": [
+    {
+      "incomplete_results": false,
+      "phase": "unqualified",
+      "query": "PySRRegressor",
+      "reported_total_count": 2736
+    },
+    {
+      "high": 1023,
+      "incomplete_results": false,
+      "low": 0,
+      "phase": "plan",
+      "query": "PySRRegressor size:0..1023",
+      "reported_total_count": 312
+    },
+    {
+      "high": 2047,
+      "incomplete_results": false,
+      "low": 1024,
+      "phase": "plan",
+      "query": "PySRRegressor size:1024..2047",
+      "reported_total_count": 188
+    },
+    {
+      "high": 4095,
+      "incomplete_results": false,
+      "low": 2048,
+      "phase": "plan",
+      "query": "PySRRegressor size:2048..4095",
+      "reported_total_count": 518
+    },
+    {
+      "high": 8191,
+      "incomplete_results": false,
+      "low": 4096,
+      "phase": "plan",
+      "query": "PySRRegressor size:4096..8191",
+      "reported_total_count": 494
+    },
+    {
+      "high": 16383,
+      "incomplete_results": false,
+      "low": 8192,
+      "phase": "plan",
+      "query": "PySRRegressor size:8192..16383",
+      "reported_total_count": 393
+    },
+    {
+      "high": 32767,
+      "incomplete_results": false,
+      "low": 16384,
+      "phase": "plan",
+      "query": "PySRRegressor size:16384..32767",
+      "reported_total_count": 261
+    },
+    {
+      "high": 65535,
+      "incomplete_results": false,
+      "low": 32768,
+      "phase": "plan",
+      "query": "PySRRegressor size:32768..65535",
+      "reported_total_count": 161
+    },
+    {
+      "high": 131071,
+      "incomplete_results": false,
+      "low": 65536,
+      "phase": "plan",
+      "query": "PySRRegressor size:65536..131071",
+      "reported_total_count": 146
+    },
+    {
+      "high": 262143,
+      "incomplete_results": false,
+      "low": 131072,
+      "phase": "plan",
+      "query": "PySRRegressor size:131072..262143",
+      "reported_total_count": 99
+    },
+    {
+      "high": 393215,
+      "incomplete_results": false,
+      "low": 262144,
+      "phase": "plan",
+      "query": "PySRRegressor size:262144..393215",
+      "reported_total_count": 45
+    },
+    {
+      "high": 1023,
+      "incomplete_results": false,
+      "low": 0,
+      "page": 1,
+      "phase": "fetch",
+      "query": "PySRRegressor size:0..1023",
+      "reported_total_count": 312,
+      "returned_items": 100
+    },
+    {
+      "high": 1023,
+      "incomplete_results": false,
+      "low": 0,
+      "page": 2,
+      "phase": "fetch",
+      "query": "PySRRegressor size:0..1023",
+      "reported_total_count": 312,
+      "returned_items": 100
+    },
+    {
+      "high": 1023,
+      "incomplete_results": false,
+      "low": 0,
+      "page": 3,
+      "phase": "fetch",
+      "query": "PySRRegressor size:0..1023",
+      "reported_total_count": 312,
+      "returned_items": 100
+    },
+    {
+      "high": 1023,
+      "incomplete_results": false,
+      "low": 0,
+      "page": 4,
+      "phase": "fetch",
+      "query": "PySRRegressor size:0..1023",
+      "reported_total_count": 304,
+      "returned_items": 4
+    },
+    {
+      "high": 1023,
+      "incomplete_results": false,
+      "low": 0,
+      "page": 5,
+      "phase": "fetch",
+      "query": "PySRRegressor size:0..1023",
+      "reported_total_count": 304,
+      "returned_items": 0
+    },
+    {
+      "high": 2047,
+      "incomplete_results": false,
+      "low": 1024,
+      "page": 1,
+      "phase": "fetch",
+      "query": "PySRRegressor size:1024..2047",
+      "reported_total_count": 188,
+      "returned_items": 100
+    },
+    {
+      "high": 2047,
+      "incomplete_results": false,
+      "low": 1024,
+      "page": 2,
+      "phase": "fetch",
+      "query": "PySRRegressor size:1024..2047",
+      "reported_total_count": 197,
+      "returned_items": 97
+    },
+    {
+      "high": 2047,
+      "incomplete_results": false,
+      "low": 1024,
+      "page": 3,
+      "phase": "fetch",
+      "query": "PySRRegressor size:1024..2047",
+      "reported_total_count": 188,
+      "returned_items": 0
+    },
+    {
+      "high": 4095,
+      "incomplete_results": false,
+      "low": 2048,
+      "page": 1,
+      "phase": "fetch",
+      "query": "PySRRegressor size:2048..4095",
+      "reported_total_count": 438,
+      "returned_items": 100
+    },
+    {
+      "high": 4095,
+      "incomplete_results": false,
+      "low": 2048,
+      "page": 2,
+      "phase": "fetch",
+      "query": "PySRRegressor size:2048..4095",
+      "reported_total_count": 438,
+      "returned_items": 100
+    },
+    {
+      "high": 4095,
+      "incomplete_results": false,
+      "low": 2048,
+      "page": 3,
+      "phase": "fetch",
+      "query": "PySRRegressor size:2048..4095",
+      "reported_total_count": 438,
+      "returned_items": 100
+    },
+    {
+      "high": 4095,
+      "incomplete_results": false,
+      "low": 2048,
+      "page": 4,
+      "phase": "fetch",
+      "query": "PySRRegressor size:2048..4095",
+      "reported_total_count": 518,
+      "returned_items": 100
+    },
+    {
+      "high": 4095,
+      "incomplete_results": false,
+      "low": 2048,
+      "page": 5,
+      "phase": "fetch",
+      "query": "PySRRegressor size:2048..4095",
+      "reported_total_count": 438,
+      "returned_items": 100
+    },
+    {
+      "high": 4095,
+      "incomplete_results": false,
+      "low": 2048,
+      "page": 6,
+      "phase": "fetch",
+      "query": "PySRRegressor size:2048..4095",
+      "reported_total_count": 438,
+      "returned_items": 18
+    },
+    {
+      "high": 4095,
+      "incomplete_results": false,
+      "low": 2048,
+      "page": 7,
+      "phase": "fetch",
+      "query": "PySRRegressor size:2048..4095",
+      "reported_total_count": 438,
+      "returned_items": 0
+    },
+    {
+      "high": 8191,
+      "incomplete_results": false,
+      "low": 4096,
+      "page": 1,
+      "phase": "fetch",
+      "query": "PySRRegressor size:4096..8191",
+      "reported_total_count": 494,
+      "returned_items": 100
+    },
+    {
+      "high": 8191,
+      "incomplete_results": false,
+      "low": 4096,
+      "page": 2,
+      "phase": "fetch",
+      "query": "PySRRegressor size:4096..8191",
+      "reported_total_count": 494,
+      "returned_items": 100
+    },
+    {
+      "high": 8191,
+      "incomplete_results": false,
+      "low": 4096,
+      "page": 3,
+      "phase": "fetch",
+      "query": "PySRRegressor size:4096..8191",
+      "reported_total_count": 494,
+      "returned_items": 100
+    },
+    {
+      "high": 8191,
+      "incomplete_results": false,
+      "low": 4096,
+      "page": 4,
+      "phase": "fetch",
+      "query": "PySRRegressor size:4096..8191",
+      "reported_total_count": 494,
+      "returned_items": 100
+    },
+    {
+      "high": 8191,
+      "incomplete_results": false,
+      "low": 4096,
+      "page": 5,
+      "phase": "fetch",
+      "query": "PySRRegressor size:4096..8191",
+      "reported_total_count": 476,
+      "returned_items": 76
+    },
+    {
+      "high": 8191,
+      "incomplete_results": false,
+      "low": 4096,
+      "page": 6,
+      "phase": "fetch",
+      "query": "PySRRegressor size:4096..8191",
+      "reported_total_count": 494,
+      "returned_items": 0
+    },
+    {
+      "high": 16383,
+      "incomplete_results": false,
+      "low": 8192,
+      "page": 1,
+      "phase": "fetch",
+      "query": "PySRRegressor size:8192..16383",
+      "reported_total_count": 393,
+      "returned_items": 100
+    },
+    {
+      "high": 16383,
+      "incomplete_results": false,
+      "low": 8192,
+      "page": 2,
+      "phase": "fetch",
+      "query": "PySRRegressor size:8192..16383",
+      "reported_total_count": 393,
+      "returned_items": 100
+    },
+    {
+      "high": 16383,
+      "incomplete_results": false,
+      "low": 8192,
+      "page": 3,
+      "phase": "fetch",
+      "query": "PySRRegressor size:8192..16383",
+      "reported_total_count": 393,
+      "returned_items": 100
+    },
+    {
+      "high": 16383,
+      "incomplete_results": false,
+      "low": 8192,
+      "page": 4,
+      "phase": "fetch",
+      "query": "PySRRegressor size:8192..16383",
+      "reported_total_count": 393,
+      "returned_items": 100
+    },
+    {
+      "high": 16383,
+      "incomplete_results": false,
+      "low": 8192,
+      "page": 5,
+      "phase": "fetch",
+      "query": "PySRRegressor size:8192..16383",
+      "reported_total_count": 393,
+      "returned_items": 14
+    },
+    {
+      "high": 16383,
+      "incomplete_results": false,
+      "low": 8192,
+      "page": 6,
+      "phase": "fetch",
+      "query": "PySRRegressor size:8192..16383",
+      "reported_total_count": 414,
+      "returned_items": 0
+    },
+    {
+      "high": 32767,
+      "incomplete_results": false,
+      "low": 16384,
+      "page": 1,
+      "phase": "fetch",
+      "query": "PySRRegressor size:16384..32767",
+      "reported_total_count": 261,
+      "returned_items": 100
+    },
+    {
+      "high": 32767,
+      "incomplete_results": false,
+      "low": 16384,
+      "page": 2,
+      "phase": "fetch",
+      "query": "PySRRegressor size:16384..32767",
+      "reported_total_count": 257,
+      "returned_items": 100
+    },
+    {
+      "high": 32767,
+      "incomplete_results": false,
+      "low": 16384,
+      "page": 3,
+      "phase": "fetch",
+      "query": "PySRRegressor size:16384..32767",
+      "reported_total_count": 257,
+      "returned_items": 61
+    },
+    {
+      "high": 32767,
+      "incomplete_results": false,
+      "low": 16384,
+      "page": 4,
+      "phase": "fetch",
+      "query": "PySRRegressor size:16384..32767",
+      "reported_total_count": 261,
+      "returned_items": 0
+    },
+    {
+      "high": 65535,
+      "incomplete_results": false,
+      "low": 32768,
+      "page": 1,
+      "phase": "fetch",
+      "query": "PySRRegressor size:32768..65535",
+      "reported_total_count": 161,
+      "returned_items": 100
+    },
+    {
+      "high": 65535,
+      "incomplete_results": false,
+      "low": 32768,
+      "page": 2,
+      "phase": "fetch",
+      "query": "PySRRegressor size:32768..65535",
+      "reported_total_count": 171,
+      "returned_items": 71
+    },
+    {
+      "high": 65535,
+      "incomplete_results": false,
+      "low": 32768,
+      "page": 3,
+      "phase": "fetch",
+      "query": "PySRRegressor size:32768..65535",
+      "reported_total_count": 171,
+      "returned_items": 0
+    },
+    {
+      "high": 131071,
+      "incomplete_results": false,
+      "low": 65536,
+      "page": 1,
+      "phase": "fetch",
+      "query": "PySRRegressor size:65536..131071",
+      "reported_total_count": 146,
+      "returned_items": 100
+    },
+    {
+      "high": 131071,
+      "incomplete_results": false,
+      "low": 65536,
+      "page": 2,
+      "phase": "fetch",
+      "query": "PySRRegressor size:65536..131071",
+      "reported_total_count": 146,
+      "returned_items": 53
+    },
+    {
+      "high": 131071,
+      "incomplete_results": false,
+      "low": 65536,
+      "page": 3,
+      "phase": "fetch",
+      "query": "PySRRegressor size:65536..131071",
+      "reported_total_count": 153,
+      "returned_items": 0
+    },
+    {
+      "high": 262143,
+      "incomplete_results": false,
+      "low": 131072,
+      "page": 1,
+      "phase": "fetch",
+      "query": "PySRRegressor size:131072..262143",
+      "reported_total_count": 99,
+      "returned_items": 99
+    },
+    {
+      "high": 262143,
+      "incomplete_results": false,
+      "low": 131072,
+      "page": 2,
+      "phase": "fetch",
+      "query": "PySRRegressor size:131072..262143",
+      "reported_total_count": 99,
+      "returned_items": 0
+    },
+    {
+      "high": 393215,
+      "incomplete_results": false,
+      "low": 262144,
+      "page": 1,
+      "phase": "fetch",
+      "query": "PySRRegressor size:262144..393215",
+      "reported_total_count": 45,
+      "returned_items": 45
+    },
+    {
+      "high": 393215,
+      "incomplete_results": false,
+      "low": 262144,
+      "page": 2,
+      "phase": "fetch",
+      "query": "PySRRegressor size:262144..393215",
+      "reported_total_count": 45,
+      "returned_items": 0
+    }
+  ],
+  "partition_strategy": "Non-overlapping file-size ranges; recursively split when the reported count exceeds the target.",
+  "partitions": [
+    {
+      "high": 1023,
+      "low": 0,
+      "planned_count": 312,
+      "query": "PySRRegressor size:0..1023",
+      "retrieved_count": 304
+    },
+    {
+      "high": 2047,
+      "low": 1024,
+      "planned_count": 188,
+      "query": "PySRRegressor size:1024..2047",
+      "retrieved_count": 197
+    },
+    {
+      "high": 4095,
+      "low": 2048,
+      "planned_count": 518,
+      "query": "PySRRegressor size:2048..4095",
+      "retrieved_count": 518
+    },
+    {
+      "high": 8191,
+      "low": 4096,
+      "planned_count": 494,
+      "query": "PySRRegressor size:4096..8191",
+      "retrieved_count": 476
+    },
+    {
+      "high": 16383,
+      "low": 8192,
+      "planned_count": 393,
+      "query": "PySRRegressor size:8192..16383",
+      "retrieved_count": 414
+    },
+    {
+      "high": 32767,
+      "low": 16384,
+      "planned_count": 261,
+      "query": "PySRRegressor size:16384..32767",
+      "retrieved_count": 261
+    },
+    {
+      "high": 65535,
+      "low": 32768,
+      "planned_count": 161,
+      "query": "PySRRegressor size:32768..65535",
+      "retrieved_count": 171
+    },
+    {
+      "high": 131071,
+      "low": 65536,
+      "planned_count": 146,
+      "query": "PySRRegressor size:65536..131071",
+      "retrieved_count": 153
+    },
+    {
+      "high": 262143,
+      "low": 131072,
+      "planned_count": 99,
+      "query": "PySRRegressor size:131072..262143",
+      "retrieved_count": 99
+    },
+    {
+      "high": 393215,
+      "low": 262144,
+      "planned_count": 45,
+      "query": "PySRRegressor size:262144..393215",
+      "retrieved_count": 45
+    }
+  ],
+  "private_items_omitted": 0,
+  "private_repository_names_stored": false,
+  "raw_retrieved_items": 2638,
+  "schema_version": 1,
+  "search_requests": 57,
+  "started_at": "2026-07-03T16:16:37.051266+00:00",
+  "target_results_per_partition": 900,
+  "unique_repositories": 637,
+  "unique_retrieved_files": 2328,
+  "unqualified_reported_total_count": 2736
+}

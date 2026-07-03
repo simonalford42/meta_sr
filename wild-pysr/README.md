@@ -1,57 +1,90 @@
 # Wild PySR: first-pass repository census
 
-This directory records a read-only first pass toward a `RealScience` symbolic-regression benchmark. The pass inventories repositories containing the exact identifier `PySRRegressor`, then classifies how the repository uses it. No external repository was cloned and no external code was executed.
+This directory records a read-only first pass toward a `RealScience` symbolic-regression benchmark. It inventories repositories containing the exact identifier `PySRRegressor`, then prioritizes plausible scientific and engineering applications. No external repository was cloned and no external code was executed.
 
-## Snapshot result
+## Current result
 
-The 2026-07-02 snapshot found **38 repositories in Sourcegraph's public index**. The inventory is the union of repositories returned by the repository-selection and matching-file queries, including indexed forks and archived repositories. It is **not proven to be every public GitHub repository**: GitHub requires authentication for code search in this environment, and Sourcegraph does not claim to index all of GitHub.
+The authenticated GitHub search completed on 2026-07-03. A canonical union with the earlier Sourcegraph pass contains **640 repositories**:
 
-An earlier run observed slightly different index state between the two Sourcegraph queries: the repository query returned 37 repositories while the file query returned matches from 38, with `THUIR/MemoryBench` only in the latter. This motivated the documented union rule. In the final committed snapshot both queries returned all 38 repositories.
+| Source coverage | Repositories |
+|---|---:|
+| GitHub and Sourcegraph | 35 |
+| GitHub only | 602 |
+| Sourcegraph only | 3 |
+| **Canonical union** | **640** |
 
-The manual first-pass labels are:
+`MilesCranmer/PySR` is canonicalized to its current GitHub name, `astroautomata/PySR`, before calculating the union.
 
-| Class | Count | Meaning |
-|---|---:|---|
-| `real_science_candidate` | 6 | PySR is applied within a real scientific or engineering investigation; worth inspecting for extractable benchmark problems. |
-| `scientific_synthetic` | 4 | Genuine scientific research or pedagogy, but the PySR targets are synthetic/simulated systems with known construction. |
-| `sr_method_or_benchmark` | 11 | The repository develops/evaluates SR methods or infrastructure rather than applying SR to a new domain problem. |
-| `incidental_or_educational` | 16 | PySR is a tutorial, example, auxiliary analysis, future-work snippet, vendored file, or otherwise not central. |
-| `false_positive` | 1 | The text match is not repository code using PySR. |
-| **Total** | **38** | |
+The GitHub API returned 2,638 raw file records from non-overlapping size-partitioned queries. After removing 310 duplicate records, the snapshot contains **2,328 unique public matching files in 637 repositories**. No private or fork repository rows were written.
 
-See [`notes/decision_log.md`](notes/decision_log.md) for the result for every repository and [`data/classification.csv`](data/classification.csv) for a machine-readable version.
+GitHub's reported `total_count` was not reliable: the unqualified query reported 2,736 files, and counts changed between pages of identical queries. Pagination therefore continued until an empty page for every size partition; counts were retained only as provenance. See [`notes/github_query_pass.md`](notes/github_query_pass.md) for details.
 
-## Reproduce the census
+## Scientific review
+
+All 637 GitHub repositories received a transparent heuristic score so the screening decision is reproducible:
+
+| Heuristic priority | Repositories |
+|---|---:|
+| High | 60 |
+| Medium | 141 |
+| Deprioritized | 436 |
+
+Heuristic priority is not a scientific classification. Public README, metadata, and matching-file evidence was manually reviewed for 64 plausible applications:
+
+| Manual class | Repositories |
+|---|---:|
+| `real_science_candidate` | 45 |
+| `scientific_synthetic` | 13 |
+| `unclear` | 4 |
+| `method_or_incidental` | 2 |
+| **Reviewed** | **64** |
+
+Of the 45 real-science candidates, **25 are high priority** for the next extraction/reproduction pass. Data origin is recorded separately (`observational`, `experimental`, `empirical`, `simulation`, `mixed`, or `unknown`) so simulation-based scientific work is not confused with measured data.
+
+The earlier 38-repository Sourcegraph review remains in [`notes/decision_log.md`](notes/decision_log.md); the expanded GitHub review supersedes its candidate count.
+
+## Reproduce
 
 From the repository root:
 
 ```bash
+# Authenticated GitHub search. Uses GITHUB_TOKEN/GH_TOKEN or `git credential fill`.
+python3 wild-pysr/scripts/discover_github.py
+
+# Score all GitHub repositories for review, then build the canonical union.
+python3 wild-pysr/scripts/triage_github.py
+python3 wild-pysr/scripts/combine_inventories.py
+
+# Optional independent Sourcegraph pass.
 python3 wild-pysr/scripts/discover.py
 ```
 
-The script makes read-only requests to Sourcegraph's streaming search endpoint and overwrites the generated snapshot tables in `data/`. The exact queries, timestamps, completion status, and any Sourcegraph skip warnings are saved in `data/search_snapshot.json`.
+The GitHub script never stores the credential. It omits private results before writing repository names or paths.
 
-Discovery query:
-
-```text
-context:global fork:yes archived:yes select:repo PySRRegressor count:10000 timeout:2m
-```
-
-Matching-file query:
+The exact GitHub base query is:
 
 ```text
-context:global fork:yes archived:yes select:file PySRRegressor count:10000 timeout:2m
+PySRRegressor
 ```
 
-Classification is deliberately manual and is not overwritten by the discovery script. Evidence was limited to public repository metadata, README files, and the matching source/notebook files. The next pass should validate candidates by cloning at pinned commits, mapping each PySR call to its `X` and `y`, and checking paper/config/result correspondence.
+GitHub's REST code-search endpoint exposes at most 1,000 results per query. The script covers the documented searchable file-size range with non-overlapping `size:` ranges and recursively splits any range whose reported count is too large.
 
-The final file query reported Sourcegraph's per-shard match limit because repositories such as Frontier-CS contain many repetitive solution files. Therefore, `matched_files.csv` contains every path returned by the query (234), but it is a lower bound on matching paths. The repository-selection query completed with no skipped results, and both queries represented the same 38 repositories.
+## Scope limitations
+
+This is the most complete reproducible snapshot obtained from the two indexes, not proof of every public GitHub use. GitHub documents that legacy API code search only indexes default branches, excludes archived repositories, ignores files at least 384 KiB, applies repository-activity/size restrictions, and does not normally include forks. Sourcegraph has different coverage and returned three repositories absent from the GitHub results. GitHub also produced unstable counts and duplicate pagination records during this run.
+
+Manual review is intentionally selective because 640 repositories greatly exceeds the target benchmark size. The unreviewed/deprioritized set remains preserved so screening can be expanded later without rerunning discovery.
 
 ## Files
 
-- `data/repositories.csv`: one row per indexed repository and metadata reported by Sourcegraph.
-- `data/matched_files.csv`: every matching path returned by the file query.
-- `data/search_snapshot.json`: query provenance and raw repository-level search results.
-- `data/classification.csv`: manual labels, priority, confidence, and concise rationale.
-- `notes/decision_log.md`: readable per-repository review with evidence links.
-- `scripts/discover.py`: reproducible read-only census script.
+- `data/combined_repositories.csv`: canonical 640-repository union with source coverage, triage, and manual-review columns.
+- `data/github_repositories.csv`: 637 repositories returned by authenticated GitHub retrieval.
+- `data/github_matched_files.csv`: 2,328 unique public GitHub file matches with blob-pinned URLs.
+- `data/github_search_snapshot.json`: exact partitions, page observations, counts, and API limitations.
+- `data/github_triage.csv`: reproducible heuristic score and reasons for every GitHub repository.
+- `data/github_manual_review.csv`: 64 evidence-backed manual decisions, including 45 real-science candidates.
+- `notes/github_query_pass.md`: GitHub methodology, findings, and the 25 high-priority candidates.
+- `scripts/discover_github.py`: authenticated, rate-limit-aware GitHub search.
+- `scripts/triage_github.py`: deterministic shortlist heuristic.
+- `scripts/combine_inventories.py`: canonical GitHub/Sourcegraph union.
+- `data/repositories.csv`, `data/matched_files.csv`, `data/search_snapshot.json`, `data/classification.csv`: original Sourcegraph snapshot and classifications.

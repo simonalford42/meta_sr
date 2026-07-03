@@ -1,0 +1,638 @@
+repository,url,description,owner_type,fork,private,matching_file_count
+AADavilaGonzalez/investigacion-verano-2026,https://github.com/AADavilaGonzalez/investigacion-verano-2026,,User,False,False,1
+aajonaa/llc-reproduce,https://github.com/aajonaa/llc-reproduce,From ocean code to github.,User,False,False,7
+AakilAhamed/Fuel-blend-properties-prediction,https://github.com/AakilAhamed/Fuel-blend-properties-prediction,,User,False,False,1
+aaronzoll/Inexact_Smooth_PEP,https://github.com/aaronzoll/Inexact_Smooth_PEP,,User,False,False,1
+aaroshdahal/phase_field_fracture_ml,https://github.com/aaroshdahal/phase_field_fracture_ml,(WIP) Machine learning-driven parameter calibration for  phase field fracture mechanics using FEniCS and symbolic regression.,User,False,False,2
+ABI-Software/ftuutils,https://github.com/ABI-Software/ftuutils,Library to create discrete Functional Tissue Units,Organization,False,False,1
+abon11/Graphene_Strength_Surface,https://github.com/abon11/Graphene_Strength_Surface,,User,False,False,1
+ABrain-One/nn-stat,https://github.com/ABrain-One/nn-stat,,User,False,False,1
+ACME-MG/symbolic,https://github.com/ACME-MG/symbolic,,Organization,False,False,26
+adil-rasheed/ham,https://github.com/adil-rasheed/ham,Hybrid Modeling for Courses,User,False,False,1
+adpena/comma-lab,https://github.com/adpena/comma-lab,Task-aware codec research for the comma.ai lossy video compression challenge,User,False,False,1
+adrn/torusimaging-paper2,https://github.com/adrn/torusimaging-paper2,"Estimate angles, actions, and frequencies directly from data.",User,False,False,1
+AdvayMonga/cell-type-classifier,https://github.com/AdvayMonga/cell-type-classifier,A machine learning pipeline for classifying cell types from single-cell RNA sequencing data using gene expression profiles and RNA velocity features.,User,False,False,3
+afhamahmed1/rocket-latitude-equation,https://github.com/afhamahmed1/rocket-latitude-equation,,User,False,False,4
+afonsoCarreira1/EnergyAwareProgramming,https://github.com/afonsoCarreira1/EnergyAwareProgramming,,User,False,False,1
+Aieyup/GarchModeli_01,https://github.com/Aieyup/GarchModeli_01,GARCH_Model-Gravitational Residual Model (GRM) is an innovative time series forecasting model inspired by the spacetime curvature concept from general relativity theory.,User,False,False,4
+ajith4134/pattern-brain,https://github.com/ajith4134/pattern-brain,,User,False,False,1
+ajsummers/symbal,https://github.com/ajsummers/symbal,,User,False,False,1
+akashgpt/PYSR_material_interactions,https://github.com/akashgpt/PYSR_material_interactions,Seeking analytical fit to H2-H2O coexistence data,User,False,False,1
+AkioLua/Symbolic-Equation-Discovery,https://github.com/AkioLua/Symbolic-Equation-Discovery,Discovering mathematical equations from data using symbolic regression.,User,False,False,1
+AkiseF/Bioinformatica,https://github.com/AkiseF/Bioinformatica,Repositorio de aplicaciones relacionadas a la bioinformatica desarrolladas en ESCOM,User,False,False,1
+AkshayMalige/hls4ml,https://github.com/AkshayMalige/hls4ml,,User,False,False,2
+alangu-hep/symbolic-surrogates,https://github.com/alangu-hep/symbolic-surrogates,,User,False,False,4
+albertbuchard/causal-pipe,https://github.com/albertbuchard/causal-pipe,"CausalPipe is a Python wrapper for Causal-Learn and Lavaan tailored for non-experts to perform causal analysis with ease. It offers intuitive tools for data preprocessing, constructing causal graphs, and visualizing outcomes, allowing users without specialized knowledge to explore and interpret causal relationships in their datasets.",User,False,False,1
+albertotonda/symbolic-regression-conformal-prediction,https://github.com/albertotonda/symbolic-regression-conformal-prediction,Using symbolic regression to automatically discover functions for normalized conformal regresors.,User,False,False,2
+albertotonda/symbolic-regression-ode-systems,https://github.com/albertotonda/symbolic-regression-ode-systems,Refactoring of the Symbolic Regression for systems of Ordinary Differential Equations project.,User,False,False,4
+albertotonda/symbolic-regression-vs-ensembles,https://github.com/albertotonda/symbolic-regression-vs-ensembles,Tests of SymReg vs Ensembles of decision trees,User,False,False,10
+alexandrojim/TP5-students,https://github.com/alexandrojim/TP5-students,,User,False,False,1
+AlexGoldie/learn-rl-algorithms,https://github.com/AlexGoldie/learn-rl-algorithms,"Official implementation for ""How Should We Meta-Learn Reinforcement Learning Algorithms?""",User,False,False,4
+alexon1033/AlexSackett_SymbollicRegression,https://github.com/alexon1033/AlexSackett_SymbollicRegression,"All code, data nd plots related to symbolic regression project",User,False,False,6
+alexpayne556-collab/quantum-ai-trader_v1.1,https://github.com/alexpayne556-collab/quantum-ai-trader_v1.1,ai ml forecaster pattern detector ai reccomnder and trader,User,False,False,1
+Alice-Shimada/PyCDE,https://github.com/Alice-Shimada/PyCDE,PySR symbolic regression toolkit for CDE and d-log integral reconstruction,User,False,False,2
+alirezadaghigh99/Code-Generation-Benchmark,https://github.com/alirezadaghigh99/Code-Generation-Benchmark,,User,False,False,1
+Alkistis/Hubble-SR,https://github.com/Alkistis/Hubble-SR,Symbolically Regressing the Hubble expansion rate,User,False,False,1
+americast/EpiGPT,https://github.com/americast/EpiGPT,,User,False,False,1
+ameya98/ActionAngleNetworks,https://github.com/ameya98/ActionAngleNetworks,The official JAX implementation of Action-Angle Networks!,User,False,False,1
+Amin9666/GeoResearch,https://github.com/Amin9666/GeoResearch,,User,False,False,3
+AndreasGeorgiou03/Interpretable-Structural-Dynamics,https://github.com/AndreasGeorgiou03/Interpretable-Structural-Dynamics,,User,False,False,3
+Andrew01221/PSY299,https://github.com/Andrew01221/PSY299,Code that I wrote for my ROP project + poster,User,False,False,1
+andrewni2002/DALex,https://github.com/andrewni2002/DALex,Code for the paper DALex: Lexicase-Like Selection via Diverse Aggregation,User,False,False,2
+anekjolner/Master,https://github.com/anekjolner/Master,Data-driven models for optimization of the PSA process,User,False,False,1
+ankitgarg7703/Pysr,https://github.com/ankitgarg7703/Pysr,,User,False,False,15
+anmpahwa/CE5540,https://github.com/anmpahwa/CE5540,CE5540 - Data Analysis and Computation Techniques for Transportation Engineering,User,False,False,1
+anonymoussubmission2026-reproduce/EvoDiverse,https://github.com/anonymoussubmission2026-reproduce/EvoDiverse,,User,False,False,1
+antolonappan/kSZscaler,https://github.com/antolonappan/kSZscaler,,User,False,False,1
+antonyxsik/EQ_Discovery_4Climate,https://github.com/antonyxsik/EQ_Discovery_4Climate,Repository for Project 2: Understanding + Modeling Turbulent Flow in the Atmosphere,User,False,False,4
+Aphiticus/Riemann-Symbolic-Regression-Theory,https://github.com/Aphiticus/Riemann-Symbolic-Regression-Theory,The theory introduced here is an alternative computational methodology termed here as the Riemann Symbolic Regression Theory which leverages computational tools. to uncover hidden symbolic relationships within the Zeta zeros. ,User,False,False,1
+arachraf/testhls4ml,https://github.com/arachraf/testhls4ml,test for hls4ml,User,False,False,2
+aRcHmaGe333/ECOmpile,https://github.com/aRcHmaGe333/ECOmpile,,User,False,False,1
+arghyadutta/AIComplexSystems,https://github.com/arghyadutta/AIComplexSystems,Code for a course on AI in Complex Systems,User,False,False,1
+ari-maller/tng-code,https://github.com/ari-maller/tng-code,some codes for use with the Illustris-TNG simulation data ,User,False,False,1
+Armanmeraj/Mirage-AI,https://github.com/Armanmeraj/Mirage-AI,,User,False,False,2
+arnablahiry/SymReg-L1-Norm,https://github.com/arnablahiry/SymReg-L1-Norm,Using symbolic regression to generate physically motivated equations to map cosmological parameters to moments of the wavelet l1-norm,User,False,False,5
+ArthurTouati/Calcul_symbolique_IA,https://github.com/ArthurTouati/Calcul_symbolique_IA,,User,False,False,1
+artifact-opensource/reasonatp,https://github.com/artifact-opensource/reasonatp,"Autonomous theorem proving — symbolic regression, multi-agent reasoning, formal verification.",User,False,False,1
+artur-shlyapnikov/hn-distill,https://github.com/artur-shlyapnikov/hn-distill,,User,False,False,1
+AryaK21/vde-symblic-control,https://github.com/AryaK21/vde-symblic-control,,User,False,False,1
+asfandyarazhar13/dycote,https://github.com/asfandyarazhar13/dycote,,User,False,False,1
+ast0815/covfit,https://github.com/ast0815/covfit,,User,False,False,1
+astroautomata/PySR,https://github.com/astroautomata/PySR,High-Performance Symbolic Regression in Python and Julia,Organization,False,False,23
+astroautomata/SymTorch,https://github.com/astroautomata/SymTorch,Deep Learning Interpretability with Symbolic Regression,Organization,False,False,23
+astrockragh/Mangrove,https://github.com/astrockragh/Mangrove,Using Graph Neural Networks to regress baryonic properties directly from full dark matter merger trees.,User,False,False,3
+AthulKunjipurayil/MLNuclear,https://github.com/AthulKunjipurayil/MLNuclear,Discovering Nuclear Models from Machine Learning,User,False,False,1
+AtishayJain2503/UGP_Equation_Discovery,https://github.com/AtishayJain2503/UGP_Equation_Discovery,,User,False,False,2
+AutoResearch/autora-user-cookiecutter,https://github.com/AutoResearch/autora-user-cookiecutter,,Organization,False,False,1
+AveraGE0/NKI,https://github.com/AveraGE0/NKI,,User,False,False,1
+avitai/opifex,https://github.com/avitai/opifex,A unified scientific machine learning framework built on JAX/Flax NNX,Organization,False,False,1
+Awallace3/d4_dimers,https://github.com/Awallace3/d4_dimers,,User,False,False,1
+Awwal41/Droplet-Film-Theory-Development,https://github.com/Awwal41/Droplet-Film-Theory-Development,,User,False,False,4
+Axect/magi-researchers,https://github.com/Axect/magi-researchers,"Three AI models, one synthesis — Claude, Gemini & Codex cross-verify each other for rigorous multi-perspective research",User,False,False,1
+Axect/TMC_SR,https://github.com/Axect/TMC_SR,,User,False,False,1
+ayoakin/AI_ML_Guides,https://github.com/ayoakin/AI_ML_Guides,,User,False,False,1
+ayushs2k1/JEPA_feynman,https://github.com/ayushs2k1/JEPA_feynman,,User,False,False,1
+badulion/grind,https://github.com/badulion/grind,,User,False,False,2
+bansme/pytorch_work,https://github.com/bansme/pytorch_work,论文/算法的实现,User,False,False,1
+BarteMaz/Metody-i-algorytmy-optymalizacji,https://github.com/BarteMaz/Metody-i-algorytmy-optymalizacji,Repozytorium stworzone na potrzebę przedmiotu z 6 semestru ISI,User,False,False,1
+bartmanski/Algorytmy-Ewolucyjne,https://github.com/bartmanski/Algorytmy-Ewolucyjne,,User,False,False,1
+bcdannyboy/euclid,https://github.com/bcdannyboy/euclid,timeseries symbolic description and predictive analytics,User,False,False,2
+BenjaminWhipple/Hybrid-NODEs-Biology,https://github.com/BenjaminWhipple/Hybrid-NODEs-Biology,Applications of Hybrid Neural (Ordinary) Differential Equations in Biology,User,False,False,1
+bhushanrajs/distribution_factors_pySR,https://github.com/bhushanrajs/distribution_factors_pySR,,User,False,False,2
+bhushanrajs/sciml_project,https://github.com/bhushanrajs/sciml_project,,User,False,False,4
+big-data-lab-umbc/big-data-reu,https://github.com/big-data-lab-umbc/big-data-reu,Repository for the Online Interdisciplinary Big Data Analytics in Science and Engineering REU (Research Experience for Undergraduates) Site program at UMBC. More at https://bigdatareu.umbc.edu/,Organization,False,False,2
+bilgesi/SR-LLM-Integration,https://github.com/bilgesi/SR-LLM-Integration,Research project on LLM integration with Symbolic Regression,User,False,False,1
+biminkoju/cses,https://github.com/biminkoju/cses,,User,False,False,1
+blabo25226/eml-sr_biodata,https://github.com/blabo25226/eml-sr_biodata,,User,False,False,1
+BlakePR/ME595ML,https://github.com/BlakePR/ME595ML,,User,False,False,1
+BlinkZer0/Phys-MCP,https://github.com/BlinkZer0/Phys-MCP,A physics focused calculator for LLM's using Model Context Protocol (MCP),User,False,False,1
+bmcnns/offline-gp,https://github.com/bmcnns/offline-gp,A new semester's approach to Offline RL,User,False,False,4
+bnssaanirudh/MetaLearnX,https://github.com/bnssaanirudh/MetaLearnX,"An autonomous, full-stack AutoML framework powered by LLM swarm intelligence and multi-objective Bayesian optimization.",User,False,False,1
+boronhub/preheat-simfhe,https://github.com/boronhub/preheat-simfhe,,User,False,False,2
+brandon-imstepf/UCM_AD_ML,https://github.com/brandon-imstepf/UCM_AD_ML,Code repo for my contributions to the Sindi/Raj project regarding utilizing DSO to create symbolic functions.,User,False,False,6
+Breta01/coral-operations-research,https://github.com/Breta01/coral-operations-research,Using CORAL package for OR problems,User,False,False,3
+bshepp/mneme,https://github.com/bshepp/mneme,"Detecting field-like memory structures in biological systems - planarian regeneration, bioelectric patterns, and attractor dynamics",User,False,False,2
+c0mpli/aisaac,https://github.com/c0mpli/aisaac,"AI that reads an entire scientific field and finds cross-theory connections humans miss. Point it at any domain with competing frameworks, it reads the papers, extracts math, and surfaces questions worth investigating.",User,False,False,1
+Calvinwhow/CircuitPyPer,https://github.com/Calvinwhow/CircuitPyPer,,User,False,False,1
+carlosal1015/neural-networks-aplications,https://github.com/carlosal1015/neural-networks-aplications,,User,False,False,1
+CasHoekstra/SQR,https://github.com/CasHoekstra/SQR,Implementation of SQR benchmarking,User,False,False,5
+cavalab/srbench,https://github.com/cavalab/srbench,A living benchmark framework for symbolic regression ,Organization,False,False,2
+ccnu-mathits/ADM,https://github.com/ccnu-mathits/ADM,,User,False,False,1
+cdclaxton/learning,https://github.com/cdclaxton/learning,,User,False,False,1
+cdiazbas/ESPD2024,https://github.com/cdiazbas/ESPD2024,"Machine Learning lecture at the 1st European solar physics division (ESPD) summerschool: Energisation and heating in the solar plasma 29 April - 3 May 2024 Dubrovnik, Croatia",User,False,False,1
+chaipattira/degen_detector,https://github.com/chaipattira/degen_detector,A Python package for identifying and characterizing parameter degeneracies in posterior distributions as closed-form symbolic equations,User,False,False,1
+Charlene717/advanced-methods-interactive-tutorial,https://github.com/Charlene717/advanced-methods-interactive-tutorial,,User,False,False,1
+ChauyeubacToLam/Toiyeuhuyenmai,https://github.com/ChauyeubacToLam/Toiyeuhuyenmai,,User,False,False,1
+ChecinskiBartlomiej/M-AI-Agents-Interaction,https://github.com/ChecinskiBartlomiej/M-AI-Agents-Interaction,,User,False,False,1
+ChengAo21/sr_rough_ks,https://github.com/ChengAo21/sr_rough_ks,Sensitivity analysis of the drag model using the Polynomial Chaos Expansion,User,False,False,1
+ChenxiHeCam/DenoisedSR,https://github.com/ChenxiHeCam/DenoisedSR,,User,False,False,13
+cheyennejarman/SymbReg_KelpForest_Simulations,https://github.com/cheyennejarman/SymbReg_KelpForest_Simulations,,User,False,False,30
+chrishowes55/m4r,https://github.com/chrishowes55/m4r,,User,False,False,1
+ChristianDai/Partical_analyis_tool,https://github.com/ChristianDai/Partical_analyis_tool,,User,False,False,3
+cmcneile/symbolic-regression-project,https://github.com/cmcneile/symbolic-regression-project,,User,False,False,1
+cmcneile/symbolic_regression_lattice,https://github.com/cmcneile/symbolic_regression_lattice,,User,False,False,2
+cmpatino/optimal-observables,https://github.com/cmpatino/optimal-observables,Find analytic expression of observable that separates signal and noise using symbolic regression and neural networks. ,User,False,False,1
+Computational-Biology-TUe/conditional-ude,https://github.com/Computational-Biology-TUe/conditional-ude,Repository accompanying the manuscript on conditional universal differential equations,Organization,False,False,1
+cool-japan/phop,https://github.com/cool-japan/phop,phop is a differentiable symbolic-discovery engine written entirely in pure Rust. It learns both the topology and the numeric parameters of closed-form expressions by gradient descent over homogeneous binary trees built from a single binary primitive — the EML operator,User,False,False,2
+cool-japan/scirs,https://github.com/cool-japan/scirs,"SciRS2 - Scientific Computing and AI in Rust., providing SciPy-compatible APIs while leveraging Rust's performance, safety, and concurrency features. Unlike traditional scientific libraries",User,False,False,1
+cosmologicmind/sdgft-machine-learning,https://github.com/cosmologicmind/sdgft-machine-learning,"ML surrogate, inverter & anomaly detector for Six-Dimensional Geometric Flow Theory (SDGFT)",User,False,False,1
+costanmatteo/AZIMUTH,https://github.com/costanmatteo/AZIMUTH,"The term azimuth, from the Arabic as-sumūt (“directions”), refers in navigation to the angle measured from the North toward a point or celestial body. It is used to orient oneself and determine a course. AI-driven framework for optimizing PCB manufacturing reliability. Uses frozen Transformer as oracle to train adaptive neural controllers.",User,False,False,1
+CP3-Origins/cp3-bench,https://github.com/CP3-Origins/cp3-bench,A benchmark tool for symbolic regression,Organization,False,False,2
+CTF-for-Science/llmtime,https://github.com/CTF-for-Science/llmtime,,Organization,False,False,1
+cttmayi/pylib,https://github.com/cttmayi/pylib,,User,False,False,1
+curryhowardbadnullpointergood/AI-Law-Finder,https://github.com/curryhowardbadnullpointergood/AI-Law-Finder,,User,False,False,23
+CXY0112/SGN,https://github.com/CXY0112/SGN,Official SGN code: A Neuro-Symbolic framework using GNNs and PySR to discover interpretable PDEs from noisy data.,User,False,False,2
+cyrilgabriele/DeepLearning,https://github.com/cyrilgabriele/DeepLearning,Deep Learning course @ HSG,User,False,False,1
+czs-school-23/DataLibrary,https://github.com/czs-school-23/DataLibrary,"Data, method, and planning documents ",Organization,False,False,1
+d2k-daniel/KAN_Analysis,https://github.com/d2k-daniel/KAN_Analysis,Exploring the Limitations of Kolmogorov-Arnold Networks in Classification: Insights to Software Training and Hardware Implementation,User,False,False,1
+D4san/MS-ComAvanzada,https://github.com/D4san/MS-ComAvanzada,,User,False,False,4
+daattavya98/MathWorld-learning-homology,https://github.com/daattavya98/MathWorld-learning-homology,Learning homology through a MARL system,User,False,False,1
+DABS-Dynamics/kepler-ldm-law-discovery,https://github.com/DABS-Dynamics/kepler-ldm-law-discovery,Symbolic regression vs MLP on Kepler’s Third Law: a Law-Discovery Machine (LDM) using PySR. (Has Paper with it),User,False,False,2
+dafnep4/Dafne-Petrelli-s-coding,https://github.com/dafnep4/Dafne-Petrelli-s-coding,,User,False,False,1
+daniel-j-zou/srsd_bench,https://github.com/daniel-j-zou/srsd_bench,,User,False,False,1
+DanielePessina/Personalised-PBPK-Demo,https://github.com/DanielePessina/Personalised-PBPK-Demo,,User,False,False,1
+danielveigasilva/SMNLMS-SR,https://github.com/danielveigasilva/SMNLMS-SR,,User,False,False,2
+DaniilLaptev/pinns,https://github.com/DaniilLaptev/pinns,Physics-Informed toolkit for solving physics-informed tasks.,User,False,False,1
+Danyanne/BesselML,https://github.com/Danyanne/BesselML,Project conducted in Summer 2025 as an internship at Oxford University. It was suprivised by Constantinos Skordis (CEICO) and Deaglan Bartlett (Oxford University),User,False,False,2
+DarktIOff/DeepEGB,https://github.com/DarktIOff/DeepEGB,,User,False,False,2
+Davi-SB/Battery-Analysis,https://github.com/Davi-SB/Battery-Analysis,,User,False,False,1
+David-Li0406/meta-skill-evloving,https://github.com/David-Li0406/meta-skill-evloving,,User,False,False,1
+DavidEngland/ABL,https://github.com/DavidEngland/ABL,Atmospheric Boundary Layer,User,False,False,2
+DavisAI1974/Markets,https://github.com/DavisAI1974/Markets,Market behavior using OD,User,False,False,1
+dcldyhb/XAI_for_Microgrid_Optimization,https://github.com/dcldyhb/XAI_for_Microgrid_Optimization,大创仓库,User,False,False,1
+dcldyhb/XAI_test,https://github.com/dcldyhb/XAI_test,,User,False,False,1
+deep-symbolic-mathematics/llm-srbench,https://github.com/deep-symbolic-mathematics/llm-srbench,[ICML2025 Oral] LLM-SRBench: A New Benchmark for Scientific Equation Discovery with Large Language Models,Organization,False,False,1
+deep-symbolic-mathematics/surfacebench,https://github.com/deep-symbolic-mathematics/surfacebench,[TMLR] This is the official repository of SURFACEBENCH: Can Self-Evolving LLMs Find the Equations of 3D Scientific Surfaces?,Organization,False,False,1
+deepmodeling/AI4S-agent-tools,https://github.com/deepmodeling/AI4S-agent-tools,Collecting a variety of Agent-Ready tool modules,Organization,False,False,1
+deepmodeling/build-your-agent,https://github.com/deepmodeling/build-your-agent,"An open project initiated by the DeepModeling community focused on constructing intelligent agents for scientific research. It is committed to assembling a reusable and extensible set of Agent-Ready tools, promoting the development and practical deployment of research agents through open collaboration.",Organization,False,False,1
+Deeprockz22/IMS135-Exam-Prep,https://github.com/Deeprockz22/IMS135-Exam-Prep,,User,False,False,1
+Devisri-B/Susceptible-Infected-Removed-Model,https://github.com/Devisri-B/Susceptible-Infected-Removed-Model,ML pipeline learning SIR epidemic equations from stochastic simulations via symbolic regression,User,False,False,1
+Dibyasha2305/pysr-paper-reproduction,https://github.com/Dibyasha2305/pysr-paper-reproduction,,User,False,False,6
+DILiS-lab/ude-crosstalk-discovery,https://github.com/DILiS-lab/ude-crosstalk-discovery,Universal differential equations for discovering the crosstalk between p53 & NF-kB pathways,Organization,False,False,2
+divelab/AIRS,https://github.com/divelab/AIRS,Artificial Intelligence Research for Science (AIRS),Organization,False,False,1
+dleiferives/softmaxxing,https://github.com/dleiferives/softmaxxing,offline softmax optimization using symbolic regression,User,False,False,1
+donymorph/deep_2Dlidar_localization,https://github.com/donymorph/deep_2Dlidar_localization,"2D lidar localization with deep learning, Pytorch, ROS2, Isaac Sim, 1D CNN with modified transformer ",User,False,False,1
+dr-guangtou/hongshao,https://github.com/dr-guangtou/hongshao,Toy model for the two-phase assembly of massive galaxies,User,False,False,3
+Dr-Yehia/corrosion-rc-beam-optimizer,https://github.com/Dr-Yehia/corrosion-rc-beam-optimizer,,User,False,False,8
+Dr-Yehia/Stability-book,https://github.com/Dr-Yehia/Stability-book,,User,False,False,1
+drorjac/FieldSense,https://github.com/drorjac/FieldSense,This project focuses on environmental sensing (ES) with wireless communication using physics-informed AI tools.,User,False,False,2
+DrShushen/IGSR,https://github.com/DrShushen/IGSR,"Code for Paper ""Influence-Guided Symbolic Regression: Scientific Discovery via LLM-Driven Equation Search with Granular Feedback""",User,False,False,12
+dschlesinger/openadmet-pxr,https://github.com/dschlesinger/openadmet-pxr,Code for openadmet pxr challenge,User,False,False,1
+dslsdzc/myideas,https://github.com/dslsdzc/myideas,,User,False,False,1
+dtolgay/niagara_analyze_hden_metallicity_turbulence_isrf_radius,https://github.com/dtolgay/niagara_analyze_hden_metallicity_turbulence_isrf_radius,analyze_hden_metallicity_turbulence_isrf_radius file in Niagara,User,False,False,4
+Duy19/ma_code,https://github.com/Duy19/ma_code,,User,False,False,3
+Dwill6978/Testing,https://github.com/Dwill6978/Testing,,User,False,False,5
+earaujoassis/computer-science,https://github.com/earaujoassis/computer-science,Computer Science projects & research,User,False,False,1
+eather0056/Catenary-Model-Estimation-and-MPC-Control-for-ROV-Tethered-Systems,https://github.com/eather0056/Catenary-Model-Estimation-and-MPC-Control-for-ROV-Tethered-Systems,,User,False,False,8
+ECNU-ICALK/AutoSkill,https://github.com/ECNU-ICALK/AutoSkill,AutoSkill: Experience-Driven Lifelong Learning via Skill Self-Evolution,Organization,False,False,1
+edfink234/RCPDE,https://github.com/edfink234/RCPDE,,User,False,False,2
+edu-passos/sr-regime-characterization,https://github.com/edu-passos/sr-regime-characterization,,User,False,False,2
+eelregit/5par,https://github.com/eelregit/5par,symbolic reionization history: 5 params are all you need in ΛCDM,User,False,False,5
+ehsan-vahabzadeh/Mixing-in-UHS,https://github.com/ehsan-vahabzadeh/Mixing-in-UHS,,User,False,False,2
+ehsan-vahabzadeh/UHS-in-Aquifers,https://github.com/ehsan-vahabzadeh/UHS-in-Aquifers,,User,False,False,4
+elizabethsztan/symbolic_distillation_GNNs,https://github.com/elizabethsztan/symbolic_distillation_GNNs,Symbolic distillation of GNNs,User,False,False,1
+epiblasfunds/options-pricing,https://github.com/epiblasfunds/options-pricing,TFM,Organization,False,False,5
+EricSchles/causal_bundle,https://github.com/EricSchles/causal_bundle,,User,False,False,5
+ErikHartman/PepBind,https://github.com/ErikHartman/PepBind,Protein peptide binding score repo,User,False,False,2
+erusseil/mvsr,https://github.com/erusseil/mvsr,"Public code associated to the ""Exploring Multi-view Symbolic Regression methods in physical sciences"" paper",User,False,False,1
+esarna/metody-i-algorytmy-optymalizacji,https://github.com/esarna/metody-i-algorytmy-optymalizacji,,User,False,False,1
+EstevaoMGomes/GoLP_IN_EG,https://github.com/EstevaoMGomes/GoLP_IN_EG,Plasma Data Analysis with PySR,User,False,False,6
+eunsu-park/study-hub,https://github.com/eunsu-park/study-hub,"Personal study materials covering technical topics across multiple difficulty tiers, with runnable code examples and exercise solutions",User,False,False,2
+ev-watson/orbit_ml,https://github.com/ev-watson/orbit_ml,Orbit centered ML,User,False,False,2
+EyringMLClimateGroup/grundner23james_EquationDiscovery_CloudCover,https://github.com/EyringMLClimateGroup/grundner23james_EquationDiscovery_CloudCover,"A hierarchical modeling framework to discover new machine learning-based equations for cloud cover, including symbolic regression",Organization,False,False,2
+FAIR-UMN/FAIR-UMN-CDMS,https://github.com/FAIR-UMN/FAIR-UMN-CDMS,FAIR-UMN-CDMS: Identifying Interaction Location in SuperCDMS Detectors.,Organization,False,False,3
+fallofpheonix/sira,https://github.com/fallofpheonix/sira,,User,False,False,1
+farocrown/Simreg,https://github.com/farocrown/Simreg,Repo contains the code for my bachelor degree,User,False,False,10
+fastmachinelearning/hls4ml,https://github.com/fastmachinelearning/hls4ml,Machine learning on FPGAs using HLS,Organization,False,False,2
+fastmachinelearning/hls4ml-tutorial,https://github.com/fastmachinelearning/hls4ml-tutorial,Tutorial notebooks for hls4ml ,Organization,False,False,1
+feanored/SymbolicEW,https://github.com/feanored/SymbolicEW,Symbolic Regression of Galaxies Equivalent Widths,User,False,False,2
+FedejGon/NN-CC,https://github.com/FedejGon/NN-CC,"This repository contains the codes for framework for equation discovery by combining Neural Networks with Characteristic Curves (NN-CC), Symmetry Constraints, and Post-Symbolic Regression (Post-SR). It also incorporates implementations of SINDy and pySR within the CC-based formalism.",User,False,False,21
+FedejGon/pyCC.id,https://github.com/FedejGon/pyCC.id,Library to discover ordinary differential equations from data (system identification) based on hypotheses and rooted in the concepts of structural 'skeletons' with structural identifiability and characteristic curves,User,False,False,10
+feizhanxia/Symbolic-Regression-test,https://github.com/feizhanxia/Symbolic-Regression-test,学习和尝试符号回归的完整流程做法,User,False,False,2
+felipeminuzzi/PySR_ocean,https://github.com/felipeminuzzi/PySR_ocean,,User,False,False,2
+ferhaterata/learning-randomized-reductions,https://github.com/ferhaterata/learning-randomized-reductions,Bitween: a neuro-symbolic system that learns randomized self-reductions (RSRs) automatically. ICML 2026 (Spotlight).,User,False,False,1
+fingoldo/mlframe,https://github.com/fingoldo/mlframe,,User,False,False,12
+fitriaramlan/model-selection-criteria,https://github.com/fitriaramlan/model-selection-criteria,,User,False,False,1
+fitriaramlan/sr-msc-es,https://github.com/fitriaramlan/sr-msc-es,,User,False,False,1
+flapbat/cmb_lensing_tail,https://github.com/flapbat/cmb_lensing_tail,,User,False,False,19
+flapbat/cosmo_learning,https://github.com/flapbat/cosmo_learning,,User,False,False,1
+flo338/pinn-for-sigmoid,https://github.com/flo338/pinn-for-sigmoid,,User,False,False,1
+florensdietz/ML4Physics_final_project,https://github.com/florensdietz/ML4Physics_final_project,"This repository reproduces the results from the paper ""Learning Physics with Graph Networks"" which has to be presented in the ML4Physics course.",User,False,False,1
+flowcean/flowcean,https://github.com/flowcean/flowcean,  Automatic Generation of Models for Cyber-Physical Systems,Organization,False,False,1
+folivetti/eggp_paper_GECCO,https://github.com/folivetti/eggp_paper_GECCO,"Repository with all data, scripts and instructions on how to replicate the eggp paper",User,False,False,2
+folivetti/srtree-opt,https://github.com/folivetti/srtree-opt,CLI to (re)optimize parameters of symbolic regression models,User,False,False,1
+folivetti/symreg-course,https://github.com/folivetti/symreg-course,Symbolic Regression Lecture Slides,User,False,False,4
+Forbu/pinn_loss_torch,https://github.com/Forbu/pinn_loss_torch,Implementation of discretize pinn loss,User,False,False,1
+francescoTheSantis/Mixture-of-CB-Experts,https://github.com/francescoTheSantis/Mixture-of-CB-Experts,"Code to reproduce the experiments in ""Mixture of Concept Bottleneck Experts"" (ICML 26, Spotlight).",User,False,False,2
+FrederikBornemann/SyReAL,https://github.com/FrederikBornemann/SyReAL,Symbolic Regression and Active Learning,User,False,False,2
+Freeee0818/RuixiLab,https://github.com/Freeee0818/RuixiLab,睿析实验平台,User,False,False,1
+frekkoz3/Optimization-for-AI,https://github.com/frekkoz3/Optimization-for-AI,"Content of the ""OPTIMIZATION FOR AI 2025"" academic course",User,False,False,1
+frlinaker/promptlearn,https://github.com/frlinaker/promptlearn,,User,False,False,1
+FrontierCS/Frontier-CS,https://github.com/FrontierCS/Frontier-CS,A benchmark for evaluating LLMs on open-ended CS problems. Exploring the Next Frontier of Computer Science.,Organization,False,False,97
+fxbandito/CLAUDECODE_MBO,https://github.com/fxbandito/CLAUDECODE_MBO,,User,False,False,2
+gabrielmoreira/agent-skills-mirror,https://github.com/gabrielmoreira/agent-skills-mirror,"Periodically refreshed mirror of agents, skills, prompts and instruction files from public repositories.",User,False,False,1
+GalSim-developers/JAX-GalSim,https://github.com/GalSim-developers/JAX-GalSim,"JAX port of GalSim, for parallelized, GPU accelerated, and differentiable galaxy image simulations.",Organization,False,False,1
+Garthzzz/Physics-Informed-Symbolic-Regression,https://github.com/Garthzzz/Physics-Informed-Symbolic-Regression,"Three-stage physics-informed symbolic regression framework for discovering interpretable equations from scientific data. Combines dimensional analysis, sparse regression, and uncertainty quantification.",User,False,False,2
+GCaptainNemo/Electronegativity-Under-Pressure,https://github.com/GCaptainNemo/Electronegativity-Under-Pressure,"This repo provides code and data to reproduce the results in the paper for ""Electron Transfer Rules of Minerals under Pressure informed by Machine Learning"".",User,False,False,1
+gddeazevedo/rgpe,https://github.com/gddeazevedo/rgpe,,User,False,False,1
+GDS-Education-Community-of-Practice/DSECOP,https://github.com/GDS-Education-Community-of-Practice/DSECOP,This repository contains data science educational materials developed by DSECOP Fellows.,Organization,False,False,1
+generalroboticslab/automated_discovery_of_continuous_dynamics_from_videos,https://github.com/generalroboticslab/automated_discovery_of_continuous_dynamics_from_videos,,Organization,False,False,1
+generalroboticslab/sym2real,https://github.com/generalroboticslab/sym2real,Official repo for Sym2Real: Symbolic Dynamics with Residual Learning for Data-Efficient Adaptive Control,Organization,False,False,1
+gHashTag/t27,https://github.com/gHashTag/t27,TRI-27 Assembly — Canonical language specification for Trinity Project,User,False,False,3
+Giang-Dang/computer-science-news,https://github.com/Giang-Dang/computer-science-news,,User,False,False,1
+Glottocrisio/WikiWooW,https://github.com/Glottocrisio/WikiWooW,A dataset-generator for retrieving serendipitous paths in Wikipedia. Heavily built upon Wikimedia Clickstream data-dumps and similarity functions harvested from SEMATCH and WIKIFIER.,User,False,False,1
+gobbleyourdong/open_problems,https://github.com/gobbleyourdong/open_problems,OPEN PROBLEMS WANT TO STAY OPEN,User,False,False,3
+GongJr0/MacroSim,https://github.com/GongJr0/MacroSim,Symbolic regression based equation discovery and iterative simulation library.,User,False,False,4
+GongJr0/SymbolicDSGE,https://github.com/GongJr0/SymbolicDSGE,A linear DSGE engine with a fully symbolic and modifiable model backend. Includes regression-based equation augmentation capabilities.,User,False,False,1
+Gotsmy/FBA-Hyb,https://github.com/Gotsmy/FBA-Hyb,"Code discussed in ""Integrating Metabolic Networks into Hybrid Bioprocess Models""",User,False,False,85
+gxaurab/GraphTheory-GNNs,https://github.com/gxaurab/GraphTheory-GNNs,some diff proj,User,False,False,1
+Gy-Hu/AIG2INV,https://github.com/Gy-Hu/AIG2INV,DeepIC3: Guiding IC3 Algorithms by Graph Neural Network Clause Prediction (ASP-DAC 2024),User,False,False,1
+Gy-Hu/E-Syn,https://github.com/Gy-Hu/E-Syn,E-Syn: E-Graph Rewriting with Technology-Aware Cost Functions for Logic Synthesis (DAC 2024),User,False,False,1
+Haishi2016/bacon-net,https://github.com/Haishi2016/bacon-net,Fully explainable neural network for arithmetic and gradient logic expression approximation ,User,False,False,2
+HaohanZou/CoNSAL,https://github.com/HaohanZou/CoNSAL,Official implementation of CoNSAL for analytical Lyapunov function discovery,User,False,False,2
+haoran-ian/GP_exp,https://github.com/haoran-ian/GP_exp,,User,False,False,1
+HaraldCaap/Symbollic_regression,https://github.com/HaraldCaap/Symbollic_regression,,User,False,False,2
+Hariprashad-Ravikumar/Sivers_TMD_Lattice_Analysis_Mathematica_PySR,https://github.com/Hariprashad-Ravikumar/Sivers_TMD_Lattice_Analysis_Mathematica_PySR,Data Analysis for Lattice Siverse TMD Projects,User,False,False,6
+HarryJ12/Coal2Core,https://github.com/HarryJ12/Coal2Core,"ML platform (PySR, SVR, Monte Carlo) with a Next.js and Mapbox interface to rank U.S. coal plants for SMR conversion and visualize suitability, economics, and impact.",User,False,False,1
+HarryPotterXTX/FIND,https://github.com/HarryPotterXTX/FIND,FIND: A Framework for Discovering Formulas in Data,User,False,False,1
+harshitagarwal26/learning-interpretable-dynamics-using-ML,https://github.com/harshitagarwal26/learning-interpretable-dynamics-using-ML,,User,False,False,1
+hel-astro-lab/polarcaps,https://github.com/hel-astro-lab/polarcaps,,Organization,False,False,6
+hftsoi/symbolfit,https://github.com/hftsoi/symbolfit,Automatic parametric modeling with symbolic regression,User,False,False,14
+hftsoi/symbolic_regression,https://github.com/hftsoi/symbolic_regression,,User,False,False,3
+hfvcn/kan-symbolic-wind-solar-load-forecasting,https://github.com/hfvcn/kan-symbolic-wind-solar-load-forecasting,Symbolic Regression via KAN for Wind-Solar Coupled Load Forecasting,User,False,False,1
+hol1m4n/HIIGalaxies,https://github.com/hol1m4n/HIIGalaxies,A repository created to track progress and nuances related with my PhD research on HIIGalaxies and the Hubble constant.,User,False,False,2
+hongbingbing0-afk/MatterVial,https://github.com/hongbingbing0-afk/MatterVial,,User,False,False,1
+HugoOnghai/SiGeSn_Atomic_Descriptors,https://github.com/HugoOnghai/SiGeSn_Atomic_Descriptors,,User,False,False,2
+huijiancai99/Cooks_Membrane,https://github.com/huijiancai99/Cooks_Membrane,,User,False,False,1
+Human-Agent-Society/CORAL,https://github.com/Human-Agent-Society/CORAL,"CORAL is a robust, lightweight infrastructure for multi-agent autonomous self-evolution, built for autoresearch. Works with Claude Code, Codex, Cursor, OpenCode, Kiro, and more.",Organization,False,False,2
+hundong2/hundong2.github.io,https://github.com/hundong2/hundong2.github.io,hundong2 pages ,User,False,False,1
+hzy24/PINN-PySR,https://github.com/hzy24/PINN-PySR,PINN&PySR,User,False,False,1
+Iammohithhh/RL_Phy_Survivor,https://github.com/Iammohithhh/RL_Phy_Survivor,,User,False,False,2
+idea-iitd/GraphTrail,https://github.com/idea-iitd/GraphTrail,GrpahTrail: Translating GNN Predictions into Human-Interpretable Logical Rules,Organization,False,False,1
+idetiege/Deep-Learning,https://github.com/idetiege/Deep-Learning,,User,False,False,1
+igorrivin/symbolic_volatility_surface,https://github.com/igorrivin/symbolic_volatility_surface,,User,False,False,3
+iminfine/inductive-bias-probes,https://github.com/iminfine/inductive-bias-probes,Filtered backup: code/config only,User,False,False,1
+initgroup/data-editing-system,https://github.com/initgroup/data-editing-system,,User,False,False,1
+intell-sci-comput/PSE,https://github.com/intell-sci-comput/PSE,Official PyTorch implementation of PSE/PSRN: Fast and efficient symbolic expression discovery through parallelized symbolic enumeration. Evaluates millions of expressions simultaneously on GPU with automated subtree reuse.,User,False,False,5
+invi-bhagyesh/stoch2sym,https://github.com/invi-bhagyesh/stoch2sym,,User,False,False,3
+isaigm/rediscovering-orbital-mechanics-with-ml,https://github.com/isaigm/rediscovering-orbital-mechanics-with-ml,"A PyTorch implementation and replication of the paper ""Rediscovering orbital mechanics with machine learning"" using a Graph Neural Network (GNN) to infer planetary forces and PySR to discover Newton's law of gravitation from simulated data.",User,False,False,1
+ishakabassi/NOVA-Symbolic-Regression-V2,https://github.com/ishakabassi/NOVA-Symbolic-Regression-V2,,User,False,False,7
+izumiwen/EML-HeadPlus,https://github.com/izumiwen/EML-HeadPlus,,User,False,False,1
+j-haralds/MSc_thesis,https://github.com/j-haralds/MSc_thesis,,User,False,False,6
+Jacinto27/symbolic_regression_py,https://github.com/Jacinto27/symbolic_regression_py,Simple simbolic regression code for personal use. Python,User,False,False,1
+JacobChild/DeepLearning,https://github.com/JacobChild/DeepLearning,,User,False,False,1
+JacobToot/DeepLearningPH,https://github.com/JacobToot/DeepLearningPH,Group Project Deep Learning in Physics ,User,False,False,1
+jangel19/coal2core-ml-pipeline,https://github.com/jangel19/coal2core-ml-pipeline,tuftsdatathon,User,False,False,1
+Janosik8/UM-Projekt-fianl,https://github.com/Janosik8/UM-Projekt-fianl,,User,False,False,6
+jatinchowdhury18/ADC_VAModelling_2023,https://github.com/jatinchowdhury18/ADC_VAModelling_2023,,User,False,False,1
+jcraig949jfi/Prometheus,https://github.com/jcraig949jfi/Prometheus,Stealing fire from the gods -- forging the symbolic substrate where reasoning circuits emerge,User,False,False,1
+jeffasante/glassbox,https://github.com/jeffasante/glassbox,A neuro-symbolic interpretability tool that reverse-engineers Black Box PyTorch models into human-readable mathematical equations and logical rules using Symbolic Regression.,User,False,False,3
+JesperNoord/Msc_thesis_battery_surrogate,https://github.com/JesperNoord/Msc_thesis_battery_surrogate,"Repository for the master's thesis: ""Neural Network Enhanced Physics-based Surrogate Model Framework for Multiphysics Battery Simulations""",User,False,False,1
+jfbbcom/Experience-Sharing-of-the-21st-Huawei-Cup-China-Graduate-Students-Mathematical-Modeling-Competiti,https://github.com/jfbbcom/Experience-Sharing-of-the-21st-Huawei-Cup-China-Graduate-Students-Mathematical-Modeling-Competiti,对2023年华为杯全国研究生数学建模大赛,User,False,False,1
+JiachenWang512/Cortical_Folding,https://github.com/JiachenWang512/Cortical_Folding,course project for CSE 397 Mathematical Pathophysiology,User,False,False,1
+jiangnanhugo/APPS-ODE,https://github.com/jiangnanhugo/APPS-ODE,"Active Symbolic Discovery of Ordinary Differential Equations via Phase Portrait Sketching. Nan Jiang, Md Nasim, Yexiang Xue. AAAI 2025.",User,False,False,1
+JiaqiDijon/SPsyINN,https://github.com/JiaqiDijon/SPsyINN,Combining Denoised Neural Network and Genetic Symbolic Regression for Memory Behavior Modeling via Dynamic Asynchronous Optimization,User,False,False,1
+jibanCat/lya1d_priya_forecast,https://github.com/jibanCat/lya1d_priya_forecast,Forecast cosmology of Lya P1D from PRIYA (Aidan's undergrad project),User,False,False,15
+jibanCat/MF-SR,https://github.com/jibanCat/MF-SR,Symbolic Regression for multi-fidelity emulator,User,False,False,4
+jibanCat/multi_fidelity_gpflow,https://github.com/jibanCat/multi_fidelity_gpflow,An implementation of multi-fidelity emulators from emukit using GPFlow,User,False,False,1
+Jie0618/PhysicsRegression,https://github.com/Jie0618/PhysicsRegression,A Neural Symbolic Model for Space Physics,User,False,False,1
+jil095/tinyRNN,https://github.com/jil095/tinyRNN,,User,False,False,1
+jipindan/FactorLab,https://github.com/jipindan/FactorLab,,User,False,False,1
+jkitchin/s26-06642,https://github.com/jkitchin/s26-06642,06-642: Data Science and Machine Learning in Chemical Engineering,User,False,False,1
+jliu2006/stablecoin,https://github.com/jliu2006/stablecoin,,User,False,False,2
+jmmcd/Magpie,https://github.com/jmmcd/Magpie,,User,False,False,3
+JoeSpencer1/CS6350_project,https://github.com/JoeSpencer1/CS6350_project,,User,False,False,1
+johnkimhyuntae/symbolic-discovery,https://github.com/johnkimhyuntae/symbolic-discovery,50 Years of Symbolic Equation Discovery: Revisiting and Improving BACON against Modern Symbolic Regression,User,False,False,1
+JonahMiller/BACON,https://github.com/JonahMiller/BACON,,User,False,False,2
+jperez-physics/PyMISR,https://github.com/jperez-physics/PyMISR,An implementation of the MISR algorithm,User,False,False,2
+JR-1991/Catalax,https://github.com/JR-1991/Catalax,🏍️ - JAX-based framework to model biological systems,User,False,False,1
+jss265/595R---Deep-Learning-for-Engineers,https://github.com/jss265/595R---Deep-Learning-for-Engineers,,User,False,False,1
+jtkillian/PYTHON,https://github.com/jtkillian/PYTHON,,User,False,False,1
+juliareuter/flowinGN,https://github.com/juliareuter/flowinGN,"This repo contains code for the paper titled ""Graph Networks as Inductive Bias for Genetic Programming: Symbolic Models for Particle-Laden Flows""",User,False,False,1
+junwoopark92/revisiting-LLMs-zeroshot-forecaster,https://github.com/junwoopark92/revisiting-LLMs-zeroshot-forecaster,"""Revisiting LLMs as Zero-Shot Time-Series Forecasters: Small Noise Can Break Large Models"", accepted at Association for Computational Linguistics (ACL) 2025",User,False,False,1
+Jurajski/pgverse,https://github.com/Jurajski/pgverse,,User,False,False,1
+jxi24/QuantumIntegralReduction,https://github.com/jxi24/QuantumIntegralReduction,,User,False,False,4
+jyothis-fp/LibraryAugmentedSymbolicRegression.jl-old,https://github.com/jyothis-fp/LibraryAugmentedSymbolicRegression.jl-old,,User,False,False,10
+k4ntz/COMET,https://github.com/k4ntz/COMET,Atari Causal World Model Extraction,User,False,False,1
+kangaroo-0000/mlcad-artifacts,https://github.com/kangaroo-0000/mlcad-artifacts,,User,False,False,3
+KarimBraidi/Data-Driven-Modeling-Benchmarking-EOM,https://github.com/KarimBraidi/Data-Driven-Modeling-Benchmarking-EOM,Benchmarking Equation Recovery Algorithms on Rigid-Body Non-Smooth EOM,User,False,False,2
+KaryAlc/HLS4ML,https://github.com/KaryAlc/HLS4ML,,User,False,False,1
+Kausta/l45_mpeq,https://github.com/Kausta/l45_mpeq,,User,False,False,7
+kayvondaie/BCI,https://github.com/kayvondaie/BCI,,User,False,False,1
+kazewong/SymbolicGWPopulation_paper,https://github.com/kazewong/SymbolicGWPopulation_paper,,User,False,False,1
+kbpi314/iclust_paper,https://github.com/kbpi314/iclust_paper,,User,False,False,1
+kcybinski/TetrisCNN_for_spin_systems,https://github.com/kcybinski/TetrisCNN_for_spin_systems,"A repository accompanying research paper ""Speak so a physicist can understand you! TetrisCNN for detecting phase transitions and order parameters"" by K. Cybiński, J. Enouen, A. Georges and A. Dawid",User,False,False,1
+kdlamb/IceNODE,https://github.com/kdlamb/IceNODE,Discovering how ice crystals grow using Neural ODE's and Symbolic Regression,User,False,False,1
+Kenny-Jia/Freeze_sw_L1AD,https://github.com/Kenny-Jia/Freeze_sw_L1AD,,User,False,False,1
+KenWuqianghao/Transformer-SR-Benchmarks,https://github.com/KenWuqianghao/Transformer-SR-Benchmarks,Benchmarking pipeline for some transformer based symbolic regression models,User,False,False,1
+ketema/Euler_Problems,https://github.com/ketema/Euler_Problems,"Set of Problems from http://projecteuler.net in order to practice test driven coding, I chose to do these problems",User,False,False,3
+Kevin2004-ux/trading_ai,https://github.com/Kevin2004-ux/trading_ai,An AI-powered quantitative trading system with multiple expert models and a conversational interface.,User,False,False,2
+KevinHaka/Symbolic-Regression-Genetic-Programming,https://github.com/KevinHaka/Symbolic-Regression-Genetic-Programming,A toolkit for symbolic regression using genetic programming with advanced feature selection methods.,User,False,False,8
+khwahish1509/neuro-symbolic-disease,https://github.com/khwahish1509/neuro-symbolic-disease,"Extract readable math equations from black-box neural networks for medical AI. Transformer → Symbolic Regression → Doctor-readable formulas. 99.3% fidelity, FDA-standard validation. First neural-to-symbolic pipeline for interpretable clinical prediction.",User,False,False,4
+khwahish1509/RL_SR,https://github.com/khwahish1509/RL_SR,,User,False,False,2
+kipmadden/1-PRISM-BASE,https://github.com/kipmadden/1-PRISM-BASE,,User,False,False,1
+kKedaRr3/Metody-i-Algorytmy-Optymalizacji,https://github.com/kKedaRr3/Metody-i-Algorytmy-Optymalizacji,,User,False,False,1
+KlimaJaroslaw/MetodyOptymalizacji,https://github.com/KlimaJaroslaw/MetodyOptymalizacji,Metody i algorytmy optymalizacji,User,False,False,1
+kmegahed/Stub-CFST-Machine-learning,https://github.com/kmegahed/Stub-CFST-Machine-learning,,User,False,False,1
+kmsurrao/NILC-Inference-Pipeline,https://github.com/kmsurrao/NILC-Inference-Pipeline,Pipelines for cosmological parameter inference using power spectra of ILC component-separated maps. Based on https://arxiv.org/abs/2406.16811.,User,False,False,1
+komimensah/Symbolic-Regression-for-Trait-Environment-Functions,https://github.com/komimensah/Symbolic-Regression-for-Trait-Environment-Functions,"Here, we present a biologically constrained symbolic regression framework for estimating thermal development rates and compare its performance against established canonical nonlinear models (Logan, Brière, Lactin, Ratkowsky, and quadratic formulations). ",User,False,False,2
+kosb123/Punching-shear,https://github.com/kosb123/Punching-shear,,User,False,False,1
+kpapmath/crypto_microprice,https://github.com/kpapmath/crypto_microprice,,User,False,False,1
+kraisr/pysr-feynman,https://github.com/kraisr/pysr-feynman,Symbolic Regression on AI Feynman Dataset,User,False,False,1
+krzysztof-kacprzyk/SemanticODE,https://github.com/krzysztof-kacprzyk/SemanticODE,,User,False,False,1
+krzysztof-kacprzyk/SHAREs,https://github.com/krzysztof-kacprzyk/SHAREs,,User,False,False,6
+krzysztof-kacprzyk/TIMEVIEW,https://github.com/krzysztof-kacprzyk/TIMEVIEW,,User,False,False,1
+KTMAnimations/astroai,https://github.com/KTMAnimations/astroai,,User,False,False,7
+kyksj-1/PhysicsPhasePortraitGenerator,https://github.com/kyksj-1/PhysicsPhasePortraitGenerator,,User,False,False,1
+kzhangm02/tide,https://github.com/kzhangm02/tide,,User,False,False,2
+langkhachhoha/CORAL,https://github.com/langkhachhoha/CORAL,"CORAL is a robust, lightweight infrastructure for multi-agent autonomous self-evolution, built for autoresearch.",User,False,False,5
+LcosmosS/S.T.A.R.-Program,https://github.com/LcosmosS/S.T.A.R.-Program,"The S.T.A.R. Program proposes that the large‑scale structure of the universe, the effective expansion rate, and the Hubble–Planck tension arise from the interaction between arithmetic projection geometry, entropy curvature, persistent cohomology classes, symbolic geodesics, and scalar‑field coupling",User,False,False,3
+Lee-HS04/simple_AI4S_toy,https://github.com/Lee-HS04/simple_AI4S_toy,,User,False,False,1
+lengyuner/lengyuner.github.io,https://github.com/lengyuner/lengyuner.github.io,personal website,User,False,False,1
+lerouxerwan/EquationDiscovery4ClimateImpact,https://github.com/lerouxerwan/EquationDiscovery4ClimateImpact,,User,False,False,4
+levhulsbergen/SymbolicRegression-RSA,https://github.com/levhulsbergen/SymbolicRegression-RSA,This is the code used to run the experiments from the thesis,User,False,False,2
+lewgaowei/qf600_asset_pricing,https://github.com/lewgaowei/qf600_asset_pricing,Machine Learning Signals on Asset Pricing,User,False,False,1
+lijing-creator/RationalLearning.jl,https://github.com/lijing-creator/RationalLearning.jl,0.1.0v,User,False,False,1
+Liushengyu258/PySR,https://github.com/Liushengyu258/PySR,,User,False,False,2
+lluisp1999/timeview,https://github.com/lluisp1999/timeview,,User,False,False,1
+lobsterhandz/DRS-Warpdrive-Program,https://github.com/lobsterhandz/DRS-Warpdrive-Program,uses updated URE 5.0,User,False,False,6
+longanisainhertaco/DPF_Unified,https://github.com/longanisainhertaco/DPF_Unified,,User,False,False,1
+lorenzobranca/MESA-Emulator,https://github.com/lorenzobranca/MESA-Emulator,Emulator for MESA outputs,User,False,False,1
+lovcavil/SolverOpti,https://github.com/lovcavil/SolverOpti,,User,False,False,1
+Lrozzy/hls4ml-tutorial,https://github.com/Lrozzy/hls4ml-tutorial,,User,False,False,1
+Lrozzy/hls4ml_OpenML,https://github.com/Lrozzy/hls4ml_OpenML,This is identical to the hls4ml repo except it uses the original OpenML dataset and all the notebooks are changed in a minor way to reflect taht,User,False,False,1
+lrspeiser/Geometry-Gated-Gravity,https://github.com/lrspeiser/Geometry-Gated-Gravity,"Geometry-Gated Gravity (G³) — a one-law, baryon-only route to flat galaxy curves and hot-cluster support",User,False,False,5
+LRudL/gninvert,https://github.com/LRudL/gninvert,Experiments and tools for symbolic rule extraction from graph neural networks,User,False,False,2
+lsinfo3/comst-xai-qoe,https://github.com/lsinfo3/comst-xai-qoe,,Organization,False,False,1
+lstorchi/CurveFittingML,https://github.com/lstorchi/CurveFittingML,,User,False,False,1
+lstorchi/ML_Teaching,https://github.com/lstorchi/ML_Teaching,,User,False,False,1
+lucalavezzo/WRemnantsHelpers,https://github.com/lucalavezzo/WRemnantsHelpers,,User,False,False,2
+LucasBorges4/Kaggle-Competition-2,https://github.com/LucasBorges4/Kaggle-Competition-2,COmpetição do Kaggle para datascience.,User,False,False,1
+LuckyZ10/kas-llm-learning,https://github.com/LuckyZ10/kas-llm-learning,KAS - LLM Enhanced Learning System with RL and Convergence,User,False,False,1
+ludekrikke/kan-factor-timing,https://github.com/ludekrikke/kan-factor-timing,,User,False,False,1
+LukasOttenhof/JupOtter,https://github.com/LukasOttenhof/JupOtter,,User,False,False,1
+Luoqiu76/MMDNA,https://github.com/Luoqiu76/MMDNA,,User,False,False,7
+lurovi/gp-sr-ablation,https://github.com/lurovi/gp-sr-ablation,,User,False,False,1
+M-Colley/FACT-AV,https://github.com/M-Colley/FACT-AV,,User,False,False,4
+m2lines/L96_demo,https://github.com/m2lines/L96_demo,Lorenz 1996 two time-scale model for learning machine learning,Organization,False,False,1
+mahynski/template-piml,https://github.com/mahynski/template-piml,,User,False,False,2
+Malaeu/chen_q3,https://github.com/Malaeu/chen_q3,,User,False,False,2
+Malaeu/pair-correlation-attention-kernel,https://github.com/Malaeu/pair-correlation-attention-kernel,Neural telescope for Riemann zeta zeros - Transformer discovers GUE sine kernel,User,False,False,5
+MansourSaliba/Dunkle_ML,https://github.com/MansourSaliba/Dunkle_ML,"Physics-informed machine learning architectures (SINDy, pySR, and PINNs) applied on conventional solar still dynamics.",User,False,False,2
+marc-shade/enhanced-memory-mcp,https://github.com/marc-shade/enhanced-memory-mcp,A high-performance memory management system for AI agents using SQLite with zlib compression. Designed for the agentic scaffolding needs of cascading orchestration systems.,User,False,False,1
+marcomusy/vedo,https://github.com/marcomusy/vedo,A python module for scientific analysis of 3D data based on VTK and Numpy,User,False,False,1
+mariodeflorio/AI-Aristotle,https://github.com/mariodeflorio/AI-Aristotle,,User,False,False,12
+mariodeflorio/AI-Lorenz,https://github.com/mariodeflorio/AI-Lorenz,,User,False,False,3
+markstark49-art/N-giga-force,https://github.com/markstark49-art/N-giga-force,N-Giga-Forge: High-performance XPU-accelerated engine for massive N-body simulations (268M agents). Features topological optimization through geometric heuristics and Reinforcement Learning.,User,False,False,2
+MartinVild/Machine-Learning,https://github.com/MartinVild/Machine-Learning,,User,False,False,1
+maryamdkh/Invariant-Generator,https://github.com/maryamdkh/Invariant-Generator,,User,False,False,3
+MatTheTab/mathematical-image-synthesis,https://github.com/MatTheTab/mathematical-image-synthesis,"""Pixels to Equations: The Art of Mathematical Image Synthesis"" - the repository for inducing mathematical descriptions of images.",User,False,False,1
+mattsheng/PAN_SR,https://github.com/mattsheng/PAN_SR,Scalable SR,User,False,False,3
+MaxF0/PredictStiffness_MasterThesis,https://github.com/MaxF0/PredictStiffness_MasterThesis,"Python code for the Master's Thesis ""Analytical Modeling and Analysis of Structured Compliant Grippers for High-Speed Assembly Tasks""",User,False,False,1
+maxmurtazin/Ant-RH,https://github.com/maxmurtazin/Ant-RH,,User,False,False,1
+mbejger/pysr_r-as-mlambda,https://github.com/mbejger/pysr_r-as-mlambda,Approximating neutron-star radii using gravitational-wave only measurements with symbolic regression,User,False,False,2
+MCDev30/integral_nonlinear,https://github.com/MCDev30/integral_nonlinear,,User,False,False,1
+MCDev30/Saisonal_epidemics,https://github.com/MCDev30/Saisonal_epidemics,,User,False,False,1
+mec-lab/metric_message,https://github.com/mec-lab/metric_message,,Organization,False,False,1
+meikenofdarth/Desertification,https://github.com/meikenofdarth/Desertification,,User,False,False,4
+mgdhooghe/MoET,https://github.com/mgdhooghe/MoET,,User,False,False,3
+mhtjsh/PySR_and_SINDY_Comparision,https://github.com/mhtjsh/PySR_and_SINDY_Comparision,"I trained Neural ODE to recover the equation of SIR simulated dataset through Gillispie Algorithm, and recovered those equations from PySR as well as SINDY from the data heuristically, and compared both the equations from it.",User,False,False,1
+mikecreation/ThreeBodySolution,https://github.com/mikecreation/ThreeBodySolution,A Python package for analyzing chaotic three‐body dynamics using a symbolic shell classifier. It identifies and predicts noetic contraction spikes in orbital data to forecast adaptive transitions and bifurcations in real time.,User,False,False,1
+mikhmed-nabiev/IB-in-model-selection,https://github.com/mikhmed-nabiev/IB-in-model-selection,,User,False,False,1
+MilesCranmer/issue_aggregator,https://github.com/MilesCranmer/issue_aggregator,,User,False,False,152
+MilesCranmer/pysr_paper,https://github.com/MilesCranmer/pysr_paper,A paper describing the implementation of PySR and SymbolicRegression.jl,User,False,False,2
+MilesCranmer/pysr_scaling_laws,https://github.com/MilesCranmer/pysr_scaling_laws,You should use PySR to find scaling laws. Here's an example.,User,False,False,1
+MilesCranmer/pysr_tutorial,https://github.com/MilesCranmer/pysr_tutorial,,User,False,False,14
+MilesCranmer/pysr_wandb,https://github.com/MilesCranmer/pysr_wandb,,User,False,False,1
+MIMUW-RL/worrisome-nn,https://github.com/MIMUW-RL/worrisome-nn,"Code repository for reproducing results published in ECAI23 paper entitled ""Worrisome Properties of Neural Network Controllers and Their Symbolic Representations""",Organization,False,False,2
+mit-nms/Engram,https://github.com/mit-nms/Engram,[ACM CAIS 2026] Improving Coherence and Persistence in Agentic AI for System Optimization,Organization,False,False,1
+mk8877/01ferrimagnet,https://github.com/mk8877/01ferrimagnet,,User,False,False,14
+mldr-devs/ltc,https://github.com/mldr-devs/ltc,Learning to communicate,Organization,False,False,1
+mlnomadpy/painting-arithmetic,https://github.com/mlnomadpy/painting-arithmetic,A 0.8M-parameter rational-kernel network that paints its arithmetic answer. JAX + Flax NNX. Single-Yat circuit ablation + counterfactual steering.,User,False,False,1
+mmxMichelle/Intro_to_ML,https://github.com/mmxMichelle/Intro_to_ML,,User,False,False,1
+Mo-Khater/GSOC-symbolic-regression-pytorch,https://github.com/Mo-Khater/GSOC-symbolic-regression-pytorch,,User,False,False,10
+MohammadHosseinalizadeh/Symbolic-regression-pysr,https://github.com/MohammadHosseinalizadeh/Symbolic-regression-pysr,Data driven mathematic formula extraction,User,False,False,1
+mohitattarde/Calabi-Yau,https://github.com/mohitattarde/Calabi-Yau,A deep learning project exploring how string-theory geometry can be mapped to physical observables using supervised neural networks.,User,False,False,1
+MrTomRod/scoary-2,https://github.com/MrTomRod/scoary-2,Calculate assocations between genes and traits,User,False,False,1
+munnecke/Hubble_Tension,https://github.com/munnecke/Hubble_Tension,,User,False,False,1
+mwaaas/AI-ADN,https://github.com/mwaaas/AI-ADN,AI-ADN: Open-Source Framework ,User,False,False,1
+mysticai11/TYPE2-PHENOTYPE,https://github.com/mysticai11/TYPE2-PHENOTYPE,,User,False,False,1
+NabiaAI/Leaf,https://github.com/NabiaAI/Leaf,Symbolic Regression in Biodiversity,Organization,False,False,3
+Nanrrrr/KD,https://github.com/Nanrrrr/KD,尝试知识发现代码的一天,User,False,False,3
+nantsk/ecm,https://github.com/nantsk/ecm,Reverse engineering EGT Margin for P&W engines (ECM) ,User,False,False,1
+NathanTrugilho/estudos,https://github.com/NathanTrugilho/estudos,repositório para estudos em geral e relacionados à faculdade,User,False,False,1
+ngruver/llmtime,https://github.com/ngruver/llmtime,,User,False,False,1
+nhahub/NHA-4-172,https://github.com/nhahub/NHA-4-172,Auto generated repo 172,User,False,False,1
+nikhilchhokar/gsoc-2026-deeplense,https://github.com/nikhilchhokar/gsoc-2026-deeplense,DeepLense GSoC 2026 test tasks – MAE-based lens classification & super-resolution,User,False,False,1
+NikKessel/PID-Controller-optimization-with-machine-learning,https://github.com/NikKessel/PID-Controller-optimization-with-machine-learning,,User,False,False,1
+nimanthahewage/fonterra,https://github.com/nimanthahewage/fonterra,,User,False,False,1
+nizkop/SymbolicRegression,https://github.com/nizkop/SymbolicRegression,,User,False,False,1
+nmoynihan/amplitudes-sr,https://github.com/nmoynihan/amplitudes-sr,,User,False,False,1
+noelpc03/parametric-nonlinear-symbolic-regression,https://github.com/noelpc03/parametric-nonlinear-symbolic-regression,Desarrollar y validar una metodología basada en regresión simbólica para determianr las expresiones analíticas de sistemas de ecuaciones no lineales.,User,False,False,1
+NotNotLuka/Modelska-Analiza,https://github.com/NotNotLuka/Modelska-Analiza,,User,False,False,1
+nprzrosas/data2sbml,https://github.com/nprzrosas/data2sbml,,User,False,False,3
+ns-1456/AI_Einstein,https://github.com/ns-1456/AI_Einstein,"Create an AI agent initialized with Newtonian priors (Pre-1905 physics) that, when presented with relativistic trajectory data, ""discovers"" curved spacetime and derives the Einstein Field Equations",User,False,False,1
+nsrkoganti/AY,https://github.com/nsrkoganti/AY,,User,False,False,1
+NumCosmo/NumCosmo,https://github.com/NumCosmo/NumCosmo,NumCosmo main code,Organization,False,False,1
+nuuuh/SymbolBench,https://github.com/nuuuh/SymbolBench,,User,False,False,2
+oaustegard/claude-workspace-fuse,https://github.com/oaustegard/claude-workspace-fuse,FUSE-backed memory filesystem experiment — mounts Turso memories at /mnt/muninn/ for grep/find/Read access. Forked from claude-workspace.,User,False,False,1
+officialadityaaa/Shell_AI_Blend_Challenge,https://github.com/officialadityaaa/Shell_AI_Blend_Challenge,,User,False,False,1
+okitouni/NuCLR-MechInterp,https://github.com/okitouni/NuCLR-MechInterp,Mechanistic Interpretability of the Neural Co-learned Representations model.,User,False,False,1
+olibasquette/halo_absorber,https://github.com/olibasquette/halo_absorber,Scripts for calculating the attenuation of X-rays by gas trapped in dark matter haloes,User,False,False,2
+omarcr/pys,https://github.com/omarcr/pys,,User,False,False,1
+omniV1/GCU_SWE_2023-2025,https://github.com/omniV1/GCU_SWE_2023-2025,"This repository represents two years of intensive software engineering education at Grand Canyon University, featuring 13 courses spanning foundational programming to enterprise-level development. From building desktop applications in C# to deploying microservices with Spring Boot.",User,False,False,5
+omron-sinicx/srsd-benchmark,https://github.com/omron-sinicx/srsd-benchmark,[DMLR] Rethinking Symbolic Regression Datasets and Benchmarks for Scientific Discovery,Organization,False,False,1
+ooakley/learning_muscleabm,https://github.com/ooakley/learning_muscleabm,Learning C++ by rewriting the muscle ABM code.,User,False,False,4
+OptiMaL-PSE-Lab/auto_discov_kin_rate_models,https://github.com/OptiMaL-PSE-Lab/auto_discov_kin_rate_models,Complete code and data for reproducibility of results presented in paper.,Organization,False,False,7
+OptiMaL-PSE-Lab/Physics_Informed_Symbolic_Regression,https://github.com/OptiMaL-PSE-Lab/Physics_Informed_Symbolic_Regression,Complete code and data for reproducibility of results presented in paper.,Organization,False,False,13
+Oscar-SR/symbolic-regression-notes,https://github.com/Oscar-SR/symbolic-regression-notes,Notes on symbolic regression and examples of libraries usage,User,False,False,1
+osirislab/LeakyPastes-V2,https://github.com/osirislab/LeakyPastes-V2,Looking at what people post to public pastebins,Organization,False,False,1
+ouadimaakoul4/4,https://github.com/ouadimaakoul4/4,4,User,False,False,1
+OvadiaOmer3/WFLikelihoodProject,https://github.com/OvadiaOmer3/WFLikelihoodProject,,User,False,False,2
+P-H-B-D/4710-Code,https://github.com/P-H-B-D/4710-Code,,User,False,False,1
+P-H-B-D/4720-Code,https://github.com/P-H-B-D/4720-Code,,User,False,False,5
+Pablo-Lemos/orbits,https://github.com/Pablo-Lemos/orbits,This code simulates orbits of Solar System bodies under different theories of gravity,User,False,False,1
+pablolich/time_series_prop,https://github.com/pablolich/time_series_prop,,User,False,False,3
+PaddlePaddle/PaddleCFD,https://github.com/PaddlePaddle/PaddleCFD,"PaddleCFD is a deep learning toolkit for surrogate modeling, equation discovery, shape optimization and flow-control strategy discovery in the field of fluid mechanics.",Organization,False,False,1
+pan-don/tropical-soil-nutrient-estimation,https://github.com/pan-don/tropical-soil-nutrient-estimation,,User,False,False,1
+pandevim/NeuralSINDy,https://github.com/pandevim/NeuralSINDy,,User,False,False,1
+panu-hietanen/reinforcement-learning,https://github.com/panu-hietanen/reinforcement-learning,A repository to store projects to do with RL,User,False,False,1
+papanokechi/wallis-pcf-lean4,https://github.com/papanokechi/wallis-pcf-lean4,A one-parameter family of Wallis-type polynomial continued fractions with complete zero-sorry Lean 4 formal verification,User,False,False,3
+Paul-HenryP/Astro-EVSR,https://github.com/Paul-HenryP/Astro-EVSR,"Astro‑EVSR is a lightweight framework for Errors‑in‑Variables symbolic regression in astrophysics. It extends standard symbolic regression by incorporating uncertainty in both dependent and independent variables via effective‑variance weighting, enabling Orthogonal Distance Regression (ODR) at essentially zero extra computational cost.",User,False,False,1
+pedrozanineli/barbie-rep,https://github.com/pedrozanineli/barbie-rep,,User,False,False,1
+PEESEgroup/SCAN,https://github.com/PEESEgroup/SCAN,AI for non-aqueous electrolyte design,Organization,False,False,2
+pengzy-cosmo/DeepInflation,https://github.com/pengzy-cosmo/DeepInflation,AI Agent for Inflationary Cosmology Research and Model Discovery,User,False,False,1
+PerformanceEstimation/PEPit,https://github.com/PerformanceEstimation/PEPit,PEPit is a package enabling computer-assisted worst-case analyses of first-order optimization methods.,Organization,False,False,1
+peterdsharpe/AeroSandbox,https://github.com/peterdsharpe/AeroSandbox,"Aircraft design optimization made fast through computational graph transformations (e.g., automatic differentiation). Composable analysis tools for aerodynamics, propulsion, structures, trajectory design, and much more.",User,False,False,5
+Philipp238/parfam,https://github.com/Philipp238/parfam,,User,False,False,1
+PhyAMR/TFG,https://github.com/PhyAMR/TFG,,User,False,False,3
+Pibborn/box-gym,https://github.com/Pibborn/box-gym,,User,False,False,2
+Pibborn/Science-gym,https://github.com/Pibborn/Science-gym,,User,False,False,3
+pietra-leon/LLMTIME,https://github.com/pietra-leon/LLMTIME,,User,False,False,1
+piotrcurious/Grothendieck_legacy_junkbox,https://github.com/piotrcurious/Grothendieck_legacy_junkbox,AI generated junkbox to illustrate concepts of algebraic geometry in practice ,User,False,False,1
+platawa/SAE_TIMEVIEW,https://github.com/platawa/SAE_TIMEVIEW,,User,False,False,1
+pleyva2004/Cross-Universe-Symbolic-Regression-Tournament-Laws-by-Natural-Selection,https://github.com/pleyva2004/Cross-Universe-Symbolic-Regression-Tournament-Laws-by-Natural-Selection,This is an exploratory R&D Repo of Cross-Universe Symbolic Regression Tournament: Laws by Natural Selection.,User,False,False,1
+plovaxsz/dark-sector-pipeline,https://github.com/plovaxsz/dark-sector-pipeline,A computational pipeline for dark sector behavioral analysis  in cosmological density fields. Proof-of-concept on synthetic  data. Built as a learning project — see README for honest  assessment of limitations and future work.,User,False,False,2
+pondus314/flocking,https://github.com/pondus314/flocking,,User,False,False,2
+Pongpisit-Thanasutives/UBIC-test,https://github.com/Pongpisit-Thanasutives/UBIC-test,Uncertainty-penalized Bayesian information criterion (UBIC) for PDE Discovery,User,False,False,1
+pragmaticscientist/animal-brain-decoder,https://github.com/pragmaticscientist/animal-brain-decoder,,User,False,False,3
+pranavkantgaur/gamd_sr,https://github.com/pranavkantgaur/gamd_sr,,User,False,False,4
+psaunderualberta/differentiable-privacy-percentages,https://github.com/psaunderualberta/differentiable-privacy-percentages,,User,False,False,3
+PSecLab/xbin,https://github.com/PSecLab/xbin,Orchestration Framework for binary analysis backends,Organization,False,False,1
+pvs-hd-tea/23ws-LLMcoder,https://github.com/pvs-hd-tea/23ws-LLMcoder,LLMcoder - Practical in winter semester 2023/2024,Organization,False,False,1
+qic-ibk/qdisc,https://github.com/qic-ibk/qdisc,,Organization,False,False,2
+QinqinAndMacaulayCat/Yield_Curve_Interpolation,https://github.com/QinqinAndMacaulayCat/Yield_Curve_Interpolation,,User,False,False,1
+qnwang93/SR_SNIa_2025summer,https://github.com/qnwang93/SR_SNIa_2025summer,,User,False,False,9
+Quanmn1/offlattice_ABP,https://github.com/Quanmn1/offlattice_ABP,,User,False,False,1
+Quin8989/regenx-brake-assist-controller,https://github.com/Quin8989/regenx-brake-assist-controller,,User,False,False,2
+RacheetAnand/SIRA1_Prototype,https://github.com/RacheetAnand/SIRA1_Prototype,Learning the SIR Epidemic Model from Stochastic Simulations and Symbolic ML — GSOC 2026 Prototype,User,False,False,1
+Ragerlab/2026_Chappel_Interpretable_Machine_Learning_to_Understand_Wildfire_Toxicity,https://github.com/Ragerlab/2026_Chappel_Interpretable_Machine_Learning_to_Understand_Wildfire_Toxicity,,Organization,False,False,3
+raghavkhandelwal7944/ml-DB,https://github.com/raghavkhandelwal7944/ml-DB,,User,False,False,1
+raj-brown/APMA2070_S2025,https://github.com/raj-brown/APMA2070_S2025,,User,False,False,2
+raj-brown/APMA2070_S2026,https://github.com/raj-brown/APMA2070_S2026,,User,False,False,2
+raj-brown/APMA_2070_ENGN_2912_SPRING_2024,https://github.com/raj-brown/APMA_2070_ENGN_2912_SPRING_2024,,User,False,False,2
+rasmusreimer/Electron_class_reg,https://github.com/rasmusreimer/Electron_class_reg,Electron Classifcation and regression from a simulated particle physics dataset. Initial project for Applied ML course,User,False,False,1
+RaymondWKWong/interpretable-ml-steels,https://github.com/RaymondWKWong/interpretable-ml-steels,,User,False,False,1
+redsnic/stochasticApproaches,https://github.com/redsnic/stochasticApproaches,,User,False,False,2
+Redxgit/symbolic-regression-dst,https://github.com/Redxgit/symbolic-regression-dst,,User,False,False,2
+rhyslwells/Data-Archive,https://github.com/rhyslwells/Data-Archive,My second brain.,User,False,False,1
+rhyslwells/RaspPi-Remote-Worker,https://github.com/rhyslwells/RaspPi-Remote-Worker,,User,False,False,1
+Richard-Qin-X/CERN-Data-ML-Regression,https://github.com/Richard-Qin-X/CERN-Data-ML-Regression,,User,False,False,1
+RiCkymare00/Master-QML,https://github.com/RiCkymare00/Master-QML,Material from MU1 QML,User,False,False,1
+RioKKH/MachineLearning,https://github.com/RioKKH/MachineLearning,,User,False,False,1
+riveSunder/gnn_casr,https://github.com/riveSunder/gnn_casr,"Cellular automata, graph neural networks, and symbolic regression",User,False,False,1
+RobertoSan04/investigacion-verano-2026,https://github.com/RobertoSan04/investigacion-verano-2026,,User,False,False,4
+Robh96/Evopt,https://github.com/Robh96/Evopt,User Friendly Black-Box Numerical Optimisation,User,False,False,1
+robodreamer/explainableRL,https://github.com/robodreamer/explainableRL,,User,False,False,1
+RogerG2/Causal_Interaction_Constraints,https://github.com/RogerG2/Causal_Interaction_Constraints,,User,False,False,1
+rogeriog/MatterVial,https://github.com/rogeriog/MatterVial,"MatterVial is a featurizer tool designed for materials science, leveraging both graph-neural networks (GNNs) and traditional feature engineering to extract valuable chemical information from materials structures and compositions.",User,False,False,1
+rsbyrne/thesis,https://github.com/rsbyrne/thesis,,User,False,False,1
+RuilongWang1215/ML-uv-theory,https://github.com/RuilongWang1215/ML-uv-theory,,User,False,False,2
+RuiZhou95/Viscosity-Index-Improvers,https://github.com/RuiZhou95/Viscosity-Index-Improvers,It's part of the Lubricant Brain project. A machine learning pipline for high-performance Viscosity Index Improver lubricant polymers that enables both high-throughput virtual screening and mathematical mechanism modeling.,User,False,False,1
+RulezKT/symb_regr,https://github.com/RulezKT/symb_regr,,User,False,False,3
+ruzicka02/bp2025-hls4ml,https://github.com/ruzicka02/bp2025-hls4ml,Fork of the hls4ml project from FastML with parameters in external memories.,User,False,False,2
+saakethdesai/autoscilab,https://github.com/saakethdesai/autoscilab,Code for the machine learning components of AutoSciLab,User,False,False,1
+saalfeldlab/decomp-gnn,https://github.com/saalfeldlab/decomp-gnn,Decomposing heterogeneous dynamical systems with graph neural networks,Organization,False,False,2
+saalfeldlab/flyvis-gnn,https://github.com/saalfeldlab/flyvis-gnn,GNN for fly visual system connectivity recovery with LLM-guided exploration,Organization,False,False,1
+saalfeldlab/neural-gnn,https://github.com/saalfeldlab/neural-gnn,,Organization,False,False,2
+saalfeldlab/NeuralGraph,https://github.com/saalfeldlab/NeuralGraph,,Organization,False,False,1
+saalfeldlab/ParticleGraph,https://github.com/saalfeldlab/ParticleGraph,Graph fitting particle trajectories,Organization,False,False,1
+sahaj-mithra/CoPhe-Lab,https://github.com/sahaj-mithra/CoPhe-Lab,,User,False,False,1
+SaiMahitVaddadi/FastChem,https://github.com/SaiMahitVaddadi/FastChem,,User,False,False,1
+Sakura517882178/Test-of-M3GNet,https://github.com/Sakura517882178/Test-of-M3GNet,"This repository provides a simplified implementation of M3GNet fine-tuning for bandgap prediction, intended for educational and reproducibility purposes.",User,False,False,1
+SamTov/projects,https://github.com/SamTov/projects,Research Projects,User,False,False,2
+samuelhkahn/agentic-discovery-climate,https://github.com/samuelhkahn/agentic-discovery-climate,Autonomous AI scientist for investigating Earth's albedo stability,User,False,False,1
+sanathpedapudi24/rlpingpong,https://github.com/sanathpedapudi24/rlpingpong,,User,False,False,1
+sanchitsehgal8/Gsoc-2026-Sira-,https://github.com/sanchitsehgal8/Gsoc-2026-Sira-,,User,False,False,1
+SaraPJensen/FYS9429,https://github.com/SaraPJensen/FYS9429,"Coding for the FYS9429 course, taken spring 2024",User,False,False,3
+satyasaran/FifthOrderPDEPinnSymReg,https://github.com/satyasaran/FifthOrderPDEPinnSymReg,,User,False,False,1
+savannahferretti/monsoon-discovery,https://github.com/savannahferretti/monsoon-discovery,Code used to create data and figures for Savannah's third chapter PhD work.,User,False,False,1
+Scientific-Artificial-Intelligence-Lab/kd,https://github.com/Scientific-Artificial-Intelligence-Lab/kd,,User,False,False,2
+ScottDongKhang/Ascent_Capital,https://github.com/ScottDongKhang/Ascent_Capital,"AI Native Hedge Fund Prototype. Agentic AI making decision, with a debate layer and self learning capabilities. Paper trading since April 1st",User,False,False,1
+sdaloglu/graph_network,https://github.com/sdaloglu/graph_network,Symbolic Distillation of Message Passing Graph Networks,User,False,False,1
+sdevries0/kozax_paper,https://github.com/sdevries0/kozax_paper,,User,False,False,2
+seaisbig/SR,https://github.com/seaisbig/SR,this is a repository to restore code about symbolic regression when i am in ujn,User,False,False,1
+sednabcn/ai-llm-blog,https://github.com/sednabcn/ai-llm-blog,,User,False,False,2
+sednabcn/LLM-HypatiaX-DEV,https://github.com/sednabcn/LLM-HypatiaX-DEV,HypatiaX: code and results for hybrid symbolic discovery framework,User,False,False,24
+serml/multitask-stress-aiae,https://github.com/serml/multitask-stress-aiae,,User,False,False,1
+shilong20/StackDiff,https://github.com/shilong20/StackDiff,,User,False,False,1
+ShiminZhang/BMC-benchmark,https://github.com/ShiminZhang/BMC-benchmark,A bunch of bounded model checking instances with growth type labelled.,User,False,False,132
+shisirun/code_for_test,https://github.com/shisirun/code_for_test,,User,False,False,2
+shisirun/E-syn-coding,https://github.com/shisirun/E-syn-coding,,User,False,False,2
+shisirun/E-syn-new,https://github.com/shisirun/E-syn-new,,User,False,False,2
+shlokkvaishnav/climate-equation-discovery,https://github.com/shlokkvaishnav/climate-equation-discovery,"An autonomous agent for discovering physics-validated climate equations using symbolic reasoning, dynamic memory pruning, and Bayesian regime tracking.",User,False,False,2
+ShreeshaBhat1004/Project-Vajra,https://github.com/ShreeshaBhat1004/Project-Vajra,,User,False,False,1
+shu-kikuchi-dev/bluetooth-distance-measurement,https://github.com/shu-kikuchi-dev/bluetooth-distance-measurement,Measurement demo app for Android using Bluetooth,User,False,False,1
+SidBaines/ChargedHiggsMachineLearning,https://github.com/SidBaines/ChargedHiggsMachineLearning,Code for training neural networks for event classification in high energy physics,User,False,False,2
+siddharth-mahesh/EOB_NN_p4PN,https://github.com/siddharth-mahesh/EOB_NN_p4PN,Calibrate the non-spinning 3-PN Effective One Body Formalism with Neural Network-informed post-4PN terms,User,False,False,2
+SidU/ReasoningSymbolicRegressor,https://github.com/SidU/ReasoningSymbolicRegressor,LLM-enhanced symbolic regression: A reasoning-driven AI that refines equations using structured feedback and adaptive learning.,User,False,False,1
+SIMCODES-ISU/CompMetalsAlex,https://github.com/SIMCODES-ISU/CompMetalsAlex,,Organization,False,False,1
+simonalford42/eqdiscovery,https://github.com/simonalford42/eqdiscovery,,User,False,False,2
+simonalford42/meta_sr,https://github.com/simonalford42/meta_sr,,User,False,False,40
+simonalford42/planet_eqs,https://github.com/simonalford42/planet_eqs,"Training neural network, distillation, and symbolic regression for predicting planetary instability",User,False,False,6
+simonalford42/planets_neural_sr,https://github.com/simonalford42/planets_neural_sr,"Code for training neural network, distillation, and symbolic regression for predicting planetary instability",User,False,False,18
+sitar777/ode-gp,https://github.com/sitar777/ode-gp,Solving ODE with genetic programming algorithms,User,False,False,1
+SiyuLou/UnsupervisedHierarchicalSymbolicRegression,https://github.com/SiyuLou/UnsupervisedHierarchicalSymbolicRegression,"The repository for paper  ""Empowering Machines to Think Like Chemists: Unveiling Molecular Structure-Polarity Relationships with Hierarchical Symbolic Regression""",User,False,False,3
+sizzlins/kalkulator-ai,https://github.com/sizzlins/kalkulator-ai,"A Simple Command Line Input Symbolic Regression Engine and Computer Algebra System (CAS) capable of discovering the laws of the universe, solving calculus, algebra, and trigonometrics.",User,False,False,1
+smarkidis/Dst-Symbolic-Regression,https://github.com/smarkidis/Dst-Symbolic-Regression,"Repository with data and codes used for the paper ""Discovering Governing Equations of Geomagnetic Storm Dynamics with Symbolic Regression"".""",User,False,False,1
+SnehalKalita/Deep-Reinforcement-Learning,https://github.com/SnehalKalita/Deep-Reinforcement-Learning,Training a deep RL agent for contolling a musculoskeletal model ,User,False,False,2
+SocioProphet/prophet-platform,https://github.com/SocioProphet/prophet-platform,Prophet Platform: core platform repo (contracts/capabilities/services) for SocioProphet.,Organization,False,False,1
+SofieElving/GGSpeciale,https://github.com/SofieElving/GGSpeciale,Symbolic policy distillation for interpretable and trustworthy Reinforcement Learning in real-world applications,User,False,False,8
+solastar2/Deep-Learning,https://github.com/solastar2/Deep-Learning,,User,False,False,2
+Solgio/ML-Algorithm-Interpretability,https://github.com/Solgio/ML-Algorithm-Interpretability,Repo for Zucchetti S.p.A. stage focusing in algorithm explainability,User,False,False,2
+solneolune/LLM-SRBench-Enhanced,https://github.com/solneolune/LLM-SRBench-Enhanced,,User,False,False,1
+sparckix/ztare,https://github.com/sparckix/ztare,"Autonomous research engine for generating, testing, and governing auditable claims across science, proofs, and high-stakes projects.",User,False,False,1
+spideralessio/LogiX-GIN,https://github.com/spideralessio/LogiX-GIN,"Official Repository of the NeurIPS Paper ""On Logic-based Self-Explainable Graph Neural Networks""",User,False,False,2
+standardgalactic/academizer,https://github.com/standardgalactic/academizer,Zettlekasten Archive,User,False,False,1
+standardgalactic/random-thoughts,https://github.com/standardgalactic/random-thoughts,Esoteric Workspace,User,False,False,1
+ste-cartu/Bachelor-Thesis,https://github.com/ste-cartu/Bachelor-Thesis,,User,False,False,6
+SteveGaemi/SR-ASB,https://github.com/SteveGaemi/SR-ASB,Repository for Symbolic Regression Workshop at ASB 2025,User,False,False,6
+SteveGaemi/Symbolic-Regression-NASPSPA-2025,https://github.com/SteveGaemi/Symbolic-Regression-NASPSPA-2025,Repository for Symbolic Regression Workshop at NASPSPA 2025,User,False,False,3
+strifinopoulos/Nuclear_DNA,https://github.com/strifinopoulos/Nuclear_DNA,"Code accompanying “The DNA of Nuclear Models”. Implements the interpretable AI model for nuclear mass predictions, including learned proton/neutron embeddings, training code, and analysis tools used to reveal hierarchical structure, double-helix representations, and factorized physics learned by the model.",User,False,False,2
+strukturen/GODE,https://github.com/strukturen/GODE,"This repository contains the code of the paper 'Grammar-based Ordinary Differential Equation Discovery' by K. Yu, E. Chatzi and G. Kissas.",User,False,False,4
+stupiddiscoverer/2024_12_8,https://github.com/stupiddiscoverer/2024_12_8,(ಥ﹏ಥ)，时光已逝，再试一次,User,False,False,1
+Sudhendra/discover_physics,https://github.com/Sudhendra/discover_physics,Autonomous Robot Scientist discovering physical laws through experimentation,User,False,False,1
+sumantchopdata/rayleigh_benard_symbolic_regression,https://github.com/sumantchopdata/rayleigh_benard_symbolic_regression,,User,False,False,9
+Summma/genetic-llm,https://github.com/Summma/genetic-llm,,User,False,False,1
+SuperDataScience-Community-Projects/SDS-CP032-mlpaygrade,https://github.com/SuperDataScience-Community-Projects/SDS-CP032-mlpaygrade,MLPayGrade is an end-to-end project built on 2024 salary data for machine learning-related roles.,Organization,False,False,2
+svemyh/DiscoverDCP,https://github.com/svemyh/DiscoverDCP,EE227BT Convex Optimization | UC Berkeley | arxiv.org/abs/2512.15721,User,False,False,2
+svenlagger/master-thesis-uni-li,https://github.com/svenlagger/master-thesis-uni-li,,User,False,False,17
+svpfahad/RES200,https://github.com/svpfahad/RES200,,User,False,False,1
+syfunyun/MAP6114-PySR,https://github.com/syfunyun/MAP6114-PySR,,User,False,False,1
+syleeheal/Machine_Psychopathology,https://github.com/syleeheal/Machine_Psychopathology,"Code repository of the paper ""Emergence of psychopathological computations in large language models""",User,False,False,1
+SymbolicModel/kdv_discover,https://github.com/SymbolicModel/kdv_discover,The first part for hackthon for the symbolic model discovery workshop,Organization,False,False,1
+SzymiYay/metody-i-algorytmy-optymalizacji,https://github.com/SzymiYay/metody-i-algorytmy-optymalizacji,,User,False,False,1
+tbmiller-astro/silkscreen_paper,https://github.com/tbmiller-astro/silkscreen_paper,,User,False,False,1
+TediBash/CI2024_project-work,https://github.com/TediBash/CI2024_project-work,,User,False,False,1
+TeresaTonelli/GP-4-Alkalinity,https://github.com/TeresaTonelli/GP-4-Alkalinity,,User,False,False,3
+TheAgricolaTeam/PySR_Examples,https://github.com/TheAgricolaTeam/PySR_Examples,Examples in engineering and remote sensing of Symbolic Regression in Python and Julia,Organization,False,False,5
+TheIllusionOfLife/graph_invariant,https://github.com/TheIllusionOfLife/graph_invariant,,User,False,False,2
+TheodoreWolf/SymoblicReg,https://github.com/TheodoreWolf/SymoblicReg,Using Symbolic Regression to solve physics problems,User,False,False,1
+thibmonsel/Time-and-State-Dependent-Neural-Delay-Differential-Equations,https://github.com/thibmonsel/Time-and-State-Dependent-Neural-Delay-Differential-Equations,Associated code to ECAI Workshop ML meets DE 2024 paper - https://proceedings.mlr.press/v255/monsel24a.html ,User,False,False,1
+ThorKlm/ATRL_project,https://github.com/ThorKlm/ATRL_project,Project in the context of the lecture Advanced Topics in Reinforcement Learning by Prof. Dr. Marius Lindauer and Theresa Eimer at the Gottfried Wilhelm Leibniz Universität Hannover,User,False,False,2
+THUIR/MemoryBench,https://github.com/THUIR/MemoryBench,Code for MemoryBench: A Benchmark for Memory and Continual Learning in LLM Systems,Organization,False,False,1
+thuml/MiniVeo3-Reasoner,https://github.com/thuml/MiniVeo3-Reasoner,Thinking with Videos from Open-Source Priors. We reproduce chain-of-frames visual reasoning by fine-tuning open-source video models. Give it a star 🌟 if you find it useful.,Organization,False,False,1
+tlmakinen/degen_discovery,https://github.com/tlmakinen/degen_discovery,Consolidating the degeneracy discovery code into one repo. Starting with the toy model.,User,False,False,5
+tmengel/jet-background-subtraction,https://github.com/tmengel/jet-background-subtraction,,User,False,False,3
+TobiBu/graddays,https://github.com/TobiBu/graddays,lecture material for the 53rd Heidelberg Graduate Days,User,False,False,1
+TomasSilva/MLcCY7,https://github.com/TomasSilva/MLcCY7,"Generation of Calabi-Yau links from wp4 spaces, computation of their topological properties (Sasakian Hodge numbers, CN invariant), and their ML.",User,False,False,2
+tommasofacchin/kaggle-ml-projects,https://github.com/tommasofacchin/kaggle-ml-projects,This repository contains some of my Kaggle notebooks for various Machine Learning and Computational Intelligence projects.,User,False,False,1
+TomTom9595/Cas12a-Complex-Environment,https://github.com/TomTom9595/Cas12a-Complex-Environment,Operating CRISPR/Cas12a in a complex sequence background,User,False,False,1
+Torraj/Common_Horizon_Time,https://github.com/Torraj/Common_Horizon_Time,,User,False,False,5
+ToughClimb/closure-bias-inheritance,https://github.com/ToughClimb/closure-bias-inheritance,,User,False,False,1
+tousifislam/gwBenchmarks,https://github.com/tousifislam/gwBenchmarks,A running multi-task multi-data terminal science benchmark for LLMs in GW astronomy,User,False,False,147
+trashhalo/concrete-strength,https://github.com/trashhalo/concrete-strength,Hybrid modeling demo: PySR discovers curing curve + transformer learns mix recipe effects,User,False,False,1
+Trex1102/inductive-bias-probes-test,https://github.com/Trex1102/inductive-bias-probes-test,What Has a Foundation Model Found? Using Inductive Bias to Probe for World Models,User,False,False,1
+TsanaPhysics/aipythonphysics,https://github.com/TsanaPhysics/aipythonphysics,,User,False,False,2
+tsinghua-fib-lab/selinda,https://github.com/tsinghua-fib-lab/selinda,Self-inductive AI,Organization,False,False,1
+TUHH-IES/SymbolicRegression4HA,https://github.com/TUHH-IES/SymbolicRegression4HA,Dynamics-Based Identification of Hybrid Systems using Symbolic Regression,Organization,False,False,3
+tusaryan/Piezoelectrics-AI-Discovery-Lab,https://github.com/tusaryan/Piezoelectrics-AI-Discovery-Lab,AI-Assisted Discovery of New Lead-Free Piezoelectrics,User,False,False,1
+tylunel/postproc_python,https://github.com/tylunel/postproc_python,"Repository to share my scripts allowing postprocessing of Meso-NH / Surfex output, and to compare it with observational data if available.",User,False,False,2
+unaiLopez/genetic-symbolic-optimization,https://github.com/unaiLopez/genetic-symbolic-optimization,High performance genetic symbolic optimization framework implementation from scratch.,User,False,False,1
+understanding-search/maze-dataset,https://github.com/understanding-search/maze-dataset,maze datasets for investigating OOD behavior of ML systems,Organization,False,False,1
+uob-positron-imaging-centre/MED,https://github.com/uob-positron-imaging-centre/MED,"Autonomously driving equation discovery, from the micro to the macro, from laptops to supercomputers.",Organization,False,False,1
+urhprimozic/gofi,https://github.com/urhprimozic/gofi,Gradient Optimisation For Irreducable representations,User,False,False,1
+usnistgov/polysr,https://github.com/usnistgov/polysr,Use cases demonstrating the utility of symbolic regression as applied to polymeric data,Organization,False,False,4
+uw-acme/HLS4ML_VS_MANUAL,https://github.com/uw-acme/HLS4ML_VS_MANUAL,Compare HLS4ML results with hand-generated Verilog,Organization,False,False,1
+vapsik/scientific-python-projects-showcase,https://github.com/vapsik/scientific-python-projects-showcase,showcasein oma pythoni projekte,User,False,False,1
+vidhyasankar-hub/cameralogger,https://github.com/vidhyasankar-hub/cameralogger,,User,False,False,1
+viniruggeri/applied-dynamical-systems,https://github.com/viniruggeri/applied-dynamical-systems,,User,False,False,2
+VishalJ99/symbolic_distillation,https://github.com/VishalJ99/symbolic_distillation,Symbolic distillation of Neural Networks using SR,User,False,False,2
+vmallela0/uniop,https://github.com/vmallela0/uniop,,User,False,False,2
+vsevolodnedora/PyBlastAfterglowMag,https://github.com/vsevolodnedora/PyBlastAfterglowMag,PyBlastAfterglow: fast modeling of GRB and Kilonova afterglows,User,False,False,1
+wajdibox/GearEngineering,https://github.com/wajdibox/GearEngineering,Increment of Academic work,User,False,False,1
+walid-abouir/Magnetopause_SR,https://github.com/walid-abouir/Magnetopause_SR,,User,False,False,4
+wangfelix/symbolic-regression-algorithms-for-modeling-power-grid-frequency-dynamics,https://github.com/wangfelix/symbolic-regression-algorithms-for-modeling-power-grid-frequency-dynamics,,User,False,False,7
+wears8/graduation_1,https://github.com/wears8/graduation_1,,User,False,False,8
+wenbang24/PySRSequenceRegressorTests,https://github.com/wenbang24/PySRSequenceRegressorTests,,User,False,False,2
+whileman133/LMB_PIML_ACC2026,https://github.com/whileman133/LMB_PIML_ACC2026,Python toolkit for training physics-informed machine learning models for rechargeable lithium-metal battery cells.,User,False,False,3
+whispernesf/MICSI,https://github.com/whispernesf/MICSI,,User,False,False,1
+williamlavery/arXiv_BINN_2D_,https://github.com/williamlavery/arXiv_BINN_2D_,,User,False,False,1
+williamlavery/pinn-reaction-diffusion-2dt,https://github.com/williamlavery/pinn-reaction-diffusion-2dt,,User,False,False,1
+williamlavery/to_delete,https://github.com/williamlavery/to_delete,,User,False,False,2
+wired87/rewiredb,https://github.com/wired87/rewiredb,"DB for equations and experiments, wrapped as MCP",User,False,False,1
+WKKKKKKKKKKKKKK/SR4Meteo,https://github.com/WKKKKKKKKKKKKKK/SR4Meteo,Applications of symbolic regression in meteorology,User,False,False,1
+Woofmagic/replica-trick,https://github.com/Woofmagic/replica-trick,Exploring the Replica Trick as applied to DNNs.,User,False,False,2
+xhemalkodragjini/master-thesis-ude-for-crosstalk,https://github.com/xhemalkodragjini/master-thesis-ude-for-crosstalk,,User,False,False,1
+xX-its-amit-Xx/OpenADMET-pxr-challenge,https://github.com/xX-its-amit-Xx/OpenADMET-pxr-challenge,The winning submission for the OpenADMET pxr contest. Discord: https://discord.gg/UQqUFhN6bG Hugging Face: https://huggingface.co/spaces/openadmet/pxr-challenge,User,False,False,1
+y1lichen/dapinn,https://github.com/y1lichen/dapinn,,User,False,False,7
+yakupemresahin/mio,https://github.com/yakupemresahin/mio,Predicting symbolic ODEs from multiple trajectories ,User,False,False,1
+YanxiangL/FP_hydrosim_ML,https://github.com/YanxiangL/FP_hydrosim_ML,This is a repository to use hydrodynamic simulations to test whether adding new free parameters can reduce the scatter in the fundamentl plane relation. ,User,False,False,1
+Yapan777/scalpel,https://github.com/Yapan777/scalpel,LLM-team symbolic regression system. Finds physical laws from noisy data without domain knowledge.,User,False,False,4
+yippiez/pi-skill-ml-code-as-output,https://github.com/yippiez/pi-skill-ml-code-as-output,Pi skill for training small interpretable models and emitting learned structure as code.,User,False,False,1
+YonganZhang/jianghan-software,https://github.com/YonganZhang/jianghan-software,江汉油田测井软件,User,False,False,1
+YonganZhang/pysr-rock-mechanics-baseline,https://github.com/YonganZhang/pysr-rock-mechanics-baseline,Interpretable ML for rock mechanics from well logs: PySR vs 10 baselines on OOD test (1416 real fits),User,False,False,2
+yudduy/cs224n-acesearch,https://github.com/yudduy/cs224n-acesearch,cs224n ace + search,User,False,False,2
+yuzechen83-crypto/axiom-os,https://github.com/yuzechen83-crypto/axiom-os,,User,False,False,3
+yuzhTHU/AI4Astronomy,https://github.com/yuzhTHU/AI4Astronomy,,User,False,False,2
+yuzhTHU/GraphSR,https://github.com/yuzhTHU/GraphSR,,User,False,False,1
+yuzhTHU/MySRAgent,https://github.com/yuzhTHU/MySRAgent,,User,False,False,2
+ZehaoJin/Ultimate_black_hole_mass_scaling_relations_Symbolic_Regression,https://github.com/ZehaoJin/Ultimate_black_hole_mass_scaling_relations_Symbolic_Regression,,User,False,False,35
+zfifteen/archive,https://github.com/zfifteen/archive,This is a home for retired projects.,User,False,False,3
+Zhuofeng-Li/frontier-cs,https://github.com/Zhuofeng-Li/frontier-cs,,User,False,False,107
+zicoG21/prism-kan,https://github.com/zicoG21/prism-kan,,User,False,False,1
+zlyuan9/rl-symbolic-regression,https://github.com/zlyuan9/rl-symbolic-regression,experimenting on value function -> closed-form eq,User,False,False,4
+ZongrenZou/PINNs_multiple_solutions,https://github.com/ZongrenZou/PINNs_multiple_solutions,,User,False,False,2
+zqj323/expert-ecology,https://github.com/zqj323/expert-ecology,"External LLM intelligence monitors & diagnoses MoE expert ecology during training — preventing routing collapse without auxiliary loss engineering. 16 Experts, 3 Tiers, Top-2 Gating, Claude-in-the-Loop.",User,False,False,1
+zzhang222/tau_jax,https://github.com/zzhang222/tau_jax,,User,False,False,4
+zzm12121/PNO,https://github.com/zzm12121/PNO,,User,False,False,1
