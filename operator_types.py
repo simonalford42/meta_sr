@@ -22,6 +22,7 @@ from parallel_eval_pysr import (
     get_default_mutation_weights,
     get_default_pysr_kwargs,
 )
+from julia_env import julia_load_operator
 
 class ModelEnsemble:
     """Ensemble of LLM models with weighted random sampling.
@@ -103,12 +104,61 @@ def extract_julia_code(response: str) -> str:
 
     return text
 
-def extract_function_name(code: str) -> str:
-    """Extract function name from Julia code."""
-    match = re.search(r'function\s+(\w+)\s*\(', code)
-    if match:
-        return match.group(1)
-    return ""
+def _signature_positional_arity(code: str, open_paren_idx: int) -> Optional[int]:
+    """Count positional arguments in a Julia function signature.
+
+    `open_paren_idx` points at the signature's opening '('. Counts top-level
+    commas up to the closing paren, stopping at a depth-1 ';' (keyword args
+    don't count as positional). Handles nested (), [], {} — e.g. type
+    parameters like `Vector{Tuple{Int,Int}}` — and multi-line signatures.
+    Returns None if the parens never balance.
+    """
+    depth = 0
+    commas = 0
+    saw_positional_content = False
+    past_semicolon = False
+    for i in range(open_paren_idx, len(code)):
+        c = code[i]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth == 0:
+                return commas + 1 if saw_positional_content else 0
+        elif depth == 1 and not past_semicolon:
+            if c == ',':
+                commas += 1
+            elif c == ';':
+                past_semicolon = True
+            elif not c.isspace():
+                saw_positional_content = True
+    return None
+
+
+def extract_function_name(code: str, expected_arities: Optional[Tuple[int, ...]] = None) -> str:
+    """Extract the operator function name from Julia code.
+
+    With a single `function name(` definition (or no `expected_arities`), this
+    returns the first definition's name — the original behavior.
+
+    When the code defines multiple functions and `expected_arities` is given
+    (see OperatorType.expected_arities), prefer the LAST definition whose
+    positional-argument count matches an expected arity: LLMs sometimes emit a
+    helper function before the operator despite the prompt forbidding it, and
+    picking the first definition would rename/register the helper as the
+    operator. Falls back to the last-defined function if none match by arity
+    (helpers conventionally precede the main function).
+    """
+    matches = list(re.finditer(r'function\s+(\w+)\s*\(', code))
+    if not matches:
+        return ""
+    if len(matches) == 1 or expected_arities is None:
+        return matches[0].group(1)
+    for m in reversed(matches):
+        arity = _signature_positional_arity(code, m.end() - 1)
+        if arity in expected_arities:
+            return m.group(1)
+    return matches[-1].group(1)
 
 _BRAINSTORM_INSTRUCTION = (
     "The SR algorithm failed to discover the ground-truth equation for this task. "
@@ -345,6 +395,11 @@ class OperatorType(ABC):
     list_func: str
     smoke_test_julia: str = ""  # Julia code template for runtime smoke test
 
+    # Positional-argument counts a valid operator function may have. Used by
+    # extract_function_name to pick the operator (not a helper) when an LLM
+    # response defines multiple functions. None = don't disambiguate by arity.
+    expected_arities: Optional[Tuple[int, ...]] = None
+
     # Relative path (under SymbolicRegression.jl/src/) to a .jl file containing
     # this operator type's default baseline implementation — behavior-identical
     # to PySR's built-in default, exposed as a named custom operator so the
@@ -461,7 +516,7 @@ class OperatorType(ABC):
                 *self._extra_requirements(),
                 "Keep the same function signature shape as the parent",
                 "Use proper Julia syntax",
-                "The simplified operator should be functionally different to the original operator; an implementation that is simpler but computes the same result on all inputs is not valid."
+                "The simplified operator should be functionally different to the original operator; an implementation that is simpler but computes the same result on all inputs is not valid.",
                 "Include a Julia docstring (`\"\"\"...\"\"\"`) immediately above the `function` line explaining the simplified operator's core idea, the steps it takes, and what was removed/merged from the parent (and why the simplification should still be sound).",
                 "Use inline comments as appropriate to explain the implementation of the function body.",
             ], start=1))
@@ -539,6 +594,9 @@ class MutationOperatorType(OperatorType):
     clear_func = "clear_dynamic_mutations!"
     list_func = "list_available_mutations"
     default_baseline_rel_path = "custom_mutations/add_constant_offset.jl"
+    # 4-arg structural (tree, options, nfeatures, rng) or
+    # 5-arg data-aware (tree, dataset, options, nfeatures, rng).
+    expected_arities = (4, 5)
     smoke_test_julia = """
     let
         using SymbolicRegression: Options, Node, AbstractExpressionNode, Dataset
@@ -667,6 +725,8 @@ class SurvivalOperatorType(OperatorType):
     clear_func = "clear_dynamic_survivals!"
     list_func = "list_available_survivals"
     default_baseline_rel_path = "custom_survival/age_regularized_survival.jl"
+    # (pop, options); exclude_indices is keyword-only.
+    expected_arities = (2,)
     smoke_test_julia = """
     let
         using SymbolicRegression: Options, Dataset
@@ -719,6 +779,8 @@ class SelectionOperatorType(OperatorType):
     clear_func = "clear_dynamic_selections!"
     list_func = "list_available_selections"
     default_baseline_rel_path = "custom_selection/tournament_selection.jl"
+    # (pop, running_search_statistics, options).
+    expected_arities = (3,)
     smoke_test_julia = """
     let
         using SymbolicRegression: Options, Dataset
@@ -773,6 +835,8 @@ class LossOperatorType(OperatorType):
     clear_func = "clear_dynamic_losses!"
     list_func = "list_available_losses"
     default_baseline_rel_path = "custom_loss/mse_loss.jl"
+    # (tree, dataset, options).
+    expected_arities = (3,)
     smoke_test_julia = """
     let
         using SymbolicRegression: Options, Node, Dataset, eval_loss
@@ -837,18 +901,37 @@ OPERATOR_TYPES: Dict[str, OperatorType] = {
     "loss": LossOperatorType(),
 }
 
+def _ensure_symbolicregression_loaded(jl, submodule: Optional[str] = None) -> None:
+    """Make SymbolicRegression (and one submodule) available in the session.
+
+    Tries the absolute `using SymbolicRegression[.Sub]` form first; if that
+    throws `Package SymbolicRegression not found in current path` — which
+    happens when concurrent SLURM eval workers rewrite/re-resolve the shared
+    `.juliapkg_env` project out from under the driver mid-run — fall back to the
+    relative `.SymbolicRegression` form. The package is loaded once at warmup and
+    stays bound in `Main` for the process lifetime, so the relative form binds
+    the exact same loaded module (same version — Julia loads a package once per
+    session), independent of the active project's manifest on disk. Mirrors the
+    same guard in skeleton_operator_types.py; see runs/689916.
+    """
+    targets = [""] + ([f".{submodule}"] if submodule else [])
+    for sub in targets:
+        try:
+            jl.seval(f"using SymbolicRegression{sub}")
+        except Exception:
+            jl.seval(f"using .SymbolicRegression{sub}")
+
+
 def validate_julia_code(name: str, code: str, op_type: OperatorType) -> Tuple[bool, str]:
     """Validate Julia operator code by attempting to load it and smoke-testing it."""
     try:
         from juliacall import Main as jl
 
-        jl.seval("using SymbolicRegression")
-        jl.seval(f"using SymbolicRegression.{op_type.julia_module}")
+        _ensure_symbolicregression_loaded(jl, op_type.julia_module)
 
         jl.seval(f"{op_type.clear_func}()")
 
-        escaped_code = code.replace('"""', '\\"\\"\\"')
-        jl.seval(f'{op_type.load_func}(:{name}, raw"""{escaped_code}""")')
+        julia_load_operator(jl, op_type.load_func, name, code)
 
         available = list(jl.seval(f"{op_type.list_func}()"))
         if name not in [str(m) for m in available]:
@@ -878,12 +961,10 @@ def smoke_test_operator(name: str, code: str, op_type: OperatorType) -> Tuple[bo
     try:
         from juliacall import Main as jl
 
-        jl.seval("using SymbolicRegression")
-        jl.seval(f"using SymbolicRegression.{op_type.julia_module}")
+        _ensure_symbolicregression_loaded(jl, op_type.julia_module)
         jl.seval(f"{op_type.clear_func}()")
 
-        escaped_code = code.replace('"""', '\\"\\"\\"')
-        jl.seval(f'{op_type.load_func}(:{name}, raw"""{escaped_code}""")')
+        julia_load_operator(jl, op_type.load_func, name, code)
 
         smoke_code = op_type.smoke_test_julia.replace(":{name}", f":{name}")
         jl.seval(smoke_code)
@@ -1041,7 +1122,18 @@ def _extract_operator_generation_result(
     """Convert a chat-completion response into (code, func_name, model)."""
     content = get_content(response)
     code = extract_julia_code(content)
-    func_name = extract_function_name(code) if code else ""
+    func_name = ""
+    if code:
+        func_name = extract_function_name(
+            code, expected_arities=spec.op_type.expected_arities,
+        )
+        first_name = extract_function_name(code)
+        if first_name and func_name != first_name:
+            print(
+                f"  [extract] response defines multiple functions; picked "
+                f"'{func_name}' (arity match for {spec.op_type.name}) over "
+                f"first-defined '{first_name}'"
+            )
     _log_operator_generation(spec, prompt, content, code, func_name, selected_model)
     if not code:
         return "", "", selected_model

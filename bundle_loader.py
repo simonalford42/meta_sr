@@ -317,10 +317,16 @@ def _load_from_hpo(path: Path) -> OperatorBundle:
 def _load_from_julia(path: Path, operator_type: str = "mutation") -> OperatorBundle:
     """Load operator from a raw .jl file containing Julia function code."""
     code = path.read_text()
-    # Strip comment header lines (# Best mutation from...)
+    # Strip only the leading comment header block (# Best mutation from...).
+    # Comment lines elsewhere — e.g. inside a docstring — are part of the code.
     lines = code.split("\n")
-    code_lines = [l for l in lines if not l.startswith("# ")]
-    code = "\n".join(code_lines).strip()
+    n_header = 0
+    for l in lines:
+        if l.startswith("#") or not l.strip():
+            n_header += 1
+        else:
+            break
+    code = "\n".join(lines[n_header:]).strip()
     if not code:
         raise ValueError(f"No Julia code found in {path}")
 

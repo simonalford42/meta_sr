@@ -31,9 +31,10 @@ import threading
 import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Callable, List, Dict, Any, Optional
 
-from sqlalchemy import Column, Integer, String, Float, Text, create_engine, select
+from sqlalchemy import Column, Integer, String, Float, Text, create_engine, select, event
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.orm import Session
 
@@ -74,14 +75,32 @@ class ChatCompletionCache(Base):
     response_json = Column(Text)
 
 
+# Anchor the default cache path to this module's directory (the repo root)
+# rather than the CWD, so scripts run from elsewhere hit the same cache.
+_DEFAULT_CACHE_PATH = str(
+    Path(__file__).resolve().parent / "caches" / "completions_cache.db"
+)
+
+
 class CompletionsCacheDB:
     """Simple SQLite cache for chat completions."""
 
-    def __init__(self, database_path: str = "caches/completions_cache.db"):
+    def __init__(self, database_path: str = _DEFAULT_CACHE_PATH):
         db_dir = os.path.dirname(database_path)
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
-        self.engine = create_engine(f"sqlite:///{database_path}")
+        self.engine = create_engine(
+            f"sqlite:///{database_path}",
+            connect_args={"timeout": 60},
+        )
+        # Wait out concurrent writers (e.g. two evolve runs sharing the cache
+        # over NFS) instead of failing immediately with "database is locked".
+        @event.listens_for(self.engine, "connect")
+        def _set_sqlite_pragmas(dbapi_connection, _connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA busy_timeout=60000")
+            cursor.close()
+
         Base.metadata.create_all(self.engine)
 
     def _make_cache_key(
@@ -155,6 +174,24 @@ class CompletionsCacheDB:
 # Global cache instance
 _cache = CompletionsCacheDB()
 _cache_lock = threading.Lock()
+
+
+def _safe_cache_store(
+    model: str,
+    messages: List[Dict[str, str]],
+    temperature: Optional[float],
+    max_tokens: Optional[int],
+    extra_params: Dict[str, Any],
+    response: Dict[str, Any],
+) -> None:
+    """Best-effort cache write. A cache failure (e.g. sqlite locked) must never
+    raise into the retry loop and discard a completion that was already paid for."""
+    try:
+        with _cache_lock:
+            _cache.store(model, messages, temperature, max_tokens, extra_params, response)
+    except Exception as e:
+        print(f"  WARNING: completions cache write failed ({type(e).__name__}: {e}); "
+              f"continuing without caching")
 
 
 def set_cache_path(database_path: str):
@@ -455,12 +492,22 @@ def chat_completion(
                     _usage["uncached_hypothetical_cost"] += cached_choices_cost
                 _fire_usage_callbacks()
 
-            # Store in cache
-            if use_cache:
+            # Store in cache — but never cache failure bodies: OpenRouter can
+            # return HTTP 200 with a top-level {"error": ...} or empty/missing
+            # choices (provider failures). Caching those would permanently
+            # poison this request's cache entry.
+            response_ok = (
+                "error" not in data
+                and isinstance(data.get("choices"), list)
+                and len(data["choices"]) > 0
+            )
+            if use_cache and not response_ok:
+                print("  WARNING: not caching error/empty response body "
+                      f"(keys: {sorted(data.keys())})")
+            if use_cache and response_ok:
                 if n_samples == 1 and sample_index_offset == 0:
                     # Simple case: store single response without sample_index
-                    with _cache_lock:
-                        _cache.store(model, messages, temperature, max_tokens, cache_kwargs, data)
+                    _safe_cache_store(model, messages, temperature, max_tokens, cache_kwargs, data)
                 else:
                     # Split the call's cost evenly across the freshly fetched
                     # samples so each cached sample carries its share, for the
@@ -482,9 +529,8 @@ def chat_completion(
                                 'model': data.get('model', model),
                                 'usage': {'cost': per_sample_cost},
                             }
-                            with _cache_lock:
-                                _cache.store(model, messages, temperature, max_tokens,
-                                            sample_cache_kwargs, single_response)
+                            _safe_cache_store(model, messages, temperature, max_tokens,
+                                              sample_cache_kwargs, single_response)
 
             # Combine cached and fresh choices for n>1
             if n_samples > 1 and cached_choices:
@@ -504,7 +550,9 @@ def chat_completion(
                 try:
                     error_data = e.response.json()
                     error_msg = str(error_data).lower()
-                    if 'n' in error_msg or 'parameter' in error_msg:
+                    # Look for the quoted parameter name; a bare 'n' substring
+                    # matches nearly any error message.
+                    if "'n'" in error_msg or '"n"' in error_msg or 'parameter' in error_msg:
                         print(f"  Provider may not support n>1, falling back to sequential...")
                         # Fall back to sequential requests
                         all_choices = list(cached_choices)
