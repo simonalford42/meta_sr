@@ -235,13 +235,17 @@ def compute_reeval_plan(
 
     sel_fn = topk_tourney_batch_selection_fn(topk=topk, n=n)
     if policy == "kg":
-        assert False
-        # curve = simulate_reeval_expected_improvement_policy(
-        #     mu, sigma, N, sel_fn,
-        #     kg_reeval_policy(sel_fn, prune_topk=topk,
-        #                      n_quad=KG_N_QUAD, prune_z=KG_PRUNE_Z),
-        #     M=KG_CURVE_M, B_max=B_max, rng=rng,
-        # )
+        # The pruned KG curve implementation (simulate_reeval_expected_
+        # improvement_policy + kg_reeval_policy) was removed from monte_carlo;
+        # monte_carlo.simulate_reeval_ei_kg exists but is the unpruned variant,
+        # far slower than the settings above were validated for. Fail fast here
+        # (evolve_pysr also rejects --reeval smart-KG at argparse time) rather
+        # than crash mid-run after gen 1's evaluation budget is spent.
+        raise NotImplementedError(
+            "reeval policy 'kg' is temporarily disabled: the pruned KG curve "
+            "was removed from monte_carlo.py. Use policy='ttts' "
+            "(--reeval smart-TTTS), or restore the KG curve first."
+        )
     else:
         curve = simulate_reeval_expected_improvement(
             mu, sigma, N, sel_fn, M=M, B_max=B_max, rng=rng,
@@ -254,7 +258,8 @@ def compute_reeval_plan(
         batch_selection_fn=sel_fn, M_total=None, rng=rng,
     )
     offspring_EI = float(off["improvement"]) if off is not None else None
-    baseline = float(off["baseline"]) if off is not None else parent_fitness(mu, topk, n)
+    baseline = (float(off["baseline"]) if off is not None
+                else parent_fitness(mu, topk=topk, n=n))
 
     # Resolve B*.
     if offspring_EI is None:

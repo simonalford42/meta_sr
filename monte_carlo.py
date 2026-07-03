@@ -96,7 +96,7 @@ def batch_topk_tourney_probs(mu, k=20, n=2):
 
 
 def topk_tourney_batch_selection_fn(topk=20, n=2):
-    return lambda mu, signa, N: batch_topk_tourney_probs(mu, k=topk, n=n)
+    return lambda mu, sigma, N: batch_topk_tourney_probs(mu, k=topk, n=n)
 
 
 def batch_kg_select_arms(mu, sigma, N, batch_selection_fn, n_quad=8,
