@@ -485,12 +485,16 @@ def run_pysr_on_dataset(
     rename_map = metadata.get('rename_map') or {}
     if rename_map and getattr(model, 'output_directory_', None) and getattr(model, 'run_id_', None):
         run_dir = Path(model.output_directory_) / model.run_id_
-        run_dir.mkdir(parents=True, exist_ok=True)
-        with open(run_dir / 'rename_map.json', 'w') as f:
-            json.dump({
-                'rename_map': rename_map,
-                'original_feature_names': metadata.get('original_feature_names', []),
-            }, f, indent=2)
+        # In milestone mode run_pysr_with_hof_checkpoints already deleted the
+        # temp output dir (checkpoint.pkl included); recreating it just to hold
+        # the sidecar would leave a phantom run dir with no artifacts for the
+        # sidecar to describe. Only write beside surviving artifacts.
+        if run_dir.is_dir():
+            with open(run_dir / 'rename_map.json', 'w') as f:
+                json.dump({
+                    'rename_map': rename_map,
+                    'original_feature_names': metadata.get('original_feature_names', []),
+                }, f, indent=2)
 
     fit_time = time.time() - start_time
 
@@ -528,7 +532,7 @@ def run_pysr_on_dataset(
     gt_formula_for_match = gt_formula
     if rename_map and gt_formula:
         gt_formula_for_match = _remap_formula_variables(
-            gt_formula, original_feature_names, feature_names
+            gt_formula, metadata['original_feature_names'], feature_names
         )
 
     best_df_index = best_eq.name if best_eq is not None and hasattr(best_eq, 'name') else None

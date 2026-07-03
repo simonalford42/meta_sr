@@ -88,6 +88,8 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                 "gt_match_score": None,
                 "test_r2": None,
                 "runtime_seconds": None,
+                "solve_time": None,
+                "solve_time_source": None,
                 "best_equation": None,
                 "error": None,
             }
@@ -96,12 +98,15 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                     with open(res_path) as f:
                         res = json.load(f)
                     gt = res.get("gt_match_score")
+                    solve_time, solve_time_source = _solve_time_from_result(res)
                     entry.update(
                         present=True,
                         gt_match_score=gt,
                         solved=bool(gt is not None and gt >= 1.0),
                         test_r2=res.get("r2_score"),
                         runtime_seconds=res.get("runtime_seconds"),
+                        solve_time=solve_time,
+                        solve_time_source=solve_time_source,
                         best_equation=res.get("best_equation"),
                         error=res.get("error"),
                     )
@@ -109,6 +114,34 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                     entry["error"] = f"unreadable result file: {e}"
             results[key] = entry
     return results
+
+
+def _solve_time_from_result(res: Dict[str, Any]) -> Tuple[Optional[float], Optional[str]]:
+    """(solve_time, source) for one raw task result dict.
+
+    Prefers the execution-trace ``chunk_runtime`` sum (pure fit wall time,
+    the methodology of scripts/analyze_pysr_solve_time.py); ``runtime_seconds``
+    also includes worker startup / Julia compile overhead (~4.4x inflated on
+    average) and is only used as a fallback for trace-less runs.
+    """
+    trace = res.get("execution_trace") or []
+    chunks = [
+        e.get("chunk_runtime") for e in trace
+        if isinstance(e, dict) and e.get("chunk_runtime") is not None
+    ]
+    if chunks:
+        return float(sum(chunks)), "trace"
+    if res.get("runtime_seconds") is not None:
+        return float(res["runtime_seconds"]), "runtime_seconds"
+    return None, None
+
+
+def _entry_solve_time(e: Dict[str, Any]) -> Optional[float]:
+    """Solve time for an aggregated entry; falls back to runtime_seconds for
+    entries persisted before the solve_time field existed."""
+    if e.get("solve_time") is not None:
+        return e["solve_time"]
+    return e.get("runtime_seconds")
 
 
 def expected_keys(manifest: Dict[str, Any]) -> List[str]:
@@ -169,8 +202,19 @@ def _group_metrics(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
         "n_datasets": n_datasets,
         "n_datasets_solved": n_solved_datasets,
         "solve_rate_per_task_any": (n_solved_datasets / n_datasets) if n_datasets else None,
-        "solve_time_mean_solved": _mean([e["runtime_seconds"] for e in solved]),
-        "solve_time_mean_all": _mean([e["runtime_seconds"] for e in present]),
+        # Trace-derived where available (see _solve_time_from_result); the
+        # source-mix counters below say how many entries fell back to the
+        # contaminated runtime_seconds.
+        "solve_time_mean_solved": _mean([_entry_solve_time(e) for e in solved]),
+        "solve_time_mean_all": _mean([_entry_solve_time(e) for e in present]),
+        "solve_time_n_trace": sum(
+            1 for e in present if e.get("solve_time_source") == "trace"
+        ),
+        "solve_time_n_runtime_fallback": sum(
+            1 for e in present
+            if _entry_solve_time(e) is not None
+            and e.get("solve_time_source") != "trace"
+        ),
         # Mean test R^2 over present runs, clamped at 0 so a handful of wildly
         # negative fits don't dominate the average.
         "test_r2_mean": _mean([max(0.0, e["test_r2"]) for e in present

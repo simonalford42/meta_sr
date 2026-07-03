@@ -116,6 +116,16 @@ def merge_result_details(
         new_eqs = list(new_d.get("best_equations", []) or [])
         all_eqs = old_eqs + new_eqs
 
+        # Per-seed equation arrays (aligned with run_r2_scores; None for errored
+        # seeds). Concatenate like the score arrays so seed-indexed lookups stay
+        # valid after a merge; missing/None legacy details contribute [].
+        old_best_seed_eqs = list(old_d.get("run_best_equations", []) or [])
+        new_best_seed_eqs = list(new_d.get("run_best_equations", []) or [])
+        run_best_equations = old_best_seed_eqs + new_best_seed_eqs
+        old_matched_eqs = list(old_d.get("run_gt_matched_equations", []) or [])
+        new_matched_eqs = list(new_d.get("run_gt_matched_equations", []) or [])
+        run_gt_matched_equations = old_matched_eqs + new_matched_eqs
+
         old_errs = old_d.get("errors") or []
         new_errs = new_d.get("errors") or []
         all_errs = list(old_errs) + list(new_errs)
@@ -138,10 +148,15 @@ def merge_result_details(
             "run_r2c_scores": run_r2c,
             "run_gt_scores": run_gt,
             "best_equations": all_eqs,
+            "run_best_equations": run_best_equations,
+            "run_gt_matched_equations": run_gt_matched_equations,
             "errors": all_errs if all_errs else None,
             "run_num_evaluations": all_evals,
             "avg_num_evaluations": float(np.mean(valid_evals)) if valid_evals else None,
-            "n_successful_runs": len(run_r2),
+            # run_r2 has one entry per run INCLUDING errored runs (the aggregator
+            # appends -1.0 for those), so len(run_r2) is the total, not successes.
+            # Successes = total - errored (errors holds one entry per errored run).
+            "n_successful_runs": max(0, len(run_r2) - len(all_errs)),
             "n_total_runs": int(old_d.get("n_total_runs", len(old_r2) + len(old_errs)) or 0)
                             + int(new_d.get("n_total_runs", len(new_r2) + len(new_errs)) or 0),
             "execution_traces": all_traces,
@@ -410,7 +425,8 @@ def _compute_per_task_best(
                 or (
                     n_solved == best_solved
                     and best_b is not None
-                    and (c.score or -1) > (best_b.score or -1)
+                    and (-1 if c.score is None else c.score)
+                        > (-1 if best_b.score is None else best_b.score)
                 )
             ):
                 best_b = c

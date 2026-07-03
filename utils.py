@@ -122,13 +122,20 @@ def save_jsonl(data, path):
             f.write(json.dumps(entry) + '\n')
 
 
-def load_srbench_dataset(dataset_name: str, max_samples: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, str]:
+def load_srbench_dataset(dataset_name: str, max_samples: Optional[int] = None,
+                         data_seed: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, str]:
     """
     Load a single SRBench dataset by name.
 
     Args:
         dataset_name: Name of the dataset (e.g., 'feynman_I_29_16')
         max_samples: Maximum number of samples to load (subsampling). If None, loads all.
+        data_seed: If given, subsample with a local RandomState(data_seed) for a
+                   reproducible draw without touching the global RNG. If None
+                   (default), subsample from the global np.random state, exactly
+                   as before -- callers that pre-seed the global RNG (the SLURM
+                   eval workers) get a bit-identical draw, so cached results
+                   keyed by (data_seed, max_samples) stay valid.
 
     Returns:
         X: Feature matrix (n_samples, n_features)
@@ -148,7 +155,14 @@ def load_srbench_dataset(dataset_name: str, max_samples: Optional[int] = None) -
 
     # Subsample if requested
     if max_samples is not None and len(X) > max_samples:
-        indices = np.random.choice(len(X), max_samples, replace=False)
+        if data_seed is not None:
+            # RandomState(data_seed).choice(...) draws the identical MT19937
+            # sequence as np.random.seed(data_seed) followed by np.random.choice,
+            # so this matches the pre-existing global-seed subsampling exactly.
+            rng = np.random.RandomState(data_seed)
+            indices = rng.choice(len(X), max_samples, replace=False)
+        else:
+            indices = np.random.choice(len(X), max_samples, replace=False)
         X = X[indices]
         y = y[indices]
 
@@ -243,13 +257,17 @@ def load_datasets_from_split(split_file: str, max_samples: Optional[int] = None,
     return datasets
 
 
-def load_datasets_from_list(dataset_names: List[str], max_samples: Optional[int] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, str]]:
+def load_datasets_from_list(dataset_names: List[str], max_samples: Optional[int] = None,
+                            data_seed: Optional[int] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, str]]:
     """
     Load datasets by a list of names.
 
     Args:
         dataset_names: List of dataset names
         max_samples: Maximum samples per dataset (subsampling). If None, loads all.
+        data_seed: If given, each dataset is subsampled reproducibly with this
+                   seed (mirrors load_datasets_from_split). If None (default),
+                   subsampling uses the global RNG, unchanged from before.
 
     Returns:
         Dictionary mapping dataset names to (X, y, formula) tuples
@@ -258,7 +276,7 @@ def load_datasets_from_list(dataset_names: List[str], max_samples: Optional[int]
 
     for name in dataset_names:
         try:
-            X, y, formula = load_srbench_dataset(name, max_samples=max_samples)
+            X, y, formula = load_srbench_dataset(name, max_samples=max_samples, data_seed=data_seed)
             datasets[name] = (X, y, formula)
             print(f"  Loaded {name}: {X.shape[0]} samples, {X.shape[1]} features")
         except Exception as e:
@@ -320,7 +338,10 @@ def run_with_timeout(func, args=(), kwargs=None, name="function",
 
     except Exception as e:
         signal.alarm(0)
-        return False, None, (e, f"{name} failed: {e}")
+        # Return a plain string like the timeout branch does (was a (exc, msg)
+        # tuple), so callers get a consistent error_message type. Include the
+        # exception repr so the type/args survive in the message.
+        return False, None, f"{name} failed: {e!r}"
 
     finally:
         signal.signal(signal.SIGALRM, old_handler)
