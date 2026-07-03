@@ -84,8 +84,10 @@ Manual review is intentionally selective because 640 repositories greatly exceed
 - `data/github_triage.csv`: reproducible heuristic score and reasons for every GitHub repository.
 - `data/github_manual_review.csv`: 64 evidence-backed manual decisions, including 45 real-science candidates.
 - `notes/github_query_pass.md`: GitHub methodology, findings, and the 25 high-priority candidates.
-- `notes/benchmark_metrics.md`: metric and validity review for those 25, plus the `planet_eqs` calibration case.
-- `data/benchmark_metrics_review.csv`: machine-readable per-repository benchmark recommendations.
+- `notes/benchmark_metrics.md`: superseded proposal that redesigned some source metrics; retained only as a decision-history record.
+- `data/benchmark_metrics_review.csv`: superseded machine-readable version of that proposal.
+- `notes/source_native_evaluation.md`: corrected source-native review of known-equation recovery and demonstrated equation utility.
+- `data/source_native_evaluation.csv`: machine-readable source-native classification for the 25 candidates plus `planet_eqs`.
 - `scripts/discover_github.py`: authenticated, rate-limit-aware GitHub search.
 - `scripts/triage_github.py`: deterministic shortlist heuristic.
 - `scripts/combine_inventories.py`: canonical GitHub/Sourcegraph union.

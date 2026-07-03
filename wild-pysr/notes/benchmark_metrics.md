@@ -1,4 +1,9 @@
-# What a RealScience benchmark would measure
+# Superseded metric-design review
+
+> **Scope correction:** this note proposed modified benchmark protocols. That is
+> not the intended benchmark policy. RealScience will preserve each source's own
+> evaluation criteria. See [`source_native_evaluation.md`](source_native_evaluation.md)
+> for the corrected review of known equations and demonstrated equation utility.
 
 This is a read-only design review of the first 25 high-priority repositories from the GitHub pass, with `simonalford42/planet_eqs` added as a calibration case. It distinguishes metrics already present in code/papers from the evaluation protocol that a benchmark should actually use. The machine-readable version is [`../data/benchmark_metrics_review.csv`](../data/benchmark_metrics_review.csv).
 
