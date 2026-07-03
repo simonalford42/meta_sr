@@ -47,7 +47,13 @@ from evolution_helpers import (
     select_survivors,
 )
 from julia_env import warmup_julia
-from budget_utils import resolve_run_budget, describe_budget, DEFAULT_SECONDS_PER_1E6_EVALS
+from budget_utils import (
+    resolve_run_budget,
+    describe_budget,
+    DEFAULT_SECONDS_PER_1E6_EVALS,
+    _hms_to_seconds,
+    _seconds_to_hms,
+)
 from parallel_eval_fullsr import (
     FullSRConfig,
     FullSRSlurmEvaluator,
@@ -429,10 +435,27 @@ def run_evolution(
     })
     print(f"Evolving {len(operator_slots)} operator slots: {', '.join(operator_slots)}")
 
+    # The evaluator's SLURM --time is shared across train and held-out val evals,
+    # but the val path raises each task's wall limit to val_fullsr_wall_limit. If
+    # --time does not exceed that wall, SLURM kills the task before its SIGALRM
+    # can write a (timeout) result, so widen --time to cover the largest wall it
+    # will ever run, with headroom for node startup + result write.
+    max_task_wall = fullsr_wall_limit
+    if val_split:
+        max_task_wall = max(max_task_wall, val_fullsr_wall_limit)
+    min_slurm_seconds = max_task_wall + 300
+    effective_slurm_time = slurm_time_limit
+    if _hms_to_seconds(slurm_time_limit) < min_slurm_seconds:
+        effective_slurm_time = _seconds_to_hms(min_slurm_seconds)
+        print(
+            f"  Widening SLURM --time {slurm_time_limit} -> {effective_slurm_time} "
+            f"to exceed the largest per-task wall limit ({max_task_wall}s)"
+        )
+
     evaluator = FullSRSlurmEvaluator(
         results_dir=output_dir,
         partition=slurm_partition,
-        time_limit=slurm_time_limit,
+        time_limit=effective_slurm_time,
         mem_per_cpu=slurm_mem_per_cpu,
         dataset_max_samples=max_samples,
         data_seed=seed,

@@ -24,6 +24,10 @@ from pathlib import Path
 TSpec = TypeVar('TSpec')
 TResult = TypeVar('TResult')
 
+# Sentinel distinguishing "argument not supplied" (fall back to the instance
+# attribute) from an explicit None (disable that watchdog) in _wait_for_job.
+_UNSET = object()
+
 
 # =============================================================================
 # Global tracker: cancel any live SLURM jobs if the driver process is
@@ -423,6 +427,8 @@ class BaseSlurmEvaluator(ABC):
         n_tasks: int,
         batch_dir: Path,
         initial_cached: int = 0,
+        stall_timeout: Optional[float] = _UNSET,
+        job_timeout: Optional[float] = _UNSET,
     ) -> bool:
         """
         Wait for SLURM job array to complete.
@@ -432,10 +438,18 @@ class BaseSlurmEvaluator(ABC):
             n_tasks: Total number of tasks expected
             batch_dir: Directory containing task results
             initial_cached: Number of tasks already completed from cache
+            stall_timeout: Per-call override for the no-progress watchdog. Left
+                unset, falls back to self.stall_timeout; pass None to disable.
+            job_timeout: Per-call override for the total-runtime watchdog. Left
+                unset, falls back to self.job_timeout; pass None to disable.
 
         Returns:
             True if job completed (or ended naturally), False if timed out and cancelled
         """
+        if stall_timeout is _UNSET:
+            stall_timeout = self.stall_timeout
+        if job_timeout is _UNSET:
+            job_timeout = self.job_timeout
         start_time = time.time()
         last_completed = initial_cached
         last_progress_time = start_time
@@ -474,17 +488,17 @@ class BaseSlurmEvaluator(ABC):
                 return True
 
             # Check for timeout
-            if self.job_timeout is not None and elapsed > self.job_timeout:
-                print(f"  TIMEOUT: Job {job_id} exceeded {self.job_timeout}s limit "
+            if job_timeout is not None and elapsed > job_timeout:
+                print(f"  TIMEOUT: Job {job_id} exceeded {job_timeout:.0f}s limit "
                       f"({completed}/{n_tasks} tasks complete)")
                 self._cancel_job(job_id)
                 return False
 
             # Check for stall (no new completions for stall_timeout seconds)
             if (
-                self.stall_timeout is not None
+                stall_timeout is not None
                 and completed < n_tasks
-                and (now - last_progress_time) > self.stall_timeout
+                and (now - last_progress_time) > stall_timeout
             ):
                 print(
                     f"  STALL: Job {job_id} made no progress for "

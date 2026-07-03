@@ -195,6 +195,25 @@ else:
         )
 
 print()
+print("=== 4. renaming a slot whose default ends in `!` rewrites the constructor ===")
+# update_state!'s default is `sr_update_archive!`; a `\b`-terminated rename
+# regex never matched the trailing `!`, leaving the constructor pointing at the
+# now-undefined default (UndefVarError: sr_update_archive!).
+b = copy.deepcopy(base_bundle)
+new_name = "my_renamed_archive_update!"
+b.functions["update_state!"] = SkeletonFunction(
+    slot="update_state!",
+    name=new_name,
+    code=f"function {new_name}(populations::Vector{{Population}}, state::EngineState, _config::SkeletonSRConfig)\n    return nothing\nend",
+)
+rendered = render_sr_module_body(b)
+check(f"update_state! = {new_name}" in rendered, "constructor binds update_state! to the new name")
+check(
+    "update_state! = sr_update_archive!" not in rendered,
+    "constructor no longer references the dead default `sr_update_archive!`",
+)
+
+print()
 if failures:
     print(f"=== {len(failures)} CHECK(S) FAILED ===")
     for f in failures:

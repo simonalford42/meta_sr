@@ -466,8 +466,12 @@ def render_sr_module_body(bundle: SkeletonBundle) -> str:
         # If the function name in the bundle differs from the slot default,
         # also rewrite the `sr_policy()` constructor to reference the new name.
         if fn.name != slot.default_name:
+            # Trailing `(?![\w!?])` instead of `\b`: Julia names can end in `!`
+            # (e.g. `sr_update_archive!`), and `\b` never matches after `!`, so
+            # the rename silently failed for the update_state! slot — leaving the
+            # constructor pointing at a now-undefined default.
             block = re.sub(
-                rf"(\b{re.escape(slot.policy_field)}\s*=\s*){re.escape(slot.default_name)}\b",
+                rf"(\b{re.escape(slot.policy_field)}\s*=\s*){re.escape(slot.default_name)}(?![\w!?])",
                 rf"\1{fn.name}",
                 block,
             )
@@ -553,8 +557,7 @@ def _slot_specific_design_guidance(slot: SkeletonSlot) -> str:
         return ""
     return (
         "## Mutation-specific design guidance\n"
-        "Rather than implementing mutation as a single novel operation, consider "
-        "a portfolio mutation that randomly routes among multiple mutation "
+        "Consider portfolio mutations that randomly route among multiple mutation "
         "strategies. This can combine novel, high-upside transformations with "
         "safer fallback mutations. Choose and document custom sampling weights "
         "for the strategies so their relative likelihoods are deliberate.\n\n"
@@ -767,6 +770,12 @@ def build_full_file_prompt(
         f"{context}\n\n"
         "## Task\n"
         f"{focus}\n\n"
+        f"While your edit should center on the `{slot.name}` slot, you are NOT limited "
+        "to it: to make your variant work well you may also modify any of the other "
+        "slots that support it. In particular, `update_state!` can track or log "
+        "statistics about the search that your new `"
+        f"{slot.name}` then reads and uses. Make whatever coordinated cross-slot "
+        "changes the variant needs.\n\n"
         f"{_slot_specific_design_guidance(slot)}"
         "Return the COMPLETE body of an updated SRConfig module (i.e. everything "
         "that goes between `module SRConfig` and the closing `end`, NOT including "
@@ -998,6 +1007,28 @@ def _default_policy_kwargs_julia() -> str:
     return ",\n        ".join(parts)
 
 
+def _ensure_symbolicregression_loaded(jl) -> None:
+    """Make SymbolicRegression + submodules available in the juliacall session.
+
+    Uses the absolute `using SymbolicRegression[.Sub]` form on the happy path.
+    If that throws `Package SymbolicRegression not found in current path` — which
+    happens when the shared `.juliapkg_env` project is rewritten/re-resolved out
+    from under the driver by concurrent SLURM eval workers — fall back to the
+    relative `.SymbolicRegression` form. The package is loaded once at warmup and
+    stays bound in `Main` for the process lifetime, so the relative form resolves
+    against that in-memory binding independent of the active project's manifest.
+    Without this fallback every offspring in a generation validated after a large
+    eval fails identically with the not-found error (see runs/689916).
+    """
+    for sub in ("", ".SkeletonSR", ".SRConfig"):
+        try:
+            jl.seval(f"using SymbolicRegression{sub}")
+        except Exception:
+            # Fall back to the relative binding; if this also fails the module
+            # genuinely isn't loaded and the caller's own error handling reports it.
+            jl.seval(f"using .SymbolicRegression{sub}")
+
+
 def warmup_skeleton_validation() -> float:
     """Compile fit_skeleton_sr once via a tiny fit, so per-call validation is fast.
 
@@ -1011,9 +1042,7 @@ def warmup_skeleton_validation() -> float:
     import time as _t
     from juliacall import Main as jl
 
-    jl.seval("using SymbolicRegression")
-    jl.seval("using SymbolicRegression.SkeletonSR")
-    jl.seval("using SymbolicRegression.SRConfig")
+    _ensure_symbolicregression_loaded(jl)
 
     guard_mod = "_SkeletonValidationWarmup"
     body = f"""
@@ -1062,9 +1091,7 @@ def validate_skeleton_code(
     try:
         from juliacall import Main as jl
 
-        jl.seval("using SymbolicRegression")
-        jl.seval("using SymbolicRegression.SkeletonSR")
-        jl.seval("using SymbolicRegression.SRConfig")
+        _ensure_symbolicregression_loaded(jl)
         guard_mod = f"_SkeletonValidation_{abs(hash(name + code)) % (10**10)}"
 
         # Build SkeletonSRPolicy kwargs: candidate fills `slot.policy_field`,

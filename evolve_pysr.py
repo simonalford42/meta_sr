@@ -2130,9 +2130,10 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    parser.add_argument("--operator-type", type=str, required=True,
-                        help="Type of operator to evolve: mutation, survival, selection, "
-                             "all (all three jointly), or comma-separated list (e.g. mutation,survival)")
+    parser.add_argument("--operator-type", type=str, default="all",
+                        help="Type of operator to evolve: mutation, survival, selection, loss, "
+                             "all (all four jointly), or comma-separated list (e.g. mutation,survival). "
+                             "Defaults to all.")
 
     parser.add_argument("--generations", type=int, default=25)
     parser.add_argument("--population", type=int, default=10)

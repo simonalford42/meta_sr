@@ -95,55 +95,8 @@ def batch_topk_tourney_probs(mu, k=20, n=2):
     return probs
 
 
-def batch_thompson_sampling_selection_fn(mu, sigma, N, M=10000, rng=None, chunk_size=None,
-                                         max_sample_bytes=512 * 1024 * 1024):
-    """
-    Batched MC estimate of the Thompson-sampling parent distribution.
-
-    mu: [B, K], sigma: scalar, N: [B, K]
-    M: number of MC samples used to estimate the distribution.
-    returns [B, K] where entry (b, i) is the empirical probability that arm i is the TS pick
-    under the posterior in batch b.
-    """
-    if rng is None:
-        rng = np.random.default_rng()
-
-    B, K = mu.shape
-    posterior_std = sigma / np.sqrt(N)
-
-    if chunk_size is None:
-        bytes_per_row = max(1, B * K * 8)
-        chunk_size = max(1, min(M, max_sample_bytes // bytes_per_row))
-
-    counts = np.zeros((B, K))
-    drawn = 0
-    while drawn < M:
-        m = min(chunk_size, M - drawn)
-        samples = rng.normal(mu, posterior_std, size=(m, B, K))  # [m, B, K]
-        argmaxes = np.argmax(samples, axis=-1)  # [m, B]
-        one_hot = (argmaxes[..., None] == np.arange(K))  # [m, B, K]
-        counts += one_hot.sum(axis=0)
-        drawn += m
-
-    return counts / M
-
-
 def topk_tourney_batch_selection_fn(topk=20, n=2):
     return lambda mu, signa, N: batch_topk_tourney_probs(mu, k=topk, n=n)
-
-def thompson_sampling_batch_selection_fn(M=1, rng=None):
-    return lambda mu, signa, N: batch_thompson_sampling_selection_fn(mu, signa, N, M=M, rng=rng)
-
-
-def _apply_selection_fn_chunked(batch_selection_fn, mu, sigma, N, max_rows):
-    R = mu.shape[0]
-    if R <= max_rows:
-        return batch_selection_fn(mu, sigma, N)
-    out = np.empty_like(mu)
-    for s in range(0, R, max_rows):
-        e = min(R, s + max_rows)
-        out[s:e] = batch_selection_fn(mu[s:e], sigma, N[s:e])
-    return out
 
 
 def batch_kg_select_arms(mu, sigma, N, batch_selection_fn, n_quad=8,
@@ -236,78 +189,70 @@ def batch_kg_select_arms(mu, sigma, N, batch_selection_fn, n_quad=8,
     return best_arm
 
 
-def ttts_reeval_policy(beta=0.5, max_tries=1000):
-    """Sequential TTTS allocation: per MC sample, draw theta ~ posterior and take
-    the argmax; with prob 1-beta rejection-sample a second, different argmax."""
-    def policy(mu, sigma, N, rng):
-        M, K = mu.shape
-        std = sigma / np.sqrt(N)
-        arm = np.argmax(rng.normal(mu, std), axis=1)
-        todo = np.where(rng.random(M) >= beta)[0]
-        for _ in range(max_tries):
-            if todo.size == 0:
-                break
-            arm2 = np.argmax(rng.normal(mu[todo], std[todo]), axis=1)
-            accept = arm2 != arm[todo]
-            arm[todo[accept]] = arm2[accept]
-            todo = todo[~accept]
-        return arm
-    return policy
-
-
-def kg_reeval_policy(batch_selection_fn, n_quad=8, prune_topk=None, prune_z=None):
-    """Sequential KG allocation matched to the given parent-selection rule."""
-    def policy(mu, sigma, N, rng):
-        return batch_kg_select_arms(mu, sigma, N, batch_selection_fn,
-                                    n_quad=n_quad, prune_topk=prune_topk,
-                                    prune_z=prune_z)
-    return policy
-
-
-def simulate_reeval_expected_improvement_policy(mu, sigma, N, batch_selection_fn,
-                                                reeval_policy, M=10000, B_max=100,
-                                                rng=None, return_counts=False):
-    """
-    Sequential variant of simulate_reeval_expected_improvement: instead of a
-    fixed TTTS allocation psi computed once from the initial posterior, the
-    reeval_policy is called at every step with each MC sample's *current*
-    posterior and returns the arm to reevaluate for that sample.
-
-    reeval_policy: (mu [M, k], sigma, N [M, k], rng) -> int array [M].
-    return_counts: also return [k] average number of reevals each arm received.
-    """
+def simulate_reeval_ei_ttts(mu, sigma, N, batch_selection_fn:Callable, M=10000, B_max=100, rng=None):
     if rng is None:
         rng = np.random.default_rng()
 
     k = mu.size
-    true_mu = rng.normal(mu, sigma / np.sqrt(N), size=(M, k))  # [M, k]
+    psi = top_two_thompson_sampling_select_probs(mu, sigma, N)
+    reeval_selections = rng.choice(k, size=(B_max, ), p=psi)
+    return simulate_reeval_expected_improvement_for_fixed_reeval_strategy(mu, sigma, N, batch_selection_fn, reeval_selections, M=M, B_max=B_max, rng=rng)
 
+
+def simulate_reeval_ei_kg(mu, sigma, N, batch_selection_fn:Callable, M=10000, B_max=100, rng=None):
+    if rng is None:
+        rng = np.random.default_rng()
+
+    reeval_selections = kg_selections(mu, sigma, N, batch_selection_fn, M=M, B_max=B_max, rng=rng)
+    return simulate_reeval_expected_improvement_for_fixed_reeval_strategy(mu, sigma, N, batch_selection_fn, reeval_selections, M=M, B_max=B_max, rng=rng)
+
+
+def kg_selections(mu, sigma, N, batch_selection_fn, M=10000, B_max=100, rng=None):
+    if rng is None:
+        rng = np.random.default_rng()
+
+    k = mu.size
+
+    # for each arm and simulation, sample a "true value" from the posterior.
+    true_mu = rng.normal(mu, sigma/np.sqrt(N), size=(M, k))  # [M, k]
+
+    # running estimate of true mu as we reevaluate
     new_mu = einops.repeat(mu, 'k -> M k', M=M)  # [M, k]
     new_N = einops.repeat(N, 'k -> M k', M=M)  # [M, k]
 
-    parent_dist = batch_selection_fn(new_mu, sigma, new_N)  # [M, k]
-    baseline_fitness = (parent_dist * true_mu).sum(axis=1).mean()
+    reeval_selections = np.empty(B_max, dtype=int)
 
-    counts = np.zeros(k)
-    curve = np.empty(B_max + 1)
-    curve[0] = 0.0
-    rows = np.arange(M)
+    for B in range(1, B_max+1):
+        # for each simulation, for each arm, sample a reevaluation
+        reeval_samples = rng.normal(true_mu, sigma) # [M, k]
 
-    for B in range(1, B_max + 1):
-        sel = reeval_policy(new_mu, sigma, new_N, rng)  # [M]
-        counts += np.bincount(sel, minlength=k)
-        reeval_samples = rng.normal(true_mu[rows, sel], sigma)  # [M]
+        # each reeval sample (K) leads to a new posterior over arms (new_mu2[:, i] gives posterior over [M, k]
+        new_mu2 = einops.repeat(new_mu, 'M k -> M K k', K=k)
+        new_N2 = einops.repeat(new_N, 'M k -> M K k', K=k)
 
-        n = new_N[rows, sel]
-        new_mu[rows, sel] = (new_mu[rows, sel] * n + reeval_samples) / (n + 1.0)
-        new_N[rows, sel] = n + 1.0
+        # update posterior for each arm and simulation
+        n = new_N2[:, np.arange(k), np.arange(k)]
+        new_mu2[:, np.arange(k), np.arange(k)] = (new_mu * n + reeval_samples) / (n + 1)
+        new_N2[:, np.arange(k), np.arange(k)] = n + 1
 
-        parent_dist = batch_selection_fn(new_mu, sigma, new_N)
-        curve[B] = (parent_dist * true_mu).sum(axis=1).mean() - baseline_fitness
+        # 2. for each posterior, get parent distribution, calculate improvement in fitness
+        reshape_new_mu2 = einops.rearrange(new_mu2, 'M K k -> (M K) k')
+        reshape_new_N2 = einops.rearrange(new_N2, 'M K k -> (M K) k')
+        reshape_parent_dist = batch_selection_fn(reshape_new_mu2, sigma, reshape_new_N2) # [M K, k]
+        parent_dist = einops.rearrange(reshape_parent_dist, '(M K) k -> M K k', M=M, K=k)
 
-    if return_counts:
-        return curve, counts / M
-    return curve
+        # for each arm, calculate expected improvement across simulations
+        # sum over arm axis, mean over M axis
+        fitness_per_arm = (parent_dist[:, :, :] * true_mu[:, None, :]).sum(axis=-1).mean(axis=0) # [k, ]
+        best_arm = fitness_per_arm.argmax()
+        reeval_selections[B-1] = best_arm
+
+        # update new_mu and new_N
+        n = new_N[:, best_arm]
+        new_mu[:, best_arm] = (new_mu[:, best_arm] * n + reeval_samples[:, best_arm]) / (n + 1)
+        new_N[:, best_arm ] = n + 1
+
+    return reeval_selections
 
 
 def simulate_reeval_expected_improvement(mu, sigma, N, batch_selection_fn:Callable, M=10000, B_max=100, rng=None):
@@ -353,3 +298,47 @@ def simulate_reeval_expected_improvement(mu, sigma, N, batch_selection_fn:Callab
         curve[B] = fitness - baseline_fitness
 
     return curve
+
+
+def simulate_reeval_expected_improvement_for_fixed_reeval_strategy(mu, sigma, N, batch_selection_fn:Callable, reeval_selections:np.ndarray, M=10000, B_max=100, rng=None):
+    """
+    batch_selection_fn: takes in batches of posteriors (mu: [B, k], sigma: scalar,, N: [B, k]) and returns a distribution over arms [B, k] representing the probability of selecting each arm as a parent.
+    reeval_selections: [B, ] array of chosen samples, for example rng.choice(k, size=(B, ), p=select_probs(mu, sigma, N))
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    k = mu.size
+    assert reeval_selections.shape == (B_max, )
+
+    # for each arm and simulation, sample a "true value" from the posterior.
+    true_mu = rng.normal(mu, sigma/np.sqrt(N), size=(M, k))  # [M, k]
+
+    # running estimate of true mu as we reevaluate
+    new_mu = einops.repeat(mu, 'k -> M k', M=M)  # [M, k]
+    new_N = einops.repeat(N, 'k -> M k', M=M)  # [M, k]
+
+    # calculate parent distribution using selection fn
+    # fitness is expected parent fitness based off parent selection strategy, given the current posterior
+    parent_dist = batch_selection_fn(new_mu, sigma, new_N)  # [M, k]
+    baseline_fitness = (parent_dist * true_mu).sum(axis=1).mean()
+
+    curve = np.empty(B_max+1)
+    curve[0] = 0.0  # no improvement with zero reevaluations
+
+    for B in range(1, B_max+1):
+        # retrieve fixed sample
+        arm = reeval_selections[B-1]
+        reeval_samples = rng.normal(true_mu[:, arm], sigma)  # [M, ]
+
+        # update posterior for the arm selected
+        new_mu[:, arm] = (new_mu[:, arm] * new_N[:, arm] + reeval_samples) / (new_N[:, arm] + 1.0)
+        new_N[:, arm] = new_N[:, arm] + 1.0
+
+        # for each Monte Carlo sample, gives the expected fitness
+        parent_dist = batch_selection_fn(new_mu, sigma, new_N)  # [M, k]
+        fitness = (parent_dist * true_mu).sum(axis=1).mean()
+        curve[B] = fitness - baseline_fitness
+
+    return curve
+

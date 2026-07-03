@@ -1,26 +1,52 @@
+# 7/1/26
+# COMMON="--generations 15 --population 10 --models cheap --random-target-noise"
+# C1="--offspring 20 --n-runs 10 --reeval none"
+# sbatch -J n10o20s0 run.sh evolve_pysr.py $COMMON $C1 --seed 0
+# sbatch -J n10o20s1 run.sh evolve_pysr.py $COMMON $C1 --seed 1
+
+# sbatch -J fullsr --partition ellis run.sh evolve_fullsr.py --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --models cheap --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
+# sbatch --dependency=afterany:568245 -J fullsr-full-file --partition ellis run.sh evolve_fullsr.py --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --models cheap --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --full-file-diff
+# sbatch --dependency=afterany:568246 -J max-time run.sh evolve_pysr.py --generations 15 --population 10 --n-runs 3 --max-time-in-seconds 120 --models best --random-target-noise --reeval smart
+# sbatch --dependency=afterany:689916 -J gt-r2-train run.sh evolve_pysr.py --generations 15 --population 10 --n-runs 3 --models cheap --reeval smart --random-target-noise --fitness-metric gt-r2 --split splits/train.txt --val-split splits/val.txt
+
+# C2="--offspring 20 --n-runs 3 --reeval none"
+# C3="--offspring 5 --n-runs 1 --reeval smart --max-runs-per-generation 20"
+# C4="--offspring 5 --n-runs 3 --reeval smart --max-runs-per-generation 60"
+# #
+# # seed 0
+# jid1=$(sbatch --parsable                       -J nn_n1o20_s0   run.sh evolve_pysr.py $COMMON $C1 --seed 0)
+# jid2=$(sbatch --parsable                       -J nn_n3o20_s0   run.sh evolve_pysr.py $COMMON $C2 --seed 0)
+# jid3=$(sbatch --parsable --dependency=afterany:$jid1 -J sm_n1o5b20_s0 run.sh evolve_pysr.py $COMMON $C3 --seed 0)
+# jid4=$(sbatch --parsable --dependency=afterany:$jid2 -J sm_n3o5b60_s0 run.sh evolve_pysr.py $COMMON $C4 --seed 0)
+# 6/30/26
+# sbatch -J fullsr --partition ellis run.sh evolve_fullsr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --models best --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
+# sbatch --dependency=afterany:397152 -J max-time run.sh evolve_pysr.py --generations 30 --population 10 --n-runs 3 --max-time-in-seconds 120 --models best --random-target-noise --reeval smart
+# sbatch --dependency=afterany:492224 -J fullsr --partition ellis run.sh evolve_fullsr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --models best --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --full-file-diff
+# sbatch --dependency=afterany:492225 -J r2-train run.sh evolve_pysr.py --generations 15 --population 10 --n-runs 3 --models best --reeval smart --random-target-noise --fitness-metric r2 --split splits/train.txt --val-split splits/val.txt
 
 # 6/29/26 — planet eval of the gt-r2 bundle (runs/120459).
-sbatch -J r2-gt-planet planet_eval.sh --evolve-results ~/meta_sr/runs/120459
+# sbatch -J r2-gt-planet planet_eval.sh --evolve-results ~/meta_sr/runs/120459
 
 # 6/29/26 — smart-reeval comparison on the BEST model ensemble.
-COMMON="--operator-type all --generations 30 --population 10 --n-runs 1 --models best --random-target-noise"
-NONE="--offspring 20 --reeval none"
-KG="--offspring 5 --reeval smart-KG --max-runs-per-generation 20"
-TT="--offspring 5 --reeval smart-TTTS --max-runs-per-generation 20"
-# seed 0 (chain A)
-a1=$(sbatch --parsable                            -J re_none_s0 run.sh evolve_pysr.py $COMMON $NONE --seed 0)
-a2=$(sbatch --parsable --dependency=afterany:$a1  -J re_kg_s0   run.sh evolve_pysr.py $COMMON $KG   --seed 0)
-a3=$(sbatch --parsable --dependency=afterany:$a2  -J re_ttts_s0 run.sh evolve_pysr.py $COMMON $TT   --seed 0)
-# seed 1 (chain B)
-b1=$(sbatch --parsable                            -J re_none_s1 run.sh evolve_pysr.py $COMMON $NONE --seed 1)
-b2=$(sbatch --parsable --dependency=afterany:$b1  -J re_kg_s1   run.sh evolve_pysr.py $COMMON $KG   --seed 1)
-b3=$(sbatch --parsable --dependency=afterany:$b2  -J re_ttts_s1 run.sh evolve_pysr.py $COMMON $TT   --seed 1)
+# COMMON="--operator-type all --generations 30 --population 10 --n-runs 1 --models best --random-target-noise"
+# NONE="--offspring 20 --reeval none"
+# KG="--offspring 5 --reeval smart-KG --max-runs-per-generation 20"
+# TT="--offspring 5 --reeval smart-TTTS --max-runs-per-generation 20"
+# sbatch --parsable  -J re_ttts_s0 run.sh evolve_pysr.py $COMMON $TT   --seed 0
+# sbatch --parsable  -J re_ttts_s1 run.sh evolve_pysr.py $COMMON $TT   --seed 1
+# # # seed 0 (chain A)
+# # a1=$(sbatch --parsable                            -J re_none_s0 run.sh evolve_pysr.py $COMMON $NONE --seed 0)
+# # a2=$(sbatch --parsable                            -J re_kg_s0   run.sh evolve_pysr.py $COMMON $KG   --seed 0)
+# # # seed 1 (chain B)
+# # b1=$(sbatch --parsable                            -J re_none_s1 run.sh evolve_pysr.py $COMMON $NONE --seed 1)
+# # b2=$(sbatch --parsable                            -J re_kg_s1   run.sh evolve_pysr.py $COMMON $KG   --seed 1)
 
-# new fullSR evolution
-c1=$(sbatch --parsable -J fullsr --partition ellis run.sh evolve_fullsr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --models cheap --split splits/train.txt)
 
 # all noise evolution
-sbatch --dependency=afterany:$c1 -J all-noise --partition ellis run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --reeval none --models best --eval-all-noise-levels
+# sbatch --dependency=afterany:$c1 -J all-noise --partition ellis run.sh evolve_pysr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --reeval none --models best --eval-all-noise-levels
+
+# new fullSR evolution
+# sbatch -J fullsr --partition ellis run.sh evolve_fullsr.py --operator-type all --generations 30 --population 10 --offspring 10 --n-runs 3 --models cheap --split splits/train.txt
 
 
 # 6/26/26

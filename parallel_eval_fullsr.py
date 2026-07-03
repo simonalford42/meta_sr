@@ -39,6 +39,14 @@ POLICY_PYSR = "pysr"
 POLICY_SR = "sr"
 ALL_POLICIES = (POLICY_BASIC, POLICY_PYSR, POLICY_SR)
 
+# Slack (seconds) added on top of a task's per-fit wall limit when sizing the
+# driver-side watchdogs (stall / total). It must cover SLURM queue wait + Julia
+# compile before the FIRST task can write a result: each task self-terminates at
+# its own wall_limit via SIGALRM and writes a result, so the only legitimately
+# long gap is the initial queue+compile. Sized below this, the stall watchdog
+# cancels a healthy array and every dataset scores zero.
+_WATCHDOG_MARGIN_S = 900
+
 # The eight policy functions that SkeletonSRPolicy carries. Used by the worker
 # to splice in custom Julia code when policy_code is set.
 POLICY_FUNCTION_NAMES = (
@@ -757,7 +765,36 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         logs_dir = batch_dir / "logs"
         print(f"    Watch logs: tail -f {logs_dir}/task_<N>.out")
 
-        job_completed = self._wait_for_job(job_id, n_tasks, batch_dir, initial_cached=0)
+        # Size the driver watchdogs off this call's effective per-task wall limit
+        # (val evals raise it above the instance default). A FullSR task can take
+        # up to wall_limit + SLURM-queue + Julia-compile to write its first
+        # result, so a fixed 300s stall floor would cancel a healthy array and
+        # zero every dataset — the failure that made background val/train-reeval
+        # evals always report 0.0. Each task self-terminates via its own SIGALRM,
+        # so being generous here is safe: _get_job_status still ends the wait as
+        # soon as SLURM reports the array terminal.
+        effective_wall = (
+            fullsr_wall_limit if fullsr_wall_limit is not None else self.wall_limit
+        )
+        watchdog_floor = effective_wall + _WATCHDOG_MARGIN_S
+        call_stall_timeout = (
+            None
+            if self.stall_timeout is None
+            else max(self.stall_timeout, watchdog_floor)
+        )
+        call_job_timeout = (
+            None
+            if self.job_timeout is None
+            else max(self.job_timeout, watchdog_floor)
+        )
+        job_completed = self._wait_for_job(
+            job_id,
+            n_tasks,
+            batch_dir,
+            initial_cached=0,
+            stall_timeout=call_stall_timeout,
+            job_timeout=call_job_timeout,
+        )
 
         try:
             self._update_bad_nodes_from_logs(batch_dir)
@@ -768,15 +805,27 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
             results_subdir, n_tasks, timed_out=not job_completed
         )
 
+        # Retry failed tasks — including those missing because the array was
+        # cancelled on timeout/stall. Mirrors parallel_eval_pysr.py: a cancelled
+        # array leaves real work undone, so resubmit rather than scoring those
+        # datasets zero. (Previously FullSR skipped all retries whenever the job
+        # timed out, so a single stall wiped an entire offspring/val eval.)
         retry_count = 0
-        if not job_completed:
-            print("  Skipping retries - job timed out")
-        while job_completed and failed_indices and retry_count < self.max_retries:
+        while failed_indices and retry_count < self.max_retries:
             retry_count += 1
             print(
                 f"  Retrying {len(failed_indices)} failed tasks "
                 f"(attempt {retry_count}/{self.max_retries})..."
             )
+            # Remove stale failure placeholders before resubmitting: the retry
+            # wait treats result-file presence as completion, so a leftover
+            # (transient-error) file would make the retry look instantly done.
+            for idx in failed_indices:
+                stale_result = results_subdir / f"task_{idx:06d}.json"
+                try:
+                    stale_result.unlink()
+                except FileNotFoundError:
+                    pass
             retry_script = self._create_retry_job_script(
                 batch_dir, failed_indices, retry_count
             )

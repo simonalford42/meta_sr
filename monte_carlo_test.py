@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from monte_carlo import (
     thompson_sampling_select_probs, top_two_thompson_sampling_select_probs,
     simulate_reeval_expected_improvement,
-    thompson_sampling_batch_selection_fn,
+    topk_tourney_batch_selection_fn,
 )
 
 
@@ -146,7 +146,7 @@ def main():
     print(f"\nRunning simulate_reeval_expected_improvement "
           f"(M={M}, B_max={B_max})...")
     rng = np.random.default_rng(0)
-    batch_selection_fn = thompson_sampling_batch_selection_fn(M=10_000, rng=rng)
+    batch_selection_fn = topk_tourney_batch_selection_fn()
     curve = simulate_reeval_expected_improvement(
         mu, sigma, N, batch_selection_fn, M=M, B_max=B_max, rng=rng,
     )

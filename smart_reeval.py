@@ -39,11 +39,11 @@ from monte_carlo import (
     thompson_sampling_select_probs,
     top_two_thompson_sampling_select_probs,
     simulate_reeval_expected_improvement,
-    simulate_reeval_expected_improvement_policy,
+    # simulate_reeval_expected_improvement_policy,
     topk_tourney_batch_selection_fn,
     batch_topk_tourney_probs,
     batch_kg_select_arms,
-    kg_reeval_policy,
+    # kg_reeval_policy,  # KG temporarily disabled (removed from monte_carlo); restore for --reeval smart-KG
 )
 from offspring_mc import offspring_expected_improvement
 from offspring_improvement import fit_ei_curve, smoothed_mei, indifference_B
@@ -235,12 +235,13 @@ def compute_reeval_plan(
 
     sel_fn = topk_tourney_batch_selection_fn(topk=topk, n=n)
     if policy == "kg":
-        curve = simulate_reeval_expected_improvement_policy(
-            mu, sigma, N, sel_fn,
-            kg_reeval_policy(sel_fn, prune_topk=topk,
-                             n_quad=KG_N_QUAD, prune_z=KG_PRUNE_Z),
-            M=KG_CURVE_M, B_max=B_max, rng=rng,
-        )
+        assert False
+        # curve = simulate_reeval_expected_improvement_policy(
+        #     mu, sigma, N, sel_fn,
+        #     kg_reeval_policy(sel_fn, prune_topk=topk,
+        #                      n_quad=KG_N_QUAD, prune_z=KG_PRUNE_Z),
+        #     M=KG_CURVE_M, B_max=B_max, rng=rng,
+        # )
     else:
         curve = simulate_reeval_expected_improvement(
             mu, sigma, N, sel_fn, M=M, B_max=B_max, rng=rng,
