@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 import random
@@ -140,6 +141,19 @@ def resolve_reasoning_effort(effort_arg: str, models_arg: str) -> str:
 # ─── Logging ───────────────────────────────────────────────────────────────
 
 
+def _bundle_content_key(bundle: SkeletonBundle) -> str:
+    """Stable short hash of a bundle's rendered Julia module body.
+
+    In full-file-diff mode every offspring keeps the baseline's function names,
+    so `display_name` is identical across generations and cannot distinguish
+    bundles. The rendered module body IS what ships to the worker, so hashing it
+    gives a correct identity in ALL modes — used for val/train-reeval dedup and
+    as the persisted val_results key so diff-mode entries don't collide.
+    """
+    body = render_sr_module_body(bundle)
+    return hashlib.sha1(body.encode("utf-8")).hexdigest()[:16]
+
+
 class EvolutionLogger:
     """Tracks and saves per-generation evolution data, similar to evolve_pysr.py."""
 
@@ -162,6 +176,31 @@ class EvolutionLogger:
 
     def log_baseline(self, score: float, vec: List[float]):
         self.run_data["baseline"] = {"score": score, "vector": vec}
+        self._save()
+
+    def log_val_result(self, info: Dict[str, Any], kind: str = "val"):
+        """Persist a background val or train-reeval result to run_data.json.
+
+        Previously these were print-/wandb-only, so run_data.json (the only
+        durable record) held no val scores and load_resume_state's val_results
+        read was dead plumbing. Keyed by rendered-module content hash (fix: in
+        full-file-diff mode display_name is not unique), with `val` and
+        `train_reeval` namespaced under one key so they don't overwrite. The
+        per-record shape mirrors evolve_pysr.EvolutionLogger.log_val_result.
+        """
+        key = info.get("content_key") or info.get("bundle_name")
+        if key is None:
+            return
+        vr = self.run_data.setdefault("val_results", {})
+        entry = vr.setdefault(key, {"bundle_name": info.get("bundle_name")})
+        rec = {
+            "avg_score": info.get("avg_score"),
+            "score_vector": info.get("score_vector"),
+            "gen_submitted": info.get("gen_submitted"),
+        }
+        if "train_score_at_submit" in info:
+            rec["train_score_at_submit"] = info.get("train_score_at_submit")
+        entry[kind] = rec
         self._save()
 
     def log_generation(
@@ -443,7 +482,17 @@ def run_evolution(
     max_task_wall = fullsr_wall_limit
     if val_split:
         max_task_wall = max(max_task_wall, val_fullsr_wall_limit)
-    min_slurm_seconds = max_task_wall + 300
+    # Beyond node startup + result write (~300s), the worker runs an UNGUARDED
+    # sympy GT-match after its SIGALRM is disarmed (up to ~40 frontier exprs).
+    # Its per-expression alarm cannot be wrapped by an outer guard — the match
+    # helper itself calls signal.alarm(0) in its per-expression finally, which
+    # would cancel any alarm we arm — and sympy can block SIGALRM inside C code
+    # anyway. So a slow match can be SLURM-killed with NO result file (dataset
+    # zeroed). Widen --time by the worst-case GT-match so the worker survives to
+    # write a result instead of vanishing.
+    _SLURM_STARTUP_MARGIN = 300
+    _GT_MATCH_WORST_CASE = 300
+    min_slurm_seconds = max_task_wall + _SLURM_STARTUP_MARGIN + _GT_MATCH_WORST_CASE
     effective_slurm_time = slurm_time_limit
     if _hms_to_seconds(slurm_time_limit) < min_slurm_seconds:
         effective_slurm_time = _seconds_to_hms(min_slurm_seconds)
@@ -480,7 +529,7 @@ def run_evolution(
         "noise_map": None,
         "executor": None,
         "pending_future": None,
-        "last_bundle_name": None,
+        "last_content_key": None,
     }
     if val_split:
         val_dataset_names = load_dataset_names_from_split(val_split)
@@ -510,11 +559,13 @@ def run_evolution(
             target_noise_map=val_state["noise_map"],
             fitness_metric=fitness_metric,
             fullsr_wall_limit=val_fullsr_wall_limit,
+            split_label=(Path(val_split).stem if val_split else None),
         )
         avg, vec, details = results[0] if results else (-1.0, [], [])
         return {
             "gen_submitted": gen_submitted,
             "bundle_name": bundle.display_name,
+            "content_key": _bundle_content_key(bundle),
             "avg_score": avg,
             "score_vector": vec,
             "result_details": details,
@@ -543,6 +594,7 @@ def run_evolution(
         try:
             info = fut.result()
             _log_val_result(info)
+            logger.log_val_result(info, kind="val")
         except Exception as e:
             print(f"\n[val eval] failed: {e}")
         val_state["pending_future"] = None
@@ -552,9 +604,10 @@ def run_evolution(
             return
         if val_state["pending_future"] is not None and not val_state["pending_future"].done():
             return
-        if bundle.display_name == val_state["last_bundle_name"]:
+        content_key = _bundle_content_key(bundle)
+        if content_key == val_state["last_content_key"]:
             return
-        val_state["last_bundle_name"] = bundle.display_name
+        val_state["last_content_key"] = content_key
         val_state["pending_future"] = val_state["executor"].submit(
             _run_val_eval, bundle, gen,
         )
@@ -573,7 +626,7 @@ def run_evolution(
     train_reeval_state: Dict[str, Any] = {
         "executor": ThreadPoolExecutor(max_workers=1, thread_name_prefix="train-reeval"),
         "pending_future": None,
-        "last_bundle_name": None,
+        "last_content_key": None,
     }
     print(
         f"Train reeval: enabled ({val_n_runs} runs/bundle, "
@@ -594,11 +647,13 @@ def run_evolution(
             target_noise_map=target_noise_map,
             fitness_metric=fitness_metric,
             run_index_start_per_config=[TRAIN_REEVAL_SEED_OFFSET],
+            split_label=(f"{Path(split).stem}-reeval" if split else "reeval"),
         )
         avg, vec, details = results[0] if results else (-1.0, [], [])
         return {
             "gen_submitted": gen_submitted,
             "bundle_name": bundle.display_name,
+            "content_key": _bundle_content_key(bundle),
             "train_score_at_submit": train_score_at_submit,
             "avg_score": avg,
             "score_vector": vec,
@@ -638,6 +693,7 @@ def run_evolution(
         try:
             info = fut.result()
             _log_train_reeval_result(info)
+            logger.log_val_result(info, kind="train_reeval")
         except Exception as e:
             print(f"\n[train reeval] failed: {e}")
         train_reeval_state["pending_future"] = None
@@ -646,9 +702,10 @@ def run_evolution(
         pending = train_reeval_state["pending_future"]
         if pending is not None and not pending.done():
             return
-        if bundle.display_name == train_reeval_state["last_bundle_name"]:
+        content_key = _bundle_content_key(bundle)
+        if content_key == train_reeval_state["last_content_key"]:
             return
-        train_reeval_state["last_bundle_name"] = bundle.display_name
+        train_reeval_state["last_content_key"] = content_key
         train_score_at_submit = bundle.score
         train_reeval_state["pending_future"] = train_reeval_state["executor"].submit(
             _run_train_reeval, bundle, gen, train_score_at_submit,
@@ -686,7 +743,11 @@ def run_evolution(
             f"{_format_solved_str(baseline_details)} (eval took {_fmt_elapsed(time.time() - t0)})"
         )
     else:
-        baseline_score = resume_state["baseline_score"] or 0.0
+        # Explicit None check: a legitimately-stored baseline of 0.0 must not be
+        # conflated with a missing score (both are falsy).
+        baseline_score = resume_state["baseline_score"]
+        if baseline_score is None:
+            baseline_score = 0.0
         baseline_vec = resume_state["baseline_vector"] or []
         print("=" * 60)
         print(
@@ -1336,6 +1397,24 @@ def main():
                 f"WARNING: operator slots differ from prior run: "
                 f"prior={prior_slots}, now={operator_slots}"
             )
+        # Budget-/data-affecting config that changes mid-resume makes the new
+        # generations not directly comparable to the prior ones. Warn (don't
+        # error) like the operator-slots check above.
+        _resume_budget_keys = {
+            "split": args.split,
+            "n_runs": args.n_runs,
+            "max_samples": args.max_samples,
+            "max_evals": args.max_evals,
+            "timeout": args.timeout,
+            "fullsr_wall_limit": args.fullsr_wall_limit,
+        }
+        _prior_cfg = resume_state["prior_config"]
+        for _ck, _now in _resume_budget_keys.items():
+            if _ck in _prior_cfg and _prior_cfg[_ck] != _now:
+                print(
+                    f"WARNING: {_ck} differs from prior run: "
+                    f"prior={_prior_cfg[_ck]!r}, now={_now!r}"
+                )
         if resume_state["prior_config"].get("full_file_diff") and not args.full_file_diff:
             print(
                 "  NOTE: source run used --full-file-diff; resumed bundles are "

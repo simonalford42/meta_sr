@@ -692,6 +692,7 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         fitness_metric: str = "r2",
         run_index_start_per_config: Optional[List[int]] = None,
         fullsr_wall_limit: Optional[int] = None,
+        split_label: Optional[str] = None,
     ) -> List[Tuple[float, List[float], List[Dict]]]:
         import time as _time_mod
 
@@ -782,10 +783,32 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
             if self.stall_timeout is None
             else max(self.stall_timeout, watchdog_floor)
         )
+        # The total-elapsed cap must scale with batch size: a healthy array runs
+        # in queued waves, so a fixed wall+margin cap cancels a large generation
+        # mid-progress. Estimate the number of waves from how many tasks SLURM
+        # can run concurrently (max_concurrent_jobs when pinned, else a nominal
+        # 256-way cluster ceiling), and budget one full per-task wall per wave.
+        # Keep the wall+margin floor as a minimum so small batches are unaffected.
+        import math as _math
+
+        effective_concurrency = (
+            self.max_concurrent_jobs
+            if self.max_concurrent_jobs
+            else min(n_tasks, 256)
+        )
+        effective_concurrency = max(1, effective_concurrency)
+        n_waves = _math.ceil(n_tasks / effective_concurrency)
+        scaled_job_timeout = n_waves * effective_wall + _WATCHDOG_MARGIN_S
         call_job_timeout = (
             None
             if self.job_timeout is None
-            else max(self.job_timeout, watchdog_floor)
+            else max(self.job_timeout, watchdog_floor, scaled_job_timeout)
+        )
+        print(
+            f"    Watchdog: stall_timeout={call_stall_timeout}s "
+            f"job_timeout={call_job_timeout}s "
+            f"(wall={effective_wall}s, ~{n_waves} waves @ concurrency "
+            f"{effective_concurrency}, floor={watchdog_floor}s)"
         )
         job_completed = self._wait_for_job(
             job_id,
@@ -889,7 +912,7 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
                 bundle_wall_s=_time_mod.time() - bundle_submit_time,
                 task_runtime_s=task_runtimes,
                 label=label,
-                split=self.split_label,
+                split=split_label if split_label is not None else self.split_label,
                 n_datasets=len(dataset_names),
                 n_runs=n_runs,
                 n_configs=len(configs),
@@ -1095,6 +1118,14 @@ export PYTHONPATH="{self.repo_root}:$SLURM_SUBMIT_DIR:$PYTHONPATH"
 unset JULIA_PROJECT
 export PYTHON_JULIAPKG_PROJECT="{self.repo_root}/.juliapkg_env"
 export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+# Workers run offline: the warmstart job (which runs online, before this array)
+# has already resolved + precompiled the shared .juliapkg_env. Offline mode skips
+# juliapkg's per-import Pkg.resolve/rewrite of Project.toml, so hundreds of
+# concurrent array tasks don't stampede + rewrite the same NFS project file. That
+# stampede caused the array stalls and the mid-run "Package SymbolicRegression
+# not found" corruption (see runs/689916). Runtime JIT of custom policy modules
+# is unaffected — offline only disables package *resolution*, not compilation.
+export PYTHON_JULIAPKG_OFFLINE=yes
 
 echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
 

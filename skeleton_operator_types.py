@@ -420,12 +420,31 @@ def parse_sr_config_module(module_text: str) -> Dict[str, str]:
             i += 1
             continue
         fn_name = m.group(1)
-        # Pull the docstring on the preceding line, if there is one — many
+        # Pull the docstring above the function, if there is one — many
         # SRConfig.jl functions have a `"""docstring"""` above. We don't strip
         # this, but include it for fidelity when round-tripping.
         block_start = i
-        while block_start > 0 and lines[block_start - 1].strip().startswith('"'):
-            block_start -= 1
+        while block_start > 0:
+            prev = lines[block_start - 1].strip()
+            if not prev.startswith('"'):
+                break
+            if prev.count('"""') == 1:
+                # `prev` is the closing delimiter of a multi-line docstring
+                # (e.g. a bare `"""` on its own line, the common LLM style).
+                # Walk up to and including the opening `"""` line; taking only
+                # the closing line would leave a dangling `"""` that can never
+                # parse as Julia.
+                k = block_start - 2
+                while k >= 0 and '"""' not in lines[k]:
+                    k -= 1
+                if k < 0:
+                    # Unmatched delimiter: exclude the partial docstring rather
+                    # than emit an unterminated `"""`.
+                    break
+                block_start = k
+            else:
+                # Complete single-line docstring (`"..."` or `"""..."""`).
+                block_start -= 1
         # Find the matching `end` for the whole function (handles inner blocks).
         j = _julia_block_end(lines, i)
         block = "\n".join(lines[block_start:j])
