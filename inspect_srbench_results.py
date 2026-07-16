@@ -24,6 +24,8 @@ from utils import load_dataset_names_from_split
 # Default train / val splits used by evolve_pysr.py (its argparse defaults).
 TRAIN_SPLIT = "splits/barely_unsolvable.txt"
 VAL_SPLIT = "splits/barely_unsolvable_val2.txt"
+CLEAN_TRAIN_SPLIT = "splits/train.txt"
+CLEAN_VAL_SPLIT = "splits/val.txt"
 
 
 def _load_split_set(split_file: str) -> "set[str] | None":
@@ -38,6 +40,8 @@ TRAIN_LABEL = Path(TRAIN_SPLIT).stem
 VAL_LABEL = Path(VAL_SPLIT).stem
 TRAIN_SET = _load_split_set(TRAIN_SPLIT)
 VAL_SET = _load_split_set(VAL_SPLIT)
+CLEAN_TRAIN_SET = _load_split_set(CLEAN_TRAIN_SPLIT)
+CLEAN_VAL_SET = _load_split_set(CLEAN_VAL_SPLIT)
 
 
 def subset_solve_rate(keyed: "dict", datasets: "set[str]",
@@ -141,6 +145,14 @@ def summarize_run(run_dir: Path) -> "dict | None":
         row["rest_pct"] = subset_solve_rate(keyed, rest_set)
         row["train0_pct"] = subset_solve_rate(keyed, TRAIN_SET, noise=0)
         row["val0_pct"] = subset_solve_rate(keyed, VAL_SET, noise=0)
+    row["clean_train0_pct"] = (
+        subset_solve_rate(keyed, CLEAN_TRAIN_SET, noise=0)
+        if CLEAN_TRAIN_SET else None
+    )
+    row["clean_val0_pct"] = (
+        subset_solve_rate(keyed, CLEAN_VAL_SET, noise=0)
+        if CLEAN_VAL_SET else None
+    )
     return row
 
 
@@ -176,6 +188,8 @@ def format_summary_table(rows: "list[dict]") -> str:
             ("bu(n0)", lambda r: _pct(r.get("train0_pct"))),
             (VAL_LABEL, lambda r: _pct(r.get("val_pct"))),
             ("bu2(n0)", lambda r: _pct(r.get("val0_pct"))),
+            ("train(n0)", lambda r: _pct(r.get("clean_train0_pct"))),
+            ("val(n0)", lambda r: _pct(r.get("clean_val0_pct"))),
             ("rest", lambda r: _pct(r.get("rest_pct"))),
         ]
 
