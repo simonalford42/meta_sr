@@ -1,8 +1,41 @@
+# 7/16/26
+
+# n1 vs v3, continue to 30 generations
+# cheap ensemble, --random-target-noise). Per-generation eval budget B matched per pair:
+#   cond1 none  n1o20 (20 evals/gen)  vs  cond3 smart n1o5  B=20   ← chain A (odd jobs)
+#   cond2 none  n3o20 (60 evals/gen)  vs  cond4 smart n3o5  B=60   ← chain B (even jobs)
+
+# At most 2 jobs run at once: jobs 1 & 2 start immediately; job N depends on job N-2
+# (afterany), forming two parallel chains. Jobs are ordered seed-major (all 4 conditions
+# at seed s, then s+1), which makes chain A = the B=20 pair and chain B = the B=60 pair.
+# To launch: uncomment this whole block (it must run together — the $jidN vars chain
+# the dependencies), then run `bash submit_jobs.sh`.
+COMMON="--operator-type all --generations 30 --population 10 --models cheap --random-target-noise"
+C1="--offspring 20 --n-runs 1 --reeval none"
+C2="--offspring 20 --n-runs 3 --reeval none"
+#
+# seed 0
+jid1=$(sbatch --parsable                       -J nn_n1o20_s0   run.sh evolve_pysr.py $COMMON $C1 --seed 0 --continue-from runs/89281)
+jid2=$(sbatch --parsable                       -J nn_n3o20_s0   run.sh evolve_pysr.py $COMMON $C2 --seed 0 --continue-from runs/89282)
+# seed 1
+jid5=$(sbatch --parsable --dependency=afterany:$jid1 -J nn_n1o20_s1   run.sh evolve_pysr.py $COMMON $C1 --seed 1 --continue-from runs/825769)
+jid6=$(sbatch --parsable --dependency=afterany:$jid2 -J nn_n3o20_s1   run.sh evolve_pysr.py $COMMON $C2 --seed 1 --continue-from runs/825770)
+# seed 2
+jid9=$(sbatch  --parsable --dependency=afterany:$jid5 -J nn_n1o20_s2   run.sh evolve_pysr.py $COMMON $C1 --seed 2 --continue-from runs/825773)
+jid10=$(sbatch --parsable --dependency=afterany:$jid6 -J nn_n3o20_s2   run.sh evolve_pysr.py $COMMON $C2 --seed 2 --continue-from runs/825774)
+# seed 3
+jid13=$(sbatch --parsable --dependency=afterany:$jid9 -J nn_n1o20_s3   run.sh evolve_pysr.py $COMMON $C1 --seed 3 --continue-from runs/825777)
+jid14=$(sbatch --parsable --dependency=afterany:$jid10 -J nn_n3o20_s3   run.sh evolve_pysr.py $COMMON $C2 --seed 3 --continue-from runs/825778)
+# seed 4
+jid17=$(sbatch --parsable --dependency=afterany:$jid13 -J nn_n1o20_s4   run.sh evolve_pysr.py $COMMON $C1 --seed 4 --continue-from runs/825781)
+jid18=$(sbatch --parsable --dependency=afterany:$jid14 -J nn_n3o20_s4   run.sh evolve_pysr.py $COMMON $C2 --seed 4 --continue-from runs/825782)
+echo "Submitted 20 jobs"
+
 # 7/1/26
-# COMMON="--generations 15 --population 10 --models cheap --random-target-noise"
-# C1="--offspring 20 --n-runs 10 --reeval none"
-# sbatch -J n10o20s0 run.sh evolve_pysr.py $COMMON $C1 --seed 0
-# sbatch -J n10o20s1 run.sh evolve_pysr.py $COMMON $C1 --seed 1
+# COMMON="--generations 20 --population 10 --models best --random-target-noise"
+# C1="--offspring 10 --n-runs 10 --reeval none"
+# sbatch -J bn10o10s0 run.sh evolve_pysr.py $COMMON $C1 --seed 0
+# sbatch -J bn10o10s1 run.sh evolve_pysr.py $COMMON $C1 --seed 1
 
 # sbatch -J fullsr --partition ellis run.sh evolve_fullsr.py --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --models cheap --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
 # sbatch --dependency=afterany:568245 -J fullsr-full-file --partition ellis run.sh evolve_fullsr.py --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --models cheap --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --full-file-diff
