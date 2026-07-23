@@ -914,6 +914,7 @@ class PySRTaskSpec:
     hof_n_steps: int = 0  # Number of HOF checkpoints to write during fit (0 = disabled)
     pysr_wall_limit: int = 600  # Hard wall-clock limit for PySR search (seconds); on overrun,
     # the task errors out with score=0 and is NOT retried.
+    black_box: bool = False  # Use the official SRBench black-box data protocol.
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -961,6 +962,9 @@ class PySRTaskResult:
     # lowest-successful-noise level's representative values (equation/trace).
     # None for single-noise tasks.
     noise_results: Optional[List[Dict]] = None
+    # Test-set Pareto frontier for black-box evaluation. Each row contains
+    # complexity, test_r2, and equation. None for ground-truth evaluations.
+    pareto_frontier: Optional[List[Dict]] = None
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -977,6 +981,7 @@ class PySRTaskResult:
         d.setdefault('gt_matched_equation', None)
         d.setdefault('r2_frontier_score', None)
         d.setdefault('noise_results', None)
+        d.setdefault('pareto_frontier', None)
         return cls(**d)
 
 
@@ -1024,22 +1029,46 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         print(f"[{spec.dataset_name}] Loading dataset...", flush=True)
         np.random.seed(spec.data_seed)
         _rnd.seed(spec.data_seed)
-        X, y, ground_truth_formula = load_srbench_dataset(spec.dataset_name, max_samples=spec.max_samples)
+        # Black-box data must be split before the training-only row cap is
+        # applied (SRBench evaluate_model.py). Ground-truth evaluation retains
+        # the historical pre-split cap.
+        load_cap = None if spec.black_box else spec.max_samples
+        X, y, ground_truth_formula = load_srbench_dataset(spec.dataset_name, max_samples=load_cap)
         t_load_data = _time.time() - t0
         print(f"[{spec.dataset_name}] Dataset loaded in {t_load_data:.1f}s", flush=True)
 
         np.random.seed(run_seed)
         _rnd.seed(run_seed)
 
-        # Train/val split (80/20)
-        n_samples = len(y)
-        n_train = int(0.8 * n_samples)
-        indices = np.random.permutation(n_samples)
-        train_idx = indices[:n_train]
-        val_idx = indices[n_train:]
-
-        X_train, y_train_base = X[train_idx], y[train_idx]
-        X_val, y_val = X[val_idx], y[val_idx]
+        if spec.black_box:
+            # Use sklearn here (rather than an equivalent-looking manual
+            # permutation) to reproduce SRBench's exact seeded split.
+            from sklearn.model_selection import train_test_split
+            X_train, X_val, y_train_base, y_val = train_test_split(
+                X, y, train_size=0.75, test_size=0.25,
+                random_state=run_seed,
+            )
+            # Match SRBench's max_train_samples=10000 and train-fitted
+            # StandardScaler transforms. The held-out y remains in original
+            # units; predictions are inverse-transformed before scoring.
+            if spec.max_samples and len(y_train_base) > spec.max_samples:
+                keep = np.random.choice(len(y_train_base), spec.max_samples)
+                X_train, y_train_base = X_train[keep], y_train_base[keep]
+            from sklearn.preprocessing import StandardScaler
+            x_scaler = StandardScaler()
+            y_scaler = StandardScaler()
+            X_train = x_scaler.fit_transform(X_train)
+            X_val = x_scaler.transform(X_val)
+            y_train_base = y_scaler.fit_transform(
+                y_train_base.reshape(-1, 1)
+            ).ravel()
+        else:
+            # Historical ground-truth evaluator protocol: seeded 80/20 split.
+            n_train = int(0.8 * len(y))
+            indices = np.random.permutation(len(y))
+            train_idx, val_idx = indices[:n_train], indices[n_train:]
+            X_train, y_train_base = X[train_idx], y[train_idx]
+            X_val, y_val = X[val_idx], y[val_idx]
 
         # Build PySR model with specified mutation weights
         t1 = _time.time()
@@ -1231,19 +1260,51 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
                 # Evaluate on validation set
                 y_pred = model.predict(X_val)
+                if spec.black_box:
+                    y_pred = y_scaler.inverse_transform(
+                        np.asarray(y_pred).reshape(-1, 1)
+                    ).ravel()
                 y_pred = np.clip(y_pred, -1e10, 1e10)
                 ss_res = np.sum((y_val - y_pred) ** 2)
                 ss_tot = np.sum((y_val - np.mean(y_val)) ** 2)
                 r2 = 1 - (ss_res / (ss_tot + 1e-10))
                 r2 = max(r2, 0)  # Clip negative R^2 to 0
 
-                # Frontier-averaged R² across the fixed complexity grid 1..maxsize.
-                frontier_maxsize = int(spec.pysr_kwargs.get("maxsize", 40))
-                try:
-                    r2_frontier = _compute_frontier_avg_r2(model, X_val, y_val, frontier_maxsize)
-                except Exception as _e:
-                    print(f"[{spec.dataset_name}] frontier-R² failed ({_e}); using best-eq R²", flush=True)
+                pareto_frontier = None
+                if spec.black_box:
+                    pareto_frontier = []
+                    for idx, row in model.equations_.sort_values("complexity").iterrows():
+                        try:
+                            pred = model.predict(X_val, index=int(idx))
+                            pred = y_scaler.inverse_transform(
+                                np.asarray(pred).reshape(-1, 1)
+                            ).ravel()
+                            pred = np.clip(pred, -1e10, 1e10)
+                            denom = np.sum((y_val - np.mean(y_val)) ** 2)
+                            test_r2 = 1.0 - np.sum((y_val - pred) ** 2) / (denom + 1e-10)
+                            if np.isfinite(test_r2):
+                                pareto_frontier.append({
+                                    "complexity": int(row["complexity"]),
+                                    "test_r2": float(test_r2),
+                                    "equation": str(row["equation"]),
+                                })
+                        except Exception:
+                            continue
+
+                # Frontier-averaged R² is an evolution metric for ground-truth
+                # tasks. Black-box output retains the complete test frontier.
+                if spec.black_box:
                     r2_frontier = float(r2)
+                else:
+                    frontier_maxsize = int(spec.pysr_kwargs.get("maxsize", 40))
+                    try:
+                        r2_frontier = _compute_frontier_avg_r2(
+                            model, X_val, y_val, frontier_maxsize
+                        )
+                    except Exception as _e:
+                        print(f"[{spec.dataset_name}] frontier-R² failed ({_e}); "
+                              "using best-eq R²", flush=True)
+                        r2_frontier = float(r2)
 
                 # Load this level's execution trace from the HOF CSV.
                 execution_trace = None
@@ -1265,6 +1326,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     "runtime_seconds": _time.time() - level_start,
                     "num_evaluations": num_evals_used,
                     "execution_trace": execution_trace,
+                    "pareto_frontier": pareto_frontier,
                 }
             except Exception as e:
                 return {
@@ -1280,6 +1342,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     "runtime_seconds": _time.time() - level_start,
                     "num_evaluations": None,
                     "execution_trace": None,
+                    "pareto_frontier": None,
                 }
             finally:
                 # Best-effort cleanup of the per-task PySR output dir.
@@ -1309,6 +1372,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 runtime_seconds=_time.time() - start_time,
                 num_evaluations=nr["num_evaluations"],
                 execution_trace=nr["execution_trace"],
+                pareto_frontier=nr.get("pareto_frontier"),
             )
 
         # Multi-noise: per-run score is the mean across levels; representative
@@ -1328,6 +1392,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             run_index=spec.run_index,
             runtime_seconds=runtime,
             execution_trace=None,
+            pareto_frontier=None,
         )
 
         return result
@@ -1782,6 +1847,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         run_index_start_per_config: Optional[List[int]] = None,
         hof_csv_map: Optional[Dict[str, List[str]]] = None,
         pysr_wall_limit: Optional[int] = None,
+        black_box: bool = False,
     ) -> PySRBatchHandle:
         """
         Build task specs, pre-filter cache, and submit SLURM job(s) without waiting.
@@ -1870,6 +1936,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         hof_csv_paths=hof_csv_paths,
                         hof_n_steps=self.hof_n_steps,
                         pysr_wall_limit=(pysr_wall_limit if pysr_wall_limit is not None else self.pysr_wall_limit),
+                        black_box=black_box,
                     ))
 
         n_tasks = len(tasks)

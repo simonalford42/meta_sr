@@ -28,6 +28,7 @@ Inspect a finished (or in-progress) run with::
 """
 
 import argparse
+import csv
 import json
 import os
 import sys
@@ -37,6 +38,123 @@ import srbench_results_io as srio
 
 
 DEFAULT_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
+
+
+def load_black_box_datasets():
+    """Return the 122 regression datasets used by SRBench black-box results."""
+    csv_path = Path(__file__).parent / "srbench/docs/csv/blackbox_results_datasets.csv"
+    with open(csv_path, newline="") as f:
+        return sorted({row["dataset"] for row in csv.DictReader(f)})
+
+
+def _test_pareto(rows):
+    """Remove points dominated in (lower complexity, higher test R²)."""
+    best = -float("inf")
+    frontier = []
+    for row in sorted(rows, key=lambda r: (r["complexity"], -r["test_r2"])):
+        if row["test_r2"] > best:
+            frontier.append(row)
+            best = row["test_r2"]
+    return frontier
+
+
+def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000):
+    """Persist per-dataset test frontiers and plot their aggregate envelope."""
+    with open(Path(batch_dir) / "combined.json") as f:
+        raw = json.load(f)
+    datasets = {}
+    for result in raw:
+        if result.get("error") or not result.get("pareto_frontier"):
+            continue
+        datasets[result["dataset_name"]] = _test_pareto(result["pareto_frontier"])
+
+    payload = {
+        "protocol": {
+            "trials_per_dataset": 1,
+            "split": "75/25",
+            "scale_x": True,
+            "scale_y": True,
+            "max_train_samples": max_train_samples,
+            "selection": "test R2/complexity Pareto frontier",
+        },
+        "datasets": datasets,
+    }
+    json_path = Path(output_dir) / "srbench_black_box_results.json"
+    with open(json_path, "w") as f:
+        json.dump(payload, f, indent=2)
+
+    if datasets:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        max_complexity = max(
+            point["complexity"] for rows in datasets.values() for point in rows
+        )
+        grid = np.arange(1, max_complexity + 1)
+        envelopes = []
+        fig, ax = plt.subplots(figsize=(8, 5))
+        for rows in datasets.values():
+            values = np.full(len(grid), np.nan)
+            best = np.nan
+            j = 0
+            for i, complexity in enumerate(grid):
+                while j < len(rows) and rows[j]["complexity"] <= complexity:
+                    best = rows[j]["test_r2"]
+                    j += 1
+                values[i] = best
+            envelopes.append(values)
+            ax.plot(grid, values, color="tab:blue", alpha=0.06, linewidth=0.7)
+        median = np.nanmedian(np.asarray(envelopes), axis=0)
+        ax.plot(grid, median, color="black", linewidth=2.5,
+                label=f"Median envelope ({len(datasets)} datasets)")
+        ax.set(xlabel="Complexity", ylabel="Held-out test R²",
+               title="SRBench black-box R²–complexity Pareto frontiers")
+        ax.grid(alpha=0.2)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(Path(output_dir) / "black_box_r2_complexity_pareto.png", dpi=180)
+        plt.close(fig)
+    return len(datasets)
+
+
+def run_black_box(args, output_dir, source, manifest, run):
+    if source.backend != "pysr":
+        raise ValueError("--black-box currently requires the PySR backend")
+    from parallel_eval_pysr import PySRSlurmEvaluator
+
+    datasets = ([d.strip() for d in args.datasets.split(",") if d.strip()]
+                if args.datasets else load_black_box_datasets())
+    evaluator = PySRSlurmEvaluator(
+        results_dir=output_dir, partition=args.partition,
+        time_limit=args.time_limit, mem_per_cpu=args.mem_per_cpu,
+        dataset_max_samples=args.black_box_max_samples, data_seed=args.seed,
+        use_cache=False, job_timeout=args.job_timeout,
+        pysr_wall_limit=args.pysr_wall_limit, max_retries=args.max_retries,
+    )
+    handle = evaluator.submit_configs(
+        configs=[source.config], dataset_names=datasets, seed=args.seed,
+        n_runs=1, fitness_metric="r2", black_box=True,
+    )
+    manifest["black_box"] = {
+        "n_datasets": len(datasets), "datasets": datasets, "n_runs": 1,
+        "batch_dir": f"slurm_pysr/{Path(handle.batch_dir).name}",
+        "max_train_samples": args.black_box_max_samples,
+    }
+    with open(Path(output_dir) / "manifest.json", "w") as f:
+        json.dump(manifest, f, indent=2)
+    evaluator.collect_batch(handle)
+    n_present = save_black_box_results(
+        output_dir, handle.batch_dir, args.black_box_max_samples
+    )
+    print(f"\nBlack-box results: {n_present}/{len(datasets)} dataset frontiers present.")
+    if run is not None:
+        run.log({
+            "srbench_black_box/n_frontiers": n_present,
+            "srbench_black_box/n_expected": len(datasets),
+        })
+    return evaluator
 
 
 def build_config(args):
@@ -67,10 +185,17 @@ def main():
                              "to train for runs without persisted val data.")
 
     parser.add_argument("--split-file", type=str, default="splits/srbench_all.txt")
+    parser.add_argument("--ground-truth", action="store_true",
+                        help="Evaluate ground-truth problems (the default unless "
+                             "--black-box is passed alone).")
+    parser.add_argument("--black-box", action="store_true",
+                        help="Evaluate the 122 SRBench black-box regression datasets.")
     parser.add_argument("--datasets", type=str, default=None,
                         help="Comma-separated dataset override (for smoke tests).")
     parser.add_argument("--max-evals", type=int, default=1_000_000)
     parser.add_argument("--max-samples", type=int, default=1000)
+    parser.add_argument("--black-box-max-samples", type=int, default=10_000,
+                        help="Training-row cap for black-box datasets (SRBench protocol).")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=10,
                         help="Seeds per task/noise (actual seeds = seed .. seed+n_runs-1).")
@@ -111,6 +236,33 @@ def main():
     source = load_evaluation_source(args)
     config, mode_name, method_meta = source.config, source.mode, source.method_meta
     print(f"Mode: {mode_name}  |  backend: {source.backend}")
+    do_ground_truth = args.ground_truth or not args.black_box
+
+    # Black-box-only mode bypasses all ground-truth result aggregation.
+    if not do_ground_truth:
+        manifest = {
+            "mode": mode_name, "backend": source.backend,
+            "method_meta": method_meta, "max_evals": args.max_evals,
+            "evaluation_types": ["black_box"], "batches": [],
+        }
+        with open(Path(output_dir) / "manifest.json", "w") as f:
+            json.dump(manifest, f, indent=2)
+        run = None
+        if not args.no_wandb:
+            from wandb_utils import init_wandb
+            run = init_wandb(
+                config={**manifest, "black_box_n_runs": 1},
+                script_name="srbench_full_eval.py", output_dir=output_dir,
+                extra_tags=["srbench_full_eval", "black_box", mode_name],
+            )
+        evaluator = run_black_box(args, output_dir, source, manifest, run)
+        if run is not None:
+            from wandb_utils import log_wandb_summary, finish_wandb
+            log_wandb_summary(run, evaluator=evaluator)
+            finish_wandb(run)
+        copy_slurm_log(output_dir)
+        print(f"\nDone. Results: {output_dir}")
+        return
 
     if source.backend == "fullsr":
         from parallel_eval_fullsr import FullSRSlurmEvaluator
@@ -180,6 +332,7 @@ def main():
         "datasets": datasets,
         "unsolvable_tasks": list(srio.UNSOLVABLE_TASKS),
         "batches": [],
+        "evaluation_types": ["ground_truth"] + (["black_box"] if args.black_box else []),
     }
     with open(Path(output_dir) / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
@@ -266,7 +419,15 @@ def main():
             "overall_solve_rate_per_run": overall["solve_rate_per_run"],
             "overall_solve_rate_per_task_any": overall["solve_rate_per_task_any"],
         })
-        finish_wandb(run)
+        if not args.black_box:
+            finish_wandb(run)
+
+    if args.black_box:
+        evaluator = run_black_box(args, output_dir, source, manifest, run)
+        if run is not None:
+            from wandb_utils import log_wandb_summary, finish_wandb
+            log_wandb_summary(run, evaluator=evaluator)
+            finish_wandb(run)
 
     copy_slurm_log(output_dir)
     print(f"\nDone. Inspect with: python inspect_srbench_results.py --run-id "
