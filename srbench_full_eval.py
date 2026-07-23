@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Submit a full SRBench evaluation (all tasks x seeds x noise levels).
 
-Drives the existing ``parallel_eval_pysr.PySRSlurmEvaluator`` (caching, SLURM
-array chunking, retries, bad-node handling) over every task in a split file,
-for one of three method modes:
+Drives the native evaluator for the loaded method (PySR or FullSR) over every
+task in a split file. PySR modes retain caching, SLURM array chunking, retries,
+and bad-node handling.
 
     # baseline PySR
     python srbench_full_eval.py
@@ -13,6 +13,9 @@ for one of three method modes:
 
     # an evolved bundle
     python srbench_full_eval.py --evolve-results runs/<run_id> --max-evals 1000000
+
+``--evolve-results`` auto-detects both evolve_pysr.py OperatorBundles and
+evolve_fullsr.py SkeletonBundles from their run_data.json schema.
 
 Default scale: 133 tasks x 10 seeds x 4 noise levels (0.0, 0.001, 0.01, 0.1).
 Results land in ``runs/<run_id>/`` (manifest.json + srbench_full_results.json)
@@ -43,48 +46,9 @@ def build_config(args):
     converter (OperatorBundle.to_pysr_config): evolve/hpo load a bundle from
     the run dir, baseline uses the default (no custom operators) bundle.
     """
-    from parallel_eval_pysr import get_default_pysr_kwargs
-    from bundle_loader import load_bundle
-    from operator_types import OperatorBundle
+    from srbench_eval_source import load_pysr_evaluation_config
 
-    pysr_kwargs = get_default_pysr_kwargs()
-    pysr_kwargs["max_evals"] = args.max_evals
-
-    if args.evolve_results:
-        bundle = load_bundle(args.evolve_results, select_by=args.select_by)
-        mode = "evolve"
-        source = args.evolve_results
-    elif args.hpo_results:
-        bundle = load_bundle(args.hpo_results, select_by=args.select_by)
-        mode = "hpo"
-        source = args.hpo_results
-    else:
-        bundle = OperatorBundle.create_default()
-        mode = "baseline"
-        source = None
-
-    config = bundle.to_pysr_config(pysr_kwargs)
-    config.name = mode
-
-    method_meta = {}
-    if mode != "baseline":
-        method_meta = {
-            "source": source,
-            "select_by": args.select_by,
-            "train_score": bundle.score,
-            "val_score": getattr(bundle, "val_score", None),
-            "operators": [
-                {
-                    "operator_type": t,
-                    "name": op.name,
-                    "generation": op.generation,
-                    "weight": op.weight,
-                }
-                for t, op in bundle.operators.items() if op is not None
-            ],
-            "best_hparams": bundle.best_hparams,
-        }
-    return config, mode, method_meta
+    return load_pysr_evaluation_config(args)
 
 
 def main():
@@ -117,6 +81,8 @@ def main():
     parser.add_argument("--mem-per-cpu", type=str, default="8G")
     parser.add_argument("--job-timeout", type=float, default=None)
     parser.add_argument("--pysr-wall-limit", type=int, default=600)
+    parser.add_argument("--fullsr-wall-limit", type=int, default=600,
+                        help="Hard wall-clock limit for each FullSR fit.")
     parser.add_argument("--max-retries", type=int, default=2,
                         help="Retry rounds for transient/missing tasks per batch.")
     parser.add_argument("--no-cache", action="store_true")
@@ -127,8 +93,8 @@ def main():
 
     print("Executing command: " + " ".join(sys.argv))
 
-    from parallel_eval_pysr import PySRSlurmEvaluator
     from utils import resolve_run_dir, load_dataset_names_from_split, copy_slurm_log
+    from srbench_eval_source import load_evaluation_source
 
     output_dir = resolve_run_dir(args.results_dir, label="srbench_full_eval")
     os.makedirs(output_dir, exist_ok=True)
@@ -142,21 +108,41 @@ def main():
           f"noise levels: {args.noise_levels}  |  total runs: "
           f"{len(datasets) * args.n_runs * len(args.noise_levels)}")
 
-    config, mode_name, method_meta = build_config(args)
-    print(f"Mode: {mode_name}")
+    source = load_evaluation_source(args)
+    config, mode_name, method_meta = source.config, source.mode, source.method_meta
+    print(f"Mode: {mode_name}  |  backend: {source.backend}")
 
-    evaluator = PySRSlurmEvaluator(
-        results_dir=output_dir,
-        partition=args.partition,
-        time_limit=args.time_limit,
-        mem_per_cpu=args.mem_per_cpu,
-        dataset_max_samples=args.max_samples,
-        data_seed=args.seed,
-        use_cache=not args.no_cache,
-        job_timeout=args.job_timeout,
-        pysr_wall_limit=args.pysr_wall_limit,
-        max_retries=args.max_retries,
-    )
+    if source.backend == "fullsr":
+        from parallel_eval_fullsr import FullSRSlurmEvaluator
+
+        evaluator = FullSRSlurmEvaluator(
+            results_dir=output_dir,
+            partition=args.partition,
+            time_limit=args.time_limit,
+            mem_per_cpu=args.mem_per_cpu,
+            dataset_max_samples=args.max_samples,
+            data_seed=args.seed,
+            use_cache=not args.no_cache,
+            job_timeout=args.job_timeout,
+            wall_limit=args.fullsr_wall_limit,
+            max_retries=args.max_retries,
+            eval_noise_levels=args.noise_levels,
+        )
+    else:
+        from parallel_eval_pysr import PySRSlurmEvaluator
+
+        evaluator = PySRSlurmEvaluator(
+            results_dir=output_dir,
+            partition=args.partition,
+            time_limit=args.time_limit,
+            mem_per_cpu=args.mem_per_cpu,
+            dataset_max_samples=args.max_samples,
+            data_seed=args.seed,
+            use_cache=not args.no_cache,
+            job_timeout=args.job_timeout,
+            pysr_wall_limit=args.pysr_wall_limit,
+            max_retries=args.max_retries,
+        )
 
     run = None
     if not args.no_wandb:
@@ -164,6 +150,7 @@ def main():
         run = init_wandb(
             config={
                 "mode": mode_name,
+                "backend": source.backend,
                 "max_evals": args.max_evals,
                 "max_samples": args.max_samples,
                 "seed": args.seed,
@@ -178,40 +165,9 @@ def main():
             extra_tags=["srbench_full_eval", mode_name],
         )
 
-    # One submit per noise level (target_noise_map carries a single level each).
-    handles = []
-    for noise in args.noise_levels:
-        noise_map = {ds: noise for ds in datasets}
-        h = evaluator.submit_configs(
-            configs=[config],
-            dataset_names=datasets,
-            seed=args.seed,
-            n_runs=args.n_runs,
-            target_noise_map=noise_map,
-            fitness_metric="gt",
-        )
-        handles.append((noise, h))
-        print(f"  submitted noise={noise}: {h.n_tasks} tasks "
-              f"({h.n_cached} cached) -> {h.batch_dir}")
-
-    # Resume semantics (powered by the evaluator's global cache, which only
-    # stores SUCCESSFUL results): a re-run of the same model cache-hits every
-    # already-solved (task, seed, noise) and only (re)submits the ones that
-    # failed or never ran. If all are cached, no SLURM jobs are submitted.
-    total_tasks = sum(h.n_tasks for _, h in handles)
-    total_cached = sum(h.n_cached for _, h in handles)
-    uncached = total_tasks - total_cached
-    if uncached == 0:
-        print(f"\n✓ All {total_tasks} runs already completed successfully "
-              f"(cache hit) — no new SLURM jobs submitted.")
-    else:
-        print(f"\n{total_cached}/{total_tasks} runs already cached; "
-              f"(re)submitting {uncached} not-yet-successful runs "
-              f"(max_retries={args.max_retries}).")
-
-    # Write the manifest before waiting so inspect can run mid-flight.
     manifest = {
         "mode": mode_name,
+        "backend": source.backend,
         "method_meta": method_meta,
         "max_evals": args.max_evals,
         "max_samples": args.max_samples,
@@ -223,22 +179,70 @@ def main():
         "n_datasets": len(datasets),
         "datasets": datasets,
         "unsolvable_tasks": list(srio.UNSOLVABLE_TASKS),
-        # Layout is always <results_dir>/slurm_pysr/<name>, so store the
-        # run-relative path by name (robust to abs/rel batch_dir).
-        "batches": [
+        "batches": [],
+    }
+    with open(Path(output_dir) / "manifest.json", "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    if source.backend == "fullsr":
+        # FullSR natively expands all requested noise levels into one array.
+        before = set(evaluator.slurm_dir.glob("eval_*"))
+        evaluator.evaluate_configs(
+            configs=[config],
+            dataset_names=datasets,
+            seed=args.seed,
+            n_runs=args.n_runs,
+            fitness_metric="gt",
+            fullsr_wall_limit=args.fullsr_wall_limit,
+            split_label=args.split_file,
+        )
+        created = sorted(set(evaluator.slurm_dir.glob("eval_*")) - before)
+        if len(created) != 1:
+            raise RuntimeError(
+                f"Expected one new FullSR batch directory, found {len(created)}"
+            )
+        batch_dir = created[0]
+        manifest["batches"].append({
+            "noise": "all",
+            "batch_dir": f"slurm_fullsr/{batch_dir.name}",
+            "n_tasks": len(datasets) * args.n_runs * len(args.noise_levels),
+        })
+        with open(Path(output_dir) / "manifest.json", "w") as f:
+            json.dump(manifest, f, indent=2)
+    else:
+        # PySR submits one batch per noise level, then waits for all together.
+        handles = []
+        for noise in args.noise_levels:
+            noise_map = {ds: noise for ds in datasets}
+            h = evaluator.submit_configs(
+                configs=[config],
+                dataset_names=datasets,
+                seed=args.seed,
+                n_runs=args.n_runs,
+                target_noise_map=noise_map,
+                fitness_metric="gt",
+            )
+            handles.append((noise, h))
+            print(f"  submitted noise={noise}: {h.n_tasks} tasks "
+                  f"({h.n_cached} cached) -> {h.batch_dir}")
+        total_tasks = sum(h.n_tasks for _, h in handles)
+        total_cached = sum(h.n_cached for _, h in handles)
+        uncached = total_tasks - total_cached
+        print(
+            f"\n{total_cached}/{total_tasks} runs already cached; "
+            f"{uncached} runs require execution (max_retries={args.max_retries})."
+        )
+        manifest["batches"] = [
             {
                 "noise": noise,
                 "batch_dir": f"slurm_pysr/{Path(h.batch_dir).name}",
                 "n_tasks": h.n_tasks,
             }
             for noise, h in handles
-        ],
-    }
-    with open(Path(output_dir) / "manifest.json", "w") as f:
-        json.dump(manifest, f, indent=2)
-
-    # Wait for all noise batches together (shared progress + retry rounds).
-    evaluator.collect_batches([h for _, h in handles])
+        ]
+        with open(Path(output_dir) / "manifest.json", "w") as f:
+            json.dump(manifest, f, indent=2)
+        evaluator.collect_batches([h for _, h in handles])
 
     # Build + persist the big keyed JSON from the on-disk batch artifacts.
     keyed = srio.build_keyed_results(output_dir, manifest)

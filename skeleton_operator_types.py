@@ -275,6 +275,7 @@ class SkeletonBundle:
             "result_details": self.result_details,
             "seeds_evaluated": self.seeds_evaluated,
             "meta_mutation_counts": copy.deepcopy(self.meta_mutation_counts),
+            "raw_module_body": self.raw_module_body,
         }
 
     @classmethod
@@ -297,6 +298,7 @@ class SkeletonBundle:
             result_details=d.get("result_details"),
             seeds_evaluated=d.get("seeds_evaluated", 0),
             meta_mutation_counts=counts,
+            raw_module_body=d.get("raw_module_body"),
         )
 
     @property

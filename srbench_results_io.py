@@ -4,7 +4,7 @@
 This module is intentionally dependency-light (only stdlib): it reads the
 on-disk artifacts produced by ``srbench_full_eval.py`` (a ``manifest.json``
 plus per-batch ``tasks.json`` / ``results/task_NNNNNN.json`` files written by
-``parallel_eval_pysr.PySRSlurmEvaluator``) and turns them into a single
+the PySR or FullSR evaluator) and turns them into a single
 results dict keyed by ``"<dataset>|<seed>|<noise>"``. Both
 ``srbench_full_eval.py`` and ``inspect_srbench_results.py`` import from here so
 the two scripts never diverge on how results are joined or aggregated.

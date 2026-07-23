@@ -7,6 +7,7 @@ For evolve runs, the bundle can be selected by validation score (default) or
 by training score (see ``load_bundle(..., select_by=...)``).
 """
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -172,6 +173,13 @@ def _load_from_run_data(
     with open(path) as f:
         data = json.load(f)
 
+    if _is_skeleton_run_data(data):
+        raise ValueError(
+            f"{path} is an evolve_fullsr.py run containing a SkeletonBundle, "
+            "not a PySR OperatorBundle. Use load_skeleton_bundle() (or the "
+            "backend-aware srbench_full_eval.py loader) instead."
+        )
+
     # Detect HPO run_data.json (has 'trials' key, no 'generations'). HPO has no
     # val concept, so select_by doesn't apply — always best trial by avg_r2.
     if "trials" in data and "generations" not in data:
@@ -286,6 +294,99 @@ def _load_from_openevolve(path: Path) -> OperatorBundle:
         with open(hparams_file) as f:
             bundle.best_hparams = json.load(f)
 
+    return bundle
+
+
+def _is_skeleton_run_data(data: Dict[str, Any]) -> bool:
+    """Whether run_data uses evolve_fullsr's SkeletonBundle schema."""
+    best = data.get("best_bundle") or {}
+    if "functions" in best:
+        return True
+    for gen in data.get("generations", []):
+        for key in ("population", "offspring"):
+            if any("functions" in entry for entry in gen.get(key, [])):
+                return True
+    return False
+
+
+def _skeleton_content_key(bundle: Any) -> str:
+    from skeleton_operator_types import render_sr_module_body
+
+    body = render_sr_module_body(bundle)
+    return hashlib.sha1(body.encode("utf-8")).hexdigest()[:16]
+
+
+def load_skeleton_bundle(path: str, select_by: str = "val"):
+    """Load a SkeletonBundle from an evolve_fullsr.py run.
+
+    Validation selection follows evolve_fullsr's content-hash keyed
+    ``val_results`` format. If validation data is unavailable, selection falls
+    back to the finalized best bundle (or the best training-score candidate).
+    """
+    from skeleton_operator_types import SkeletonBundle
+
+    p = Path(path)
+    if p.is_dir():
+        p = p / "run_data.json"
+    if not p.exists():
+        raise FileNotFoundError(f"No run_data.json found at: {p}")
+    with open(p) as f:
+        data = json.load(f)
+    if not _is_skeleton_run_data(data):
+        raise ValueError(f"{p} is not an evolve_fullsr.py run")
+    if select_by not in ("val", "train"):
+        raise ValueError(f"select_by must be 'val' or 'train', got {select_by!r}")
+
+    candidate_dicts = []
+    for gen in data.get("generations", []):
+        for key in ("population", "offspring"):
+            candidate_dicts.extend(gen.get(key, []))
+    if data.get("best_bundle"):
+        candidate_dicts.append(data["best_bundle"])
+
+    candidates = [SkeletonBundle.from_dict(d) for d in candidate_dicts]
+    if not candidates:
+        raise ValueError(f"No SkeletonBundle candidates found in {p}")
+
+    selected_val = None
+    if select_by == "val":
+        by_key = {_skeleton_content_key(b): b for b in candidates}
+        best_score = float("-inf")
+        selected = None
+        for key, record in (data.get("val_results") or {}).items():
+            val_record = record.get("val", record)
+            score = val_record.get("avg_score") if isinstance(val_record, dict) else None
+            if score is not None and key in by_key and score > best_score:
+                best_score = score
+                selected = by_key[key]
+        if selected is not None:
+            selected_val = best_score
+            bundle = selected
+            print(
+                f"  Selected FullSR bundle by val score: "
+                f"{best_score:.4f} ({bundle.display_name})"
+            )
+        else:
+            print(
+                f"  WARNING: --select-by val requested but no matching persisted "
+                f"validation result exists in {p}; falling back to train score."
+            )
+            bundle = max(
+                candidates,
+                key=lambda b: b.score if b.score is not None else float("-inf"),
+            )
+    elif data.get("best_bundle"):
+        bundle = SkeletonBundle.from_dict(data["best_bundle"])
+    else:
+        bundle = max(
+            candidates,
+            key=lambda b: b.score if b.score is not None else float("-inf"),
+        )
+
+    bundle.val_score = selected_val
+    print(f"Loaded FullSR bundle from {p}:")
+    print(f"  functions: {len(bundle.functions)}")
+    print(f"  train score: {bundle.score}")
     return bundle
 
 def _load_from_hpo(path: Path) -> OperatorBundle:
