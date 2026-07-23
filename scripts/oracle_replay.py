@@ -45,6 +45,7 @@ from smart_reeval import (
     allocate_reeval_kg,
     compute_reeval_plan,
 )
+from offspring_improvement import fit_ei_curve, indifference_B
 
 CACHE_DIR = REPO / "plots" / ".cache" / "oracle_replay"
 OUT_DIR = REPO / "plots" / "oracle_replay"
@@ -297,11 +298,16 @@ def run_policy(records, spec, rng):
     reeval = spec.get("reeval", "none")
     n_base = spec["n_base"]
     B = spec.get("B", 0)
+    # B_sched: list of (gen_fraction_threshold, B) pairs, e.g. thirds 0/20/40 =
+    # [(1/3, 0), (2/3, 20), (1.0, 40)]. Overrides B per generation. "ramp:X"
+    # linearly ramps 0 -> X across the run.
+    b_sched = spec.get("B_sched")
     sigma_mode = spec.get("sigma_mode", "pooled")
     shrink = spec.get("shrink", False)
     sigma = POOLED_SIGMA
 
     births = sorted({r["birth_gen"] for r in records})
+    gmax = max(births) if births else 1
     by_birth: Dict[int, List[int]] = {}
     for i, r in enumerate(records):
         by_birth.setdefault(r["birth_gen"], []).append(i)
@@ -310,6 +316,12 @@ def run_policy(records, spec, rng):
     revealed_N: List[int] = []
     # offspring observed-mean window (at n_base seeds) keyed by birth gen
     off_window: Dict[int, List[float]] = {}
+    # plateau-trigger state (local per replay so policy-seeds don't leak)
+    plateau_hist: List[float] = []
+    plateau_latched = False
+    bstar_ema_state: Optional[float] = None  # dynamic-B* temporal smoothing
+    top_hist: List[set] = []  # per-gen observed top-k sets (retention discount)
+    bank = 0.0  # banked unspent reeval budget (spec "bank")
 
     gens_out, metric_out, cum_out, bstar_out, sat_out = [], [], [], [], []
     total_saturated = 0
@@ -327,10 +339,52 @@ def run_policy(records, spec, rng):
         mu = _observed_mu_arch(records, arch_idx, revealed_N)
         N = np.array(revealed_N, dtype=float)
         bstar = 0
+        k_eff = min(TOPK, mu.size)
+        top_hist.append({arch_idx[j] for j in np.argsort(-mu)[:k_eff]})
+
+        # Resolve this generation's budget from the schedule, if any.
+        if b_sched is not None:
+            fr = g / max(gmax, 1)
+            if isinstance(b_sched, str) and b_sched.startswith("ramp:"):
+                B = int(round(float(b_sched.split(":")[1]) * fr))
+            elif isinstance(b_sched, str) and b_sched.startswith("plateau:"):
+                # Closed-loop trigger: B=0 while the observed top-k mean is
+                # still improving; latch to B=X once it gains < eps over the
+                # trailing 3 gens. Uses only observed (policy-visible) info.
+                B_on = int(b_sched.split(":")[1])
+                k_eff = min(TOPK, mu.size)
+                topk_mean = float(np.sort(mu)[-k_eff:].mean())
+                plateau_hist.append(topk_mean)
+                if plateau_latched or (
+                    len(plateau_hist) > 3 and topk_mean - plateau_hist[-4] < 0.01
+                ):
+                    plateau_latched = True
+                    B = B_on
+                else:
+                    B = 0
+            else:
+                B = next(bv for thresh, bv in b_sched if fr <= thresh + 1e-9)
 
         # ---- reeval allocation over the whole archive ----
         if reeval == "ttts" and B > 0:
-            if sigma_mode == "perarm":
+            alloc = spec.get("alloc")
+            if alloc == "uniform":
+                # Even split of B over the observed top-k (remainder to a
+                # random subset). No posterior model at all. spec "uk" widens
+                # the covered set below the selection boundary.
+                k_top = min(int(spec.get("uk", TOPK)), mu.size)
+                top = np.argsort(-mu)[:k_top]
+                counts = np.zeros(mu.size, dtype=int)
+                counts[top] += B // k_top
+                rem = B - (B // k_top) * k_top
+                if rem > 0:
+                    counts[rng.choice(top, size=rem, replace=False)] += 1
+            elif alloc == "tourney":
+                # B draws from the parent-selection distribution itself
+                # (top-k truncation + binary tournament on observed means).
+                p = batch_topk_tourney_probs(mu[None], k=TOPK, n=TOURN_N)[0]
+                counts = _draw_counts(p, B, rng)
+            elif sigma_mode == "perarm":
                 ps = _per_arm_sigma(records, arch_idx, N.astype(int))
                 psi = _ttts_probs_vecsigma(mu, ps)
                 counts = _draw_counts(psi, B, rng)
@@ -345,20 +399,111 @@ def run_policy(records, spec, rng):
             total_saturated += sat
             bstar = B
         elif reeval == "ttts_dyn":
+            k_win = int(spec.get("window", K_WINDOW))
             emp = []
-            for gg in range(g - K_WINDOW + 1, g + 1):
+            for gg in range(g - k_win + 1, g + 1):
                 emp.extend(off_window.get(gg, []))
             emp = np.array(emp, dtype=float)
+            if spec.get("deconv") and emp.size > 3:
+                # Deconvolve the offspring window: observed values carry
+                # sampling noise (var = tau^2 + sigma^2/n_base), so their upper
+                # tail overstates a fresh offspring's chance of cracking the
+                # top-k, biasing the indifference toward "offspring dominates".
+                # Rescale to the estimated true spread tau.
+                m_w = float(emp.mean())
+                s2_w = float(emp.var())
+                tau = np.sqrt(max(s2_w - sigma ** 2 / n_base, 1e-8))
+                if s2_w > 0:
+                    emp = m_w + (emp - m_w) * (tau / np.sqrt(s2_w))
+            # Intertemporal banking: the live algorithm's per-gen cap (19) means
+            # dynamic-B* can never reproduce the winning schedule's late B=60
+            # phase no matter how good its estimates are. Bank unspent budget
+            # and let the indifference criterion draw on it.
+            if spec.get("bank"):
+                bank += 19.0
+                cap = int(min(bank, 60))
+            else:
+                # "cap" = per-gen B* ceiling (default 19 = live B=20 semantics).
+                # On the eval axis a higher cap is a fair comparison — spend is
+                # accounted per seed — it just gives the planner headroom
+                # matching fixed-B baselines like B=40.
+                cap = int(spec.get("cap", 19))
             if emp.size > 0 and len(arch_idx) > 0:
+                mu_plan = _eb_shrink(mu, N, sigma) if spec.get("plan_shrunk") else mu
                 plan = compute_reeval_plan(
-                    mu=mu, N=N, sigma=sigma, offspring_empirical=emp,
-                    n_initial_evals=1, max_reruns=19, M=5000,
+                    mu=mu_plan, N=N, sigma=sigma, offspring_empirical=emp,
+                    n_initial_evals=1, max_reruns=cap, M=5000,
                     topk=TOPK, n=TOURN_N, policy="ttts", rng=rng,
                 )
-                counts = plan["allocation"]
                 bstar = int(plan["B_star"])
+                # Retention discount: reeval information depreciates while the
+                # top-k is being displaced by fresh offspring (early run), and
+                # holds value once the top stabilizes (late run). Scale the MEI
+                # curve by the observed 3-gen top-k retention before resolving
+                # the indifference budget — this derives the "no reevals early,
+                # heavy late" schedule shape from policy-visible data.
+                if (spec.get("retention") and not plan.get("skipped")
+                        and plan.get("curve") is not None
+                        and plan.get("offspring_EI") is not None):
+                    if spec.get("retention") == "age":
+                        # Age-based: share of the observed top-k born >= 3 gens
+                        # ago. Set-overlap retention is self-defeating at n=1
+                        # (noise reshuffles the observed top-k, suppressing
+                        # reevals, which keeps it noisy); age has no such
+                        # feedback loop.
+                        top_idx = np.argsort(-mu)[:k_eff]
+                        ages = np.array([
+                            g - records[arch_idx[j]]["birth_gen"]
+                            for j in top_idx
+                        ])
+                        r = float((ages >= 3).mean())
+                    else:
+                        back = top_hist[-4] if len(top_hist) >= 4 else top_hist[0]
+                        r = len(top_hist[-1] & back) / max(len(top_hist[-1]), 1)
+                    oei = float(plan["offspring_EI"])
+                    # 1e-6 not 0: an EI of ~1e-16 (numerically zero) otherwise
+                    # slips into indifference_B, which returns a huge finite B
+                    # on the near-zero curve (typical real EI is ~5e-4).
+                    if oei <= 1e-6:
+                        # "reeval always wins" — but still depreciation-limited:
+                        # verifying a top-k that is about to be displaced is
+                        # worthless no matter how weak the offspring look.
+                        bstar = int(round(cap * r))
+                    else:
+                        st, Bv = indifference_B(
+                            fit_ei_curve(np.asarray(plan["curve"]) * r),
+                            oei, margin=1,
+                        )
+                        if st == "finite" and Bv is not None:
+                            bstar = int(round(min(Bv, cap)))
+                        elif st == "offspring-dominates":
+                            bstar = 0
+                        else:
+                            # fit failure (e.g. r=0 flattens the curve to
+                            # degenerate): fall back to depreciating the
+                            # unadjusted plan B* directly.
+                            bstar = int(round(bstar * r))
+                    counts = allocate_reeval_ttts(mu_plan, sigma, N, bstar, rng)
+                # Temporal smoothing: EMA the per-gen B* so single-gen swings in
+                # the offspring-EI estimate (a K-gen window of 1-seed scores)
+                # don't whipsaw the allocation between 0 and max.
+                alpha = spec.get("bstar_ema")
+                if alpha:
+                    bstar_ema_state = (
+                        float(bstar) if bstar_ema_state is None
+                        else alpha * bstar + (1 - alpha) * bstar_ema_state
+                    )
+                    bstar = int(round(bstar_ema_state))
+                    counts = allocate_reeval_ttts(mu_plan, sigma, N, bstar, rng)
+                elif not spec.get("retention"):
+                    counts = plan["allocation"]
+                # EMA can smooth above the banked cap; clamp before spending.
+                if spec.get("bank") and bstar > cap:
+                    bstar = cap
+                    counts = allocate_reeval_ttts(mu_plan, sigma, N, bstar, rng)
                 spent, sat = _allocate_capped(records, counts, arch_idx, revealed_N)
                 total_saturated += sat
+                bank -= spent
 
         # ---- selection metric ----
         N = np.array(revealed_N, dtype=float)
@@ -442,22 +587,44 @@ def _prep(records):
 # Policy registry
 # ---------------------------------------------------------------------------
 def policy_specs():
+    # Schedules answer "start n1-cheap, ramp reevals as offspring improvement
+    # plateaus": fraction thresholds are of the run's generation span.
+    THIRDS = [(1 / 3, 0), (2 / 3, 20), (1.0, 40)]
+    HALF40 = [(0.5, 0), (1.0, 40)]
+    LATE60 = [(2 / 3, 0), (1.0, 60)]
     return [
         # (label, color, spec, stochastic)
         ("n1", _C(0), {"n_base": 1, "reeval": "none"}, False),
         ("n3", _C(1), {"n_base": 3, "reeval": "none"}, False),
         ("n10", _C(2), {"n_base": 10, "reeval": "none"}, False),
         ("oracle upper bound", "k", {"n_base": 1, "reeval": "upper"}, False),
-        ("lower bound (uniform)", "0.5", {"n_base": 1, "reeval": "lower"}, False),
         ("TTTS B=10", _C(3), {"n_base": 1, "reeval": "ttts", "B": 10}, True),
         ("TTTS B=20", _C(4), {"n_base": 1, "reeval": "ttts", "B": 20}, True),
         ("TTTS B=40", _C(5), {"n_base": 1, "reeval": "ttts", "B": 40}, True),
         ("KG B=20", _C(6), {"n_base": 1, "reeval": "kg", "B": 20}, False),
         ("dynamic B*", _C(8), {"n_base": 1, "reeval": "ttts_dyn"}, True),
-        ("TTTS B=20 per-arm sigma", _C(7),
-         {"n_base": 1, "reeval": "ttts", "B": 20, "sigma_mode": "perarm"}, True),
         ("TTTS B=20 EB-shrink", _C(9),
          {"n_base": 1, "reeval": "ttts", "B": 20, "shrink": True}, True),
+        ("sched 0/20/40 (thirds)", _C(7),
+         {"n_base": 1, "reeval": "ttts", "B_sched": THIRDS}, True),
+        ("sched 0/40 (half)", "darkred",
+         {"n_base": 1, "reeval": "ttts", "B_sched": HALF40}, True),
+        ("sched 0/0/60 (late)", "teal",
+         {"n_base": 1, "reeval": "ttts", "B_sched": LATE60}, True),
+        ("ramp 0->40", "goldenrod",
+         {"n_base": 1, "reeval": "ttts", "B_sched": "ramp:40"}, True),
+        ("sched 0/40 (half) + shrink", "magenta",
+         {"n_base": 1, "reeval": "ttts", "B_sched": HALF40, "shrink": True}, True),
+        ("plateau->40 (trigger)", "saddlebrown",
+         {"n_base": 1, "reeval": "ttts", "B_sched": "plateau:40"}, True),
+        # Repaired dynamic-B* variants: deconvolved offspring window (removes
+        # the "offspring dominates" bias), optionally + EB-shrunk pool means
+        # inside the planner.
+        ("dynamic B* deconv", "darkgreen",
+         {"n_base": 1, "reeval": "ttts_dyn", "deconv": True}, True),
+        ("dynamic B* deconv+shrunk", "indigo",
+         {"n_base": 1, "reeval": "ttts_dyn", "deconv": True,
+          "plan_shrunk": True}, True),
     ]
 
 
@@ -470,7 +637,10 @@ def run_all_for_run(records, tag):
         seeds = range(N_POLICY_SEEDS) if stochastic else range(1)
         runs = []
         for s in seeds:
-            rng = np.random.default_rng(1000 * (hash(label) % 997) + s)
+            # crc32, not hash(): Python string hashing is salted per process,
+            # which made stochastic-policy results wobble ~±0.005 across reruns.
+            import zlib
+            rng = np.random.default_rng(1000 * (zlib.crc32(label.encode()) % 997) + s)
             runs.append(run_policy(records, spec, rng))
         metric = np.mean([r["metric"] for r in runs], axis=0)
         metric_std = np.std([r["metric"] for r in runs], axis=0)
@@ -520,10 +690,14 @@ FOOTNOTE = ("Metric = E[oracle fitness of selected parent] = probs @ oracle_mean
             "Policies revealing more seeds share more seeds with the oracle mean "
             "(mechanical overlap); n10 == upper bound by construction (perfect info at 10x cost).")
 
-LEFT_PANEL = ["n1", "n3", "n10", "oracle upper bound", "lower bound (uniform)",
+LEFT_PANEL = ["n1", "n3", "n10", "oracle upper bound",
               "TTTS B=10", "TTTS B=20", "TTTS B=40", "KG B=20"]
-RIGHT_PANEL = ["n1", "n3", "TTTS B=20", "dynamic B*",
-               "TTTS B=20 per-arm sigma", "TTTS B=20 EB-shrink"]
+RIGHT_PANEL = ["n1", "n3", "TTTS B=20", "dynamic B*", "dynamic B* deconv",
+               "dynamic B* deconv+shrunk", "TTTS B=20 EB-shrink"]
+SCHED_PANEL = ["n1", "n3", "TTTS B=20", "TTTS B=40",
+               "sched 0/20/40 (thirds)", "sched 0/40 (half)",
+               "sched 0/0/60 (late)", "ramp 0->40",
+               "sched 0/40 (half) + shrink", "plateau->40 (trigger)"]
 
 
 def _label(lab, tag):
@@ -536,10 +710,11 @@ def _label(lab, tag):
 
 
 def _plot_gen(results, tag):
-    fig, axes = plt.subplots(1, 2, figsize=(18, 7), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(24, 7), sharey=True)
     for ax, panel, title in [
         (axes[0], LEFT_PANEL, "Fixed-budget policies + bounds"),
         (axes[1], RIGHT_PANEL, "Dynamic / variant policies (isolated)"),
+        (axes[2], SCHED_PANEL, "Budget schedules (n1 early -> reeval late)"),
     ]:
         for lab in panel:
             r = results[lab]
@@ -560,17 +735,23 @@ def _plot_gen(results, tag):
 
 
 def _plot_eval(results, tag):
-    fig, ax = plt.subplots(figsize=(11, 7.5))
-    for lab in LEFT_PANEL + [l for l in RIGHT_PANEL if l not in LEFT_PANEL]:
-        r = results[lab]
-        ls = "--" if "bound" in lab else "-"
-        ax.plot(r["cum_seeds"], r["metric"], ls + "o", color=r["color"],
-                label=_label(lab, tag), markersize=4, linewidth=1.6)
-    ax.set_xlabel("cumulative seed-evals spent")
-    ax.set_ylabel("E[oracle fitness of selected parent]")
-    ax.set_title(f"Oracle replay — eval axis (the frontier) ({tag})")
-    ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=8, ncol=2)
+    fig, axes = plt.subplots(1, 2, figsize=(19, 7.5), sharey=True)
+    for ax, panel, title in [
+        (axes[0], LEFT_PANEL + ["dynamic B*", "TTTS B=20 EB-shrink"],
+         "fixed budgets + dynamic"),
+        (axes[1], SCHED_PANEL, "budget schedules"),
+    ]:
+        for lab in panel:
+            r = results[lab]
+            ls = "--" if "bound" in lab else "-"
+            ax.plot(r["cum_seeds"], r["metric"], ls + "o", color=r["color"],
+                    label=_label(lab, tag), markersize=4, linewidth=1.6)
+        ax.set_xlabel("cumulative seed-evals spent")
+        ax.set_title(title)
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=8, ncol=2)
+    axes[0].set_ylabel("E[oracle fitness of selected parent]")
+    fig.suptitle(f"Oracle replay — eval axis (the frontier) ({tag})", fontsize=13)
     fig.text(0.5, 0.005, FOOTNOTE, ha="center", fontsize=7, color="0.35")
     fig.tight_layout(rect=(0, 0.05, 1, 1))
     out = OUT_DIR / f"oracle_replay_eval_axis_{tag}.png"
@@ -583,6 +764,10 @@ def _plot_bstar(all_results, tags):
     for ar, tag in zip(all_results, tags):
         r = ar["dynamic B*"]
         ax.plot(r["gens"], r["bstar"], "o-", label=f"B* ({tag})", linewidth=1.8)
+        rd = ar.get("dynamic B* deconv")
+        if rd is not None:
+            ax.plot(rd["gens"], rd["bstar"], "s--",
+                    label=f"B* deconv ({tag})", linewidth=1.4, alpha=0.8)
     ax.set_xlabel("generation")
     ax.set_ylabel("reeval seeds allocated (B*)")
     ax.set_title("Dynamic-B* trajectory (does it flip-flop?)")

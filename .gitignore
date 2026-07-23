@@ -24,3 +24,4 @@ openevolve_noise_exp/outputs
 planet_eval_data.pkl
 runs_local
 data/
+plots/.cache

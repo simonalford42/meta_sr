@@ -122,6 +122,32 @@ def save_jsonl(data, path):
             f.write(json.dumps(entry) + '\n')
 
 
+def _load_boolean_dataset(dataset_name: str, max_samples: Optional[int] = None,
+                          data_seed: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, str]:
+    """Load a Boolean-domain task as (X, y, formula).
+
+    ``bool:<task>``  -> synthetic truth table from boolean_tasks.SYNTHETIC_REGISTRY.
+    ``iwls:<ex>[:split]`` -> IWLS 2020 function; split defaults to 'train'
+                             (evolution fits on the train minterms).
+    ``formula`` is the human-readable target when known, else "".
+    """
+    from boolean_tasks import generate_synthetic_task, load_iwls_task
+
+    seed = data_seed if data_seed is not None else 0
+    if dataset_name.startswith("bool:"):
+        task_name = dataset_name[len("bool:"):]
+        task = generate_synthetic_task(
+            task_name, max_samples=max_samples or 8192, seed=seed,
+        )
+    else:  # iwls:
+        rest = dataset_name[len("iwls:"):]
+        parts = rest.split(":")
+        ex_id = parts[0]
+        split = parts[1] if len(parts) > 1 else "train"
+        task = load_iwls_task(ex_id, split=split, max_samples=max_samples, seed=seed)
+    return task.X, task.y, (task.target or "")
+
+
 def load_srbench_dataset(dataset_name: str, max_samples: Optional[int] = None,
                          data_seed: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, str]:
     """
@@ -142,6 +168,13 @@ def load_srbench_dataset(dataset_name: str, max_samples: Optional[int] = None,
         y: Target vector (n_samples,)
         formula: Ground truth formula string (or empty string if not available)
     """
+    # Boolean-domain dispatch: names prefixed "bool:" (synthetic truth tables) or
+    # "iwls:" (IWLS 2020 benchmark) load Boolean tasks instead of PMLB datasets.
+    # Returns (X in {0,1}, y in {0,1}, formula) so the rest of the pipeline is
+    # unchanged. See boolean_tasks.py.
+    if dataset_name.startswith("bool:") or dataset_name.startswith("iwls:"):
+        return _load_boolean_dataset(dataset_name, max_samples, data_seed)
+
     dataset_path = PMLB_PATH / dataset_name / f"{dataset_name}.tsv.gz"
     metadata_path = PMLB_PATH / dataset_name / "metadata.yaml"
 

@@ -76,8 +76,37 @@ Requires the Julia-1.10 pin (`$CONDA_PREFIX/etc/conda/activate.d/julia.sh`,
 recreated after any env rebuild); juliaup's default 1.12 crashes precompiling
 stdlib Markdown.
 
+## Running the real evolve_pysr on the Boolean domain
+
+The primary path is the actual `evolve_pysr.py` (not a bespoke loop), run
+locally:
+
+```bash
+bash scripts/run_boolean_evolve_pysr.sh runs_local/boolean_evolve_pysr
+# = evolve_pysr.py --domain boolean --generations 3 --population 10 --offspring 10
+#     --n-runs 3 --operator-type mutation --models cheap --n-local-workers 8
+```
+
+Integration (small, isolated changes; SRBench path untouched by default):
+
+| change | file | what |
+|--------|------|------|
+| `LocalPySREvaluator` | `local_pysr_evaluator.py` (new) | drop-in for `PySRSlurmEvaluator`; runs uncached tasks on a persistent spawn-worker pool via the real `run_pysr_worker`, no sbatch. Reuses spec-building / caching / aggregation. |
+| Boolean dataset dispatch | `utils.load_srbench_dataset` | `bool:<task>` / `iwls:<ex>` names -> Boolean truth tables. |
+| sympy-mapping injection | `parallel_eval_pysr._evaluate_pysr_task` | swaps a JSON-safe `_boolean_domain` flag for the real `extra_sympy_mappings` (lambdas can't cross the JSON task file). |
+| `--domain boolean` / `--local` | `evolve_pysr.py` | Boolean PySR config + local evaluator + `--fitness-metric r2` + Boolean split defaults. |
+
+Fitness is `r2`: on {0,1} targets, frontier-averaged R² is monotonic in accuracy
+and =1 iff the exact function is found (the "solved" signal). No scoring-code
+changes.
+
+**Smoke validation (1 gen, 2 tasks):** an evolved mutation beat plain PySR on
+the smoke tasks (frontier R² 0.376 vs baseline 0.297, +0.08), and a mutation
+operator solved 6-input parity exactly — confirming the full path (dispatch ->
+local pool -> R² scoring -> solve detection -> selection -> save).
+
 ## Status / results
 
-See `runs_local/boolean_poc_full/poc_results.json` and
-`plots/boolean_poc/boolean_poc.png`. (Results table filled in once the full
-three-way run completes.)
+Primary run: `runs_local/boolean_evolve_pysr/` (real evolve_pysr, 3x10).
+Earlier three-way POC (compact evolver): `runs_local/boolean_poc_full/`. Results
+table filled in once the 3x10 run completes.

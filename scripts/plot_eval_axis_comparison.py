@@ -635,8 +635,10 @@ def plot_variant(api: wandb.Api, wandb_index: Dict[str, str], variant: Variant):
            f"eval_axis_comparison_{variant.name}.png")
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=140)
-    plt.close(fig)
     print(f"saved: {out}")
+    # Returned (not closed) so notebook callers can display it inline; main()
+    # closes it since it renders every variant in one go.
+    return fig
 
 
 def main():
@@ -657,7 +659,7 @@ def main():
     wandb_index = build_wandb_index()
     for v in selected:
         print(f"\n=== {v.name} ===")
-        plot_variant(api, wandb_index, v)
+        plt.close(plot_variant(api, wandb_index, v))
 
 
 if __name__ == "__main__":

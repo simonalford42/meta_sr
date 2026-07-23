@@ -108,14 +108,57 @@ trajectory: `oracle_replay_bstar.png`. Regret panel: `oracle_replay_final_select
 - Parent fitness here is train-truth; the train→val transfer ceiling (n10's val ≈ n3's val
   in the live runs) is a separate, unaddressed problem (P4 in the directions writeup).
 
+## Update (7/02 pm): completed n10 runs + budget schedules
+
+Rerun on the *finished* 568245/568246 (15 gens each) plus new scheduled-budget policies
+(Simon's suggestion: n1-cheap early, reeval-heavy late). Lower bound dropped from plots,
+per-arm σ dropped (confirmed no help). Pair-average, final generation:
+
+| policy                    | parent fitness | total seeds | final regret |
+|---------------------------|---------------|-------------|--------------|
+| n1                        | 0.5681        | 282         | 0.0672       |
+| dynamic B\*               | 0.5943        | 382         | 0.0197       |
+| plateau→40 (trigger)      | 0.5969        | 380         | 0.0276       |
+| n3                        | 0.6088        | 846         | 0.0419       |
+| TTTS B=20                 | 0.6104        | 558         | 0.0172       |
+| TTTS B=20 EB-shrink       | 0.6124        | 556         | 0.0195       |
+| ramp 0→40                 | 0.6132        | 540         | 0.0025       |
+| **sched 0/0/60 (late)**   | **0.6140**    | **519**     | **0.0025**   |
+| TTTS B=40                 | 0.6142        | 739         | 0.0037       |
+| n10 (= oracle)            | 0.6248        | 2820        | 0.0000       |
+
+- **Late-heavy schedules win the frontier.** `sched 0/0/60` (B=0 for the first 2/3 of
+  generations, TTTS B=60 for the last third) matches TTTS-B40's parent fitness with 220
+  fewer seeds, beats n3 by +0.005 with 327 fewer seeds, and has near-zero final-selection
+  regret (0.0025). `ramp 0→40` is statistically tied with it. This validates the
+  "ride n1 until improvements slow, then verify" picture: early on, new offspring dominate
+  the value of information; late, reevals do.
+- The plateau *trigger* variant (closed-loop: latch to B=40 when the observed top-k mean
+  gains <0.01 over 3 gens) triggered too conservatively (spent only ~100 reeval seeds) —
+  at its stopping point it is ON the frontier (0.597 @ 380 vs dynamic-B\*'s 0.594 @ 382),
+  it just quits spending too early. Tunable, but the open-loop late schedule is simpler
+  and better; only revisit the trigger if run lengths vary too much to set the 2/3 point.
+- Stochastic-policy numbers wobble ±0.005 across reruns (5 policy-seeds; was worsened by a
+  per-process `hash()` salt in the rng seeding, now fixed to crc32). Differences below
+  ~0.005 in parent fitness are within replay noise; the regret ordering is more stable.
+- **Winner's curse floor confirmed**: even n10's live max carries bias
+  ≈ (σ/√n)·√(2 ln K) ≈ 0.02·2.37 ≈ 0.05, matching the live n10 runs' ~0.05 curse. It's a
+  reporting bias (fresh-seed reeval / shrinkage fixes the number) and a selection-regret
+  problem (identification seeds fix the choice) — not a reason to buy more seeds mid-run.
+
+**Implemented in evolve_pysr.py (7/02): `--identify-topk` (default 10)** — end-of-run
+identification pass: rank the code-deduped archive by EB-shrunk live score, re-score the
+top-K on `--val-n-runs` fresh train seeds (TRAIN_REEVAL_SEED_OFFSET band → paired seeds,
+incumbent usually cache-hit), pick the final best by fresh mean; recorded under
+`run_data["identification"]`, logged to wandb, winner becomes `best_bundle`/`best_final.jl`.
+
 ## Next steps
 
-1. Implement `--reeval ttts-fixed --reeval-budget B` in evolve_pysr.py (skip the indifference
-   machinery entirely; EB-shrunk means for the top-k sort). B ≈ n_offspring is the sweet
-   spot per the frontier.
-2. Implement the end-of-run identification pass (dumb version: top-10 by shrunk score,
-   +10 fresh seeds each, pick argmax) and use it for the SRbench candidate in every config.
-3. Budget-matched live comparison n1-none vs n1+ttts-fixed, powered by the replay-backed
-   expectation (~+0.04 parent train-truth fitness at ~1.3-2x cost) rather than val noise;
-   evaluate primarily via reeval-train + final-selection quality, with val/SRbench as the
-   downstream confirmation.
+1. ~~Identification pass~~ — done (`--identify-topk`).
+2. Implement the winning schedule in evolve_pysr.py: `--reeval ttts-sched` with B(g) = 0
+   for the first 2/3 of generations, TTTS B≈3×n_offspring for the last third (or the
+   equivalent ramp). Use EB-shrunk means for survivor/parent sorting while at it.
+3. Budget-matched live comparison n1-none vs n1+sched, evaluated primarily via reeval-train
+   parent fitness + identification quality (replay-backed expectation: ~+0.045 parent
+   fitness over n1 at ~1.8x seeds, regret ~0.003 vs 0.067), with val/SRbench downstream.
+4. Fix train→val transfer (P4) before expecting any of this to move val.

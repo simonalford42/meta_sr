@@ -1023,6 +1023,15 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
     # Build model kwargs once so execution and parent-side cache compaction share identity logic.
     _, model_kwargs, _ = _build_cache_identity(spec)
 
+    # Boolean domain: extra_sympy_mappings (lambdas) can't survive the JSON task
+    # file, so the spec carries a JSON-safe "_boolean_domain" flag instead. Here
+    # (worker side) we swap it for the real callable mappings PySR needs to parse
+    # band/bor/bxor/bnot equations. The flag stays in spec.pysr_kwargs so the
+    # cache identity still distinguishes Boolean runs from SRBench runs.
+    if model_kwargs.pop("_boolean_domain", False):
+        from boolean_pysr import boolean_sympy_mappings
+        model_kwargs["extra_sympy_mappings"] = boolean_sympy_mappings()
+
     try:
         # Seed for dataset loading
         t0 = _time.time()

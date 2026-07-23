@@ -28,7 +28,8 @@ import wandb
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from plot_eval_axis_comparison import (  # noqa: E402
-    REPO, build_run_entry, build_wandb_index, col_stats,
+    REPO, Method, Variant, build_run_entry, build_wandb_index, col_stats,
+    plot_variant,
 )
 
 # Default output directory for the whole family (kept where the old scripts wrote).
@@ -176,6 +177,101 @@ def _render_decomp_table(ax, methods, title):
     tbl.scale(1, 1.8)
     for c in range(2):
         tbl[(len(rows), c)].set_text_props(fontweight="bold")
+
+
+def _api_cached():
+    """Lazily-built (and reused) wandb API handle + run index for quick_plot."""
+    global _API, _WIDX
+    if _API is None:
+        _API = get_api()
+    if _WIDX is None:
+        _WIDX = build_wandb_index()
+    return _API, _WIDX
+
+
+_API = None
+_WIDX = None
+_MARKERS = ["o", "s", "^", "D", "*", "v", "P"]
+
+
+def _group_label(rids):
+    """Auto label for a group of ids: the ids themselves when there are few."""
+    if len(rids) == 1:
+        return f"run {rids[0]}"
+    if len(rids) <= 3:
+        return "avg " + "/".join(str(r) for r in rids)
+    return f"avg {rids[0]}+{len(rids) - 1} more"
+
+
+def _as_groups(ids):
+    """Normalize quick_plot's `ids` into an ordered {label: [run ids]} mapping.
+
+    A bare id is its own curve; a nested list is one curve averaged over those
+    seeds. A dict gives explicit labels (its values follow the same rule, so a
+    flat list under a label is averaged).
+    """
+    if isinstance(ids, dict):
+        return {lbl: (list(v) if isinstance(v, (list, tuple)) else [v])
+                for lbl, v in ids.items()}
+    groups = {}
+    for item in ids:
+        rids = list(item) if isinstance(item, (list, tuple)) else [item]
+        groups[_group_label(rids)] = rids
+    return groups
+
+
+def quick_plot(ids, name, gen_axis=True, title=None, panels=None):
+    """One-shot figure for an ad-hoc set of run ids -- paste ids, get a PNG.
+
+    ids:      list of run ids (== slurm job ids). Each bare id is drawn as its
+              OWN line: [883427, 883429] -> two lines. Nest a list to average
+              seeds into one mean +/- std curve instead:
+                  [[883427, 883429], [883428, 883430]]  -> two averaged curves
+                  [[883427, 883429], 538190]            -> one avg + one line
+              Or pass a dict {label: ids} to name the curves explicitly (a flat
+              list under a label is averaged, same as a nested list).
+    name:     output file stem.
+    gen_axis: True  -> per-GENERATION panels (eval cost factored out),
+                       saved to plots/gen_axis_n1_vs_n3/gen_axis_<name>.png
+              False -> cumulative-EVAL-axis panels,
+                       saved to plots/eval_axis_comparison/eval_axis_comparison_<name>.png
+    title:    suptitle (defaults to the curve labels + axis).
+    panels:   gen-axis only; defaults to PANELS_SINGLE for a lone run, else
+              PANELS_COMPARISON.
+
+    Returns the matplotlib Figure (already saved; shows inline in the notebook).
+    """
+    groups = _as_groups(ids)
+    api, widx = _api_cached()
+    axis_desc = "per generation" if gen_axis else "per total evaluation"
+    # Spell out the ids for each curve, except where the auto label already has
+    # them (e.g. "run 883427").
+    desc = ";  ".join(lbl if all(str(r) in lbl for r in rids) else f"{lbl}: {rids}"
+                      for lbl, rids in groups.items())
+    suptitle = title or f"{name} — {axis_desc}\n{desc}"
+    style = [(COLOR(i % 10), _MARKERS[i % len(_MARKERS)])
+             for i in range(len(groups))]
+
+    if gen_axis:
+        methods = [(lbl, load_method(api, widx, rids, lbl), *style[i])
+                   for i, (lbl, rids) in enumerate(groups.items())]
+        if panels is None:
+            n_runs = sum(len(runs) for _, runs, *_ in methods)
+            panels = PANELS_SINGLE if n_runs == 1 else PANELS_COMPARISON
+        return render(methods, OUTDIR / f"gen_axis_{name}.png", suptitle,
+                      panels=panels)
+
+    # Eval axis: reuse the Variant renderer from plot_eval_axis_comparison.
+    # Always aggregate mode -- a single-id group is already a plain line there,
+    # and a multi-id group is exactly the mean +/- std band we want.
+    variant = Variant(
+        name=name,
+        title=suptitle,
+        individual=False,
+        methods=[Method(lbl, style[i][0], list(rids), style[i][1])
+                 for i, (lbl, rids) in enumerate(groups.items())],
+    )
+    return plot_variant(api, widx, variant)
 
 
 def render(methods, out_path, suptitle, panels=PANELS_COMPARISON, save=True):

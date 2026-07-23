@@ -133,7 +133,10 @@ from evolution_helpers import (
     select_survivors_complexity,
     _bundle_loc,
 )
-from smart_reeval import compute_reeval_plan, parent_fitness, dedup_archive_by_code
+from smart_reeval import (
+    compute_reeval_plan, parent_fitness, dedup_archive_by_code,
+    allocate_reeval_ttts, allocate_reeval_kg,
+)
 
 # Fixed per-seed noise σ for smart reeval, measured offline over all bundles of
 # run 414990 on the gt metric (scripts/estimate_sigma.py). Used by default
@@ -387,6 +390,8 @@ def _finalize_smart_reeval(
 
     # Per-gen MC plot mirroring monte_carlo_sweep's per-gen panel.
     try:
+        if plan.get("curve") is None:
+            raise StopIteration  # fixed-B plans have no MC curve — skip plot
         from monte_carlo_sweep import _plot_per_gen
         pre_bundles = pre_snapshot[0] if pre_snapshot is not None else list(archive)
         pop_ids = {id(b) for b in population}
@@ -411,6 +416,8 @@ def _finalize_smart_reeval(
             np.asarray(alpha), np.asarray(psi), baseline, np.asarray(curve),
             B_max, plot_dir, limits, offspring_k3=offspring_EI,
         )
+    except StopIteration:
+        pass
     except Exception as e:
         print(f"  [smart] per-gen plot failed: {e}")
 
@@ -691,7 +698,8 @@ def run_bundle_evolution(
     n_extra_runs: int = 0,
     n_runs_max: int = 0,
     lambda_target: int = 1,
-    max_runs_per_generation: int = 100,
+    reeval_budget: int = 20,
+    n_reevals: int = 0,
     smart_sigma: Optional[float] = DEFAULT_SMART_SIGMA,
     max_concurrent_jobs: Optional[int] = None,
     llm_max_workers: int = 16,
@@ -706,6 +714,8 @@ def run_bundle_evolution(
     val_pysr_timeout: Optional[int] = None,
     split_label: Optional[str] = None,
     mutation_mode: str = "random",
+    local: bool = False,
+    n_local_workers: Optional[int] = None,
 ) -> Tuple[OperatorBundle, Any, float]:
     """Run bundle evolution across multiple operator types.
 
@@ -727,10 +737,14 @@ def run_bundle_evolution(
     rng = random.Random(seed)
     np.random.seed(seed)
 
-    # "smart" is the back-compat alias for "smart-TTTS"; resolve before the run
-    # config is recorded so the stored value names the concrete policy.
-    if reeval == "smart":
-        reeval = "smart-TTTS"
+    # Legacy aliases (pre-7/26 CLI); resolve before the run config is recorded
+    # so the stored value names the concrete policy.
+    reeval = {
+        "smart": "TTTS-dynamic",
+        "smart-TTTS": "TTTS-dynamic",
+        "smart-KG": "KG-dynamic",
+        "fixed": "uniform",
+    }.get(reeval, reeval)
 
     # Per-individual wandb logging state for avg_gt-over-time plots.
     _eval_log_state = {"idx": 0, "best": float("-inf")}
@@ -796,7 +810,8 @@ def run_bundle_evolution(
         "n_extra_runs": n_extra_runs,
         "n_runs_max": n_runs_max,
         "lambda_target": lambda_target,
-        "max_runs_per_generation": max_runs_per_generation,
+        "reeval_budget": reeval_budget,
+        "n_reevals": n_reevals,
         "smart_sigma": smart_sigma,
         "identify_topk": identify_topk,
         "llm_max_workers": llm_max_workers,
@@ -811,23 +826,52 @@ def run_bundle_evolution(
     }.get(fitness_metric, "GT match rate")
 
     racing_on = n_extra_runs > 0
-    # reeval is already resolved from the "smart" alias above. smart_policy
-    # selects the reeval-allocation policy passed to compute_reeval_plan.
-    smart_on = reeval in ("smart-TTTS", "smart-KG")
-    smart_policy = "kg" if reeval == "smart-KG" else "ttts"
-    if racing_on and smart_on:
+    # Reeval modes (post-7/26 CLI):
+    #   TTTS / KG / uniform — spend the whole reeval_budget every generation,
+    #                         allocated by TTTS draws / greedy KG / even split
+    #                         over the observed top-k ("uniform" = the oracle-
+    #                         replay winner).
+    #   TTTS-dynamic / KG-dynamic — B* indifference machinery decides how much
+    #                         of reeval_budget to spend; leftover is unspent
+    #                         (no extra-offspring conversion).
+    #   population          — every offspring gets n_runs initial seeds; each
+    #                         generation the current population (= last gen's
+    #                         survivors) is topped up to n_reevals total seeds.
+    VALID_REEVAL = ("none", "heuristic", "TTTS", "KG", "uniform",
+                    "TTTS-dynamic", "KG-dynamic", "population")
+    if reeval not in VALID_REEVAL:
+        raise ValueError(f"unknown reeval={reeval!r} (want one of {VALID_REEVAL})")
+    dynamic_on = reeval in ("TTTS-dynamic", "KG-dynamic")
+    fixed_on = reeval in ("TTTS", "KG", "uniform")
+    pop_reeval_on = reeval == "population"
+    smart_policy = "kg" if reeval == "KG-dynamic" else "ttts"
+    fixed_alloc = {"TTTS": "ttts", "KG": "kg", "uniform": "uniform"}.get(reeval)
+    if (dynamic_on or fixed_on) and reeval_budget <= 0:
+        raise ValueError(f"--reeval {reeval} requires --reeval-budget > 0")
+    if (dynamic_on or fixed_on) and population_type != "topk":
+        raise ValueError(
+            f"--population-type={population_type} is incompatible with "
+            f"--reeval {reeval}; only 'topk' is supported."
+        )
+    if pop_reeval_on:
+        if n_reevals <= n_runs:
+            raise ValueError(
+                f"--reeval population requires --n-reevals > --n-runs "
+                f"(got n_reevals={n_reevals}, n_runs={n_runs})"
+            )
+        if population_type != "topk":
+            raise ValueError(
+                f"--population-type={population_type} is incompatible with "
+                f"--reeval population; only 'topk' is supported."
+            )
+    if racing_on and (dynamic_on or fixed_on or pop_reeval_on):
         # The CLI already forbids this pairing; guard library callers too.
         # Both paths compute run_index_start from seeds_evaluated before either
         # batch lands, so combining them would double-submit identical
         # (seed, run_index) tasks and double-count the merged results.
         raise ValueError(
-            "racing (n_extra_runs > 0) cannot be combined with smart reeval; "
+            "racing (n_extra_runs > 0) cannot be combined with archive reeval; "
             "use one or the other."
-        )
-    if smart_on and population_type != "topk":
-        raise ValueError(
-            f"--population-type={population_type} is incompatible with "
-            f"--reeval {reeval}; only 'topk' is supported."
         )
     if racing_on:
         if population_type != "topk":
@@ -870,7 +914,18 @@ def run_bundle_evolution(
     elif population_type == "complexity":
         print(f"Complexity-aware Pareto population enabled (buckets={population_size})")
 
-    evaluator = PySRSlurmEvaluator(
+    # Local mode runs PySR fits on a persistent pool of spawn workers across the
+    # session's core allocation instead of submitting SLURM jobs (the documented
+    # project pattern). LocalPySREvaluator is a drop-in subclass of
+    # PySRSlurmEvaluator: same spec-building / caching / aggregation, only the
+    # submission step differs. See local_pysr_evaluator.py.
+    evaluator_cls = PySRSlurmEvaluator
+    extra_evaluator_kwargs: Dict[str, Any] = {}
+    if local:
+        from local_pysr_evaluator import LocalPySREvaluator
+        evaluator_cls = LocalPySREvaluator
+        extra_evaluator_kwargs["n_local_workers"] = n_local_workers
+    evaluator = evaluator_cls(
         results_dir=output_dir,
         partition=slurm_partition,
         time_limit=slurm_time_limit,
@@ -885,6 +940,7 @@ def run_bundle_evolution(
         use_cache=use_cache,
         pysr_wall_limit=pysr_wall_limit,
         eval_noise_levels=eval_noise_levels,
+        **extra_evaluator_kwargs,
     )
     if split_label is not None:
         evaluator.split_label = split_label
@@ -896,7 +952,7 @@ def run_bundle_evolution(
     # produced during evolution: racing caps `seeds_evaluated` at
     # `n_runs_max * lambda_target`, and non-racing paths use `run_index < n_runs`.
     TRAIN_REEVAL_SEED_OFFSET = 100_000
-    _max_train_run_index = max(n_runs, n_runs_max * lambda_target)
+    _max_train_run_index = max(n_runs, n_runs_max * lambda_target, n_reevals)
     if _max_train_run_index + val_n_runs > TRAIN_REEVAL_SEED_OFFSET:
         raise ValueError(
             f"Train-reeval seed offset {TRAIN_REEVAL_SEED_OFFSET} would collide with "
@@ -1446,7 +1502,7 @@ def run_bundle_evolution(
     smart_offspring_hist: "deque[List[float]]" = deque(maxlen=SMART_K)
     smart_rng = np.random.default_rng(seed)
     smart_plot_dir = Path(output_dir) / "smart_reeval"
-    if smart_on:
+    if dynamic_on:
         smart_plot_dir.mkdir(parents=True, exist_ok=True)
         # The per-gen MC plot helper reads offspring_improvement.MARGIN for its
         # Δ; align it with this run's per-offspring seed cost (n_runs).
@@ -1454,8 +1510,14 @@ def run_bundle_evolution(
         _oi.MARGIN = n_runs
         sigma_desc = (f"fixed σ={smart_sigma}" if (smart_sigma is not None and smart_sigma > 0)
                       else "cumulative σ estimate")
-        print(f"Smart reeval enabled: max_runs_per_generation(B)={max_runs_per_generation}, "
+        print(f"Dynamic reeval enabled [{reeval}]: budget cap={reeval_budget}/gen, "
               f"K={SMART_K}, margin(n_runs)={n_runs}, {sigma_desc}. Plots → {smart_plot_dir}")
+    elif fixed_on:
+        print(f"Reeval enabled [{reeval}]: B={reeval_budget} seeds/gen over the "
+              f"archive, allocation={fixed_alloc}.")
+    elif pop_reeval_on:
+        print(f"Population reeval enabled: offspring get {n_runs} initial seeds; "
+              f"each generation's survivors are topped up to {n_reevals} seeds.")
 
     # Evolution loop: each generation splits offspring evenly across operator types
     for gen in range(start_gen, start_gen + n_generations):
@@ -1490,7 +1552,9 @@ def run_bundle_evolution(
             max_workers=min(32, max(
                 1,
                 n_offspring
-                + (2 * population_size if (racing_on or smart_on) else 0),
+                + (2 * population_size
+                   if (racing_on or dynamic_on or fixed_on or pop_reeval_on)
+                   else 0),
             )),
             thread_name_prefix="slurm-submit",
         )
@@ -1542,18 +1606,14 @@ def run_bundle_evolution(
         # one prior generation of offspring to form the empirical distribution.
         smart_plan = None
         smart_pre_snapshot = None  # (bundles, mu_pre) for actual-improvement
-        # Per-generation eval budget B is shared between fresh offspring and
-        # archive reeval. We always run at least n_offspring offspring
-        # (n_offspring * n_runs seeds); the reeval plan is capped at whatever
-        # budget remains. Reeval budget the plan declines to spend is converted
-        # back into extra offspring below so total evals ≈ B.
-        reeval_budget = max(0, max_runs_per_generation - n_offspring * n_runs)
-        if smart_on:
+        # reeval_budget caps the dynamic plan / is spent verbatim by the
+        # fixed-budget modes; leftover from a dynamic plan is simply unspent.
+        if dynamic_on:
             empirical = np.array(
                 [s for batch in smart_offspring_hist for s in batch], dtype=float
             )
             if empirical.size == 0:
-                print(f"\nSmart reeval gen {gen}: no offspring history yet — skipping.")
+                print(f"\nDynamic reeval gen {gen}: no offspring history yet — skipping.")
             else:
                 # Dedup the archive by operator code so the live pool matches the
                 # offline MC analysis (the live archive is keyed by display_name).
@@ -1589,7 +1649,7 @@ def run_bundle_evolution(
                 ei = smart_plan["offspring_EI"]
                 ei_str = f"{ei:+.5f}" if ei is not None else "n/a"
                 print(
-                    f"\nSmart reeval gen {gen} [{smart_policy.upper()}]: "
+                    f"\nDynamic reeval gen {gen} [{reeval}]: "
                     f"σ̂={sigma_est:.4f}, k={len(pool)} "
                     f"(archive={len(archive)}), empirical={empirical.size}, "
                     f"offspring_EI={ei_str}, status={smart_plan['status']}, "
@@ -1617,22 +1677,108 @@ def run_bundle_evolution(
                     )
                     pop_futs.append((member, fut))
                     pop_extras_per_member.append(extra)
-
-        # Convert any unspent reeval budget back into extra offspring so each
-        # generation spends ≈ B = max_runs_per_generation total seeds. Outside
-        # smart mode n_offspring is used verbatim.
-        n_offspring_now = n_offspring
-        if smart_on:
-            reeval_used = int(smart_plan["allocation"].sum()) if smart_plan is not None else 0
-            leftover = max(0, reeval_budget - reeval_used)
-            extra_offspring = leftover // max(1, n_runs)
-            n_offspring_now = n_offspring + extra_offspring
+        elif fixed_on and len(archive) > 0:
+            # Fixed-budget reeval: spend exactly reeval_budget seeds/gen on
+            # the archive, no B* machinery. Allocation per mode: 'uniform' =
+            # even split over the observed top-k (oracle-replay winner),
+            # 'TTTS' = top-two Thompson draws, 'KG' = greedy knowledge
+            # gradient.
+            pool = dedup_archive_by_code(archive)
+            if smart_sigma is not None and smart_sigma > 0:
+                sigma_est = float(smart_sigma)
+            else:
+                sigma_est = pooled_sigma(pool, fitness_metric)
+            mu_arc = np.array(
+                [b.score if b.score is not None else -1.0 for b in pool],
+                dtype=float,
+            )
+            N_arc = np.array(
+                [int(getattr(b, "seeds_evaluated", 0) or 0) for b in pool],
+                dtype=float,
+            )
+            b_fixed = int(reeval_budget)
+            if fixed_alloc == "uniform":
+                k_top = min(population_size, mu_arc.size)
+                top = np.argsort(-mu_arc)[:k_top]
+                alloc = np.zeros(mu_arc.size, dtype=int)
+                alloc[top] += b_fixed // k_top
+                rem = b_fixed % k_top
+                if rem:
+                    alloc[smart_rng.choice(top, size=rem, replace=False)] += 1
+            elif fixed_alloc == "kg":
+                alloc = allocate_reeval_kg(
+                    mu_arc, sigma_est, np.maximum(N_arc, 1.0), b_fixed,
+                    topk=population_size, n=2,
+                )
+            else:  # ttts
+                alloc = allocate_reeval_ttts(
+                    mu_arc, sigma_est, np.maximum(N_arc, 1.0), b_fixed, smart_rng,
+                )
+            smart_plan = {
+                "B_star": b_fixed, "status": "fixed", "allocation": alloc,
+                "offspring_EI": None, "baseline": None, "curve": None,
+                "sigma": sigma_est, "mu": mu_arc, "N": N_arc, "psi": None,
+                "alpha": None, "skipped": False, "B_max": b_fixed,
+                "margin": n_runs, "policy": fixed_alloc,
+            }
             print(
-                f"  [smart] budget B={max_runs_per_generation}: min offspring={n_offspring} "
-                f"({n_offspring * n_runs} seeds), reeval_budget={reeval_budget}, "
-                f"reeval_used={reeval_used}, leftover={leftover} → +{extra_offspring} offspring "
-                f"(total offspring={n_offspring_now}, "
-                f"≈{n_offspring_now * n_runs + reeval_used} seeds)"
+                f"\nReeval gen {gen} [{reeval}, B={b_fixed}]: "
+                f"σ̂={sigma_est:.4f}, k={len(pool)} (archive={len(archive)}), "
+                f"arms_reeval={int((alloc > 0).sum())}."
+            )
+            smart_pre_snapshot = (list(pool), mu_arc.copy())
+            for idx in np.nonzero(alloc)[0]:
+                member = pool[idx]
+                extra = int(alloc[idx])
+                start = int(getattr(member, "seeds_evaluated", 0) or 0)
+                if start + extra > TRAIN_REEVAL_SEED_OFFSET:
+                    print(f"  [fixed] skipping reeval of {member.display_name}: "
+                          f"run_index {start}+{extra} would enter the "
+                          f"train-reeval offset band ({TRAIN_REEVAL_SEED_OFFSET})")
+                    continue
+                fut = submit_bundle_future(
+                    submit_executor, member, evaluator, dataset_names, pysr_kwargs,
+                    seed=seed, n_runs=extra, target_noise_map=target_noise_map,
+                    fitness_metric=fitness_metric, run_index_start=start,
+                )
+                pop_futs.append((member, fut))
+                pop_extras_per_member.append(extra)
+        elif pop_reeval_on:
+            # Population reeval: top up every current population member (= the
+            # survivors selected at the end of the previous generation) to
+            # n_reevals total seeds. Submitted up-front so the reevals run on
+            # SLURM while the LLM generates this generation's offspring; the
+            # merged scores land before this generation's survivor selection.
+            # Members already at n_reevals seeds (long-time survivors) cost 0.
+            to_top_up = [
+                (member, n_reevals - int(getattr(member, "seeds_evaluated", 0) or 0))
+                for member in population
+            ]
+            to_top_up = [(m, extra) for m, extra in to_top_up if extra > 0]
+            print(
+                f"\nPopulation reeval gen {gen}: topping up "
+                f"{len(to_top_up)}/{len(population)} members to {n_reevals} seeds "
+                f"({sum(e for _, e in to_top_up)} extra seeds)."
+            )
+            for member, extra in to_top_up:
+                start = int(getattr(member, "seeds_evaluated", 0) or 0)
+                fut = submit_bundle_future(
+                    submit_executor, member, evaluator, dataset_names, pysr_kwargs,
+                    seed=seed, n_runs=extra, target_noise_map=target_noise_map,
+                    fitness_metric=fitness_metric, run_index_start=start,
+                )
+                pop_futs.append((member, fut))
+                pop_extras_per_member.append(extra)
+
+        # Offspring count is always n_offspring verbatim; a dynamic plan's
+        # unspent reeval budget is simply unspent.
+        n_offspring_now = n_offspring
+        if dynamic_on or fixed_on:
+            reeval_used = int(smart_plan["allocation"].sum()) if smart_plan is not None else 0
+            print(
+                f"  [reeval] {n_offspring} offspring × {n_runs} seeds "
+                f"+ {reeval_used}/{reeval_budget} reeval seeds = "
+                f"{n_offspring * n_runs + reeval_used} seeds this gen"
             )
 
         # Split this generation's offspring slots evenly across operator types.
@@ -1854,11 +2000,16 @@ def run_bundle_evolution(
         )
 
         offspring_eval_start = time.perf_counter()
-        if racing_on or smart_on:
+        if racing_on or dynamic_on or fixed_on or pop_reeval_on:
             # Resolve every submission, then wait for all batches (extras /
             # reevals + offspring) with one unified progress stream.
             combined_futs = list(pop_futs) + list(offspring_futs)
-            label = "Racing" if racing_on else "Smart reeval"
+            if racing_on:
+                label = "Racing"
+            elif pop_reeval_on:
+                label = "Population reeval"
+            else:
+                label = "Smart reeval"
             print(
                 f"\n{label}: waiting on {len(pop_futs)} reeval + "
                 f"{len(offspring_futs)} offspring batches..."
@@ -1929,7 +2080,7 @@ def run_bundle_evolution(
                         bundle.score_vector = []
                     _log_bundle_eval(bundle, generation=gen, seeds_added=n_runs_now)
             _extend_archive(offspring_bundles)
-            if smart_on:
+            if dynamic_on or fixed_on:
                 # Survive from the same code-deduped pool used for B*/TTTS, so
                 # duplicate-code bundles can't occupy multiple population slots
                 # and parent selection matches the planning pool.
@@ -1937,6 +2088,10 @@ def run_bundle_evolution(
                 print(f"  [hof] Selecting survivors from code-deduped archive of "
                       f"{len(surv_pool)} (raw {len(archive)}) bundles")
                 population = select_survivors(surv_pool, [], population_size)
+            elif pop_reeval_on:
+                # Standard topk over population+offspring: dropped bundles do
+                # not re-enter (their reeval seeds stop accumulating).
+                population = select_survivors(population, offspring_bundles, population_size)
             else:
                 print(f"  [hof] Selecting survivors from all-time archive of {len(archive)} bundles")
                 population = select_survivors(archive, [], population_size)
@@ -1944,7 +2099,7 @@ def run_bundle_evolution(
             # Smart reeval: measure the realized improvement from the reeval
             # batch (Δ in expected parent fitness over the pre-reeval pool),
             # render the per-gen MC plot, and log to wandb at step=gen.
-            if smart_on:
+            if dynamic_on or fixed_on:
                 _finalize_smart_reeval(
                     gen, smart_plan, smart_pre_snapshot, archive, population,
                     population_size, smart_plot_dir, output_dir, wandb_run,
@@ -1980,7 +2135,7 @@ def run_bundle_evolution(
 
         # Record this generation's offspring posterior means (only those with the
         # standard initial seed count) for the smart-reeval empirical window.
-        if smart_on:
+        if dynamic_on:
             gen_off_means = [
                 b.score for b in offspring_bundles
                 if b.score is not None
@@ -2075,7 +2230,7 @@ def run_bundle_evolution(
                     log_data["avg_seeds_per_pop_member"] = (
                         sum(pop_seed_counts) / len(pop_seed_counts)
                     )
-            if smart_on:
+            if dynamic_on or fixed_on or pop_reeval_on:
                 seeds_offspring_init = len(offspring_bundles) * n_runs
                 seeds_reeval = sum(pop_extras_per_member)
                 log_data["smart/seeds_offspring_init"] = seeds_offspring_init
@@ -2127,6 +2282,53 @@ def run_bundle_evolution(
         print("\nWaiting for pending train reeval to complete...")
     _check_train_reeval_future(wait=True)
     train_reeval_state["executor"].shutdown(wait=True)
+
+    # Population reeval: the loop tops up the *previous* generation's survivors
+    # at the start of each generation, so the final population's newest
+    # entrants still sit at n_runs seeds. Top them up here so the end-of-run
+    # scores (and the identification pass's shrunk ranking) use the full
+    # n_reevals seed count.
+    if pop_reeval_on:
+        to_top_up = [
+            (b, n_reevals - int(getattr(b, "seeds_evaluated", 0) or 0))
+            for b in population
+        ]
+        to_top_up = [(b, extra) for b, extra in to_top_up if extra > 0]
+        if to_top_up:
+            print("\n" + "=" * 60)
+            print(f"Final population reeval: topping up {len(to_top_up)}/"
+                  f"{len(population)} members to {n_reevals} seeds")
+            print("=" * 60)
+            final_executor = ThreadPoolExecutor(
+                max_workers=min(32, len(to_top_up)),
+                thread_name_prefix="final-reeval",
+            )
+            final_futs = []
+            for member, extra in to_top_up:
+                start = int(getattr(member, "seeds_evaluated", 0) or 0)
+                fut = submit_bundle_future(
+                    final_executor, member, evaluator, dataset_names, pysr_kwargs,
+                    seed=seed, n_runs=extra, target_noise_map=target_noise_map,
+                    fitness_metric=fitness_metric, run_index_start=start,
+                )
+                final_futs.append((member, fut))
+            pairs = collect_bundle_futures(evaluator, final_futs)
+            final_executor.shutdown(wait=True)
+            members = [b for b, _ in pairs]
+            results = [r for _, r in pairs]
+            pre_seeds = [int(getattr(b, "seeds_evaluated", 0) or 0) for b in members]
+            apply_racing_results(members, results, fitness_metric)
+            for member, pre in zip(members, pre_seeds):
+                post = int(getattr(member, "seeds_evaluated", 0) or 0)
+                _log_bundle_eval(member, generation=start_gen + n_generations - 1,
+                                 seeds_added=max(0, post - pre))
+                print(f"  Avg {member.score:.4f} {member.display_name}: "
+                      f"(seeds={member.seeds_evaluated})")
+            population.sort(key=lambda b: b.score if b.score is not None else -1,
+                            reverse=True)
+            best = population[0]
+            print(f"  Best after final reeval: {best.display_name} "
+                  f"(score: {best.score:.4f})")
 
     # End-of-run identification pass: the archive argmax by live score is the
     # max order statistic over mostly-few-seed bundles, so it is maximally
@@ -2248,6 +2450,25 @@ def main():
                              "'gt-r2' = 1.0 if the task is solved (gt match), else "
                              "the frontier-averaged R².")
 
+    # --- Boolean-synthesis domain -------------------------------------------
+    parser.add_argument("--domain", type=str, default="srbench",
+                        choices=["srbench", "boolean"],
+                        help="Task domain. 'srbench' (default) = symbolic regression on "
+                             "PMLB/Feynman datasets. 'boolean' = Boolean-function synthesis "
+                             "over band/bor/bxor/bnot with L2 loss; implies --local, "
+                             "--fitness-metric r2, and the Boolean train split unless overridden.")
+    parser.add_argument("--local", action="store_true",
+                        help="Run PySR fits on a local spawn-worker pool instead of SLURM "
+                             "(uses the session's core allocation; no sbatch). Implied by "
+                             "--domain boolean.")
+    parser.add_argument("--n-local-workers", type=int, default=None,
+                        help="Number of local worker processes (default: SLURM_CPUS_PER_TASK "
+                             "or cpu_count).")
+    parser.add_argument("--boolean-maxsize", type=int, default=30,
+                        help="PySR maxsize for the Boolean domain.")
+    parser.add_argument("--boolean-niterations", type=int, default=50,
+                        help="PySR niterations per fit for the Boolean domain.")
+
     parser.add_argument("--split", type=str, default='splits/barely_unsolvable.txt',
                         help="Path to dataset split file")
     parser.add_argument("--val-split", type=str, default='splits/barely_unsolvable_val2.txt',
@@ -2352,29 +2573,30 @@ def main():
                              "best per bucket, then drop Pareto-dominated buckets). "
                              "'task' and 'complexity' are incompatible with racing (--n-extra-runs > 0).")
     parser.add_argument("--reeval", type=str, default="none",
-                        choices=["none", "heuristic", "smart", "smart-TTTS", "smart-KG"],
+                        choices=["none", "heuristic", "TTTS", "KG", "uniform",
+                                 "TTTS-dynamic", "KG-dynamic", "population"],
                         help="Reevaluation strategy. 'none' (default): each offspring is "
                              "evaluated once on n_runs seeds, no reevaluation. "
                              "'heuristic': qualifier-based racing reeval driven by "
                              "--n-extra-runs / --n-runs-max. "
-                             "'smart' / 'smart-TTTS': monte-carlo B*-driven reeval — each "
-                             "generation has a fixed eval budget B (--max-runs-per-generation) "
-                             "shared between fresh offspring and reevaluating the all-time "
-                             "archive, where B* is the indifference budget between reeval and "
-                             "one new offspring. Unspent reeval budget is converted into extra "
-                             "offspring. 'smart-TTTS' (= 'smart') allocates reevals via Top-Two "
-                             "Thompson Sampling. 'smart-KG' instead uses the tournament-aware "
-                             "knowledge gradient for both the B* curve and the per-arm "
-                             "allocation — more accurate per eval, but adds ~1-3 min CPU/gen "
-                             "of synchronous planning.")
-    parser.add_argument("--max-runs-per-generation", type=int, default=None,
-                        help="Smart reeval only (--reeval smart): the per-generation eval budget B "
-                             "(total seeds). At least --offspring offspring are always run "
-                             "(--offspring * --n-runs seeds); the remaining budget caps the reeval "
-                             "plan, and any reeval budget the plan declines to spend is converted "
-                             "into additional offspring so total evals ≈ B. "
-                             "Default under --reeval smart*: --population * 2 * --n-runs. "
-                             "(Otherwise --offspring * --n-runs + 100, the old --max-reruns=100 cap.)")
+                             "'TTTS' / 'KG' / 'uniform': spend the whole --reeval-budget every "
+                             "generation on the archive, allocated by Top-Two Thompson "
+                             "sampling / greedy knowledge gradient / an even split over the "
+                             "observed top-k ('uniform' is the oracle-replay winner). "
+                             "'TTTS-dynamic' / 'KG-dynamic': the B* indifference machinery "
+                             "decides how much of --reeval-budget to spend each generation "
+                             "(leftover is unspent); allocation via TTTS / KG. "
+                             "'population': offspring get n_runs initial seeds; anything in "
+                             "the population at the end of a generation is topped up to "
+                             "--n-reevals total seeds.")
+    parser.add_argument("--reeval-budget", type=int, default=20,
+                        help="Per-generation archive reeval budget (seeds). Spent verbatim "
+                             "by TTTS/KG/uniform; caps the B* plan for *-dynamic modes.")
+    parser.add_argument("--n-reevals", type=int, default=0,
+                        help="Total seed count each population member is topped up to under "
+                             "--reeval population (must be > --n-runs). E.g. --n-runs 3 "
+                             "--n-reevals 10 --reeval population: every offspring gets 3 "
+                             "seeds; survivors accumulate up to 10.")
     parser.add_argument("--smart-sigma", type=float, default=DEFAULT_SMART_SIGMA,
                         help="Per-seed noise σ used in reeval planning (both --reeval smart "
                              "B*/TTTS and --reeval heuristic qualifier racing). By default a fixed "
@@ -2423,23 +2645,31 @@ def main():
 
     args = parser.parse_args()
 
-    # smart-KG is temporarily disabled: the pruned KG curve implementation was
-    # removed from monte_carlo.py and compute_reeval_plan(policy="kg") raises.
-    # Reject up-front so the run fails before spending any evaluation budget.
-    if args.reeval == "smart-KG":
+    # Boolean-domain defaults: applied only where the user left the SRBench
+    # defaults in place, so explicit flags still win.
+    if args.domain == "boolean":
+        args.local = True  # no SLURM path for the Boolean domain
+        if args.fitness_metric == "gt":  # gt (symbolic match) is meaningless here
+            args.fitness_metric = "r2"
+        if args.split == "splits/barely_unsolvable.txt":
+            args.split = "splits/boolean_train.txt"
+        if args.val_split == "splits/barely_unsolvable_val2.txt":
+            args.val_split = None  # no separate Boolean val split by default
+        print(f"[boolean] domain defaults: local=True, fitness_metric={args.fitness_metric}, "
+              f"split={args.split}, val_split={args.val_split}")
+
+    # KG-dynamic is temporarily disabled: the pruned KG curve implementation
+    # was removed from monte_carlo.py and compute_reeval_plan(policy="kg")
+    # raises. (Plain --reeval KG — fixed budget, greedy KG allocation — works.)
+    if args.reeval == "KG-dynamic":
         parser.error(
-            "--reeval smart-KG is temporarily disabled (the pruned KG curve "
-            "was removed from monte_carlo.py). Use --reeval smart-TTTS."
+            "--reeval KG-dynamic is temporarily disabled (the pruned KG curve "
+            "was removed from monte_carlo.py). Use --reeval TTTS-dynamic, or "
+            "--reeval KG for fixed-budget KG allocation."
         )
 
-    # Smart-reeval default sizing: when --offspring / --max-runs-per-generation
-    # are not given, scale them to the population and seed count. Done before the
-    # other reeval validation so downstream uses see the resolved values.
-    is_smart_reeval = args.reeval.startswith("smart")
     if args.offspring is None:
-        args.offspring = max(1, args.population // 2) if is_smart_reeval else 20
-    if is_smart_reeval and args.max_runs_per_generation is None:
-        args.max_runs_per_generation = args.population * 2 * args.n_runs
+        args.offspring = 20
 
     # --n-extra-runs / --n-runs-max belong to heuristic racing reeval.
     if (args.n_extra_runs > 0 or args.n_runs_max > 0) and args.reeval != "heuristic":
@@ -2460,9 +2690,7 @@ def main():
             args.n_runs_max = 5 * args.n_extra_runs
         if args.lambda_target < 1:
             parser.error("--lambda-target must be >= 1")
-        if args.max_runs_per_generation is not None:
-            parser.error("--max-runs-per-generation only applies with --reeval smart")
-    elif args.reeval in ("smart", "smart-TTTS", "smart-KG"):
+    elif args.reeval in ("TTTS", "KG", "uniform", "TTTS-dynamic", "KG-dynamic"):
         if args.population_type != "topk":
             parser.error(
                 f"--population-type={args.population_type} is incompatible with "
@@ -2470,23 +2698,26 @@ def main():
             )
         if args.lambda_target != 1:
             parser.error("--lambda-target only applies to heuristic racing")
-        # max_runs_per_generation was already defaulted above (population * 2
-        # * n_runs) when not given explicitly.
-        min_runs = args.offspring * args.n_runs
-        if args.max_runs_per_generation <= 0:
-            parser.error("--max-runs-per-generation must be > 0")
-        if args.max_runs_per_generation < min_runs:
+        if args.reeval_budget <= 0:
+            parser.error(f"--reeval {args.reeval} requires --reeval-budget > 0")
+    elif args.reeval == "population":
+        if args.n_reevals <= args.n_runs:
             parser.error(
-                f"--max-runs-per-generation ({args.max_runs_per_generation}) must be >= "
-                f"--offspring * --n-runs ({args.offspring} * {args.n_runs} = {min_runs}), "
-                "the minimum offspring eval cost per generation."
+                f"--reeval population requires --n-reevals > --n-runs "
+                f"(got --n-reevals {args.n_reevals}, --n-runs {args.n_runs})"
             )
+        if args.population_type != "topk":
+            parser.error(
+                f"--population-type={args.population_type} is incompatible with "
+                "--reeval population; only 'topk' is supported."
+            )
+        if args.lambda_target != 1:
+            parser.error("--lambda-target only applies to heuristic racing")
     else:  # none
         if args.n_runs_max != 0 or args.lambda_target != 1:
             parser.error("--n-runs-max / --lambda-target only apply with --reeval heuristic")
-        if args.max_runs_per_generation is not None:
-            parser.error("--max-runs-per-generation only applies with --reeval smart")
-        args.max_runs_per_generation = 0
+    if args.n_reevals != 0 and args.reeval != "population":
+        parser.error("--n-reevals only applies with --reeval population")
 
     # Parse operator type(s)
     if args.operator_type == "all":
@@ -2544,22 +2775,44 @@ def main():
                          else DEFAULT_SECONDS_PER_1E6_EVALS),
         default_slurm_time_limit="00:15:00",
     )
-    if budget["timeout_in_seconds"] >= budget["wall_limit"]:
+    # The Boolean domain nulls out the soft timeout and eval budget below (fits
+    # are bounded by niterations + early-stop), so the soft-timeout < wall
+    # invariant doesn't apply — the wall limit is only a safety cap there.
+    if args.domain != "boolean" and budget["timeout_in_seconds"] >= budget["wall_limit"]:
         parser.error(
             f"resolved soft timeout ({budget['timeout_in_seconds']}s) must be < hard "
             f"wall ({budget['wall_limit']}s); raise --pysr-wall-limit or lower --timeout"
         )
     print(f"Run budget: {describe_budget(budget)}")
 
-    pysr_kwargs = get_default_pysr_kwargs()
+    if args.domain == "boolean":
+        # Boolean-synthesis domain: operators closed on {0,1}, L2 loss (= misclass
+        # rate on {0,1} targets), and a JSON-safe flag the worker swaps for the
+        # real extra_sympy_mappings. --local and --fitness-metric r2 are the
+        # sensible defaults here (see _apply_boolean_defaults in main()).
+        from boolean_pysr import get_boolean_pysr_kwargs
+        pysr_kwargs = get_boolean_pysr_kwargs(
+            maxsize=args.boolean_maxsize, niterations=args.boolean_niterations,
+        )
+        pysr_kwargs.pop("extra_sympy_mappings", None)  # lambdas can't cross JSON
+        pysr_kwargs["_boolean_domain"] = True
+    else:
+        pysr_kwargs = get_default_pysr_kwargs()
     pysr_kwargs["max_evals"] = budget["max_evals"]
     pysr_kwargs["timeout_in_seconds"] = budget["timeout_in_seconds"]
-    if budget["max_evals"] is None:
+    if budget["max_evals"] is None and args.domain != "boolean":
         # Time-budget mode: ensure the wall clock is the sole stopping criterion
         # (the default niterations=1e7 already far exceeds any wall budget, but
         # keep the invariant explicit so the timeout always binds before evals).
         pysr_kwargs["niterations"] = max(int(pysr_kwargs.get("niterations") or 0),
                                          10_000_000)
+    if args.domain == "boolean":
+        # Boolean fits are bounded by niterations + early-stop (a solved task hits
+        # loss 0 and stops), not an eval/time budget. Keep niterations authoritative
+        # and let the hard wall limit act only as a safety cap.
+        pysr_kwargs["niterations"] = args.boolean_niterations
+        pysr_kwargs["max_evals"] = None
+        pysr_kwargs["timeout_in_seconds"] = None
 
     # Load baseline if specified
     baseline_bundle = None
@@ -2616,7 +2869,6 @@ def main():
         n_extra_runs=args.n_extra_runs,
         n_runs_max=args.n_runs_max,
         lambda_target=args.lambda_target,
-        max_runs_per_generation=args.max_runs_per_generation,
         smart_sigma=args.smart_sigma,
         resume_state=resume_state,
         execution_feedback_n=args.exec_feedback_n,
@@ -2624,9 +2876,13 @@ def main():
         val_split=args.val_split,
         val_n_runs=args.val_n_runs,
         identify_topk=args.identify_topk,
+        reeval_budget=args.reeval_budget,
+        n_reevals=args.n_reevals,
         val_pysr_wall_limit=args.val_pysr_wall_limit,
         val_pysr_timeout=args.val_pysr_timeout,
         mutation_mode=args.mutation_mode,
+        local=args.local,
+        n_local_workers=args.n_local_workers,
     )
 
     if len(operator_type_names) > 1:
@@ -2647,6 +2903,8 @@ def main():
         "val_split": args.val_split,
         "val_n_runs": args.val_n_runs,
         "identify_topk": args.identify_topk,
+        "reeval_budget": args.reeval_budget,
+        "n_reevals": args.n_reevals,
         "max_samples": args.max_samples,
         "target_noise": args.target_noise,
         "random_target_noise": args.random_target_noise,
@@ -2669,7 +2927,6 @@ def main():
         "n_extra_runs": args.n_extra_runs,
         "n_runs_max": args.n_runs_max,
         "lambda_target": args.lambda_target,
-        "max_runs_per_generation": args.max_runs_per_generation,
         "smart_sigma": args.smart_sigma,
         "exec_feedback_n": args.exec_feedback_n,
         "exec_feedback_prob": args.exec_feedback_prob,
