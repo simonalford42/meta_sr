@@ -1,3 +1,7 @@
+# 7/23/26 — HPO on the training split with non-GT objectives (500 trials).
+sbatch -J hpo-r2 run.sh hpo_pysr.py --n-trials 500 --split splits/train.txt --fitness-metric r2
+sbatch -J hpo-gt-r2 run.sh hpo_pysr.py --n-trials 500 --split splits/train.txt --fitness-metric gt-r2
+
 # 7/16/26
 
 # n1 vs v3, continue to 30 generations

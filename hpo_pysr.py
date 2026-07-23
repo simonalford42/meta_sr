@@ -32,6 +32,7 @@ from parallel_eval_pysr import (
     PySRSlurmEvaluator,
     get_default_mutation_weights,
     get_default_pysr_kwargs,
+    run_scores_for_metric,
 )
 from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log
 from wandb_utils import init_wandb, log_wandb_summary, log_cpu_usage, finish_wandb
@@ -858,7 +859,7 @@ def run_hpo(
         slurm_*: SLURM job configuration
         max_samples: Max samples per dataset
         job_timeout: SLURM job timeout in seconds
-        fitness_metric: Optimization objective ('r2' or 'gt')
+        fitness_metric: Optimization objective ('gt', 'r2', or 'gt-r2')
         use_cache: Whether to use evaluation caching
 
     Returns:
@@ -873,7 +874,11 @@ def run_hpo(
     search_space = _filter_active_search_space(active_hpo_params)
     if not search_space:
         raise ValueError("No active HPO hyperparameters selected.")
-    metric_label = "R²" if fitness_metric == "r2" else "GT match rate"
+    metric_label = {
+        "gt": "GT match rate",
+        "r2": "R²",
+        "gt-r2": "GT-R² reward",
+    }[fitness_metric]
 
     logger = HPOLogger(output_dir, fitness_metric=fitness_metric)
     try:
@@ -928,10 +933,15 @@ def run_hpo(
         )
         if n_runs > 1 and baseline_details:
             per_run_avgs = []
+            metric_scores = [
+                run_scores_for_metric(detail, fitness_metric)
+                for detail in baseline_details
+            ]
             for run_idx in range(n_runs):
-                score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
-                run_scores = [d[score_key][run_idx] for d in baseline_details
-                              if len(d.get(score_key, [])) > run_idx]
+                run_scores = [
+                    scores[run_idx] for scores in metric_scores
+                    if len(scores) > run_idx
+                ]
                 if run_scores:
                     per_run_avgs.append(float(np.mean(run_scores)))
             runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
@@ -1033,10 +1043,15 @@ def run_hpo(
                     sign = "+" if improvement >= 0 else ""
                     if n_runs > 1 and result_details:
                         per_run_avgs = []
+                        metric_scores = [
+                            run_scores_for_metric(detail, fitness_metric)
+                            for detail in result_details
+                        ]
                         for run_idx in range(n_runs):
-                            score_key = "run_r2_scores" if fitness_metric == "r2" else "run_gt_scores"
-                            run_scores = [d[score_key][run_idx] for d in result_details
-                                          if len(d.get(score_key, [])) > run_idx]
+                            run_scores = [
+                                scores[run_idx] for scores in metric_scores
+                                if len(scores) > run_idx
+                            ]
                             if run_scores:
                                 per_run_avgs.append(float(np.mean(run_scores)))
                         runs_str = ", ".join(f"{s:.2f}" for s in per_run_avgs)
@@ -1126,8 +1141,11 @@ def main():
                         help="Seeds per config per dataset")
     parser.add_argument("--seed", type=int, default=42,
                         help="Master seed for reproducibility")
-    parser.add_argument("--fitness-metric", type=str, default="gt", choices=["r2", "gt"],
-                        help="Fitness metric to optimize")
+    parser.add_argument("--fitness-metric", type=str, default="gt",
+                        choices=["gt", "r2", "gt-r2"],
+                        help="HPO objective: 'gt' = whole-frontier ground-truth "
+                             "symbolic match rate; 'r2' = frontier-averaged validation "
+                             "R²; 'gt-r2' = 1.0 when solved, otherwise frontier-averaged R²")
 
     # Dataset settings
     parser.add_argument("--split", type=str, default="splits/train.txt",
