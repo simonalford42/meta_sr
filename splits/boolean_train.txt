@@ -1,0 +1,10 @@
+bool:parity6
+bool:parity8
+bool:majority7
+bool:cmp4
+bool:cmp5
+bool:mux11
+bool:dnf_8_3
+bool:expr_8_3
+bool:thresh8_5
+bool:majority9
