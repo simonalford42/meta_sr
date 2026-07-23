@@ -12,6 +12,8 @@ Usage:
         --n-trials 50 \
         --n-parallel 4 \
         --n-runs 3 \
+        --final-topk 10 \
+        --n-runs-final 10 \
         --split splits/train.txt \
         --partition <slurm_partition>
 """
@@ -216,6 +218,7 @@ class HPOLogger:
             "baseline": {},
             "trials": [],
             "best_trial": None,
+            "final_candidates": [],
             "final_summary": None,
         }
 
@@ -265,6 +268,20 @@ class HPOLogger:
         self.run_data["best_trial"] = {
             "trial_number": trial_number,
             "avg_score": avg_score,
+        }
+        self._save()
+
+    def log_final_candidates(self, candidates: List[Dict], selected_trial_number: int):
+        """Log the fresh-seed comparison used for final model selection."""
+        self.run_data["final_candidates"] = candidates
+        self.run_data["best_trial"] = {
+            "trial_number": selected_trial_number,
+            "avg_score": next(
+                candidate["final_avg_score"]
+                for candidate in candidates
+                if candidate["trial_number"] == selected_trial_number
+            ),
+            "selection_phase": "final_candidates",
         }
         self._save()
 
@@ -729,6 +746,21 @@ def create_param_config_from_trial(
     return params
 
 
+def _decode_trial_params(
+    trial,
+    search_space: Dict[str, HPOParamSpec],
+) -> Dict[str, Any]:
+    """Decode Optuna's stored categorical labels back to PySR values."""
+    params = {}
+    for name, spec in search_space.items():
+        stored_value = trial.params[name]
+        if spec.kind in {"bool", "categorical"}:
+            params[name] = dict(spec.choices)[stored_value]
+        else:
+            params[name] = stored_value
+    return params
+
+
 def evaluate_param_configs_batch(
     param_configs: List[Dict[str, Any]],
     trial_numbers: List[int],
@@ -827,6 +859,8 @@ def run_hpo(
     n_trials: int,
     n_parallel: int,
     n_runs: int,
+    n_runs_final: int,
+    final_topk: int,
     dataset_names: List[str],
     active_hpo_params: List[str],
     seed: int,
@@ -852,6 +886,8 @@ def run_hpo(
         n_trials: Total number of Optuna trials
         n_parallel: Number of configs to evaluate per SLURM batch
         n_runs: Seeds per config per dataset
+        n_runs_final: Fresh seeds per finalist config per dataset
+        final_topk: Number of top HPO trials to compare on the fresh seeds
         dataset_names: List of dataset names to evaluate on
         seed: Master seed for reproducibility
         output_dir: Directory for outputs
@@ -886,6 +922,8 @@ def run_hpo(
             "n_trials": n_trials,
             "n_parallel": n_parallel,
             "n_runs": n_runs,
+            "n_runs_final": n_runs_final,
+            "final_topk": final_topk,
             "n_datasets": len(dataset_names),
             "dataset_names": dataset_names,
             "seed": seed,
@@ -1081,18 +1119,78 @@ def run_hpo(
 
             trials_completed += batch_size
 
-        # Phase 3: Final Results
+        # Phase 3: Fresh-seed selection among the top HPO candidates
         print("\n" + "=" * 60)
-        print("Phase 3: Final Results")
+        print(
+            f"Phase 3: Final model selection "
+            f"({final_topk} candidates, {n_runs_final} fresh seeds each)"
+        )
         print("=" * 60)
 
-        best_trial = study.best_trial
-        best_params = trial_param_map.get(best_trial.number, best_params)
-        print(f"\nBest trial: {best_trial.number}")
-        print(f"Best {metric_label}: {best_trial.value:.4f}")
+        completed_trials = [
+            trial
+            for trial in study.trials
+            if trial.value is not None and np.isfinite(trial.value)
+        ]
+        completed_trials.sort(key=lambda trial: trial.value, reverse=True)
+        finalist_trials = completed_trials[:final_topk]
+        if not finalist_trials:
+            raise RuntimeError("HPO produced no successful trials for final selection.")
+
+        finalist_params = [
+            trial_param_map.get(trial.number) or _decode_trial_params(trial, search_space)
+            for trial in finalist_trials
+        ]
+        final_seed = seed + n_runs
+        print(
+            f"Re-evaluating trials {[trial.number for trial in finalist_trials]} "
+            f"with seeds {final_seed}..{final_seed + n_runs_final - 1}"
+        )
+        final_results = evaluate_param_configs_batch(
+            finalist_params,
+            [trial.number for trial in finalist_trials],
+            evaluator,
+            dataset_names,
+            base_pysr_kwargs,
+            final_seed,
+            n_runs_final,
+            fitness_metric,
+            target_noise_map=target_noise_map,
+        )
+
+        final_candidates = []
+        for trial, params, (avg_score, score_vector, result_details) in zip(
+            finalist_trials, finalist_params, final_results
+        ):
+            final_candidates.append({
+                "trial_number": trial.number,
+                "hpo_avg_score": trial.value,
+                "final_avg_score": avg_score,
+                "params": params,
+                "score_vector": score_vector,
+                "result_details": result_details,
+                "seed_start": final_seed,
+                "n_runs": n_runs_final,
+            })
+            print(
+                f"  Trial {trial.number}: HPO {metric_label}={trial.value:.4f}, "
+                f"fresh-seed {metric_label}={avg_score:.4f}"
+            )
+
+        selected_index = int(np.argmax([
+            candidate["final_avg_score"] for candidate in final_candidates
+        ]))
+        selected_trial = finalist_trials[selected_index]
+        best_params = finalist_params[selected_index]
+        best_score = final_candidates[selected_index]["final_avg_score"]
+        logger.log_final_candidates(final_candidates, selected_trial.number)
+
+        print(f"\nSelected trial: {selected_trial.number}")
+        print(f"Final-selection {metric_label}: {best_score:.4f}")
+        print(f"Original HPO {metric_label}: {selected_trial.value:.4f}")
         print(f"Baseline {metric_label}: {baseline_r2:.4f}")
-        print(f"Improvement: {best_trial.value - baseline_r2:+.4f} "
-              f"({(best_trial.value - baseline_r2) / baseline_r2 * 100:+.2f}%)")
+        print(f"Improvement: {best_score - baseline_r2:+.4f} "
+              f"({(best_score - baseline_r2) / baseline_r2 * 100:+.2f}%)")
 
         print(f"\nBest params:")
         for name, value in best_params.items():
@@ -1104,20 +1202,20 @@ def run_hpo(
             else:
                 print(f"  {name}: {value!r} (default: {default!r})")
 
-        logger.finalize(best_params, best_trial.value, baseline_r2)
+        logger.finalize(best_params, best_score, baseline_r2)
 
         log_wandb_summary(
             wandb_run,
             evaluator=evaluator,
             extra_summary={
-                "best_score": best_trial.value,
+                "best_score": best_score,
                 "baseline_score": baseline_r2,
-                "improvement": best_trial.value - baseline_r2,
-                "best_trial_number": best_trial.number,
+                "improvement": best_score - baseline_r2,
+                "best_trial_number": selected_trial.number,
             },
         )
 
-        return best_params, best_trial.value
+        return best_params, best_score
     finally:
         logger.close()
 
@@ -1139,6 +1237,10 @@ def main():
                         help="Configs to evaluate per SLURM batch")
     parser.add_argument("--n-runs", type=int, default=3,
                         help="Seeds per config per dataset")
+    parser.add_argument("--n-runs-final", type=int, default=10,
+                        help="Fresh seeds per finalist config per dataset")
+    parser.add_argument("--final-topk", type=int, default=10,
+                        help="Top HPO candidates to compare using fresh seeds")
     parser.add_argument("--seed", type=int, default=42,
                         help="Master seed for reproducibility")
     parser.add_argument("--fitness-metric", type=str, default="gt",
@@ -1191,6 +1293,10 @@ def main():
                              "the Optuna study so TPE benefits from prior history.")
 
     args = parser.parse_args()
+    if args.n_runs_final < 1:
+        parser.error("--n-runs-final must be at least 1")
+    if args.final_topk < 1:
+        parser.error("--final-topk must be at least 1")
 
     # Set up output directory
     if args.output_dir is None:
@@ -1305,6 +1411,8 @@ def main():
         "n_trials": args.n_trials,
         "n_parallel": args.n_parallel,
         "n_runs": args.n_runs,
+        "n_runs_final": args.n_runs_final,
+        "final_topk": args.final_topk,
         "seed": args.seed,
         "fitness_metric": args.fitness_metric,
         "split": args.split,
@@ -1329,6 +1437,8 @@ def main():
         n_trials=args.n_trials,
         n_parallel=args.n_parallel,
         n_runs=args.n_runs,
+        n_runs_final=args.n_runs_final,
+        final_topk=args.final_topk,
         dataset_names=dataset_names,
         active_hpo_params=active_hpo_params,
         seed=args.seed,
