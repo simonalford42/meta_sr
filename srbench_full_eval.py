@@ -120,33 +120,80 @@ def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000):
 
 
 def run_black_box(args, output_dir, source, manifest, run):
-    if source.backend != "pysr":
-        raise ValueError("--black-box currently requires the PySR backend")
-    from parallel_eval_pysr import PySRSlurmEvaluator
-
     datasets = ([d.strip() for d in args.datasets.split(",") if d.strip()]
                 if args.datasets else load_black_box_datasets())
-    evaluator = PySRSlurmEvaluator(
-        results_dir=output_dir, partition=args.partition,
-        time_limit=args.time_limit, mem_per_cpu=args.mem_per_cpu,
-        dataset_max_samples=args.black_box_max_samples, data_seed=args.seed,
-        use_cache=False, job_timeout=args.job_timeout,
-        pysr_wall_limit=args.pysr_wall_limit, max_retries=args.max_retries,
-    )
-    handle = evaluator.submit_configs(
-        configs=[source.config], dataset_names=datasets, seed=args.seed,
-        n_runs=1, fitness_metric="r2", black_box=True,
-    )
+    if source.backend == "fullsr":
+        from parallel_eval_fullsr import FullSRSlurmEvaluator
+
+        evaluator = FullSRSlurmEvaluator(
+            results_dir=output_dir,
+            partition=args.partition,
+            time_limit=args.time_limit,
+            mem_per_cpu=args.mem_per_cpu,
+            dataset_max_samples=args.black_box_max_samples,
+            data_seed=args.seed,
+            use_cache=False,
+            job_timeout=args.job_timeout,
+            wall_limit=args.fullsr_wall_limit,
+            max_retries=args.max_retries,
+        )
+        before = set(evaluator.slurm_dir.glob("eval_*"))
+        evaluator.evaluate_configs(
+            configs=[source.config],
+            dataset_names=datasets,
+            seed=args.seed,
+            n_runs=1,
+            fitness_metric="r2",
+            fullsr_wall_limit=args.fullsr_wall_limit,
+            split_label="srbench_black_box",
+            black_box=True,
+        )
+        created = sorted(set(evaluator.slurm_dir.glob("eval_*")) - before)
+        if len(created) != 1:
+            raise RuntimeError(
+                f"Expected one new FullSR black-box batch, found {len(created)}"
+            )
+        batch_dir = created[0]
+    else:
+        from parallel_eval_pysr import PySRSlurmEvaluator
+
+        evaluator = PySRSlurmEvaluator(
+            results_dir=output_dir,
+            partition=args.partition,
+            time_limit=args.time_limit,
+            mem_per_cpu=args.mem_per_cpu,
+            dataset_max_samples=args.black_box_max_samples,
+            data_seed=args.seed,
+            use_cache=False,
+            job_timeout=args.job_timeout,
+            pysr_wall_limit=args.pysr_wall_limit,
+            max_retries=args.max_retries,
+        )
+        handle = evaluator.submit_configs(
+            configs=[source.config],
+            dataset_names=datasets,
+            seed=args.seed,
+            n_runs=1,
+            fitness_metric="r2",
+            black_box=True,
+        )
+        evaluator.collect_batch(handle)
+        batch_dir = handle.batch_dir
+
     manifest["black_box"] = {
         "n_datasets": len(datasets), "datasets": datasets, "n_runs": 1,
-        "batch_dir": f"slurm_pysr/{Path(handle.batch_dir).name}",
+        "backend": source.backend,
+        "batch_dir": (
+            f"slurm_fullsr/{Path(batch_dir).name}"
+            if source.backend == "fullsr"
+            else f"slurm_pysr/{Path(batch_dir).name}"
+        ),
         "max_train_samples": args.black_box_max_samples,
     }
     with open(Path(output_dir) / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
-    evaluator.collect_batch(handle)
     n_present = save_black_box_results(
-        output_dir, handle.batch_dir, args.black_box_max_samples
+        output_dir, batch_dir, args.black_box_max_samples
     )
     print(f"\nBlack-box results: {n_present}/{len(datasets)} dataset frontiers present.")
     if run is not None:
@@ -189,7 +236,8 @@ def main():
                         help="Evaluate ground-truth problems (the default unless "
                              "--black-box is passed alone).")
     parser.add_argument("--black-box", action="store_true",
-                        help="Evaluate the 122 SRBench black-box regression datasets.")
+                        help="Evaluate the 122 SRBench black-box regression datasets "
+                             "(supports PySR and FullSR evolution outputs).")
     parser.add_argument("--datasets", type=str, default=None,
                         help="Comma-separated dataset override (for smoke tests).")
     parser.add_argument("--max-evals", type=int, default=1_000_000)

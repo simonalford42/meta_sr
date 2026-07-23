@@ -85,6 +85,10 @@ class FullSRTaskSpec:
     # Wall-clock cap per task (seconds). Workers raise on overrun and the
     # parent records a deterministic error.
     wall_limit: int = 600
+    # Use the official SRBench black-box protocol: split the full dataset 75/25
+    # before applying the training-row cap, scale X/y from the training split,
+    # and score every search-frontier equation on the held-out test split.
+    black_box: bool = False
 
     def to_json_dict(self) -> Dict:
         return asdict(self)
@@ -108,6 +112,8 @@ class FullSRTaskResult:
     runtime_seconds: float = 0.0
     n_evals: Optional[int] = None
     target_noise: float = 0.0
+    # Test-set R²/complexity rows retained for SRBench black-box reporting.
+    pareto_frontier: Optional[List[Dict[str, Any]]] = None
 
     def to_json_dict(self) -> Dict:
         return asdict(self)
@@ -119,6 +125,7 @@ class FullSRTaskResult:
         d.setdefault("runtime_seconds", 0.0)
         d.setdefault("n_evals", None)
         d.setdefault("target_noise", 0.0)
+        d.setdefault("pareto_frontier", None)
         return cls(**d)
 
 
@@ -337,20 +344,46 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
 
         np.random.seed(spec.data_seed)
         _rnd.seed(spec.data_seed)
+        # Black-box data must be split before the training-only row cap is
+        # applied, matching SRBench's evaluate_model.py protocol.
+        load_cap = None if spec.black_box else spec.max_samples
         X, y, ground_truth_formula = load_srbench_dataset(
-            spec.dataset_name, max_samples=spec.max_samples
+            spec.dataset_name, max_samples=load_cap
         )
         _log(f"Dataset loaded: X={X.shape}, y={y.shape}")
 
         np.random.seed(run_seed)
         _rnd.seed(run_seed)
-        n_samples = len(y)
-        n_train = int(0.8 * n_samples)
-        indices = np.random.permutation(n_samples)
-        train_idx = indices[:n_train]
-        val_idx = indices[n_train:]
-        X_train, y_train = X[train_idx], y[train_idx]
-        X_val, y_val = X[val_idx], y[val_idx]
+        y_scaler = None
+        if spec.black_box:
+            from sklearn.model_selection import train_test_split
+            from sklearn.preprocessing import StandardScaler
+
+            X_train, X_val, y_train, y_val = train_test_split(
+                X,
+                y,
+                train_size=0.75,
+                test_size=0.25,
+                random_state=run_seed,
+            )
+            if spec.max_samples and len(y_train) > spec.max_samples:
+                keep = np.random.choice(len(y_train), spec.max_samples)
+                X_train, y_train = X_train[keep], y_train[keep]
+            x_scaler = StandardScaler()
+            y_scaler = StandardScaler()
+            X_train = x_scaler.fit_transform(X_train)
+            X_val = x_scaler.transform(X_val)
+            y_train = y_scaler.fit_transform(
+                y_train.reshape(-1, 1)
+            ).ravel()
+        else:
+            n_samples = len(y)
+            n_train = int(0.8 * n_samples)
+            indices = np.random.permutation(n_samples)
+            train_idx = indices[:n_train]
+            val_idx = indices[n_train:]
+            X_train, y_train = X[train_idx], y[train_idx]
+            X_val, y_val = X[val_idx], y[val_idx]
 
         if spec.target_noise > 0:
             noise_seed = run_seed + 1000
@@ -475,28 +508,34 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                     "e": math.e,
                 }
             )
-            return eval(expr, {"__builtins__": {}}, ns)
+            pred = np.asarray(eval(expr, {"__builtins__": {}}, ns), dtype=float)
+            if pred.ndim == 0:
+                pred = np.full(X_val.shape[0], float(pred))
+            if spec.black_box and y_scaler is not None:
+                pred = y_scaler.inverse_transform(pred.reshape(-1, 1)).ravel()
+            return pred
 
         # best_df_index for the GT check = row that produced best_loss
         best_df_index = int(equations_df["loss"].idxmin())
 
         gt_match_score = None
-        try:
-            from evaluation import check_pysr_frontier_symbolic_match
+        if not spec.black_box:
+            try:
+                from evaluation import check_pysr_frontier_symbolic_match
 
-            gt_match_result = check_pysr_frontier_symbolic_match(
-                equations_df=equations_df,
-                best_df_index=best_df_index,
-                ground_truth_str=ground_truth_for_match,
-                var_names=variable_names,
-                timeout_seconds_per_expression=3,
-                predict_fn=_predict_row,
-                y=y_val,
-                min_r2=0.5,
-            )
-            gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
-        except Exception:
-            gt_match_score = 0.0
+                gt_match_result = check_pysr_frontier_symbolic_match(
+                    equations_df=equations_df,
+                    best_df_index=best_df_index,
+                    ground_truth_str=ground_truth_for_match,
+                    var_names=variable_names,
+                    timeout_seconds_per_expression=3,
+                    predict_fn=_predict_row,
+                    y=y_val,
+                    min_r2=0.5,
+                )
+                gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
+            except Exception:
+                gt_match_score = 0.0
 
         # Validation R²
         try:
@@ -511,6 +550,25 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
         ss_tot = np.sum((y_val - np.mean(y_val)) ** 2)
         r2 = 1 - (ss_res / (ss_tot + 1e-10))
         r2 = max(float(r2), 0.0)
+
+        pareto_frontier = None
+        if spec.black_box:
+            pareto_frontier = []
+            for idx, row in equations_df.iterrows():
+                try:
+                    pred = np.asarray(_predict_row(int(idx)), dtype=float)
+                    if pred.shape != y_val.shape:
+                        continue
+                    pred = np.clip(pred, -1e10, 1e10)
+                    test_r2 = 1.0 - np.sum((y_val - pred) ** 2) / (ss_tot + 1e-10)
+                    if np.isfinite(test_r2):
+                        pareto_frontier.append({
+                            "complexity": int(row["complexity"]),
+                            "test_r2": float(test_r2),
+                            "equation": str(row["equation"]),
+                        })
+                except Exception:
+                    continue
         _log(f"Validation R²={r2:.4f}, gt={gt_match_score}, best={best_equation}")
 
         return FullSRTaskResult(
@@ -525,6 +583,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             runtime_seconds=float(_time.time() - start_time),
             n_evals=n_evals,
             target_noise=spec.target_noise,
+            pareto_frontier=pareto_frontier,
         )
     except Exception as e:
         return FullSRTaskResult(
@@ -539,6 +598,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             runtime_seconds=float(_time.time() - start_time),
             n_evals=None,
             target_noise=spec.target_noise,
+            pareto_frontier=None,
         )
 
 
@@ -701,6 +761,7 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         run_index_start_per_config: Optional[List[int]] = None,
         fullsr_wall_limit: Optional[int] = None,
         split_label: Optional[str] = None,
+        black_box: bool = False,
     ) -> List[Tuple[float, List[float], List[Dict]]]:
         import time as _time_mod
 
@@ -746,6 +807,7 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
                                     if fullsr_wall_limit is not None
                                     else self.wall_limit
                                 ),
+                                black_box=black_box,
                             )
                         )
 

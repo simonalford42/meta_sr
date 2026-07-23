@@ -1,5 +1,9 @@
 import json
 
+import numpy as np
+
+import parallel_eval_fullsr
+from parallel_eval_fullsr import FullSRTaskResult, FullSRTaskSpec
 from parallel_eval_pysr import PySRTaskResult
 from srbench_full_eval import (
     _test_pareto,
@@ -54,3 +58,54 @@ def test_black_box_frontier_round_trip_and_outputs(tmp_path):
     assert save_black_box_results(tmp_path, batch_dir) == 1
     assert (tmp_path / "srbench_black_box_results.json").exists()
     assert (tmp_path / "black_box_r2_complexity_pareto.png").exists()
+
+
+def test_fullsr_black_box_protocol_and_frontier(monkeypatch):
+    X = np.arange(40, dtype=float).reshape(-1, 1)
+    y = 2.0 * X[:, 0] + 3.0
+    captured = {}
+
+    monkeypatch.setattr(
+        "utils.load_srbench_dataset",
+        lambda dataset_name, max_samples=None: (X, y, ""),
+    )
+    monkeypatch.setattr(parallel_eval_fullsr, "_import_julia", lambda: object())
+
+    def fake_fit(_jl, _mod_name, X_train, y_train, _variable_names, _kwargs):
+        captured["X_train"] = np.asarray(X_train)
+        captured["y_train"] = np.asarray(y_train)
+        return {
+            "rows": [
+                {"complexity": 1, "loss": 1.0, "equation": "0.0"},
+                {"complexity": 2, "loss": 0.0, "equation": "x0"},
+            ],
+            "n_evals": 123,
+        }
+
+    monkeypatch.setattr(parallel_eval_fullsr, "_run_fit", fake_fit)
+    spec = FullSRTaskSpec(
+        config_id=0,
+        dataset_name="toy",
+        policy_name="basic",
+        engine_kwargs={},
+        seed=42,
+        data_seed=42,
+        max_samples=10,
+        black_box=True,
+    )
+
+    result = parallel_eval_fullsr._evaluate_fullsr_task(spec)
+
+    assert result.error is None
+    assert captured["X_train"].shape == (10, 1)
+    assert captured["y_train"].shape == (10,)
+    np.testing.assert_allclose(captured["X_train"].mean(), 0.0, atol=1e-12)
+    np.testing.assert_allclose(captured["y_train"].mean(), 0.0, atol=1e-12)
+    assert result.r2_score > 0.999
+    assert result.gt_match_score is None
+    assert len(result.pareto_frontier) == 2
+    assert result.pareto_frontier[1]["test_r2"] > 0.999
+    assert (
+        FullSRTaskResult.from_json_dict(result.to_json_dict()).pareto_frontier
+        == result.pareto_frontier
+    )

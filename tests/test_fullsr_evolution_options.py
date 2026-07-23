@@ -103,6 +103,7 @@ def test_evaluator_expands_noise_levels_and_applies_seed_and_wall_overrides(
         target_noise_map={"dataset": 0.001},
         run_index_start_per_config=[100_000],
         fullsr_wall_limit=1800,
+        black_box=True,
     )
 
     tasks = captured["tasks"]
@@ -110,3 +111,4 @@ def test_evaluator_expands_noise_levels_and_applies_seed_and_wall_overrides(
     assert [task["run_index"] for task in tasks] == [100_000, 100_000, 100_001, 100_001]
     assert [task["target_noise"] for task in tasks] == [0.0, 0.1, 0.0, 0.1]
     assert {task["wall_limit"] for task in tasks} == {1800}
+    assert {task["black_box"] for task in tasks} == {True}
