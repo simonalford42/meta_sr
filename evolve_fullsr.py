@@ -1198,7 +1198,16 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=10)
     parser.add_argument("--val-n-runs", type=int, default=10)
-    parser.add_argument("--fitness-metric", type=str, default="gt", choices=["r2", "gt"])
+    parser.add_argument(
+        "--fitness-metric",
+        type=str,
+        default="gt",
+        choices=["r2", "gt", "gt-r2"],
+        help=(
+            "Evolution objective: 'gt' = symbolic match rate; 'r2' = validation "
+            "R²; 'gt-r2' = 1.0 for a symbolic match, otherwise validation R²."
+        ),
+    )
     parser.add_argument(
         "--mutation-mode",
         type=str,

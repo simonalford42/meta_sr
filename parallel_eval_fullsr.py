@@ -533,7 +533,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             r2_score=-1.0,
             best_equation=None,
             best_loss=float("inf"),
-            gt_match_score=0.0 if spec.fitness_metric == "gt" else None,
+            gt_match_score=0.0 if spec.fitness_metric in ("gt", "gt-r2") else None,
             error=f"Error: {_summarize_error(str(e))}",
             run_index=spec.run_index,
             runtime_seconds=float(_time.time() - start_time),
@@ -575,7 +575,15 @@ def _aggregate_fullsr_results(
                 ]
                 best_eqs = [r.best_equation for r in runs_sorted]
                 target_noises = [r.target_noise for r in runs_sorted]
-                scores = gts if fitness_metric == "gt" else r2s
+                if fitness_metric == "gt":
+                    scores = gts
+                elif fitness_metric == "gt-r2":
+                    scores = [
+                        1.0 if gt >= 1.0 else max(r2, 0.0)
+                        for r2, gt in zip(r2s, gts)
+                    ]
+                else:
+                    scores = r2s
                 score_vector.append(float(np.mean(scores)))
                 evals = [r.n_evals for r in runs_sorted if r.n_evals is not None]
                 details.append(
@@ -594,7 +602,7 @@ def _aggregate_fullsr_results(
                     }
                 )
             else:
-                score_vector.append(0.0 if fitness_metric == "gt" else -1.0)
+                score_vector.append(-1.0 if fitness_metric == "r2" else 0.0)
                 details.append(
                     {
                         "dataset": dataset_name,
