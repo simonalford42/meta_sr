@@ -17,7 +17,9 @@ and bad-node handling.
 ``--evolve-results`` auto-detects both evolve_pysr.py OperatorBundles and
 evolve_fullsr.py SkeletonBundles from their run_data.json schema.
 
-Default scale: 133 tasks x 10 seeds x 4 noise levels (0.0, 0.001, 0.01, 0.1).
+Default scale: 133 tasks x 10 seeds x 4 noise levels (0.0, 0.001, 0.01, 0.1)
+for ground truth, and 122 datasets x 10 seeds for --black-box. Both come from
+--n-trials-per-dataset.
 Results land in ``runs/<run_id>/`` (manifest.json + srbench_full_results.json)
 and are logged to the "meta-sr" wandb project as a Table plus solve-rate /
 solve-time metrics for srbench(all) / feynman / strogatz per noise level.
@@ -58,25 +60,55 @@ def _test_pareto(rows):
     return frontier
 
 
-def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000):
-    """Persist per-dataset test frontiers and plot their aggregate envelope."""
+def _envelope(rows, grid):
+    """Best-so-far test R² at each complexity in `grid` for one trial frontier."""
+    import numpy as np
+
+    values = np.full(len(grid), np.nan)
+    best = np.nan
+    j = 0
+    for i, complexity in enumerate(grid):
+        while j < len(rows) and rows[j]["complexity"] <= complexity:
+            best = rows[j]["test_r2"]
+            j += 1
+        values[i] = best
+    return values
+
+
+def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000,
+                           n_trials=1):
+    """Persist per-dataset per-trial test frontiers and plot their envelope.
+
+    Each dataset is run `n_trials` times (distinct seeds -> distinct 75/25
+    splits and searches); results are stored per trial so downstream analysis
+    can quantify seed variance. The plot shows each dataset's median-across-
+    trials envelope, plus the median of those across datasets.
+    """
     with open(Path(batch_dir) / "combined.json") as f:
         raw = json.load(f)
     datasets = {}
     for result in raw:
         if result.get("error") or not result.get("pareto_frontier"):
             continue
-        datasets[result["dataset_name"]] = _test_pareto(result["pareto_frontier"])
+        trials = datasets.setdefault(result["dataset_name"], {})
+        trials[int(result.get("run_index") or 0)] = _test_pareto(
+            result["pareto_frontier"]
+        )
+    datasets = {
+        name: [trials[i] for i in sorted(trials)] for name, trials in datasets.items()
+    }
 
     payload = {
         "protocol": {
-            "trials_per_dataset": 1,
+            "trials_per_dataset": n_trials,
             "split": "75/25",
             "scale_x": True,
             "scale_y": True,
             "max_train_samples": max_train_samples,
             "selection": "test R2/complexity Pareto frontier",
+            "layout": "datasets[name] = list of per-trial frontiers",
         },
+        "n_trials_present": {name: len(t) for name, t in datasets.items()},
         "datasets": datasets,
     }
     json_path = Path(output_dir) / "srbench_black_box_results.json"
@@ -90,23 +122,26 @@ def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000):
         import numpy as np
 
         max_complexity = max(
-            point["complexity"] for rows in datasets.values() for point in rows
+            point["complexity"]
+            for trials in datasets.values()
+            for rows in trials
+            for point in rows
         )
         grid = np.arange(1, max_complexity + 1)
         envelopes = []
         fig, ax = plt.subplots(figsize=(8, 5))
-        for rows in datasets.values():
-            values = np.full(len(grid), np.nan)
-            best = np.nan
-            j = 0
-            for i, complexity in enumerate(grid):
-                while j < len(rows) and rows[j]["complexity"] <= complexity:
-                    best = rows[j]["test_r2"]
-                    j += 1
-                values[i] = best
-            envelopes.append(values)
-            ax.plot(grid, values, color="tab:blue", alpha=0.06, linewidth=0.7)
-        median = np.nanmedian(np.asarray(envelopes), axis=0)
+        # Low complexities can be NaN for every trial (no frontier point that
+        # small), so all-NaN medians are expected -- don't warn about them.
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            for trials in datasets.values():
+                # Median across this dataset's trials, then plot the curve.
+                per_trial = np.asarray([_envelope(rows, grid) for rows in trials])
+                values = np.nanmedian(per_trial, axis=0)
+                envelopes.append(values)
+                ax.plot(grid, values, color="tab:blue", alpha=0.06, linewidth=0.7)
+            median = np.nanmedian(np.asarray(envelopes), axis=0)
         ax.plot(grid, median, color="black", linewidth=2.5,
                 label=f"Median envelope ({len(datasets)} datasets)")
         ax.set(xlabel="Complexity", ylabel="Held-out test R²",
@@ -122,6 +157,28 @@ def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000):
 def run_black_box(args, output_dir, source, manifest, run):
     datasets = ([d.strip() for d in args.datasets.split(",") if d.strip()]
                 if args.datasets else load_black_box_datasets())
+    n_trials = args.n_trials_per_dataset
+    # Black-box datasets are much larger than the ground-truth ones, so they get
+    # their own (higher) per-fit wall limit. <=0 means "no limit": the fit then
+    # gets the whole SLURM --time minus a margin, which is the real bound anyway
+    # (SLURM would kill the task at --time regardless). Keeping an explicit
+    # number rather than None matters because the stall/job watchdogs floor
+    # themselves off the wall limit -- with no limit at all a long-but-healthy
+    # fit trips the 1800s job watchdog and the array gets cancelled.
+    wall_limit = args.black_box_wall_limit
+    if wall_limit <= 0:
+        from parallel_eval_pysr import _slurm_time_to_seconds
+        slurm_s = _slurm_time_to_seconds(args.time_limit)
+        if slurm_s is None:
+            raise ValueError(
+                f"--black-box-wall-limit <= 0 needs a parseable --time-limit "
+                f"(got {args.time_limit!r})"
+            )
+        wall_limit = max(60, int(slurm_s) - 120)
+        print(f"  --black-box-wall-limit disabled: using --time-limit "
+              f"{args.time_limit} -> {wall_limit}s per fit")
+    print(f"Black-box: {len(datasets)} datasets x {n_trials} trials = "
+          f"{len(datasets) * n_trials} runs  |  per-fit wall limit: {wall_limit}s")
     if source.backend == "fullsr":
         from parallel_eval_fullsr import FullSRSlurmEvaluator
 
@@ -134,7 +191,7 @@ def run_black_box(args, output_dir, source, manifest, run):
             data_seed=args.seed,
             use_cache=False,
             job_timeout=args.job_timeout,
-            wall_limit=args.fullsr_wall_limit,
+            wall_limit=wall_limit,
             max_retries=args.max_retries,
         )
         before = set(evaluator.slurm_dir.glob("eval_*"))
@@ -142,9 +199,9 @@ def run_black_box(args, output_dir, source, manifest, run):
             configs=[source.config],
             dataset_names=datasets,
             seed=args.seed,
-            n_runs=1,
+            n_runs=n_trials,
             fitness_metric="r2",
-            fullsr_wall_limit=args.fullsr_wall_limit,
+            fullsr_wall_limit=wall_limit,
             split_label="srbench_black_box",
             black_box=True,
         )
@@ -166,14 +223,14 @@ def run_black_box(args, output_dir, source, manifest, run):
             data_seed=args.seed,
             use_cache=False,
             job_timeout=args.job_timeout,
-            pysr_wall_limit=args.pysr_wall_limit,
+            pysr_wall_limit=wall_limit,
             max_retries=args.max_retries,
         )
         handle = evaluator.submit_configs(
             configs=[source.config],
             dataset_names=datasets,
             seed=args.seed,
-            n_runs=1,
+            n_runs=n_trials,
             fitness_metric="r2",
             black_box=True,
         )
@@ -181,7 +238,8 @@ def run_black_box(args, output_dir, source, manifest, run):
         batch_dir = handle.batch_dir
 
     manifest["black_box"] = {
-        "n_datasets": len(datasets), "datasets": datasets, "n_runs": 1,
+        "n_datasets": len(datasets), "datasets": datasets, "n_runs": n_trials,
+        "wall_limit": wall_limit,
         "backend": source.backend,
         "batch_dir": (
             f"slurm_fullsr/{Path(batch_dir).name}"
@@ -193,7 +251,7 @@ def run_black_box(args, output_dir, source, manifest, run):
     with open(Path(output_dir) / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
     n_present = save_black_box_results(
-        output_dir, batch_dir, args.black_box_max_samples
+        output_dir, batch_dir, args.black_box_max_samples, n_trials=n_trials
     )
     print(f"\nBlack-box results: {n_present}/{len(datasets)} dataset frontiers present.")
     if run is not None:
@@ -245,8 +303,11 @@ def main():
     parser.add_argument("--black-box-max-samples", type=int, default=10_000,
                         help="Training-row cap for black-box datasets (SRBench protocol).")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--n-runs", type=int, default=10,
-                        help="Seeds per task/noise (actual seeds = seed .. seed+n_runs-1).")
+    parser.add_argument("--n-trials-per-dataset", "--n-runs", type=int, default=10,
+                        dest="n_trials_per_dataset",
+                        help="Seeds per dataset, for both ground-truth (per "
+                             "task/noise) and black-box evaluation (actual "
+                             "seeds = seed .. seed+n_trials-1).")
     parser.add_argument("--noise-levels", type=float, nargs="+", default=DEFAULT_NOISE_LEVELS)
 
     parser.add_argument("--partition", type=str, default="default_partition")
@@ -256,6 +317,11 @@ def main():
     parser.add_argument("--pysr-wall-limit", type=int, default=600)
     parser.add_argument("--fullsr-wall-limit", type=int, default=600,
                         help="Hard wall-clock limit for each FullSR fit.")
+    parser.add_argument("--black-box-wall-limit", type=int, default=1800,
+                        help="Hard wall-clock limit (seconds) per black-box fit. "
+                             "Black-box datasets are far larger than the "
+                             "ground-truth ones; 0 disables the limit entirely "
+                             "(only SLURM --time bounds the fit).")
     parser.add_argument("--max-retries", type=int, default=2,
                         help="Retry rounds for transient/missing tasks per batch.")
     parser.add_argument("--no-cache", action="store_true")
@@ -277,9 +343,9 @@ def main():
         datasets = [d.strip() for d in args.datasets.split(",") if d.strip()]
     else:
         datasets = load_dataset_names_from_split(args.split_file)
-    print(f"Datasets: {len(datasets)}  |  seeds: {args.n_runs}  |  "
+    print(f"Datasets: {len(datasets)}  |  seeds: {args.n_trials_per_dataset}  |  "
           f"noise levels: {args.noise_levels}  |  total runs: "
-          f"{len(datasets) * args.n_runs * len(args.noise_levels)}")
+          f"{len(datasets) * args.n_trials_per_dataset * len(args.noise_levels)}")
 
     source = load_evaluation_source(args)
     config, mode_name, method_meta = source.config, source.mode, source.method_meta
@@ -299,7 +365,8 @@ def main():
         if not args.no_wandb:
             from wandb_utils import init_wandb
             run = init_wandb(
-                config={**manifest, "black_box_n_runs": 1},
+                config={**manifest,
+                        "black_box_n_runs": args.n_trials_per_dataset},
                 script_name="srbench_full_eval.py", output_dir=output_dir,
                 extra_tags=["srbench_full_eval", "black_box", mode_name],
             )
@@ -354,7 +421,7 @@ def main():
                 "max_evals": args.max_evals,
                 "max_samples": args.max_samples,
                 "seed": args.seed,
-                "n_runs": args.n_runs,
+                "n_runs": args.n_trials_per_dataset,
                 "noise_levels": args.noise_levels,
                 "n_datasets": len(datasets),
                 "split_file": args.split_file,
@@ -372,8 +439,8 @@ def main():
         "max_evals": args.max_evals,
         "max_samples": args.max_samples,
         "seed": args.seed,
-        "n_runs": args.n_runs,
-        "seeds": [args.seed + i for i in range(args.n_runs)],
+        "n_runs": args.n_trials_per_dataset,
+        "seeds": [args.seed + i for i in range(args.n_trials_per_dataset)],
         "noise_levels": args.noise_levels,
         "split_file": args.split_file,
         "n_datasets": len(datasets),
@@ -392,7 +459,7 @@ def main():
             configs=[config],
             dataset_names=datasets,
             seed=args.seed,
-            n_runs=args.n_runs,
+            n_runs=args.n_trials_per_dataset,
             fitness_metric="gt",
             fullsr_wall_limit=args.fullsr_wall_limit,
             split_label=args.split_file,
@@ -406,7 +473,7 @@ def main():
         manifest["batches"].append({
             "noise": "all",
             "batch_dir": f"slurm_fullsr/{batch_dir.name}",
-            "n_tasks": len(datasets) * args.n_runs * len(args.noise_levels),
+            "n_tasks": len(datasets) * args.n_trials_per_dataset * len(args.noise_levels),
         })
         with open(Path(output_dir) / "manifest.json", "w") as f:
             json.dump(manifest, f, indent=2)
@@ -419,7 +486,7 @@ def main():
                 configs=[config],
                 dataset_names=datasets,
                 seed=args.seed,
-                n_runs=args.n_runs,
+                n_runs=args.n_trials_per_dataset,
                 target_noise_map=noise_map,
                 fitness_metric="gt",
             )
@@ -449,7 +516,7 @@ def main():
     keyed = srio.build_keyed_results(output_dir, manifest)
     srio.save_keyed_results(output_dir, keyed, meta={
         "mode": mode_name, "n_datasets": len(datasets),
-        "n_runs": args.n_runs, "noise_levels": args.noise_levels,
+        "n_runs": args.n_trials_per_dataset, "noise_levels": args.noise_levels,
     })
     n_present = sum(1 for e in keyed.values() if e["present"] and e["error"] is None)
     print(f"\nResults: {n_present}/{len(keyed)} runs present.")

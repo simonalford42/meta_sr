@@ -87,13 +87,9 @@ def load_dataset(dataset_name, pmlb_path=None, max_samples=None, seed=42):
         feature_names: List of feature names
         metadata: Dict with dataset info
     """
-    if pmlb_path is None:
-        pmlb_path = Path(__file__).parent / 'pmlb' / 'datasets'
-    else:
-        pmlb_path = Path(pmlb_path)
+    from utils import resolve_pmlb_paths
 
-    dataset_path = pmlb_path / dataset_name / f"{dataset_name}.tsv.gz"
-    metadata_path = pmlb_path / dataset_name / "metadata.yaml"
+    dataset_path, metadata_path = resolve_pmlb_paths(dataset_name, pmlb_path)
 
     if not dataset_path.exists():
         raise FileNotFoundError(f"Dataset not found: {dataset_path}")

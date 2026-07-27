@@ -19,6 +19,26 @@ import sys
 # Path to PMLB datasets
 PMLB_PATH = Path(__file__).parent / 'pmlb' / 'datasets'
 
+
+def resolve_pmlb_paths(dataset_name: str, pmlb_path=None):
+    """Return (data_tsv, metadata_yaml) for a PMLB dataset name.
+
+    PMLB retired a handful of datasets by renaming their directory (and the TSV
+    inside it) to ``_deprecated_<name>`` rather than deleting them. Two of the
+    122 SRBench black-box datasets (195_auto_price, 207_autoPrice) live there,
+    so fall back to the deprecated copy when the canonical path is missing.
+    Paths are returned even if neither exists; callers report the canonical one.
+    """
+    root = PMLB_PATH if pmlb_path is None else Path(pmlb_path)
+    data = root / dataset_name / f"{dataset_name}.tsv.gz"
+    meta = root / dataset_name / "metadata.yaml"
+    if not data.exists():
+        alt_name = f"_deprecated_{dataset_name}"
+        alt = root / alt_name / f"{alt_name}.tsv.gz"
+        if alt.exists():
+            return alt, root / alt_name / "metadata.yaml"
+    return data, meta
+
 # Root directory for run outputs. Each run lives at runs/<SLURM_JOB_ID> (or
 # runs/local_<timestamp> when not running under SLURM).
 RUNS_ROOT = Path(__file__).parent / "runs"
@@ -175,8 +195,7 @@ def load_srbench_dataset(dataset_name: str, max_samples: Optional[int] = None,
     if dataset_name.startswith("bool:") or dataset_name.startswith("iwls:"):
         return _load_boolean_dataset(dataset_name, max_samples, data_seed)
 
-    dataset_path = PMLB_PATH / dataset_name / f"{dataset_name}.tsv.gz"
-    metadata_path = PMLB_PATH / dataset_name / "metadata.yaml"
+    dataset_path, metadata_path = resolve_pmlb_paths(dataset_name)
 
     if not dataset_path.exists():
         raise FileNotFoundError(f"Dataset not found: {dataset_path}")
@@ -235,7 +254,7 @@ def get_dataset_gt_formula(dataset_name: str) -> str:
     Returns the RHS of the first equation line in the description, or ""
     if not found. Lightweight: doesn't load the TSV.
     """
-    metadata_path = PMLB_PATH / dataset_name / "metadata.yaml"
+    _, metadata_path = resolve_pmlb_paths(dataset_name)
     if not metadata_path.exists():
         return ""
     try:

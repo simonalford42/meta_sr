@@ -18,6 +18,18 @@ def test_black_box_dataset_list_matches_srbench():
     assert len(datasets) == len(set(datasets))
 
 
+def test_every_black_box_dataset_resolves_on_disk():
+    """All 122 datasets must be loadable, incl. PMLB's _deprecated_ renames."""
+    from utils import resolve_pmlb_paths
+
+    missing = [
+        name
+        for name in load_black_box_datasets()
+        if not resolve_pmlb_paths(name)[0].exists()
+    ]
+    assert missing == []
+
+
 def test_test_pareto_removes_dominated_and_duplicate_complexities():
     rows = [
         {"complexity": 3, "test_r2": 0.4, "equation": "c"},
@@ -58,6 +70,37 @@ def test_black_box_frontier_round_trip_and_outputs(tmp_path):
     assert save_black_box_results(tmp_path, batch_dir) == 1
     assert (tmp_path / "srbench_black_box_results.json").exists()
     assert (tmp_path / "black_box_r2_complexity_pareto.png").exists()
+    payload = json.loads((tmp_path / "srbench_black_box_results.json").read_text())
+    assert payload["datasets"]["toy"] == [rows]
+
+
+def test_black_box_results_group_trials_per_dataset(tmp_path):
+    def make(run_index, r2):
+        return PySRTaskResult(
+            config_id=0,
+            dataset_name="toy",
+            r2_score=r2,
+            best_equation="x0",
+            best_loss=0.1,
+            run_index=run_index,
+            pareto_frontier=[{"complexity": 2, "test_r2": r2, "equation": "x0"}],
+        ).to_json_dict()
+
+    batch_dir = tmp_path / "batch"
+    batch_dir.mkdir()
+    # Out-of-order + one errored trial: frontiers land sorted by run_index and
+    # the failed trial is dropped rather than counted as a dataset.
+    errored = make(3, 0.0)
+    errored["error"] = "PySR wall-clock limit exceeded (1800s)"
+    (batch_dir / "combined.json").write_text(
+        json.dumps([make(2, 0.7), make(0, 0.5), errored, make(1, 0.6)])
+    )
+    assert save_black_box_results(tmp_path, batch_dir, n_trials=4) == 1
+
+    payload = json.loads((tmp_path / "srbench_black_box_results.json").read_text())
+    assert payload["protocol"]["trials_per_dataset"] == 4
+    assert payload["n_trials_present"] == {"toy": 3}
+    assert [t[0]["test_r2"] for t in payload["datasets"]["toy"]] == [0.5, 0.6, 0.7]
 
 
 def test_fullsr_black_box_protocol_and_frontier(monkeypatch):
