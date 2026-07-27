@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 7/27/26 resubmitting jobs that failed from 7/23
+sbatch -J hpo-gt run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric gt --n-parallel 20
+
 # 7/23/26 — queued experiment suite. Three independent dependency chains keep
 # at most three driver jobs running at once. Independent jobs use `afterany` so
 # a chain continues after an earlier failure. Follow-ups that consume a newly

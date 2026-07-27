@@ -1283,7 +1283,7 @@ def main():
 
     # Output settings
     parser.add_argument("--output-dir", type=str, default=None,
-                        help="Output directory (default: outputs/hpo_pysr_TIMESTAMP)")
+                        help="Output directory (default: outputs/hpo_pysr_TIMESTAMP_MICROSECONDS)")
     parser.add_argument("--no-cache", action="store_true",
                         help="Disable evaluation caching")
 
@@ -1300,7 +1300,9 @@ def main():
 
     # Set up output directory
     if args.output_dir is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Include microseconds so concurrently launched HPO drivers do not share
+        # an Optuna database and collide on the fixed study name.
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         args.output_dir = f"outputs/hpo_pysr_{timestamp}"
 
     # Load datasets
