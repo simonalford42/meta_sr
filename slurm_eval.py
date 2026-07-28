@@ -49,6 +49,33 @@ TERMINAL_SLURM_STATES = frozenset({
     'PREEMPTED', 'BOOT_FAIL', 'DEADLINE', 'NODE_FAIL',
     'OUT_OF_MEMORY', 'REVOKED', 'SPECIAL_EXIT',
 })
+PENDING_SLURM_STATES = frozenset({"PENDING"})
+
+
+def _credit_pending_watchdog_time(
+    statuses: List[str],
+    now: float,
+    previous_poll_time: float,
+    start_time: float,
+    last_progress_time: float,
+) -> Tuple[float, float, float]:
+    """Exclude intervals spent wholly queued from driver watchdog clocks.
+
+    SLURM's own ``--time`` starts at allocation, but these Python watchdogs
+    historically started at submission.  When every unfinished polled job is
+    PENDING, shift both watchdog reference times forward by the poll interval
+    so queue time consumes neither the total-job nor no-progress timeout.
+
+    UNKNOWN and mixed PENDING/RUNNING states deliberately keep the clocks
+    moving: in those cases work may be allocated, and treating them as queued
+    could hide a genuinely stalled array.
+    """
+    interval = max(0.0, now - previous_poll_time)
+    nonterminal = [s for s in statuses if s not in TERMINAL_SLURM_STATES]
+    if nonterminal and all(s in PENDING_SLURM_STATES for s in nonterminal):
+        start_time += interval
+        last_progress_time += interval
+    return start_time, last_progress_time, now
 
 
 def _normalize_slurm_state(raw: str) -> str:
@@ -400,9 +427,15 @@ class BaseSlurmEvaluator(ABC):
 
         if result.returncode == 0 and result.stdout.strip():
             states = [_normalize_slurm_state(l) for l in result.stdout.strip().split('\n') if l.strip()]
-            for s in states:
-                if s not in TERMINAL_SLURM_STATES:
+            nonterminal = [s for s in states if s not in TERMINAL_SLURM_STATES]
+            # An array may have RUNNING elements while concurrency-limited
+            # siblings remain PENDING. Report it as active so the pending
+            # siblings do not pause the batch watchdog.
+            for s in nonterminal:
+                if s not in PENDING_SLURM_STATES:
                     return s
+            if nonterminal:
+                return nonterminal[0]
             if states:
                 return states[0]
 
@@ -420,9 +453,12 @@ class BaseSlurmEvaluator(ABC):
         states = [_normalize_slurm_state(l) for l in result.stdout.strip().split('\n') if l.strip()]
         if not states:
             return 'UNKNOWN'
-        for s in states:
-            if s not in TERMINAL_SLURM_STATES:
+        nonterminal = [s for s in states if s not in TERMINAL_SLURM_STATES]
+        for s in nonterminal:
+            if s not in PENDING_SLURM_STATES:
                 return s
+        if nonterminal:
+            return nonterminal[0]
         return states[0]
 
     def _get_slurm_env(self) -> Dict[str, str]:
@@ -498,6 +534,7 @@ class BaseSlurmEvaluator(ABC):
         poll_interval = 10
         first_check = True
         unknown_streaks: Dict[str, int] = {}
+        previous_poll_time = start_time
 
         while True:
             # Count completed result files
@@ -505,6 +542,15 @@ class BaseSlurmEvaluator(ABC):
             completed = len(list(results_dir.glob("task_*.json")))
 
             now = time.time()
+            terminal, statuses = self._poll_jobs_terminal(
+                [job_id], unknown_streaks
+            )
+            start_time, last_progress_time, previous_poll_time = (
+                _credit_pending_watchdog_time(
+                    statuses, now, previous_poll_time,
+                    start_time, last_progress_time,
+                )
+            )
             elapsed = now - start_time
 
             # On first check, detect cached results (completed with near-zero elapsed time)
@@ -526,7 +572,14 @@ class BaseSlurmEvaluator(ABC):
                 first_check = False
 
             if completed >= n_tasks:
-                print(f"  All {n_tasks} tasks completed in {time.time() - start_time:.1f}s")
+                print(f"  All {n_tasks} tasks completed in {elapsed:.1f}s active time")
+                _untrack_job(job_id)
+                return True
+
+            if terminal:
+                if completed < n_tasks:
+                    print(f"  WARNING: Job {job_id} ended with status {statuses[0]} "
+                          f"but only {completed}/{n_tasks} results found")
                 _untrack_job(job_id)
                 return True
 
@@ -550,15 +603,6 @@ class BaseSlurmEvaluator(ABC):
                 )
                 self._cancel_job(job_id)
                 return False
-
-            # Also check job status
-            terminal, statuses = self._poll_jobs_terminal([job_id], unknown_streaks)
-            if terminal:
-                if completed < n_tasks:
-                    print(f"  WARNING: Job {job_id} ended with status {statuses[0]} "
-                          f"but only {completed}/{n_tasks} results found")
-                _untrack_job(job_id)
-                return True
 
             time.sleep(poll_interval)
 
@@ -589,10 +633,8 @@ class BaseSlurmEvaluator(ABC):
         """Wait for one or more retry job arrays to complete.
 
         Guarded by the same stall/total watchdogs as the initial wait (per-call
-        overrides fall back to the instance settings): a retry array stuck
-        PENDING forever (drained partition, hold) must not block the driver
-        indefinitely. On expiry the retry jobs are cancelled and we return;
-        the caller's re-collect turns still-missing tasks into failures.
+        overrides fall back to the instance settings). Time for which every
+        relevant job is PENDING is excluded from both watchdogs.
         """
         if stall_timeout is _UNSET:
             stall_timeout = self.stall_timeout
@@ -604,6 +646,7 @@ class BaseSlurmEvaluator(ABC):
         last_progress_time = start_time
         poll_interval = 5  # Faster polling for retries
         unknown_streaks: Dict[str, int] = {}
+        previous_poll_time = start_time
 
         while True:
             results_dir = batch_dir / "results"
@@ -613,6 +656,15 @@ class BaseSlurmEvaluator(ABC):
             )
 
             now = time.time()
+            terminal, statuses = self._poll_jobs_terminal(
+                job_ids, unknown_streaks
+            )
+            start_time, last_progress_time, previous_poll_time = (
+                _credit_pending_watchdog_time(
+                    statuses, now, previous_poll_time,
+                    start_time, last_progress_time,
+                )
+            )
             if completed != last_completed:
                 elapsed = now - start_time
                 print(
@@ -623,7 +675,17 @@ class BaseSlurmEvaluator(ABC):
                 last_progress_time = now
 
             if completed >= n_tasks:
-                print(f"    Retry completed in {time.time() - start_time:.1f}s")
+                print(f"    Retry completed in {now - start_time:.1f}s active time")
+                for jid in job_ids:
+                    _untrack_job(jid)
+                break
+
+            if terminal:
+                if completed < n_tasks:
+                    print(
+                        f"    Retry jobs ended with statuses={statuses}, "
+                        f"{completed}/{n_tasks} results"
+                    )
                 for jid in job_ids:
                     _untrack_job(jid)
                 break
@@ -648,17 +710,6 @@ class BaseSlurmEvaluator(ABC):
                 )
                 for jid in job_ids:
                     self._cancel_job(jid)
-                break
-
-            terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
-            if terminal:
-                if completed < n_tasks:
-                    print(
-                        f"    Retry jobs ended with statuses={statuses}, "
-                        f"{completed}/{n_tasks} results"
-                    )
-                for jid in job_ids:
-                    _untrack_job(jid)
                 break
 
             time.sleep(poll_interval)

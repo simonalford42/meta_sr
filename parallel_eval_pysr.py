@@ -25,6 +25,7 @@ from pathlib import Path
 
 from slurm_eval import (
     BaseSlurmEvaluator, TERMINAL_SLURM_STATES, init_worker, _untrack_job, _UNSET,
+    _credit_pending_watchdog_time,
 )
 from julia_env import (
     julia_load_operator,
@@ -2504,12 +2505,22 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         poll_interval = 10
         results_dirs = [bd / "results" for bd in batch_dirs]
         unknown_streaks: Dict[str, int] = {}
+        previous_poll_time = start_time
 
         while True:
             completed = sum(
                 len(list(rd.glob("task_*.json"))) for rd in results_dirs
             )
             now = _time.time()
+            terminal, statuses = self._poll_jobs_terminal(
+                job_ids, unknown_streaks
+            )
+            start_time, last_progress_time, previous_poll_time = (
+                _credit_pending_watchdog_time(
+                    statuses, now, previous_poll_time,
+                    start_time, last_progress_time,
+                )
+            )
             elapsed = now - start_time
 
             if completed != last_completed:
@@ -2525,7 +2536,20 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 last_progress_time = now
 
             if completed >= n_tasks_total:
-                print(f"  All {n_tasks_total} {label} tasks completed in {elapsed:.1f}s")
+                print(
+                    f"  All {n_tasks_total} {label} tasks completed in "
+                    f"{elapsed:.1f}s active time"
+                )
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return True
+
+            if terminal:
+                if completed < n_tasks_total:
+                    print(
+                        f"  WARNING: all {label} jobs ended (statuses={statuses}) "
+                        f"but only {completed}/{n_tasks_total} results found"
+                    )
                 for jid in job_ids:
                     _untrack_job(jid)
                 return True
@@ -2557,17 +2581,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 clear_future_mtime_pidfiles()
                 return False
 
-            terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
-            if terminal:
-                if completed < n_tasks_total:
-                    print(
-                        f"  WARNING: all {label} jobs ended (statuses={statuses}) "
-                        f"but only {completed}/{n_tasks_total} results found"
-                    )
-                for jid in job_ids:
-                    _untrack_job(jid)
-                return True
-
             _time.sleep(poll_interval)
 
     def _wait_for_retry_jobs_multi_batch(
@@ -2582,10 +2595,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         batch_indices is a flat list of (batch_dir, task_index) tuples covering
         every retried task. Completion is "result file exists for every pair".
 
-        Guarded by the same stall/total watchdogs as the initial wait: a retry
-        array stuck PENDING forever (drained partition, hold) must not block the
-        driver indefinitely. On expiry the retry jobs are cancelled and we
-        return; the caller's re-collect turns still-missing tasks into failures.
+        Guarded by the same stall/total watchdogs as the initial wait. Time for
+        which every relevant job is PENDING is excluded from both watchdogs.
         """
         if stall_timeout is _UNSET:
             stall_timeout = self.stall_timeout
@@ -2598,6 +2609,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         poll_interval = 5
         n_total = len(batch_indices)
         unknown_streaks: Dict[str, int] = {}
+        previous_poll_time = start_time
 
         while True:
             completed = sum(
@@ -2605,6 +2617,15 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 if (bd / "results" / f"task_{i:06d}.json").exists()
             )
             now = _time.time()
+            terminal, statuses = self._poll_jobs_terminal(
+                job_ids, unknown_streaks
+            )
+            start_time, last_progress_time, previous_poll_time = (
+                _credit_pending_watchdog_time(
+                    statuses, now, previous_poll_time,
+                    start_time, last_progress_time,
+                )
+            )
             if completed != last_completed:
                 elapsed = now - start_time
                 print(
@@ -2615,7 +2636,19 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 last_progress_time = now
 
             if completed >= n_total:
-                print(f"    Retry completed in {now - start_time:.1f}s")
+                print(
+                    f"    Retry completed in {now - start_time:.1f}s active time"
+                )
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return
+
+            if terminal:
+                if completed < n_total:
+                    print(
+                        f"    Retry jobs ended with statuses={statuses}, "
+                        f"{completed}/{n_total} results"
+                    )
                 for jid in job_ids:
                     _untrack_job(jid)
                 return
@@ -2640,17 +2673,6 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 )
                 for jid in job_ids:
                     self._cancel_job(jid)
-                return
-
-            terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
-            if terminal:
-                if completed < n_total:
-                    print(
-                        f"    Retry jobs ended with statuses={statuses}, "
-                        f"{completed}/{n_total} results"
-                    )
-                for jid in job_ids:
-                    _untrack_job(jid)
                 return
 
             _time.sleep(poll_interval)
@@ -2974,10 +2996,20 @@ python -u -m parallel_eval_pysr --worker \\
         poll_interval = 10
         results_dir = batch_dir / "results"
         unknown_streaks: Dict[str, int] = {}
+        previous_poll_time = start_time
 
         while True:
             completed = len(list(results_dir.glob("task_*.json")))
             now = _time.time()
+            terminal, statuses = self._poll_jobs_terminal(
+                job_ids, unknown_streaks
+            )
+            start_time, last_progress_time, previous_poll_time = (
+                _credit_pending_watchdog_time(
+                    statuses, now, previous_poll_time,
+                    start_time, last_progress_time,
+                )
+            )
             elapsed = now - start_time
 
             if completed != last_completed:
@@ -2993,7 +3025,17 @@ python -u -m parallel_eval_pysr --worker \\
                 last_progress_time = now
 
             if completed >= n_tasks:
-                print(f"  All {n_tasks} tasks completed in {elapsed:.1f}s")
+                print(f"  All {n_tasks} tasks completed in {elapsed:.1f}s active time")
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return True
+
+            if terminal:
+                if completed < n_tasks:
+                    print(
+                        f"  WARNING: All jobs ended (statuses={statuses}) "
+                        f"but only {completed}/{n_tasks} results found"
+                    )
                 for jid in job_ids:
                     _untrack_job(jid)
                 return True
@@ -3024,17 +3066,6 @@ python -u -m parallel_eval_pysr --worker \\
                 clear_stale_juliapkg_lock(Path(self.repo_root) / ".juliapkg_env")
                 clear_future_mtime_pidfiles()
                 return False
-
-            terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
-            if terminal:
-                if completed < n_tasks:
-                    print(
-                        f"  WARNING: All jobs ended (statuses={statuses}) "
-                        f"but only {completed}/{n_tasks} results found"
-                    )
-                for jid in job_ids:
-                    _untrack_job(jid)
-                return True
 
             _time.sleep(poll_interval)
 
