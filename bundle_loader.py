@@ -20,6 +20,24 @@ from operator_types import (
     extract_function_name,
 )
 
+RUNS_ROOT = Path(__file__).resolve().parent / "runs"
+
+
+def _resolve_bundle_path(path: str) -> Path:
+    """Resolve a bundle path, including bare job IDs under ``runs/``."""
+    p = Path(path)
+    if p.exists():
+        return p
+
+    # A bare SLURM job ID is shorthand for runs/<job_id>. Do not reinterpret
+    # missing paths that contain directory components.
+    if len(p.parts) == 1 and p.name.isdigit():
+        run_path = RUNS_ROOT / p.name
+        if run_path.exists():
+            return run_path
+    return p
+
+
 def load_resume_state(path: str) -> Dict[str, Any]:
     """Load state from a prior evolve_pysr run so evolution can continue in a new output dir.
 
@@ -461,7 +479,7 @@ def load_bundle(
                    train (with a warning) for runs without persisted val data.
                    Ignored for hpo / openevolve / .jl sources.
     """
-    p = Path(path)
+    p = _resolve_bundle_path(path)
 
     # If path is a directory, try to auto-resolve
     if p.is_dir():
