@@ -322,7 +322,7 @@ def main():
                              "Black-box datasets are far larger than the "
                              "ground-truth ones; 0 disables the limit entirely "
                              "(only SLURM --time bounds the fit).")
-    parser.add_argument("--max-retries", type=int, default=2,
+    parser.add_argument("--max-retries", type=int, default=5,
                         help="Retry rounds for transient/missing tasks per batch.")
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument("--results-dir", type=str, default=None,
