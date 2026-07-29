@@ -123,6 +123,7 @@ from evolution_helpers import (
     select_parent,
     format_solved_str,
     format_errors_str,
+    job_success_stats,
     format_population_summary,
     compute_per_task_best_stats,
     load_task_formulas,
@@ -590,6 +591,7 @@ class EvolutionLogger:
         offspring: List[OperatorBundle],
         best: OperatorBundle,
         evolved_type: str,
+        job_success: Optional[Dict[str, Any]] = None,
     ):
         gen_data = {
             "generation": generation,
@@ -598,6 +600,7 @@ class EvolutionLogger:
             "offspring": [b.to_dict() for b in offspring],
             "best_name": best.display_name,
             "best_score": best.score,
+            "job_success": job_success,
         }
         self.run_data["generations"].append(gen_data)
         self._save()
@@ -2000,6 +2003,8 @@ def run_bundle_evolution(
         )
 
         offspring_eval_start = time.perf_counter()
+        generation_result_details = []
+        generation_expected_jobs = 0
         if racing_on or dynamic_on or fixed_on or pop_reeval_on:
             # Resolve every submission, then wait for all batches (extras /
             # reevals + offspring) with one unified progress stream.
@@ -2020,6 +2025,18 @@ def run_bundle_evolution(
 
             extras_pairs = pairs[: len(pop_futs)]
             offspring_pairs = pairs[len(pop_futs):]
+            generation_result_details.extend(r[2] for _, r in pairs)
+            generation_expected_jobs = sum(
+                max(
+                    sum(int(d.get("n_total_runs", 0) or 0) for d in (r[2] or [])),
+                    0,
+                )
+                for _, r in pairs
+            )
+            generation_expected_jobs = max(
+                generation_expected_jobs,
+                len(offspring_bundles) * len(dataset_names) * n_runs_now,
+            )
 
             try:
                 # Apply extras: per-bundle seed counts vary, so let
@@ -2117,6 +2134,10 @@ def run_bundle_evolution(
         else:
             print(f"\nWaiting on {len(offspring_futs)} offspring batches...")
             pairs = collect_bundle_futures(evaluator, offspring_futs)
+            generation_result_details.extend(r[2] for _, r in pairs)
+            generation_expected_jobs = (
+                len(offspring_bundles) * len(dataset_names) * n_runs
+            )
             submit_executor.shutdown(wait=True)
             for bundle, (avg_score, score_vector, result_details) in pairs:
                 bundle.score = avg_score
@@ -2140,6 +2161,14 @@ def run_bundle_evolution(
                 population = select_survivors_complexity(population, offspring_bundles, population_size)
             else:
                 population = select_survivors(population, offspring_bundles, population_size)
+        n_successful_jobs, n_total_jobs, job_success_pct = job_success_stats(
+            generation_result_details,
+            expected_total=generation_expected_jobs,
+        )
+        print(
+            f"  Generation job success: {job_success_pct:.1f}% "
+            f"({n_successful_jobs}/{n_total_jobs})"
+        )
         best = population[0]
 
         # Record this generation's offspring posterior means (only those with the
@@ -2189,12 +2218,26 @@ def run_bundle_evolution(
             score_str = f"{b.score:.4f}" if b.score is not None else "nan"
             print(f"    loc={l:>3}  score={score_str}  {b.display_name}")
 
-        logger.log_bundle_generation(gen, population, offspring_bundles, best, evolved_type_label)
+        logger.log_bundle_generation(
+            gen,
+            population,
+            offspring_bundles,
+            best,
+            evolved_type_label,
+            {
+                "n_successful": n_successful_jobs,
+                "n_total": n_total_jobs,
+                "percent": job_success_pct,
+            },
+        )
 
         if wandb_run is not None:
             import wandb
             log_data = {
                 "generation": gen,
+                "job_success_pct": job_success_pct,
+                "n_jobs_successful": n_successful_jobs,
+                "n_jobs_total": n_total_jobs,
                 "best_score": best.score,
                 "improvement_over_baseline": best.score - baseline_score,
                 "evolved_type": evolved_type_label,

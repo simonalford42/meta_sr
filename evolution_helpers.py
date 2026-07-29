@@ -396,6 +396,30 @@ def format_errors_str(result_details: Optional[List[Dict]]) -> str:
     return f"errs {n_err}/{n_total}"
 
 
+def job_success_stats(
+    result_details_groups: List[Optional[List[Dict]]],
+    expected_total: Optional[int] = None,
+) -> Tuple[int, int, float]:
+    """Count successful config × dataset × seed evaluation jobs.
+
+    ``expected_total`` is useful for fresh batches: it ensures missing results
+    are counted as failures instead of disappearing from the denominator.
+    """
+    n_successful = sum(
+        int(detail.get("n_successful_runs", 0) or 0)
+        for details in result_details_groups
+        for detail in (details or [])
+    )
+    n_reported = sum(
+        int(detail.get("n_total_runs", 0) or 0)
+        for details in result_details_groups
+        for detail in (details or [])
+    )
+    n_total = max(n_reported, expected_total or 0)
+    success_pct = 100.0 * n_successful / n_total if n_total else 0.0
+    return n_successful, n_total, success_pct
+
+
 def _compute_per_task_best(
     bundles: List, n_tasks: int,
 ) -> List[Optional[Tuple[Any, int, int]]]:

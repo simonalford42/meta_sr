@@ -38,6 +38,7 @@ from parallel_eval_pysr import (
 )
 from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log
 from wandb_utils import init_wandb, log_wandb_summary, log_cpu_usage, finish_wandb
+from evolution_helpers import job_success_stats
 
 
 TARGET_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
@@ -1112,8 +1113,38 @@ def run_hpo(
                             "best_score": best_score,
                         })
 
+                n_successful_jobs, n_total_jobs, job_success_pct = job_success_stats(
+                    [result[2] for result in results],
+                    expected_total=batch_size * len(dataset_names) * n_runs,
+                )
+                print(
+                    f"  Batch job success: {job_success_pct:.1f}% "
+                    f"({n_successful_jobs}/{n_total_jobs})"
+                )
+                logger.run_data.setdefault("batch_job_success", []).append({
+                    "batch": trials_completed // n_parallel + 1,
+                    "n_successful": n_successful_jobs,
+                    "n_total": n_total_jobs,
+                    "percent": job_success_pct,
+                })
+                logger._save()
+                if wandb_run is not None:
+                    wandb.log({
+                        "batch_job_success_pct": job_success_pct,
+                        "batch_jobs_successful": n_successful_jobs,
+                        "batch_jobs_total": n_total_jobs,
+                    })
             except Exception as e:
                 print(f"  Batch evaluation failed: {e}")
+                n_total_jobs = batch_size * len(dataset_names) * n_runs
+                print(f"  Batch job success: 0.0% (0/{n_total_jobs})")
+                logger.run_data.setdefault("batch_job_success", []).append({
+                    "batch": trials_completed // n_parallel + 1,
+                    "n_successful": 0,
+                    "n_total": n_total_jobs,
+                    "percent": 0.0,
+                })
+                logger._save()
                 for trial in trials:
                     study.tell(trial, float("-inf"))
 

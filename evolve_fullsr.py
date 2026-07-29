@@ -44,6 +44,7 @@ from evolution_helpers import (
     TARGET_NOISE_LEVELS,
     _build_target_noise_map,
     format_solved_str as _shared_format_solved_str,
+    job_success_stats,
     select_parent,
     select_survivors,
 )
@@ -209,6 +210,7 @@ class EvolutionLogger:
         population: List[SkeletonBundle],
         offspring: List[SkeletonBundle],
         best: SkeletonBundle,
+        job_success: Optional[Dict[str, Any]] = None,
     ):
         gen_data = {
             "generation": generation,
@@ -216,6 +218,7 @@ class EvolutionLogger:
             "offspring": [b.to_dict() for b in offspring],
             "best_name": best.display_name,
             "best_score": best.score,
+            "job_success": job_success,
         }
         self.run_data["generations"].append(gen_data)
         self._save()
@@ -1010,6 +1013,19 @@ def run_evolution(
                 )
             print(f"  Offspring eval: {_fmt_elapsed(time.time() - t_eval)}")
 
+        n_successful_jobs, n_total_jobs, job_success_pct = job_success_stats(
+            [b.result_details for b in offspring],
+            expected_total=len(offspring) * len(dataset_names) * n_runs,
+        )
+        print(
+            f"  Job success: {job_success_pct:.1f}% "
+            f"({n_successful_jobs}/{n_total_jobs})"
+        )
+        job_success = {
+            "n_successful": n_successful_jobs,
+            "n_total": n_total_jobs,
+            "percent": job_success_pct,
+        }
         population = select_survivors(population, offspring, population_size)
         best = population[0]
         gen_elapsed = time.time() - gen_start
@@ -1018,7 +1034,7 @@ def run_evolution(
             f"baseline={baseline_score:.4f}, improvement={best.score - baseline_score:+.4f}, "
             f"time={_fmt_elapsed(gen_elapsed)}"
         )
-        logger.log_generation(gen, population, offspring, best)
+        logger.log_generation(gen, population, offspring, best, job_success)
         _maybe_submit_val(best, gen=gen)
         _maybe_submit_train_reeval(best, gen=gen)
 
@@ -1033,6 +1049,9 @@ def run_evolution(
                     np.mean([b.score for b in population if b.score is not None])
                 ) if population else 0.0,
                 "n_offspring_evaluated": len(offspring),
+                "job_success_pct": job_success_pct,
+                "n_jobs_successful": n_successful_jobs,
+                "n_jobs_total": n_total_jobs,
             }
             offspring_scores = [b.score for b in offspring if b.score is not None]
             if offspring_scores:
