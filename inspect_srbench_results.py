@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -65,9 +66,8 @@ def subset_solve_rate(keyed: "dict", datasets: "set[str]",
 def find_full_srbench_runs(runs_root: "str | Path") -> "list[Path]":
     """Return all run directories under ``runs_root`` that are full-SRBench runs.
 
-    A full-SRBench run is identified by a ``manifest.json`` carrying the
-    ``datasets`` / ``noise_levels`` / ``batches`` keys written by
-    ``srbench_full_eval.py`` (regardless of mode: baseline/hpo/evolve/...).
+    A full-SRBench run is identified by the ground-truth manifest grid or by a
+    black-box evaluation marker written by ``srbench_full_eval.py``.
     """
     runs_root = Path(runs_root)
     found = []
@@ -76,7 +76,14 @@ def find_full_srbench_runs(runs_root: "str | Path") -> "list[Path]":
             manifest = srio.load_manifest(manifest_path.parent)
         except Exception:
             continue
-        if all(k in manifest for k in ("datasets", "noise_levels", "batches")):
+        is_ground_truth = all(
+            k in manifest for k in ("datasets", "noise_levels", "batches")
+        )
+        is_black_box = (
+            "black_box" in (manifest.get("evaluation_types") or [])
+            or "black_box" in manifest
+        )
+        if is_ground_truth or is_black_box:
             found.append(manifest_path.parent)
     return found
 
@@ -102,30 +109,56 @@ def bundle_id(manifest: dict) -> str:
     return Path(source).name
 
 
-def summarize_run(run_dir: Path) -> "dict | None":
-    """One row of summary stats (scores averaged over all noise levels).
+def _black_box_summary(run_dir: Path, manifest: dict) -> tuple[int, int, float | None]:
+    """Return (completed trials, expected trials, mean best-per-trial test R²)."""
+    path = run_dir / "srbench_black_box_results.json"
+    black_box = manifest.get("black_box") or {}
+    expected = int(black_box.get("n_datasets") or 0) * int(black_box.get("n_runs") or 0)
+    if not path.exists():
+        return 0, expected, None
 
-    Returns None for runs that did not fully complete (any errored/missing run).
-    """
+    with open(path) as f:
+        datasets = (json.load(f).get("datasets") or {})
+    best_r2 = []
+    completed = 0
+    for trials in datasets.values():
+        completed += len(trials)
+        for frontier in trials:
+            values = [point.get("test_r2") for point in frontier
+                      if point.get("test_r2") is not None]
+            if values:
+                best_r2.append(max(values))
+    mean_r2 = sum(best_r2) / len(best_r2) if best_r2 else None
+    return completed, expected, mean_r2
+
+
+def summarize_run(run_dir: Path) -> dict:
+    """One row of summary stats, including partially completed evaluations."""
     manifest = srio.load_manifest(run_dir)
-    noise_levels = manifest["noise_levels"]
+    noise_levels = manifest.get("noise_levels") or []
 
     keyed = srio.load_keyed_results(run_dir)
-    if keyed is None:
+    if keyed is None and manifest.get("batches"):
         keyed = srio.build_keyed_results(run_dir, manifest)
+    keyed = keyed or {}
 
-    expected = srio.expected_keys(manifest)
+    expected = srio.expected_keys(manifest) if manifest.get("datasets") else []
     present = sum(1 for k, e in keyed.items()
                   if e.get("present") and e.get("error") is None)
-    # Only the full 133 x 10 x 4 = 5320-run grid, fully completed.
-    if len(expected) != 5320 or present != len(expected):
-        return None
+    bb_present, bb_expected, bb_r2 = _black_box_summary(run_dir, manifest)
 
-    metrics = srio.aggregate_metrics(keyed, noise_levels)
     row = {
         "bundle": bundle_id(manifest),
         "mode": manifest.get("mode") or "-",
+        "completed": present + bb_present,
+        "total": len(expected) + bb_expected,
+        "bb_r2": bb_r2,
     }
+    row["complete"] = row["total"] > 0 and row["completed"] == row["total"]
+    if not expected:
+        return row
+
+    metrics = srio.aggregate_metrics(keyed, noise_levels)
     # solve%/run and mean solve time for all / feynman / strogatz.
     for fam in ("all", "feynman", "strogatz"):
         m = metrics[fam]["all"]
@@ -172,15 +205,17 @@ def format_summary_table(rows: "list[dict]") -> str:
     # (header, key-fn) for each column.
     cols = [
         ("bundle", lambda r: str(r["bundle"])),
+        ("completed", lambda r: f"{r['completed']}/{r['total']}"),
         ("mode", lambda r: str(r["mode"])),
-        ("all%", lambda r: _pct(r["all_pct"])),
+        ("bb_r2", lambda r: _r2(r.get("bb_r2"))),
+        ("all%", lambda r: _pct(r.get("all_pct"))),
         ("all%(n0)", lambda r: _pct(r.get("all0_pct"))),
-        ("all_r2", lambda r: _r2(r["all_r2"])),
-        ("all_t", lambda r: _time(r["all_t"])),
-        ("feyn%", lambda r: _pct(r["feynman_pct"])),
-        ("feyn_t", lambda r: _time(r["feynman_t"])),
-        ("strog%", lambda r: _pct(r["strogatz_pct"])),
-        ("strog_t", lambda r: _time(r["strogatz_t"])),
+        ("all_r2", lambda r: _r2(r.get("all_r2"))),
+        ("all_t", lambda r: _time(r.get("all_t"))),
+        ("feyn%", lambda r: _pct(r.get("feynman_pct"))),
+        ("feyn_t", lambda r: _time(r.get("feynman_t"))),
+        ("strog%", lambda r: _pct(r.get("strogatz_pct"))),
+        ("strog_t", lambda r: _time(r.get("strogatz_t"))),
     ]
     if has_subset:
         cols += [
@@ -199,7 +234,7 @@ def format_summary_table(rows: "list[dict]") -> str:
 
     def _fmt_row(cells):
         # First two columns left-aligned (text), the rest right-aligned (numbers).
-        parts = [cells[i].ljust(widths[i]) if i < 2 else cells[i].rjust(widths[i])
+        parts = [cells[i].ljust(widths[i]) if i in (0, 2) else cells[i].rjust(widths[i])
                  for i in range(len(cells))]
         return "│ " + " │ ".join(parts) + " │"
 
@@ -301,12 +336,13 @@ def main():
             except Exception as e:
                 print(f"{run_dir.name}: ERROR {e}")
                 continue
-            if summary is None:
-                continue  # skip runs that didn't fully complete
             rows.append(summary)
+        # Keep completed runs first and move unfinished runs to the bottom.
+        rows.sort(key=lambda row: not row["complete"])
         if rows:
             print(format_summary_table(rows))
-        print(f"\n{len(rows)}/{len(run_dirs)} full-SRBench run(s) fully completed.")
+        n_complete = sum(row["complete"] for row in rows)
+        print(f"\n{n_complete}/{len(rows)} full-SRBench run(s) fully completed.")
         return
 
     if not args.run_id:
