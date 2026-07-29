@@ -89,6 +89,9 @@ class FullSRTaskSpec:
     # before applying the training-row cap, scale X/y from the training split,
     # and score every search-frontier equation on the held-out test split.
     black_box: bool = False
+    # Evaluation domain (see domains.py): dataset loading, the predictor's
+    # operator namespace, and the "solved" check dispatch through it.
+    domain: str = "srbench"
 
     def to_json_dict(self) -> Dict:
         return asdict(self)
@@ -339,15 +342,18 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
 
     run_seed = spec.seed + spec.run_index
 
-    try:
-        from utils import load_srbench_dataset
+    # Resolve the evaluation domain (dataset loading, predictor namespace,
+    # "solved" check — see domains.py).
+    from domains import get_domain
+    domain = get_domain(getattr(spec, "domain", "srbench"))
 
+    try:
         np.random.seed(spec.data_seed)
         _rnd.seed(spec.data_seed)
         # Black-box data must be split before the training-only row cap is
         # applied, matching SRBench's evaluate_model.py protocol.
         load_cap = None if spec.black_box else spec.max_samples
-        X, y, ground_truth_formula = load_srbench_dataset(
+        X, y, ground_truth_formula = domain.load_dataset(
             spec.dataset_name, max_samples=load_cap
         )
         if spec.black_box:
@@ -505,9 +511,10 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
         # accepted order. Reset index so .loc[i] works.
         equations_df = equations_df.sort_values("complexity").reset_index(drop=True)
 
-        def _predict_row(idx: int) -> np.ndarray:
+        def _predict_row(idx: int, X_rows: Optional[np.ndarray] = None) -> np.ndarray:
+            X_use = X_val if X_rows is None else X_rows
             expr = str(equations_df.iloc[int(idx)]["equation"]).replace("^", "**")
-            ns = {name: X_val[:, i] for i, name in enumerate(variable_names)}
+            ns = {name: X_use[:, i] for i, name in enumerate(variable_names)}
             ns.update(
                 {
                     "sin": np.sin,
@@ -521,9 +528,11 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                     "e": math.e,
                 }
             )
+            # Domain-specific operators (e.g. band/bor/bxor/bnot).
+            ns.update(domain.predict_namespace())
             pred = np.asarray(eval(expr, {"__builtins__": {}}, ns), dtype=float)
             if pred.ndim == 0:
-                pred = np.full(X_val.shape[0], float(pred))
+                pred = np.full(X_use.shape[0], float(pred))
             if spec.black_box and y_scaler is not None:
                 pred = y_scaler.inverse_transform(pred.reshape(-1, 1)).ravel()
             return pred
@@ -534,17 +543,15 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
         gt_match_score = None
         if not spec.black_box:
             try:
-                from evaluation import check_pysr_frontier_symbolic_match
-
-                gt_match_result = check_pysr_frontier_symbolic_match(
+                gt_match_result = domain.check_solved(
                     equations_df=equations_df,
                     best_df_index=best_df_index,
-                    ground_truth_str=ground_truth_for_match,
+                    target=ground_truth_for_match,
                     var_names=variable_names,
-                    timeout_seconds_per_expression=3,
                     predict_fn=_predict_row,
-                    y=y_val,
-                    min_r2=0.5,
+                    y_val=y_val,
+                    predict_on=lambda idx, Xq: _predict_row(idx, X_rows=Xq),
+                    dataset_name=spec.dataset_name,
                 )
                 gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
             except Exception:
@@ -735,6 +742,7 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         wall_limit: int = 600,
         eval_noise_levels: Optional[List[float]] = None,
         repo_root: Optional[str] = None,
+        domain: str = "srbench",
     ):
         super().__init__(
             results_dir=results_dir,
@@ -761,6 +769,8 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         self.repo_root = (
             Path(repo_root).resolve() if repo_root else Path(__file__).resolve().parent
         )
+        # Run-level evaluation domain, stamped onto every spec (see domains.py).
+        self.domain = domain
         self.split_label: Optional[str] = None
 
     def evaluate_configs(
@@ -821,6 +831,7 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
                                     else self.wall_limit
                                 ),
                                 black_box=black_box,
+                                domain=self.domain,
                             )
                         )
 

@@ -2,22 +2,27 @@
 
 # 7/29
 
-# Seed the shared cache with successful black-box artifacts from 7/28. Failed
-# trials stay uncached and are the only black-box trials rerun below.
-python scripts/import_srbench_black_box_cache.py \
-    runs/548743 runs/548744 runs/548745 runs/548746
+# # Seed the shared cache with successful black-box artifacts from 7/28. Failed
+# # trials stay uncached and are the only black-box trials rerun below.
+# python scripts/import_srbench_black_box_cache.py \
+#     runs/548743 runs/548744 runs/548745 runs/548746
 
-srb_prev=$(sbatch --parsable -J srb-gtr2 run.sh srbench_full_eval.py --evolve-results runs/120459 --ground-truth --black-box)
-srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-r2 run.sh srbench_full_eval.py --evolve-results runs/120458 --ground-truth --black-box)
-srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-gt run.sh srbench_full_eval.py --evolve-results runs/538190 --black-box)
-srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-base run.sh srbench_full_eval.py --black-box)
-srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644009 --ground-truth --black-box)
-srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-r2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644046 --ground-truth --black-box)
-srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644293 --ground-truth --black-box)
-srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box)
-srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
-srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-gt-1e7 run.sh srbench_full_eval.py --evolve-results runs/538190 --ground-truth --max-evals 10000000)
-srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-base-1e7 run.sh srbench_full_eval.py --ground-truth --max-evals 10000000)
+# srb_prev=$(sbatch --parsable -J srb-gtr2 run.sh srbench_full_eval.py --evolve-results runs/120459 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-r2 run.sh srbench_full_eval.py --evolve-results runs/120458 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-gt run.sh srbench_full_eval.py --evolve-results runs/538190 --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-base run.sh srbench_full_eval.py --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644009 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-r2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644046 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644293 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
+
+# 1e7 gt evals
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-gt-1e7 run.sh srbench_full_eval.py --evolve-results runs/538190 --ground-truth --max-evals 10000000)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-base-1e7 run.sh srbench_full_eval.py --ground-truth --max-evals 10000000)
+
+# simplify
+# sbatch -J simp-538 run.sh evolve_pysr.py --operator-type all --mutation-mode simplify --population-type complexity --generations 10 --population 10 --offspring 10 --n-runs 3 --models best --continue-from runs/538190 --reeval population --n-reevals 10
 
 # 7/28/36
 
@@ -69,7 +74,7 @@ srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-base-1e7 r
 # # Chain 2, job 3: evaluate GT-R² PySR++ (run 120459) on all GT tasks.
 # chain2=$(sbatch --parsable --dependency=afterany:$chain2 -J gt-pysrpp-gtr2 run.sh srbench_full_eval.py --evolve-results runs/120459 --ground-truth)
 # # Chain 3, job 3: evolve all PySR++ operators on LogicBench (cheap models, 15 generations).
-# chain3=$(sbatch --parsable --dependency=afterany:$chain3 --cpus-per-task=8 -J logic-pysrpp run.sh evolve_pysr.py --domain boolean --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --n-local-workers 8 --models cheap)
+# chain3=$(sbatch --parsable --dependency=afterany:$chain3 -J logic-pysrpp run.sh evolve_pysr.py --domain boolean --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --models cheap)
 
 # # Chain 1, job 4: evaluate the newly evolved R² FullSR run on BB.
 # chain1=$(sbatch --parsable --dependency=afterok:$fullsr_r2 -J bb-fullsr-r2 run.sh srbench_full_eval.py --evolve-results runs/$fullsr_r2 --black-box)

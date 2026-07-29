@@ -320,6 +320,10 @@ def _build_cache_identity(
     # Add this only for black-box so historical ground-truth keys stay valid.
     if spec.black_box:
         model_kwargs["_srbench_black_box_protocol"] = 1
+    # Same conditional pattern for the domain: only stamp non-default domains
+    # into the identity so every historical SRBench hash stays byte-identical.
+    if getattr(spec, "domain", "srbench") != "srbench":
+        model_kwargs["_domain"] = spec.domain
     return pysr_mutation_kwargs, model_kwargs, spec.hof_n_steps
 
 
@@ -927,6 +931,9 @@ class PySRTaskSpec:
     pysr_wall_limit: int = 600  # Hard wall-clock limit for PySR search (seconds); on overrun,
     # the task errors out with score=0 and is NOT retried.
     black_box: bool = False  # Use the official SRBench black-box data protocol.
+    # Evaluation domain (see domains.py): dataset loading, sympy mappings, and
+    # the "solved" check all dispatch through DOMAINS[domain] in the worker.
+    domain: str = "srbench"
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -1023,9 +1030,9 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
     returns the R^2 score on validation data.
     """
     import numpy as np
-    from utils import load_srbench_dataset
     import random as _rnd
     import time as _time
+    from domains import get_domain
 
     start_time = _time.time()
 
@@ -1035,15 +1042,21 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
     # Build model kwargs once so execution and parent-side cache compaction share identity logic.
     _, model_kwargs, _ = _build_cache_identity(spec)
     model_kwargs.pop("_srbench_black_box_protocol", None)
+    model_kwargs.pop("_domain", None)  # cache-identity marker, not a PySR kwarg
 
-    # Boolean domain: extra_sympy_mappings (lambdas) can't survive the JSON task
-    # file, so the spec carries a JSON-safe "_boolean_domain" flag instead. Here
-    # (worker side) we swap it for the real callable mappings PySR needs to parse
-    # band/bor/bxor/bnot equations. The flag stays in spec.pysr_kwargs so the
-    # cache identity still distinguishes Boolean runs from SRBench runs.
+    # Resolve the evaluation domain (dataset loading, sympy mappings, "solved"
+    # check — see domains.py). Pre-domain-field boolean task JSONs carried a
+    # "_boolean_domain" flag inside pysr_kwargs instead; honor it for replay.
+    domain_name = getattr(spec, "domain", "srbench")
     if model_kwargs.pop("_boolean_domain", False):
-        from boolean_pysr import boolean_sympy_mappings
-        model_kwargs["extra_sympy_mappings"] = boolean_sympy_mappings()
+        domain_name = "boolean"
+    domain = get_domain(domain_name)
+
+    # extra_sympy_mappings (lambdas) can't survive the JSON task file, so the
+    # worker rebuilds them from the domain (e.g. band/bor/bxor/bnot parsing).
+    _sympy_mappings = domain.sympy_mappings()
+    if _sympy_mappings:
+        model_kwargs["extra_sympy_mappings"] = _sympy_mappings
 
     try:
         # Seed for dataset loading
@@ -1055,7 +1068,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         # applied (SRBench evaluate_model.py). Ground-truth evaluation retains
         # the historical pre-split cap.
         load_cap = None if spec.black_box else spec.max_samples
-        X, y, ground_truth_formula = load_srbench_dataset(spec.dataset_name, max_samples=load_cap)
+        X, y, ground_truth_formula = domain.load_dataset(spec.dataset_name, max_samples=load_cap)
         if spec.black_box:
             finite_rows = np.isfinite(y) & np.isfinite(X).all(axis=1)
             if not finite_rows.all():
@@ -1193,7 +1206,6 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         hof_results_dir = os.path.dirname(hof_csv_base) or "."
 
         from run_pysr_srbench import run_pysr_with_hof_checkpoints
-        from evaluation import check_pysr_frontier_symbolic_match
         import signal as _signal
 
         noise_levels = _spec_noise_levels(spec)
@@ -1274,15 +1286,15 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 gt_match_score = None
                 gt_matched_equation = None
                 try:
-                    gt_match_result = check_pysr_frontier_symbolic_match(
+                    gt_match_result = domain.check_solved(
                         equations_df=model.equations_,
                         best_df_index=best.name if best is not None else None,
-                        ground_truth_str=ground_truth_for_match,
+                        target=ground_truth_for_match,
                         var_names=variable_names,
-                        timeout_seconds_per_expression=3,
                         predict_fn=lambda idx: model.predict(X_val, index=int(idx)),
-                        y=y_val,
-                        min_r2=0.5,
+                        y_val=y_val,
+                        predict_on=lambda idx, Xq: model.predict(Xq, index=int(idx)),
+                        dataset_name=spec.dataset_name,
                     )
                     gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
                     matched_idx = gt_match_result.get("matched_df_index")
@@ -1750,6 +1762,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         hof_n_steps: int = 0,
         pysr_wall_limit: int = 600,
         eval_noise_levels: Optional[List[float]] = None,
+        domain: str = "srbench",
     ):
         super().__init__(
             results_dir=results_dir,
@@ -1776,6 +1789,9 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self.hof_results_dir = hof_results_dir
         self.hof_n_steps = hof_n_steps
         self.pysr_wall_limit = pysr_wall_limit
+        # Run-level evaluation domain, stamped onto every spec submit_configs
+        # builds (one evolution/HPO run is one domain). See domains.py.
+        self.domain = domain
         # All-noise mode: when set, every task is evaluated at each of these noise
         # levels sequentially in one worker and scored as the mean (see
         # _evaluate_pysr_task). Each task then runs len(levels) PySR fits back to
@@ -1973,6 +1989,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         hof_n_steps=self.hof_n_steps,
                         pysr_wall_limit=(pysr_wall_limit if pysr_wall_limit is not None else self.pysr_wall_limit),
                         black_box=black_box,
+                        domain=self.domain,
                     ))
 
         n_tasks = len(tasks)

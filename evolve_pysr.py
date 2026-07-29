@@ -39,9 +39,9 @@ import numpy as np
 from wandb_utils import init_wandb, log_wandb_summary, log_cpu_usage, finish_wandb
 from parallel_eval_pysr import (
     PySRSlurmEvaluator,
-    get_default_pysr_kwargs,
 )
 from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log, resolve_run_dir
+from domains import get_domain, warn_on_dataset_domain_mismatch
 from julia_env import warmup_julia
 from budget_utils import resolve_run_budget, describe_budget, DEFAULT_SECONDS_PER_1E6_EVALS
 
@@ -717,8 +717,7 @@ def run_bundle_evolution(
     val_pysr_timeout: Optional[int] = None,
     split_label: Optional[str] = None,
     mutation_mode: str = "random",
-    local: bool = False,
-    n_local_workers: Optional[int] = None,
+    domain: str = "srbench",
 ) -> Tuple[OperatorBundle, Any, float]:
     """Run bundle evolution across multiple operator types.
 
@@ -807,6 +806,7 @@ def run_bundle_evolution(
         "random_target_noise": random_target_noise,
         "eval_all_noise_levels": eval_all_noise_levels,
         "fitness_metric": fitness_metric,
+        "domain": domain,
         "repo_root": repo_root,
         "population_type": population_type,
         "reeval": reeval,
@@ -917,18 +917,7 @@ def run_bundle_evolution(
     elif population_type == "complexity":
         print(f"Complexity-aware Pareto population enabled (buckets={population_size})")
 
-    # Local mode runs PySR fits on a persistent pool of spawn workers across the
-    # session's core allocation instead of submitting SLURM jobs (the documented
-    # project pattern). LocalPySREvaluator is a drop-in subclass of
-    # PySRSlurmEvaluator: same spec-building / caching / aggregation, only the
-    # submission step differs. See local_pysr_evaluator.py.
-    evaluator_cls = PySRSlurmEvaluator
-    extra_evaluator_kwargs: Dict[str, Any] = {}
-    if local:
-        from local_pysr_evaluator import LocalPySREvaluator
-        evaluator_cls = LocalPySREvaluator
-        extra_evaluator_kwargs["n_local_workers"] = n_local_workers
-    evaluator = evaluator_cls(
+    evaluator = PySRSlurmEvaluator(
         results_dir=output_dir,
         partition=slurm_partition,
         time_limit=slurm_time_limit,
@@ -943,7 +932,7 @@ def run_bundle_evolution(
         use_cache=use_cache,
         pysr_wall_limit=pysr_wall_limit,
         eval_noise_levels=eval_noise_levels,
-        **extra_evaluator_kwargs,
+        domain=domain,
     )
     if split_label is not None:
         evaluator.split_label = split_label
@@ -2502,24 +2491,14 @@ def main():
                              "'gt-r2' = 1.0 if the task is solved (gt match), else "
                              "the frontier-averaged R².")
 
-    # --- Boolean-synthesis domain -------------------------------------------
     parser.add_argument("--domain", type=str, default="srbench",
                         choices=["srbench", "boolean"],
-                        help="Task domain. 'srbench' (default) = symbolic regression on "
-                             "PMLB/Feynman datasets. 'boolean' = Boolean-function synthesis "
-                             "over band/bor/bxor/bnot with L2 loss; implies --local, "
-                             "--fitness-metric r2, and the Boolean train split unless overridden.")
-    parser.add_argument("--local", action="store_true",
-                        help="Run PySR fits on a local spawn-worker pool instead of SLURM "
-                             "(uses the session's core allocation; no sbatch). Implied by "
-                             "--domain boolean.")
-    parser.add_argument("--n-local-workers", type=int, default=None,
-                        help="Number of local worker processes (default: SLURM_CPUS_PER_TASK "
-                             "or cpu_count).")
-    parser.add_argument("--boolean-maxsize", type=int, default=30,
-                        help="PySR maxsize for the Boolean domain.")
-    parser.add_argument("--boolean-niterations", type=int, default=50,
-                        help="PySR niterations per fit for the Boolean domain.")
+                        help="Evaluation domain (see domains.py). 'srbench' (default) = "
+                             "symbolic regression on PMLB/Feynman datasets. 'boolean' = "
+                             "Boolean-function synthesis over band/bor/bxor/bnot with L2 "
+                             "loss; defaults --fitness-metric to r2 and --split to the "
+                             "Boolean train split unless overridden. All domains run "
+                             "through SLURM.")
 
     parser.add_argument("--split", type=str, default='splits/barely_unsolvable.txt',
                         help="Path to dataset split file")
@@ -2699,16 +2678,17 @@ def main():
     args = parser.parse_args()
 
     # Boolean-domain defaults: applied only where the user left the SRBench
-    # defaults in place, so explicit flags still win.
+    # defaults in place, so explicit flags still win. (gt/gt-r2 now work in
+    # the Boolean domain too — check_solved is an exact truth-table match —
+    # but r2 remains the historical default there.)
     if args.domain == "boolean":
-        args.local = True  # no SLURM path for the Boolean domain
-        if args.fitness_metric == "gt":  # gt (symbolic match) is meaningless here
+        if args.fitness_metric == "gt":
             args.fitness_metric = "r2"
         if args.split == "splits/barely_unsolvable.txt":
             args.split = "splits/boolean_train.txt"
         if args.val_split == "splits/barely_unsolvable_val2.txt":
             args.val_split = None  # no separate Boolean val split by default
-        print(f"[boolean] domain defaults: local=True, fitness_metric={args.fitness_metric}, "
+        print(f"[boolean] domain defaults: fitness_metric={args.fitness_metric}, "
               f"split={args.split}, val_split={args.val_split}")
 
     # KG-dynamic is temporarily disabled: the pruned KG curve implementation
@@ -2797,6 +2777,7 @@ def main():
 
     dataset_names = load_dataset_names_from_split(args.split)
     print(f"Loaded {len(dataset_names)} datasets from {args.split}")
+    warn_on_dataset_domain_mismatch(dataset_names, args.domain)
 
     # Resolve reasoning effort from the preset name before --models is rewritten
     # to its ensemble string below.
@@ -2828,44 +2809,30 @@ def main():
                          else DEFAULT_SECONDS_PER_1E6_EVALS),
         default_slurm_time_limit="00:15:00",
     )
-    # The Boolean domain nulls out the soft timeout and eval budget below (fits
-    # are bounded by niterations + early-stop), so the soft-timeout < wall
-    # invariant doesn't apply — the wall limit is only a safety cap there.
-    if args.domain != "boolean" and budget["timeout_in_seconds"] >= budget["wall_limit"]:
+    # Domains without run-budget semantics (boolean: fits are bounded by
+    # niterations + early-stop) skip the soft-timeout < wall invariant — the
+    # wall limit is only a safety cap there.
+    domain_obj = get_domain(args.domain)
+    if domain_obj.uses_run_budget and budget["timeout_in_seconds"] >= budget["wall_limit"]:
         parser.error(
             f"resolved soft timeout ({budget['timeout_in_seconds']}s) must be < hard "
             f"wall ({budget['wall_limit']}s); raise --pysr-wall-limit or lower --timeout"
         )
     print(f"Run budget: {describe_budget(budget)}")
 
-    if args.domain == "boolean":
-        # Boolean-synthesis domain: operators closed on {0,1}, L2 loss (= misclass
-        # rate on {0,1} targets), and a JSON-safe flag the worker swaps for the
-        # real extra_sympy_mappings. --local and --fitness-metric r2 are the
-        # sensible defaults here (see _apply_boolean_defaults in main()).
-        from boolean_pysr import get_boolean_pysr_kwargs
-        pysr_kwargs = get_boolean_pysr_kwargs(
-            maxsize=args.boolean_maxsize, niterations=args.boolean_niterations,
-        )
-        pysr_kwargs.pop("extra_sympy_mappings", None)  # lambdas can't cross JSON
-        pysr_kwargs["_boolean_domain"] = True
-    else:
-        pysr_kwargs = get_default_pysr_kwargs()
-    pysr_kwargs["max_evals"] = budget["max_evals"]
-    pysr_kwargs["timeout_in_seconds"] = budget["timeout_in_seconds"]
-    if budget["max_evals"] is None and args.domain != "boolean":
-        # Time-budget mode: ensure the wall clock is the sole stopping criterion
-        # (the default niterations=1e7 already far exceeds any wall budget, but
-        # keep the invariant explicit so the timeout always binds before evals).
-        pysr_kwargs["niterations"] = max(int(pysr_kwargs.get("niterations") or 0),
-                                         10_000_000)
-    if args.domain == "boolean":
-        # Boolean fits are bounded by niterations + early-stop (a solved task hits
-        # loss 0 and stops), not an eval/time budget. Keep niterations authoritative
-        # and let the hard wall limit act only as a safety cap.
-        pysr_kwargs["niterations"] = args.boolean_niterations
-        pysr_kwargs["max_evals"] = None
-        pysr_kwargs["timeout_in_seconds"] = None
+    # The domain owns the base PySR config (operators, loss, size limits);
+    # budget fields layer on top only where they apply.
+    pysr_kwargs = domain_obj.base_pysr_kwargs()
+    if domain_obj.uses_run_budget:
+        pysr_kwargs["max_evals"] = budget["max_evals"]
+        pysr_kwargs["timeout_in_seconds"] = budget["timeout_in_seconds"]
+        if budget["max_evals"] is None:
+            # Time-budget mode: ensure the wall clock is the sole stopping
+            # criterion (the default niterations=1e7 already far exceeds any
+            # wall budget, but keep the invariant explicit so the timeout
+            # always binds before evals).
+            pysr_kwargs["niterations"] = max(int(pysr_kwargs.get("niterations") or 0),
+                                             10_000_000)
 
     # Load baseline if specified
     baseline_bundle = None
@@ -2934,8 +2901,7 @@ def main():
         val_pysr_wall_limit=args.val_pysr_wall_limit,
         val_pysr_timeout=args.val_pysr_timeout,
         mutation_mode=args.mutation_mode,
-        local=args.local,
-        n_local_workers=args.n_local_workers,
+        domain=args.domain,
     )
 
     if len(operator_type_names) > 1:

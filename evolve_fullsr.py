@@ -85,6 +85,7 @@ from utils import (
     load_dataset_names_from_split,
     resolve_run_dir,
 )
+from domains import get_domain, warn_on_dataset_domain_mismatch
 from wandb_utils import (
     finish_wandb,
     init_wandb,
@@ -409,12 +410,14 @@ def run_evolution(
     full_file_diff: bool,
     wandb_run: Optional[Any],
     resume_state: Optional[Dict[str, Any]] = None,
+    domain: str = "srbench",
 ) -> Tuple[SkeletonBundle, FullSRSlurmEvaluator, float]:
     rng = random.Random(seed)
     np.random.seed(seed)
 
     dataset_names = load_dataset_names_from_split(split)
     print(f"Loaded {len(dataset_names)} datasets from {split}")
+    warn_on_dataset_domain_mismatch(dataset_names, domain)
 
     # Per-dataset target-noise map (deterministic in `seed`). When disabled the
     # map stays None and every task runs noise-free.
@@ -433,16 +436,21 @@ def run_evolution(
             f"(levels {TARGET_NOISE_LEVELS} assigned across {len(dataset_names)} datasets)"
         )
 
-    engine_kwargs = get_default_engine_kwargs()
-    engine_kwargs["max_evals"] = max_evals
-    engine_kwargs["timeout_in_seconds"] = timeout
-    if max_evals is None:
-        # Time-budget mode: make the wall clock the SOLE stopping criterion. The
-        # default niterations=100 is only ~1.7M evals (100*populations*
-        # ncycles_per_iteration*ceil(pop_n/tournament_n) ≈ 100*15*380*3) ≈ a few
-        # hundred seconds, so it would silently cap any larger --max-time-in-seconds
-        # before the timeout fires. Lift it so the timeout binds.
-        engine_kwargs["niterations"] = 10_000_000
+    # The domain owns the base engine config (operators, size limits); budget
+    # fields layer on top only where they apply (boolean fits are bounded by
+    # niterations instead).
+    domain_obj = get_domain(domain)
+    engine_kwargs = domain_obj.base_engine_kwargs()
+    if domain_obj.uses_run_budget:
+        engine_kwargs["max_evals"] = max_evals
+        engine_kwargs["timeout_in_seconds"] = timeout
+        if max_evals is None:
+            # Time-budget mode: make the wall clock the SOLE stopping criterion. The
+            # default niterations=100 is only ~1.7M evals (100*populations*
+            # ncycles_per_iteration*ceil(pop_n/tournament_n) ≈ 100*15*380*3) ≈ a few
+            # hundred seconds, so it would silently cap any larger --max-time-in-seconds
+            # before the timeout fires. Lift it so the timeout binds.
+            engine_kwargs["niterations"] = 10_000_000
 
     logger = EvolutionLogger(output_dir)
     logger.set_config({
@@ -466,6 +474,7 @@ def run_evolution(
         "llm_max_workers": llm_max_workers,
         "use_cache": use_cache,
         "fitness_metric": fitness_metric,
+        "domain": domain,
         "mutation_mode": mutation_mode,
         "operator_slots": operator_slots,
         "target_noise": target_noise,
@@ -518,6 +527,7 @@ def run_evolution(
         target_noise=target_noise,
         wall_limit=fullsr_wall_limit,
         eval_noise_levels=eval_noise_levels,
+        domain=domain,
     )
     evaluator.split_label = Path(split).stem if split else None
 
@@ -1227,6 +1237,12 @@ def main():
             "R²; 'gt-r2' = 1.0 for a symbolic match, otherwise validation R²."
         ),
     )
+    parser.add_argument("--domain", type=str, default="srbench",
+                        choices=["srbench", "boolean"],
+                        help="Evaluation domain (see domains.py). 'boolean' = "
+                             "Boolean-function synthesis over band/bor/bxor/bnot; "
+                             "defaults --fitness-metric to r2 and --split to the "
+                             "Boolean train split unless overridden.")
     parser.add_argument(
         "--mutation-mode",
         type=str,
@@ -1380,6 +1396,18 @@ def main():
 
     args = parser.parse_args()
 
+    # Boolean-domain defaults: applied only where the user left the SRBench
+    # defaults in place, so explicit flags still win.
+    if args.domain == "boolean":
+        if args.fitness_metric == "gt":
+            args.fitness_metric = "r2"
+        if args.split == "splits/barely_unsolvable.txt":
+            args.split = "splits/boolean_train.txt"
+        if args.val_split == "splits/barely_unsolvable_val2.txt":
+            args.val_split = None
+        print(f"[boolean] domain defaults: fitness_metric={args.fitness_metric}, "
+              f"split={args.split}, val_split={args.val_split}")
+
     if args.target_noise < 0:
         parser.error("--target-noise must be >= 0")
     # --timeout / --fullsr-wall-limit default to None (auto-resolved below); only
@@ -1489,7 +1517,10 @@ def main():
                          else DEFAULT_SECONDS_PER_1E6_EVALS),
         default_slurm_time_limit="00:30:00",
     )
-    if budget["timeout_in_seconds"] >= budget["wall_limit"]:
+    # Domains without run-budget semantics skip the soft<hard invariant (the
+    # wall limit is only a safety cap there; see domains.py).
+    if get_domain(args.domain).uses_run_budget and \
+            budget["timeout_in_seconds"] >= budget["wall_limit"]:
         parser.error(
             f"resolved soft timeout ({budget['timeout_in_seconds']}s) must be < hard "
             f"wall ({budget['wall_limit']}s); raise --fullsr-wall-limit or lower --timeout"
@@ -1522,6 +1553,7 @@ def main():
         "val_n_runs": args.val_n_runs,
         "split": args.split,
         "val_split": args.val_split,
+        "domain": args.domain,
         "max_samples": args.max_samples,
         "max_evals": budget["max_evals"],
         "max_time_in_seconds": budget["max_time_in_seconds"],
@@ -1589,6 +1621,7 @@ def main():
         eval_all_noise_levels=args.eval_all_noise_levels,
         full_file_diff=args.full_file_diff,
         wandb_run=wandb_run,
+        domain=args.domain,
         resume_state=resume_state,
     )
 

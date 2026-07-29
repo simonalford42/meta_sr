@@ -1,5 +1,7 @@
 #!/bin/bash
-# Run the real evolve_pysr.py on the Boolean-synthesis domain, locally (no SLURM).
+# Launch evolve_pysr.py on the Boolean-synthesis domain. Evaluation now runs
+# through SLURM (PySRSlurmEvaluator) like every domain — this script only
+# starts the driver.
 # Usage: bash scripts/run_boolean_evolve_pysr.sh [output_dir]
 set -u
 source /home/sca63/mambaforge/etc/profile.d/conda.sh
@@ -25,8 +27,6 @@ python evolve_pysr.py \
   --domain boolean \
   --operator-type mutation \
   --generations 3 --population 10 --offspring 10 --n-runs 3 \
-  --boolean-niterations 50 --boolean-maxsize 30 \
-  --n-local-workers 8 \
   --models cheap --reasoning-effort auto \
   --pysr-wall-limit 300 \
   --output-dir "$OUT"

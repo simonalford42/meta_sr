@@ -15,6 +15,7 @@ Usage:
         --final-topk 10 \
         --n-runs-final 10 \
         --split splits/train.txt \
+        --val-split splits/val.txt \
         --partition <slurm_partition>
 """
 
@@ -33,10 +34,10 @@ from parallel_eval_pysr import (
     PySRConfig,
     PySRSlurmEvaluator,
     get_default_mutation_weights,
-    get_default_pysr_kwargs,
     run_scores_for_metric,
 )
 from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log
+from domains import get_domain, warn_on_dataset_domain_mismatch
 from wandb_utils import init_wandb, log_wandb_summary, log_cpu_usage, finish_wandb
 from evolution_helpers import job_success_stats
 
@@ -879,6 +880,7 @@ def run_hpo(
     continue_from: Optional[str] = None,
     wandb_run: Any = None,
     target_noise_map: Optional[Dict[str, float]] = None,
+    domain: str = "srbench",
 ) -> Tuple[Dict[str, Any], float]:
     """
     Run hyperparameter optimization for generic PySR hyperparameters.
@@ -908,6 +910,16 @@ def run_hpo(
 
     np.random.seed(seed)
 
+    # The domain owns its fixed parameters (e.g. operators for boolean); drop
+    # them from the tunable space rather than erroring so one active list
+    # works across domains.
+    domain_obj = get_domain(domain)
+    if domain_obj.hpo_excluded_params:
+        dropped = [p for p in active_hpo_params if p in domain_obj.hpo_excluded_params]
+        if dropped:
+            print(f"[{domain}] domain owns {dropped}; removed from HPO search space")
+        active_hpo_params = [p for p in active_hpo_params
+                             if p not in domain_obj.hpo_excluded_params]
     search_space = _filter_active_search_space(active_hpo_params)
     if not search_space:
         raise ValueError("No active HPO hyperparameters selected.")
@@ -928,6 +940,7 @@ def run_hpo(
             "n_datasets": len(dataset_names),
             "dataset_names": dataset_names,
             "seed": seed,
+            "domain": domain,
             "active_hpo_params": active_hpo_params,
             "base_pysr_kwargs": base_pysr_kwargs,
             "max_samples": max_samples,
@@ -959,6 +972,7 @@ def run_hpo(
             job_timeout=job_timeout,
             max_concurrent_jobs=max_concurrent_jobs,
             use_cache=use_cache,
+            domain=domain,
         )
 
         # Phase 1: Evaluate baseline
@@ -1264,7 +1278,7 @@ def main():
     # HPO settings
     parser.add_argument("--n-trials", type=int, default=50,
                         help="Total Optuna trials")
-    parser.add_argument("--n-parallel", type=int, default=4,
+    parser.add_argument("--n-parallel", type=int, default=10,
                         help="Configs to evaluate per SLURM batch")
     parser.add_argument("--n-runs", type=int, default=3,
                         help="Seeds per config per dataset")
@@ -1279,10 +1293,20 @@ def main():
                         help="HPO objective: 'gt' = whole-frontier ground-truth "
                              "symbolic match rate; 'r2' = frontier-averaged validation "
                              "R²; 'gt-r2' = 1.0 when solved, otherwise frontier-averaged R²")
+    parser.add_argument("--domain", type=str, default="srbench",
+                        choices=["srbench", "boolean"],
+                        help="Evaluation domain (see domains.py). The domain owns the "
+                             "base PySR config (operators, loss); its fixed params are "
+                             "dropped from the HPO search space automatically. 'boolean' "
+                             "defaults --fitness-metric to r2 and --split to the Boolean "
+                             "train split unless overridden.")
 
     # Dataset settings
     parser.add_argument("--split", type=str, default="splits/train.txt",
-                        help="Dataset split file")
+                        help="Dataset split file the HPO objective is computed on")
+    parser.add_argument("--val-split", type=str, default="splits/val.txt",
+                        help="Held-out split for the final evaluation (in addition to "
+                             "--split). Pass 'none' to final-eval on --split only.")
     parser.add_argument("--max-samples", type=int, default=1000,
                         help="Max samples per dataset")
     parser.add_argument("--target-noise", type=float, default=0.0,
@@ -1324,6 +1348,19 @@ def main():
                              "the Optuna study so TPE benefits from prior history.")
 
     args = parser.parse_args()
+
+    # Boolean-domain defaults: applied only where the user left the SRBench
+    # defaults in place, so explicit flags still win.
+    if args.domain == "boolean":
+        if args.fitness_metric == "gt":
+            args.fitness_metric = "r2"
+        if args.split == "splits/train.txt":
+            args.split = "splits/boolean_train.txt"
+        if args.val_split == "splits/val.txt":
+            args.val_split = None
+        print(f"[boolean] domain defaults: fitness_metric={args.fitness_metric}, "
+              f"split={args.split}, val_split={args.val_split}")
+
     if args.n_runs_final < 1:
         parser.error("--n-runs-final must be at least 1")
     if args.final_topk < 1:
@@ -1337,8 +1374,11 @@ def main():
         args.output_dir = f"outputs/hpo_pysr_{timestamp}"
 
     # Load datasets
+    if args.val_split and args.val_split.lower() in ("none", ""):
+        args.val_split = None
     dataset_names = load_dataset_names_from_split(args.split)
     print(f"Loaded {len(dataset_names)} datasets from {args.split}")
+    warn_on_dataset_domain_mismatch(dataset_names, args.domain)
 
     # Build target noise map
     target_noise_map = None
@@ -1347,10 +1387,14 @@ def main():
     elif args.target_noise > 0:
         target_noise_map = {name: args.target_noise for name in dataset_names}
 
-    # Set up PySR kwargs
-    pysr_kwargs = get_default_pysr_kwargs()
-    pysr_kwargs["max_evals"] = args.max_evals
-    pysr_kwargs["timeout_in_seconds"] = args.timeout
+    # Set up PySR kwargs: the domain owns the base config; budget fields layer
+    # on top only for domains with run-budget semantics (boolean fits are
+    # bounded by niterations + early-stop instead).
+    domain_obj = get_domain(args.domain)
+    pysr_kwargs = domain_obj.base_pysr_kwargs()
+    if domain_obj.uses_run_budget:
+        pysr_kwargs["max_evals"] = args.max_evals
+        pysr_kwargs["timeout_in_seconds"] = args.timeout
 
     # Uncomment entries in this list to include them in HPO.
     # The order follows the estimated importance ranking in PYSR_HPARAM_IMPORTANCE_ORDER.
@@ -1449,6 +1493,7 @@ def main():
         "seed": args.seed,
         "fitness_metric": args.fitness_metric,
         "split": args.split,
+        "val_split": args.val_split,
         "max_samples": args.max_samples,
         "max_evals": args.max_evals,
         "timeout": args.timeout,
@@ -1457,6 +1502,7 @@ def main():
         "random_target_noise": args.random_target_noise,
         "continue_from": args.continue_from,
         "no_cache": args.no_cache,
+        "domain": args.domain,
         "active_hpo_params": active_hpo_params,
     }
     wandb_run = init_wandb(
@@ -1489,28 +1535,36 @@ def main():
         continue_from=args.continue_from,
         wandb_run=wandb_run,
         target_noise_map=target_noise_map,
+        domain=args.domain,
     )
 
-    # Final evaluation on train + val (10 seeds).
+    # Final evaluation on --split and --val-split (10 seeds).
     best_params_path = Path(args.output_dir) / "best_params.json"
     if best_params_path.exists():
         try:
             from evaluate_new_pysr import run_final_evaluation
-            # Build noise map for final eval splits
+            final_splits = [args.split]
+            if args.val_split:
+                final_splits.append(args.val_split)
+            # Build noise map for final eval splits, matching the HPO noise settings.
             final_noise_map = None
-            if args.random_target_noise:
-                all_splits = ["splits/train.txt", "splits/val.txt"]
+            if args.random_target_noise or args.target_noise > 0:
                 all_datasets = []
-                for sp in all_splits:
+                for sp in final_splits:
                     all_datasets.extend(load_dataset_names_from_split(sp))
-                final_noise_map = _build_target_noise_map(
-                    list(dict.fromkeys(all_datasets)), args.seed, TARGET_NOISE_LEVELS,
-                )
+                all_datasets = list(dict.fromkeys(all_datasets))
+                if args.random_target_noise:
+                    final_noise_map = _build_target_noise_map(
+                        all_datasets, args.seed, TARGET_NOISE_LEVELS,
+                    )
+                else:
+                    final_noise_map = {name: args.target_noise for name in all_datasets}
             run_final_evaluation(
                 output_dir=args.output_dir,
                 method_source="hpo",
                 method_path=str(best_params_path),
                 partition=args.partition,
+                splits=final_splits,
                 n_runs=10,
                 seed=args.seed,
                 max_samples=args.max_samples,
