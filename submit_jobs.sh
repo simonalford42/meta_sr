@@ -16,6 +16,8 @@ srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-r2 run
 srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644293 --ground-truth --black-box)
 srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box)
 srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
+srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-gt-1e7 run.sh srbench_full_eval.py --evolve-results runs/538190 --ground-truth --max-evals 10000000)
+srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-base-1e7 run.sh srbench_full_eval.py --ground-truth --max-evals 10000000)
 
 # 7/28/36
 
