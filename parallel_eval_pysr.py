@@ -315,6 +315,11 @@ def _build_cache_identity(
 
     model_kwargs = {**pysr_mutation_kwargs, **spec.pysr_kwargs}
     model_kwargs['random_state'] = spec.seed + spec.run_index
+    # Black-box uses a different split/scaling/data-cleaning protocol and must
+    # never collide with an otherwise identical ground-truth cache entry.
+    # Add this only for black-box so historical ground-truth keys stay valid.
+    if spec.black_box:
+        model_kwargs["_srbench_black_box_protocol"] = 1
     return pysr_mutation_kwargs, model_kwargs, spec.hof_n_steps
 
 
@@ -359,6 +364,10 @@ def _build_pysr_cache_entry(
     execution_trace_json = (
         json.dumps(result.execution_trace) if result.execution_trace else None
     )
+    pareto_frontier_json = (
+        json.dumps(result.pareto_frontier)
+        if result.pareto_frontier is not None else None
+    )
     return {
         "request_hash": request_hash,
         "config_hash": config_hash,
@@ -374,6 +383,7 @@ def _build_pysr_cache_entry(
         "runtime_seconds": result.runtime_seconds,
         "num_evaluations": result.num_evaluations,
         "execution_trace_json": execution_trace_json,
+        "pareto_frontier_json": pareto_frontier_json,
     }
 
 
@@ -478,6 +488,7 @@ def _lookup_cached_level(
         "runtime_seconds": cached.get("runtime_seconds", 0.0),
         "num_evaluations": cached.get("num_evaluations"),
         "execution_trace": cached.get("execution_trace"),
+        "pareto_frontier": cached.get("pareto_frontier"),
     }
 
 
@@ -1023,6 +1034,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
     # Build model kwargs once so execution and parent-side cache compaction share identity logic.
     _, model_kwargs, _ = _build_cache_identity(spec)
+    model_kwargs.pop("_srbench_black_box_protocol", None)
 
     # Boolean domain: extra_sympy_mappings (lambdas) can't survive the JSON task
     # file, so the spec carries a JSON-safe "_boolean_domain" flag instead. Here
@@ -1044,6 +1056,20 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         # the historical pre-split cap.
         load_cap = None if spec.black_box else spec.max_samples
         X, y, ground_truth_formula = load_srbench_dataset(spec.dataset_name, max_samples=load_cap)
+        if spec.black_box:
+            finite_rows = np.isfinite(y) & np.isfinite(X).all(axis=1)
+            if not finite_rows.all():
+                n_removed = int((~finite_rows).sum())
+                X, y = X[finite_rows], y[finite_rows]
+                print(
+                    f"[{spec.dataset_name}] Removed {n_removed} rows with "
+                    "non-finite feature/target values",
+                    flush=True,
+                )
+            if len(y) < 2:
+                raise ValueError(
+                    f"Black-box dataset has only {len(y)} finite rows"
+                )
         t_load_data = _time.time() - t0
         print(f"[{spec.dataset_name}] Dataset loaded in {t_load_data:.1f}s", flush=True)
 
@@ -2017,10 +2043,16 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             or cached.get("r2_frontier_score") is not None
                             or cached.get("error") is not None
                         )
+                        cached_has_required_frontier = (
+                            not task.black_box
+                            or cached is None
+                            or bool(cached.get("pareto_frontier"))
+                        )
                         if (
                             _has_usable_pysr_cached_result(cached)
                             and cached_has_required_trace
                             and cached_has_required_r2c
+                            and cached_has_required_frontier
                         ):
                             # Execution trace is persisted in the cache alongside
                             # the other result fields; None for entries written
@@ -2048,6 +2080,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                                 runtime_seconds=cached.get("runtime_seconds", 0.0),
                                 num_evaluations=cached.get("num_evaluations"),
                                 execution_trace=execution_trace,
+                                pareto_frontier=cached.get("pareto_frontier"),
                             )
                             result_file = results_subdir / f"task_{task_idx:06d}.json"
                             _write_json_atomic(result_file, cached_result.to_json_dict())

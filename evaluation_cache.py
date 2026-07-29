@@ -137,6 +137,8 @@ class PySRCacheEntry(Base):
     # JSON-encoded List[Dict] execution trace (HOF milestones). Nullable for
     # entries written before this column existed.
     execution_trace_json = Column(Text, nullable=True)
+    # JSON-encoded held-out test R²/complexity frontier for black-box SRBench.
+    pareto_frontier_json = Column(Text, nullable=True)
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -390,6 +392,12 @@ class PySRCacheDB:
                     "ALTER TABLE pysr_evaluations ADD COLUMN num_evaluations FLOAT"
                 ))
                 conn.commit()
+        if "pareto_frontier_json" not in columns:
+            with self.engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE pysr_evaluations ADD COLUMN pareto_frontier_json TEXT"
+                ))
+                conn.commit()
 
     def _make_config_hash(
         self,
@@ -531,6 +539,7 @@ class PySRCacheDB:
             PySRCacheEntry.gt_matched_equation,
             PySRCacheEntry.r2_frontier_score,
             PySRCacheEntry.num_evaluations,
+            PySRCacheEntry.pareto_frontier_json,
         ).where(PySRCacheEntry.request_hash == request_hash)
 
         with Session(self.engine) as session:
@@ -542,6 +551,12 @@ class PySRCacheDB:
                         trace = json.loads(result[7])
                     except (ValueError, TypeError):
                         trace = None
+                frontier = None
+                if result[11]:
+                    try:
+                        frontier = json.loads(result[11])
+                    except (ValueError, TypeError):
+                        frontier = None
                 return {
                     "r2_score": result[0],
                     "best_equation": result[1],
@@ -554,6 +569,7 @@ class PySRCacheDB:
                     "gt_matched_equation": result[8],
                     "r2_frontier_score": result[9],
                     "num_evaluations": result[10],
+                    "pareto_frontier": frontier,
                 }
         return None
 
@@ -585,6 +601,7 @@ class PySRCacheDB:
         hof_n_steps: int = 0,
         gt_matched_equation: Optional[str] = None,
         num_evaluations: Optional[float] = None,
+        pareto_frontier: Optional[List[Dict]] = None,
     ) -> None:
         """Store a PySR evaluation result in the cache."""
         config_hash = self._make_config_hash(
@@ -612,6 +629,9 @@ class PySRCacheDB:
             timed_out=timed_out,
             runtime_seconds=runtime_seconds,
             num_evaluations=num_evaluations,
+            pareto_frontier_json=(
+                json.dumps(pareto_frontier) if pareto_frontier is not None else None
+            ),
             execution_trace_json=json.dumps(execution_trace) if execution_trace else None,
             created_at=datetime.utcnow(),
         )
@@ -662,6 +682,7 @@ class PySRCacheDB:
                 runtime_seconds=entry.get("runtime_seconds", 0.0),
                 num_evaluations=entry.get("num_evaluations"),
                 execution_trace_json=entry.get("execution_trace_json"),
+                pareto_frontier_json=entry.get("pareto_frontier_json"),
                 created_at=entry.get("created_at", datetime.utcnow()),
             ))
 

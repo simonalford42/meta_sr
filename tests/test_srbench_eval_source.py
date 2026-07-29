@@ -81,6 +81,25 @@ def test_backend_aware_loader_builds_fullsr_config(tmp_path):
     assert len(loaded.method_meta["functions"]) == 8
 
 
+def test_fullsr_baseline_uses_basic_sr_config():
+    args = SimpleNamespace(
+        evolve_results=None,
+        hpo_results=None,
+        fullsr_baseline=True,
+        select_by="val",
+        max_evals=12345,
+    )
+
+    loaded = load_evaluation_source(args)
+
+    assert loaded.backend == "fullsr"
+    assert loaded.mode == "fullsr_baseline"
+    assert loaded.config.policy_name == "basic"
+    assert loaded.config.policy_code is None
+    assert loaded.config.policy_module_code is None
+    assert loaded.config.engine_kwargs["max_evals"] == 12345
+
+
 def test_skeleton_bundle_round_trips_full_file_module_body():
     bundle = SkeletonBundle.from_default_sr_config()
     bundle.raw_module_body = "# complete evolved module body"

@@ -40,6 +40,26 @@ def detect_evolve_backend(path: str) -> str:
 
 def load_evaluation_source(args) -> EvaluationSource:
     """Load baseline/HPO/evolved results and construct the native config."""
+    if getattr(args, "fullsr_baseline", False):
+        from parallel_eval_fullsr import (
+            FullSRConfig,
+            POLICY_BASIC,
+            get_default_engine_kwargs,
+        )
+
+        engine_kwargs = get_default_engine_kwargs()
+        engine_kwargs["max_evals"] = args.max_evals
+        return EvaluationSource(
+            backend="fullsr",
+            mode="fullsr_baseline",
+            config=FullSRConfig(
+                policy_name=POLICY_BASIC,
+                engine_kwargs=engine_kwargs,
+                name="BasicSRConfig",
+            ),
+            method_meta={"source": "SymbolicRegression.jl/src/BasicSRConfig.jl"},
+        )
+
     if args.evolve_results and detect_evolve_backend(args.evolve_results) == "fullsr":
         from bundle_loader import load_skeleton_bundle
         from evolve_fullsr import _bundle_to_config

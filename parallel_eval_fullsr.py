@@ -350,6 +350,19 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
         X, y, ground_truth_formula = load_srbench_dataset(
             spec.dataset_name, max_samples=load_cap
         )
+        if spec.black_box:
+            finite_rows = np.isfinite(y) & np.isfinite(X).all(axis=1)
+            if not finite_rows.all():
+                n_removed = int((~finite_rows).sum())
+                X, y = X[finite_rows], y[finite_rows]
+                _log(
+                    f"Removed {n_removed} rows with non-finite "
+                    "feature/target values"
+                )
+            if len(y) < 2:
+                raise ValueError(
+                    f"Black-box dataset has only {len(y)} finite rows"
+                )
         _log(f"Dataset loaded: X={X.shape}, y={y.shape}")
 
         np.random.seed(run_seed)

@@ -106,6 +106,7 @@ def test_black_box_results_group_trials_per_dataset(tmp_path):
 def test_fullsr_black_box_protocol_and_frontier(monkeypatch):
     X = np.arange(40, dtype=float).reshape(-1, 1)
     y = 2.0 * X[:, 0] + 3.0
+    X[5, 0] = np.nan
     captured = {}
 
     monkeypatch.setattr(

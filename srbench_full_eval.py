@@ -189,7 +189,7 @@ def run_black_box(args, output_dir, source, manifest, run):
             mem_per_cpu=args.mem_per_cpu,
             dataset_max_samples=args.black_box_max_samples,
             data_seed=args.seed,
-            use_cache=False,
+            use_cache=not args.no_cache,
             job_timeout=args.job_timeout,
             wall_limit=wall_limit,
             max_retries=args.max_retries,
@@ -221,7 +221,7 @@ def run_black_box(args, output_dir, source, manifest, run):
             mem_per_cpu=args.mem_per_cpu,
             dataset_max_samples=args.black_box_max_samples,
             data_seed=args.seed,
-            use_cache=False,
+            use_cache=not args.no_cache,
             job_timeout=args.job_timeout,
             pysr_wall_limit=wall_limit,
             max_retries=args.max_retries,
@@ -284,6 +284,8 @@ def main():
                       help="Path / run-id of an evolve run (run_data.json).")
     mode.add_argument("--hpo-results", type=str, default=None,
                       help="Path / run-id of an HPO run (best_params.json).")
+    mode.add_argument("--fullsr-baseline", action="store_true",
+                      help="Evaluate evolve_fullsr's BasicSRConfig.jl baseline.")
     parser.add_argument("--select-by", choices=["val", "train"], default="val",
                         help="For evolve runs, select the bundle by validation "
                              "score (default) or training score. Val falls back "

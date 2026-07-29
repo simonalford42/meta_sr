@@ -1,8 +1,46 @@
 #!/usr/bin/env bash
-set -euo pipefail
+
+# 7/29
+
+# Seed the shared cache with successful black-box artifacts from 7/28. Failed
+# trials stay uncached and are the only black-box trials rerun below.
+python scripts/import_srbench_black_box_cache.py \
+    runs/548743 runs/548744 runs/548745 runs/548746
+
+srb_prev=$(sbatch --parsable -J srb-gtr2 run.sh srbench_full_eval.py --evolve-results runs/120459 --ground-truth --black-box)
+srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-r2 run.sh srbench_full_eval.py --evolve-results runs/120458 --ground-truth --black-box)
+srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-gt run.sh srbench_full_eval.py --evolve-results runs/538190 --black-box)
+srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-base run.sh srbench_full_eval.py --black-box)
+srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644009 --ground-truth --black-box)
+srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-r2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644046 --ground-truth --black-box)
+srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644293 --ground-truth --black-box)
+srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box)
+srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
+
+# 7/28/36
+
+# sbatch -J full-r2 run.sh evolve_fullsr.py --generations 30 --offspring 10 --population 10 --n-runs 3 --models best --fitness-metric r2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
+# sbatch -J full-gt-r2 run.sh evolve_fullsr.py --generations 30 --offspring 10 --population 10 --n-runs 3 --models best --fitness-metric gt-r2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
+
+# srb_prev=$(sbatch --parsable -J srb-gtr2 run.sh srbench_full_eval.py --evolve-results runs/120459 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-r2 run.sh srbench_full_eval.py --evolve-results runs/120458 --black-box --ground-truth)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-gt run.sh srbench_full_eval.py --evolve-results runs/538190 --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-base run.sh srbench_full_eval.py --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gt run.sh srbench_full_eval.py --evolve-results runs/422103 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-r2 run.sh srbench_full_eval.py --evolve-results runs/422104 --black-box --ground-truth)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gtr2 run.sh srbench_full_eval.py --evolve-results runs/422105 --black-box --ground-truth)
+
+# sbatch -J eval-121270 --partition=default_partition run.sh evaluate_new_pysr.py --splits splits/val.txt splits/barely_unsolvable_val2.txt --n-runs 10 --evolve-results runs/121270
+# sbatch -J eval-155134 --partition=default_partition run.sh evaluate_new_pysr.py --splits splits/val.txt splits/barely_unsolvable_val2.txt --n-runs 10 --evolve-results runs/155134
+# sbatch -J eval-120458 --partition=default_partition run.sh evaluate_new_pysr.py --splits splits/val.txt splits/barely_unsolvable_val2.txt --n-runs 10 --evolve-results runs/120458
+# sbatch -J r2-train run.sh evolve_pysr.py --split splits/train.txt --val-split splits/val.txt --generations 30 --models best --offspring 10 --population 10 --n-runs 3 --fitness-metric r2
+
+# set -euo pipefail
 
 # 7/27/26 resubmitting jobs that failed from 7/23
-sbatch -J hpo-gt run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric gt --n-parallel 20
+# sbatch -J hpo-gt run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric gt --n-parallel 20 --random-target-noise --models best
+# sbatch -J hpo-r2 run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric r2 --n-parallel 20 --random-target-noise --models best
+# sbatch -J hpo-gt-r2 run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric gt-r2 --n-parallel 20 --random-target-noise --models best
 
 # 7/23/26 — queued experiment suite. Three independent dependency chains keep
 # at most three driver jobs running at once. Independent jobs use `afterany` so
@@ -10,36 +48,36 @@ sbatch -J hpo-gt run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/bar
 # created run use `afterok`, because they require the producer's run_data.json.
 # Run this file to submit; these commands have not been submitted yet.
 
-# Chain 1, job 1: evaluate base PySR on the 122 SRBench black-box (BB) tasks.
-chain1=$(sbatch --parsable -J bb-pysr-base run.sh srbench_full_eval.py --black-box)
-# Chain 2, job 1: run 500-trial PySR HPO on GT with three runs per trial.
-chain2=$(sbatch --parsable -J hpo-gt run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric gt --n-parallel 20)
-# Chain 3, job 1: run 500-trial PySR HPO on R² with three runs per trial.
-chain3=$(sbatch --parsable -J hpo-r2 run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric r2 --n-parallel 20)
+# # Chain 1, job 1: evaluate base PySR on the 122 SRBench black-box (BB) tasks.
+# chain1=$(sbatch --parsable -J bb-pysr-base run.sh srbench_full_eval.py --black-box)
+# # Chain 2, job 1: run 500-trial PySR HPO on GT with three runs per trial.
+# chain2=$(sbatch --parsable -J hpo-gt run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric gt --n-parallel 20)
+# # Chain 3, job 1: run 500-trial PySR HPO on R² with three runs per trial.
+# chain3=$(sbatch --parsable -J hpo-r2 run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric r2 --n-parallel 20)
 
-# Chain 1, job 2: evaluate GT-R² PySR++ (run 120459) on BB.
-chain1=$(sbatch --parsable --dependency=afterany:$chain1 -J bb-pysrpp-gtr2 run.sh srbench_full_eval.py --evolve-results runs/120459 --black-box)
-# Chain 2, job 2: evaluate R² PySR++ (run 120458) on BB.
-chain2=$(sbatch --parsable --dependency=afterany:$chain2 -J bb-pysrpp-r2 run.sh srbench_full_eval.py --evolve-results runs/120458 --black-box)
-# Chain 3, job 2: run 500-trial PySR HPO on GT-R² with three runs per trial.
-chain3=$(sbatch --parsable --dependency=afterany:$chain3 -J hpo-gt-r2 run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric gt-r2 --n-parallel 20)
+# # Chain 1, job 2: evaluate GT-R² PySR++ (run 120459) on BB.
+# chain1=$(sbatch --parsable --dependency=afterany:$chain1 -J bb-pysrpp-gtr2 run.sh srbench_full_eval.py --evolve-results runs/120459 --black-box)
+# # Chain 2, job 2: evaluate R² PySR++ (run 120458) on BB.
+# chain2=$(sbatch --parsable --dependency=afterany:$chain2 -J bb-pysrpp-r2 run.sh srbench_full_eval.py --evolve-results runs/120458 --black-box)
+# # Chain 3, job 2: run 500-trial PySR HPO on GT-R² with three runs per trial.
+# chain3=$(sbatch --parsable --dependency=afterany:$chain3 -J hpo-gt-r2 run.sh hpo_pysr.py --n-trials 500 --n-runs 3 --split splits/barely_unsolvable.txt --fitness-metric gt-r2 --n-parallel 20)
 
-# Chain 1, job 3: evolve FullSR for R² (cheap models, 15 generations).
-fullsr_r2=$(sbatch --parsable --dependency=afterany:$chain1 -J fullsr-r2 run.sh evolve_fullsr.py --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --models cheap --fitness-metric r2 --split splits/train.txt --val-split splits/val.txt)
-# Chain 2, job 3: evaluate GT-R² PySR++ (run 120459) on all GT tasks.
-chain2=$(sbatch --parsable --dependency=afterany:$chain2 -J gt-pysrpp-gtr2 run.sh srbench_full_eval.py --evolve-results runs/120459 --ground-truth)
-# Chain 3, job 3: evolve all PySR++ operators on LogicBench (cheap models, 15 generations).
-chain3=$(sbatch --parsable --dependency=afterany:$chain3 --cpus-per-task=8 -J logic-pysrpp run.sh evolve_pysr.py --domain boolean --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --n-local-workers 8 --models cheap)
+# # Chain 1, job 3: evolve FullSR for R² (cheap models, 15 generations).
+# fullsr_r2=$(sbatch --parsable --dependency=afterany:$chain1 -J fullsr-r2 run.sh evolve_fullsr.py --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --models cheap --fitness-metric r2 --split splits/train.txt --val-split splits/val.txt)
+# # Chain 2, job 3: evaluate GT-R² PySR++ (run 120459) on all GT tasks.
+# chain2=$(sbatch --parsable --dependency=afterany:$chain2 -J gt-pysrpp-gtr2 run.sh srbench_full_eval.py --evolve-results runs/120459 --ground-truth)
+# # Chain 3, job 3: evolve all PySR++ operators on LogicBench (cheap models, 15 generations).
+# chain3=$(sbatch --parsable --dependency=afterany:$chain3 --cpus-per-task=8 -J logic-pysrpp run.sh evolve_pysr.py --domain boolean --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --n-local-workers 8 --models cheap)
 
-# Chain 1, job 4: evaluate the newly evolved R² FullSR run on BB.
-chain1=$(sbatch --parsable --dependency=afterok:$fullsr_r2 -J bb-fullsr-r2 run.sh srbench_full_eval.py --evolve-results runs/$fullsr_r2 --black-box)
-# Chain 2, job 4: evolve FullSR for GT-R² (cheap models, 15 generations).
-fullsr_gtr2=$(sbatch --parsable --dependency=afterany:$chain2 -J fullsr-gt-r2 run.sh evolve_fullsr.py --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --models cheap --fitness-metric gt-r2 --split splits/train.txt --val-split splits/val.txt)
+# # Chain 1, job 4: evaluate the newly evolved R² FullSR run on BB.
+# chain1=$(sbatch --parsable --dependency=afterok:$fullsr_r2 -J bb-fullsr-r2 run.sh srbench_full_eval.py --evolve-results runs/$fullsr_r2 --black-box)
+# # Chain 2, job 4: evolve FullSR for GT-R² (cheap models, 15 generations).
+# fullsr_gtr2=$(sbatch --parsable --dependency=afterany:$chain2 -J fullsr-gt-r2 run.sh evolve_fullsr.py --operator-type all --generations 15 --population 10 --offspring 10 --n-runs 3 --models cheap --fitness-metric gt-r2 --split splits/train.txt --val-split splits/val.txt)
 
-# Chain 2, job 5: evaluate the newly evolved GT-R² FullSR run on BB.
-chain2=$(sbatch --parsable --dependency=afterok:$fullsr_gtr2 -J bb-fullsr-gtr2 run.sh srbench_full_eval.py --evolve-results runs/$fullsr_gtr2 --black-box)
+# # Chain 2, job 5: evaluate the newly evolved GT-R² FullSR run on BB.
+# chain2=$(sbatch --parsable --dependency=afterok:$fullsr_gtr2 -J bb-fullsr-gtr2 run.sh srbench_full_eval.py --evolve-results runs/$fullsr_gtr2 --black-box)
 
-echo "Submitted three chains; tails: chain1=$chain1 chain2=$chain2 chain3=$chain3"
+# echo "Submitted three chains; tails: chain1=$chain1 chain2=$chain2 chain3=$chain3"
 
 # 7/23/26
 # sbatch -J fulleval --partition default_partition run.sh srbench_full_eval.py --evolve-results runs/538190
