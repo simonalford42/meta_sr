@@ -83,7 +83,45 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("plots/black_box_mean_r2_vs_complexity.csv"),
     )
+    parser.add_argument(
+        "--zoom-output",
+        type=Path,
+        default=Path("plots/black_box_mean_r2_vs_complexity_zoom.png"),
+    )
     return parser.parse_args()
+
+
+def draw_plot(
+    output: Path,
+    loaded: list[tuple[str, Path, dict]],
+    aggregates: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    grid: np.ndarray,
+    n_problems: int,
+    *,
+    xlim: tuple[float, float],
+    ylim: tuple[float, float] | None = None,
+    title_suffix: str = "",
+) -> None:
+    colors = ["#0072B2", "#D55E00", "#009E73", "#555555"]
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+    for (label, _, _), color in zip(loaded, colors):
+        mean, sem, _ = aggregates[label]
+        ax.plot(grid, mean, linewidth=2.2, label=label, color=color)
+        ax.fill_between(grid, mean - sem, mean + sem, color=color, alpha=0.12)
+    ax.set(
+        xlabel="Complexity",
+        ylabel="Mean held-out test $R^2$",
+        title=f"SRBench black-box performance ({n_problems} common problems)"
+        f"{title_suffix}",
+        xlim=xlim,
+        ylim=ylim,
+    )
+    ax.grid(alpha=0.22)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=220)
+    plt.close(fig)
 
 
 def main() -> None:
@@ -103,24 +141,24 @@ def main() -> None:
     for label, _, data in loaded:
         aggregates[label] = aggregate(data, common, grid)
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(8.5, 5.5))
-    colors = ["#0072B2", "#D55E00", "#009E73", "#555555"]
-    for (label, _, _), color in zip(loaded, colors):
-        mean, sem, _ = aggregates[label]
-        ax.plot(grid, mean, linewidth=2.2, label=label, color=color)
-        ax.fill_between(grid, mean - sem, mean + sem, color=color, alpha=0.12)
-    ax.set(
-        xlabel="Complexity",
-        ylabel="Mean held-out test $R^2$",
-        title=f"SRBench black-box performance ({len(common)} common problems)",
+    draw_plot(
+        args.output,
+        loaded,
+        aggregates,
+        grid,
+        len(common),
         xlim=(1, max_complexity),
     )
-    ax.grid(alpha=0.22)
-    ax.legend(frameon=False)
-    fig.tight_layout()
-    fig.savefig(args.output, dpi=220)
-    plt.close(fig)
+    draw_plot(
+        args.zoom_output,
+        loaded,
+        aggregates,
+        grid,
+        len(common),
+        xlim=(8, max_complexity),
+        ylim=(0.58, 0.84),
+        title_suffix=" — zoomed",
+    )
 
     args.csv.parent.mkdir(parents=True, exist_ok=True)
     with args.csv.open("w", newline="") as handle:
@@ -139,6 +177,7 @@ def main() -> None:
                 )
 
     print(f"Wrote {args.output}")
+    print(f"Wrote {args.zoom_output}")
     print(f"Wrote {args.csv}")
     for label, path, data in loaded:
         n_trials = sum(len(data[name]) for name in common)
