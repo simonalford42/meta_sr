@@ -18,7 +18,9 @@ and bad-node handling.
 evolve_fullsr.py SkeletonBundles from their run_data.json schema.
 
 Default scale: 133 tasks x 10 seeds x 4 noise levels (0.0, 0.001, 0.01, 0.1)
-for ground truth, and 122 datasets x 10 seeds for --black-box. Both come from
+for ground truth, and 122 datasets x 10 seeds for --black-box. ``--2025``
+switches those selections to the 12 first-principles or 12 black-box problems
+from the 2025 Call for Action paper. Trial counts come from
 --n-trials-per-dataset.
 Results land in ``runs/<run_id>/`` (manifest.json + srbench_full_results.json)
 and are logged to the "meta-sr" wandb project as a Table plus solve-rate /
@@ -41,12 +43,51 @@ import srbench_results_io as srio
 
 DEFAULT_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
 
+# Table 1 of the SRBench 2025 Call for Action paper:
+# https://arxiv.org/html/2505.03977v1#S3.SS1
+SRBENCH_2025_BLACK_BOX_DATASETS = [
+    "1028_SWD",
+    "1089_USCrime",
+    "1193_BNG_lowbwt",
+    "1199_BNG_echoMonths",
+    "192_vineyard",
+    "210_cloud",
+    "522_pm10",
+    "557_analcatdata_apnea1",
+    "579_fri_c0_250_5",
+    "606_fri_c2_1000_10",
+    "650_fri_c0_500_50",
+    "678_visualizing_environmental",
+]
 
-def load_black_box_datasets():
-    """Return the 122 regression datasets used by SRBench black-box results."""
+SRBENCH_2025_GROUND_TRUTH_DATASETS = [
+    "first_principles_absorption",
+    "first_principles_bode",
+    "first_principles_hubble",
+    "first_principles_ideal_gas",
+    "first_principles_kepler",
+    "first_principles_leavitt",
+    "first_principles_newton",
+    "first_principles_planck",
+    "first_principles_rydberg",
+    "first_principles_schechter",
+    "first_principles_supernovae_zr",
+    "first_principles_tully_fisher",
+]
+
+
+def load_black_box_datasets(srbench_2025=False):
+    """Return the regression datasets for the requested SRBench edition."""
+    if srbench_2025:
+        return list(SRBENCH_2025_BLACK_BOX_DATASETS)
     csv_path = Path(__file__).parent / "srbench/docs/csv/blackbox_results_datasets.csv"
     with open(csv_path, newline="") as f:
         return sorted({row["dataset"] for row in csv.DictReader(f)})
+
+
+def load_ground_truth_datasets_2025():
+    """Return the 2025 phenomenological and first-principles problems."""
+    return list(SRBENCH_2025_GROUND_TRUTH_DATASETS)
 
 
 def _test_pareto(rows):
@@ -156,7 +197,7 @@ def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000,
 
 def run_black_box(args, output_dir, source, manifest, run):
     datasets = ([d.strip() for d in args.datasets.split(",") if d.strip()]
-                if args.datasets else load_black_box_datasets())
+                if args.datasets else load_black_box_datasets(args.srbench_2025))
     n_trials = args.n_trials_per_dataset
     # Black-box datasets are much larger than the ground-truth ones, so they get
     # their own (higher) per-fit wall limit. <=0 means "no limit": the fit then
@@ -296,8 +337,14 @@ def main():
                         help="Evaluate ground-truth problems (the default unless "
                              "--black-box is passed alone).")
     parser.add_argument("--black-box", action="store_true",
-                        help="Evaluate the 122 SRBench black-box regression datasets "
-                             "(supports PySR and FullSR evolution outputs).")
+                        help="Evaluate the SRBench black-box regression datasets "
+                             "(122 normally, 12 with --2025; supports PySR and "
+                             "FullSR evolution outputs).")
+    parser.add_argument("--2025", action="store_true", dest="srbench_2025",
+                        help="Use the 2025 Call for Action problem selection: "
+                             "12 black-box datasets with --black-box, or 12 "
+                             "phenomenological/first-principles datasets for "
+                             "ground-truth evaluation.")
     parser.add_argument("--datasets", type=str, default=None,
                         help="Comma-separated dataset override (for smoke tests).")
     parser.add_argument("--max-evals", type=int, default=1_000_000)
@@ -343,6 +390,8 @@ def main():
 
     if args.datasets:
         datasets = [d.strip() for d in args.datasets.split(",") if d.strip()]
+    elif args.srbench_2025:
+        datasets = load_ground_truth_datasets_2025()
     else:
         datasets = load_dataset_names_from_split(args.split_file)
     print(f"Datasets: {len(datasets)}  |  seeds: {args.n_trials_per_dataset}  |  "
@@ -359,6 +408,7 @@ def main():
         manifest = {
             "mode": mode_name, "backend": source.backend,
             "method_meta": method_meta, "max_evals": args.max_evals,
+            "srbench_edition": 2025 if args.srbench_2025 else 2021,
             "evaluation_types": ["black_box"], "batches": [],
         }
         with open(Path(output_dir) / "manifest.json", "w") as f:
@@ -437,6 +487,7 @@ def main():
     manifest = {
         "mode": mode_name,
         "backend": source.backend,
+        "srbench_edition": 2025 if args.srbench_2025 else 2021,
         "method_meta": method_meta,
         "max_evals": args.max_evals,
         "max_samples": args.max_samples,

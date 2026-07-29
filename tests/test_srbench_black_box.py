@@ -6,8 +6,11 @@ import parallel_eval_fullsr
 from parallel_eval_fullsr import FullSRTaskResult, FullSRTaskSpec
 from parallel_eval_pysr import PySRTaskResult
 from srbench_full_eval import (
+    SRBENCH_2025_BLACK_BOX_DATASETS,
+    SRBENCH_2025_GROUND_TRUTH_DATASETS,
     _test_pareto,
     load_black_box_datasets,
+    load_ground_truth_datasets_2025,
     save_black_box_results,
 )
 
@@ -16,6 +19,31 @@ def test_black_box_dataset_list_matches_srbench():
     datasets = load_black_box_datasets()
     assert len(datasets) == 122
     assert len(datasets) == len(set(datasets))
+
+
+def test_2025_dataset_lists_match_call_for_action():
+    black_box = load_black_box_datasets(srbench_2025=True)
+    ground_truth = load_ground_truth_datasets_2025()
+
+    assert black_box == SRBENCH_2025_BLACK_BOX_DATASETS
+    assert ground_truth == SRBENCH_2025_GROUND_TRUTH_DATASETS
+    assert len(black_box) == len(set(black_box)) == 12
+    assert len(ground_truth) == len(set(ground_truth)) == 12
+    assert set(black_box).isdisjoint(ground_truth)
+
+
+def test_every_2025_dataset_resolves_on_disk():
+    from utils import resolve_pmlb_paths
+
+    missing = [
+        name
+        for name in (
+            load_black_box_datasets(srbench_2025=True)
+            + load_ground_truth_datasets_2025()
+        )
+        if not resolve_pmlb_paths(name)[0].exists()
+    ]
+    assert missing == []
 
 
 def test_every_black_box_dataset_resolves_on_disk():
