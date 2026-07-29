@@ -43,17 +43,19 @@ def bundle_name(bundle: dict) -> str:
     )
 
 
-def load_generations(path: Path, generations: set[int]) -> dict[int, list[Point]]:
+def load_generations(path: Path, generations: set[int]) -> dict[int, dict[str, list[Point]]]:
     data = json.loads(path.read_text())
     result = {}
     for entry in data["generations"]:
         generation = int(entry["generation"])
         if generation in generations:
-            result[generation] = [
-                Point(bundle_loc(bundle), float(bundle["score"]), bundle_name(bundle))
-                for bundle in entry["population"]
-                if bundle.get("score") is not None
-            ]
+            result[generation] = {}
+            for group in ("population", "offspring"):
+                result[generation][group] = [
+                    Point(bundle_loc(bundle), float(bundle["score"]), bundle_name(bundle))
+                    for bundle in entry.get(group, [])
+                    if bundle.get("score") is not None
+                ]
     return result
 
 
@@ -68,12 +70,20 @@ def pareto_front(points: list[Point]) -> list[Point]:
     return front
 
 
-def draw_generation(ax, generation: int, points: list[Point], xlim, ylim) -> None:
+def draw_generation(
+    ax, generation: int, points: list[Point], offspring: list[Point], xlim, ylim,
+) -> None:
     valid = [p for p in points if p.score > 0]
     failed = [p for p in points if p.score <= 0]
+    valid_offspring = [p for p in offspring if p.score > 0]
+    failed_offspring = [p for p in offspring if p.score <= 0]
+    ax.scatter(
+        [p.loc for p in valid_offspring], [p.score for p in valid_offspring],
+        s=34, color="0.65", alpha=0.7, label="offspring", zorder=2,
+    )
     ax.scatter(
         [p.loc for p in valid], [p.score for p in valid],
-        s=42, color="tab:blue", alpha=0.82, label="evaluated model", zorder=3,
+        s=42, color="tab:blue", alpha=0.82, label="selected population", zorder=3,
     )
     front = pareto_front(points)
     ax.plot(
@@ -82,11 +92,16 @@ def draw_generation(ax, generation: int, points: list[Point], xlim, ylim) -> Non
         label="useful Pareto front", zorder=4,
     )
     if failed:
-        failed_y = ylim[0] + 0.025 * (ylim[1] - ylim[0])
         ax.scatter(
-            [p.loc for p in failed], [failed_y] * len(failed),
-            marker="v", s=60, color="0.25", zorder=5,
+            [p.loc for p in failed], [p.score for p in failed],
+            marker="x", s=55, color="0.25", zorder=5,
             label=f"failed evaluation ({len(failed)})",
+        )
+    if failed_offspring:
+        ax.scatter(
+            [p.loc for p in failed_offspring], [p.score for p in failed_offspring],
+            marker="x", s=42, color="0.65", alpha=0.7, zorder=2,
+            label=f"failed offspring ({len(failed_offspring)})",
         )
     ax.set(xlim=xlim, ylim=ylim, xlabel="Bundle complexity (nonblank LOC)",
            ylabel="Train score", title=f"Generation {generation}")
@@ -114,18 +129,30 @@ def main() -> None:
     ))
     populations = dict(sorted(populations.items()))
 
-    all_valid = [p for points in populations.values() for p in points if p.score > 0]
-    all_points = [p for points in populations.values() for p in points]
+    all_points = [
+        p for groups in populations.values() for points in groups.values() for p in points
+    ]
+    selected_valid = [
+        p for groups in populations.values() for p in groups["population"] if p.score > 0
+    ]
     x_span = max(p.loc for p in all_points) - min(p.loc for p in all_points)
-    y_span = max(p.score for p in all_valid) - min(p.score for p in all_valid)
+    y_span = max(p.score for p in all_points) - min(p.score for p in all_points)
     xpad = max(5, 0.06 * x_span)
-    ypad = max(0.001, 0.12 * y_span)
+    ypad = max(0.01, 0.06 * y_span)
     xlim = (min(p.loc for p in all_points) - xpad, max(p.loc for p in all_points) + xpad)
-    ylim = (min(p.score for p in all_valid) - ypad, max(p.score for p in all_valid) + ypad)
+    ylim = (min(p.score for p in all_points) - ypad, max(p.score for p in all_points) + ypad)
+    zoom_span = max(p.score for p in selected_valid) - min(p.score for p in selected_valid)
+    zoom_pad = max(0.001, 0.12 * zoom_span)
+    zoom_ylim = (
+        min(p.score for p in selected_valid) - zoom_pad,
+        max(p.score for p in selected_valid) + zoom_pad,
+    )
 
-    for generation, points in populations.items():
+    for generation, groups in populations.items():
         fig, ax = plt.subplots(figsize=(7.2, 5.2))
-        draw_generation(ax, generation, points, xlim, ylim)
+        draw_generation(
+            ax, generation, groups["population"], groups["offspring"], xlim, ylim,
+        )
         ax.legend(loc="lower right", fontsize=8)
         fig.tight_layout()
         fig.savefig(out_dir / f"generation_{generation:02d}.png", dpi=180)
@@ -134,8 +161,10 @@ def main() -> None:
     ncols = 4
     nrows = (len(populations) + ncols - 1) // ncols
     fig, axes = plt.subplots(nrows, ncols, figsize=(15, 3.7 * nrows), squeeze=False)
-    for ax, (generation, points) in zip(axes.flat, populations.items()):
-        draw_generation(ax, generation, points, xlim, ylim)
+    for ax, (generation, groups) in zip(axes.flat, populations.items()):
+        draw_generation(
+            ax, generation, groups["population"], groups["offspring"], xlim, ylim,
+        )
     for ax in axes.flat[len(populations):]:
         ax.set_visible(False)
     legend_entries = {}
@@ -144,26 +173,54 @@ def main() -> None:
         legend_entries.update(zip(labels, handles))
     fig.legend(
         legend_entries.values(), legend_entries.keys(),
-        loc="lower center", ncol=3, frameon=False,
+        loc="lower center", ncol=5, frameon=False, fontsize=8,
     )
     fig.suptitle(
         f"Simplify run {args.run.name}: shared-axis Pareto evolution "
         f"(parent {args.parent.name})", fontsize=14,
     )
-    fig.tight_layout(rect=(0, 0.04, 1, 0.96))
+    fig.tight_layout(rect=(0, 0.07, 1, 0.96))
     fig.savefig(out_dir / "all_generations.png", dpi=180)
+    plt.close(fig)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(15, 3.7 * nrows), squeeze=False)
+    for ax, (generation, groups) in zip(axes.flat, populations.items()):
+        draw_generation(
+            ax, generation, groups["population"], groups["offspring"], xlim, zoom_ylim,
+        )
+    for ax in axes.flat[len(populations):]:
+        ax.set_visible(False)
+    legend_entries = {}
+    for ax in axes.flat[:len(populations)]:
+        handles, labels = ax.get_legend_handles_labels()
+        legend_entries.update(zip(labels, handles))
+    fig.legend(
+        legend_entries.values(), legend_entries.keys(),
+        loc="lower center", ncol=5, frameon=False, fontsize=8,
+    )
+    fig.suptitle(
+        f"Simplify run {args.run.name}: valid-score zoom "
+        f"(parent {args.parent.name})", fontsize=14,
+    )
+    fig.tight_layout(rect=(0, 0.07, 1, 0.96))
+    fig.savefig(out_dir / "all_generations_zoomed.png", dpi=180)
     plt.close(fig)
 
     with (out_dir / "population_and_frontier.csv").open("w", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["generation", "loc", "train_score", "on_useful_front", "status", "name"])
-        for generation, points in populations.items():
-            front = set(pareto_front(points))
-            for point in sorted(points, key=lambda p: (p.loc, -p.score, p.name)):
-                writer.writerow([
-                    generation, point.loc, f"{point.score:.12g}",
-                    point in front, "valid" if point.score > 0 else "failed", point.name,
-                ])
+        writer.writerow([
+            "generation", "group", "loc", "train_score",
+            "on_useful_front", "status", "name",
+        ])
+        for generation, groups in populations.items():
+            front = set(pareto_front(groups["population"]))
+            for group, points in groups.items():
+                for point in sorted(points, key=lambda p: (p.loc, -p.score, p.name)):
+                    writer.writerow([
+                        generation, group, point.loc, f"{point.score:.12g}",
+                        group == "population" and point in front,
+                        "valid" if point.score > 0 else "failed", point.name,
+                    ])
 
     print(f"Wrote {len(populations)} generation plots, overview, and CSV to {out_dir}")
 
