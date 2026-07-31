@@ -444,16 +444,47 @@ class OperatorType(ABC):
     def baseline_config(self, pysr_kwargs: Dict) -> PySRConfig:
         """Create a baseline PySRConfig (no custom operator)."""
 
-    def build_explore_prompt(self, reference: str, variation_seed: int = 0) -> str:
+    @staticmethod
+    def _objective_text(fitness_metric: str) -> str:
+        """Describe the meta-evolution score exactly enough to guide proposals."""
+        objectives = {
+            "gt": (
+                "Our meta-evolution objective is the average ground-truth solve rate. For each task and "
+                "search run, the score is 1 if any equation on PySR's final Pareto frontier symbolically "
+                "matches the ground-truth expression, and 0 otherwise.\n"
+            ),
+            "r2": (
+                "Our meta-evolution objective is average held-out frontier R². At each complexity budget "
+                "from 1 through `maxsize`, we take the best held-out R² achieved by any frontier equation "
+                "at or below that complexity (clipped at 0), then average over complexity budgets, tasks, "
+                "and search runs. Improve predictive accuracy across the whole complexity frontier, not "
+                "just the single best equation.\n"
+            ),
+            "gt-r2": (
+                "Our meta-evolution objective is an average hybrid GT–R² reward. For each task and search "
+                "run, the score is 1 if any equation on PySR's final Pareto frontier symbolically matches "
+                "the ground truth. Otherwise, the score is held-out frontier R²: at each complexity budget "
+                "from 1 through `maxsize`, take the best held-out R² achieved by any frontier equation at "
+                "or below that complexity (clipped at 0), then average over the budgets. Thus exact symbolic "
+                "recovery is the priority, while better predictive frontiers receive partial credit when "
+                "recovery fails.\n"
+            ),
+        }
+        try:
+            return objectives[fitness_metric]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unknown fitness_metric={fitness_metric!r}; expected one of {tuple(objectives)}"
+            ) from exc
+
+    def build_explore_prompt(self, reference: str, variation_seed: int = 0,
+                             fitness_metric: str = "gt") -> str:
         intro_tail, explore_extra_reqs, example_section = self._explore_extras(variation_seed)
         return (
-            "You are an expert in symbolic regression, physics, and genetic programming.\n\n"
             f"Your task is to create a NEW custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
             "and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.\n"
-            "Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks\n"
-            "for which PySR discovers the correct ground truth expression.\n"
-            "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n"
+            f"{self._objective_text(fitness_metric)}"
             f"{intro_tail}\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
@@ -472,15 +503,13 @@ class OperatorType(ABC):
             + example_section
         )
 
-    def build_refine_prompt(self, parent: JuliaOperator, reference: str) -> str:
+    def build_refine_prompt(self, parent: JuliaOperator, reference: str,
+                            fitness_metric: str = "gt") -> str:
         return (
-            "You are an expert in symbolic regression, physics, and genetic programming.\n\n"
             f"Your task is to IMPROVE an existing custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
             "and evaluates many proposed improvements to the PySR algorithm.\n"
-            "Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks\n"
-            "for which PySR discovers the correct ground truth expression.\n"
-            "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n\n"
+            f"{self._objective_text(fitness_metric)}"
             f"## Parent {self.name} operator code\n```julia\n{parent.code}\n```\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
@@ -498,17 +527,16 @@ class OperatorType(ABC):
             "Do not include markdown code blocks or prose outside the docstring.\n"
         )
 
-    def build_simplify_prompt(self, parent_code: str, reference: str) -> str:
+    def build_simplify_prompt(self, parent_code: str, reference: str,
+                              fitness_metric: str = "gt") -> str:
         return (
-            "You are an expert in symbolic regression, physics, and genetic programming.\n\n"
             f"Your task is to SIMPLIFY an existing custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Produce a streamlined version of the parent that keeps its core idea but removes complexity.\n"
             "For example, you might drop redundant branches, fold special cases into the common path,\n"
             "or trim heuristics. If the parent combines many factors (e.g. five distinct heuristics),\n"
-            "you might keep only the most important three or four. The goal is to maintain performance\n"
-            "(as measured by percent of tasks for which PySR discovers the correct ground truth expression)\n"
-            "while simplifying the operator.\n"
-            "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n\n"
+            "you might keep only the most important three or four. The goal is to simplify the operator\n"
+            "while maintaining performance under the following objective.\n"
+            f"{self._objective_text(fitness_metric)}"
             f"## Parent {self.name} operator code\n```julia\n{parent_code}\n```\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
@@ -527,15 +555,13 @@ class OperatorType(ABC):
             "Do not include markdown code blocks or prose outside the docstring.\n"
         )
 
-    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str) -> str:
+    def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str,
+                               fitness_metric: str = "gt") -> str:
         return (
-            "You are an expert in symbolic regression, physics, and genetic programming.\n\n"
             f"Your task is to COMBINE ideas from two {self.name} operators into a new one.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
             "and evaluates many proposed improvements to the PySR algorithm.\n"
-            "Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks\n"
-            "for which PySR discovers the correct ground truth expression.\n"
-            "Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).\n\n"
+            f"{self._objective_text(fitness_metric)}"
             f"## Parent {self.name} operator 1\n```julia\n{p1_code}\n```\n\n"
             f"## Parent {self.name} operator 2\n```julia\n{p2_code}\n```\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
@@ -1040,26 +1066,34 @@ class OperatorGenerationSpec:
     task_info: Optional[Dict[str, str]] = None
     log_prompt_dir: Optional[Path] = None
     log_generation: int = -1
+    # Kept last to preserve positional compatibility for older callers.
+    fitness_metric: str = "gt"
 
 
 def _build_operator_prompt(spec: OperatorGenerationSpec) -> str:
     """Build the type-specific prompt for an operator generation request."""
     if spec.mode == "explore":
-        prompt = spec.op_type.build_explore_prompt(spec.reference, spec.variation_seed)
+        prompt = spec.op_type.build_explore_prompt(
+            spec.reference, spec.variation_seed, spec.fitness_metric,
+        )
     elif spec.mode == "refine":
         if spec.parent is None:
             raise ValueError("refine mode requires a parent")
-        prompt = spec.op_type.build_refine_prompt(spec.parent, spec.reference)
+        prompt = spec.op_type.build_refine_prompt(
+            spec.parent, spec.reference, spec.fitness_metric,
+        )
     elif spec.mode == "crossover":
         if spec.parent is None or spec.parent2 is None:
             raise ValueError("crossover mode requires two parents")
         prompt = spec.op_type.build_crossover_prompt(
-            spec.parent.code, spec.parent2.code, spec.reference,
+            spec.parent.code, spec.parent2.code, spec.reference, spec.fitness_metric,
         )
     elif spec.mode == "simplify":
         if spec.parent is None:
             raise ValueError("simplify mode requires a parent")
-        prompt = spec.op_type.build_simplify_prompt(spec.parent.code, spec.reference)
+        prompt = spec.op_type.build_simplify_prompt(
+            spec.parent.code, spec.reference, spec.fitness_metric,
+        )
     else:
         raise ValueError(f"Unknown mode: {spec.mode}")
 
@@ -1259,6 +1293,7 @@ def generate_operator_code(
     task_info: Optional[Dict[str, str]] = None,
     log_prompt_dir: Optional[Path] = None,
     log_generation: int = -1,
+    fitness_metric: str = "gt",
 ) -> Tuple[str, str, str]:
     """Generate new Julia operator code using an LLM.
 
@@ -1272,6 +1307,7 @@ def generate_operator_code(
         model=model,
         model_ensemble=model_ensemble,
         mode=mode,
+        fitness_metric=fitness_metric,
         variation_seed=variation_seed,
         temperature=temperature,
         use_cache=use_cache,

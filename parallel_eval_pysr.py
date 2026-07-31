@@ -159,7 +159,7 @@ def _spec_expects_execution_trace(task: "PySRTaskSpec") -> bool:
 #   "r2"    — average validation R² across the Pareto frontier (see
 #             _compute_frontier_avg_r2). NOTE: as of the frontier-R² change this
 #             is the *whole-frontier* average, not PySR's single best equation.
-#   "gt-r2" — 1.0 if the task is solved (gt match), else 0.5 * frontier-avg R².
+#   "gt-r2" — 1.0 if the task is solved (gt match), else frontier-avg R².
 PYSR_FITNESS_METRICS = ("gt", "r2", "gt-r2")
 
 # Metrics that require per-frontier R² (run_r2c / r2_frontier_score) to be present

@@ -26,13 +26,11 @@ def main() -> None:
     sections = []
 
     for fitness_metric in FITNESS_METRICS:
-        # This deliberately mirrors the current production spec. There is no
-        # fitness_metric field to set: that absence is the behavior documented
-        # by this export.
         spec = OperatorGenerationSpec(
             op_type=op_type,
             reference=reference,
             mode="explore",
+            fitness_metric=fitness_metric,
             variation_seed=0,
             model="MODEL_PLACEHOLDER",
             use_cache=False,
@@ -48,28 +46,12 @@ def main() -> None:
             "```\n"
         )
 
-    prompts = [
-        _build_operator_prompt(
-            OperatorGenerationSpec(
-                op_type=op_type,
-                reference=reference,
-                mode="explore",
-                variation_seed=0,
-            )
-        )
-        for _ in FITNESS_METRICS
-    ]
-    identical = len(set(prompts)) == 1
     header = (
         "# Loss meta-mutation explore prompts by fitness metric\n\n"
         "Generated from the production prompt path in `operator_types.py` by "
         "`scripts/export_loss_explore_prompts.py`. No LLM call is made.\n\n"
-        f"**Current result:** all three prompts are "
-        f"{'byte-for-byte identical' if identical else 'different'}. "
-        "`evolve_pysr.py` passes `fitness_metric` to evaluation, but the current "
-        "`OperatorGenerationSpec` and prompt builders do not receive it. Thus "
-        "GT-R2 and R2 evaluation modes do not adapt the meta-mutation prompt; "
-        "all three retain the GT-specific objective wording.\n\n"
+        "**Current result:** each prompt contains the objective corresponding to "
+        "the `--fitness-metric` value passed to `evolve_pysr.py`.\n\n"
         "This export uses explore mode, loss operator, variation seed 0, and no "
         "execution-trace appendix. When execution feedback is sampled during a "
         "real run, its trace and generic brainstorming instruction are appended "

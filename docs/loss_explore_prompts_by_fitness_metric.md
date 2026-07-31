@@ -2,7 +2,7 @@
 
 Generated from the production prompt path in `operator_types.py` by `scripts/export_loss_explore_prompts.py`. No LLM call is made.
 
-**Current result:** all three prompts are byte-for-byte identical. `evolve_pysr.py` passes `fitness_metric` to evaluation, but the current `OperatorGenerationSpec` and prompt builders do not receive it. Thus GT-R2 and R2 evaluation modes do not adapt the meta-mutation prompt; all three retain the GT-specific objective wording.
+**Current result:** each prompt contains the objective corresponding to the `--fitness-metric` value passed to `evolve_pysr.py`.
 
 This export uses explore mode, loss operator, variation seed 0, and no execution-trace appendix. When execution feedback is sampled during a real run, its trace and generic brainstorming instruction are appended independently of the fitness metric.
 
@@ -12,14 +12,10 @@ Complete chat message sent to the LLM (there is no separate system message):
 
 ```text
 role: user
-You are an expert in symbolic regression, physics, and genetic programming.
-
 Your task is to create a NEW custom loss operator for PySR/SymbolicRegression.jl.
 Your proposal is being considered as part of a meta-evolutionary loop that samples
 and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
-Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
-for which PySR discovers the correct ground truth expression.
-Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
+Our meta-evolution objective is the average ground-truth solve rate. For each task and search run, the score is 1 if any equation on PySR's final Pareto frontier symbolically matches the ground-truth expression, and 0 otherwise.
 
 
 ## Reference: relevant API
@@ -131,14 +127,10 @@ Complete chat message sent to the LLM (there is no separate system message):
 
 ```text
 role: user
-You are an expert in symbolic regression, physics, and genetic programming.
-
 Your task is to create a NEW custom loss operator for PySR/SymbolicRegression.jl.
 Your proposal is being considered as part of a meta-evolutionary loop that samples
 and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
-Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
-for which PySR discovers the correct ground truth expression.
-Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
+Our meta-evolution objective is an average hybrid GT–R² reward. For each task and search run, the score is 1 if any equation on PySR's final Pareto frontier symbolically matches the ground truth. Otherwise, the score is held-out frontier R²: at each complexity budget from 1 through `maxsize`, take the best held-out R² achieved by any frontier equation at or below that complexity (clipped at 0), then average over the budgets. Thus exact symbolic recovery is the priority, while better predictive frontiers receive partial credit when recovery fails.
 
 
 ## Reference: relevant API
@@ -250,14 +242,10 @@ Complete chat message sent to the LLM (there is no separate system message):
 
 ```text
 role: user
-You are an expert in symbolic regression, physics, and genetic programming.
-
 Your task is to create a NEW custom loss operator for PySR/SymbolicRegression.jl.
 Your proposal is being considered as part of a meta-evolutionary loop that samples
 and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
-Our goal is to improve the PySR symbolic regression algorithm to maximize the percent of tasks
-for which PySR discovers the correct ground truth expression.
-Example equations from this dataset include 0.5 sin(x - y) - sin(x) or q/(4*pi*epsilon*r*(1-v/c)).
+Our meta-evolution objective is average held-out frontier R². At each complexity budget from 1 through `maxsize`, we take the best held-out R² achieved by any frontier equation at or below that complexity (clipped at 0), then average over complexity budgets, tasks, and search runs. Improve predictive accuracy across the whole complexity frontier, not just the single best equation.
 
 
 ## Reference: relevant API
