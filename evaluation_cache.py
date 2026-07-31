@@ -1,8 +1,8 @@
-"""
-Evaluation cache for meta-SR.
+"""Persistent task-result caches for meta-SR evaluators.
 
-Caches operator bundle evaluation results to avoid redundant SR runs.
-Uses SQLite for persistent storage, similar to completions_cache.py.
+Provides the legacy bundle cache plus dedicated PySR and FullSR caches. SQLite
+writes are serialized with an NFS-safe POSIX lock so multiple SLURM controllers
+can reuse results without workers contending on the database.
 """
 
 import os
@@ -140,6 +140,25 @@ class PySRCacheEntry(Base):
     # JSON-encoded held-out test R²/complexity frontier for black-box SRBench.
     pareto_frontier_json = Column(Text, nullable=True)
     # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FullSRCacheEntry(Base):
+    """SQLite row for one successful SkeletonSR/FullSR task result.
+
+    FullSR result payloads are stored as JSON rather than one SQL column per
+    result field.  The worker result dataclass has grown several optional
+    fields (execution traces and black-box frontiers), and keeping the payload
+    together lets older cache rows remain readable as new optional fields are
+    added.
+    """
+
+    __tablename__ = "fullsr_evaluations"
+
+    request_hash = Column(String, primary_key=True)
+    config_hash = Column(String, index=True)
+    dataset_name = Column(String, index=True)
+    result_json = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -751,3 +770,156 @@ def clear_pysr_cache():
     with Session(cache.engine) as session:
         session.query(PySRCacheEntry).delete()
         session.commit()
+
+
+# =============================================================================
+# FullSR Evaluation Cache
+# =============================================================================
+
+
+class FullSRCacheDB:
+    """Persistent cache for successful FullSR task results.
+
+    Callers provide two already-canonicalizable dictionaries: one describing
+    the policy/engine configuration and one describing the dataset/run request.
+    Keeping identity construction in ``parallel_eval_fullsr`` makes it explicit
+    which task fields affect execution while this class owns hashing and the
+    NFS-safe SQLite transaction mechanics.
+    """
+
+    def __init__(self, database_path: str = "caches/fullsr_evaluation_cache.db"):
+        db_dir = os.path.dirname(database_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+        self.database_path = database_path
+        self.engine = create_engine(
+            f"sqlite:///{database_path}",
+            connect_args={"timeout": 60},
+        )
+        _configure_sqlite_engine(self.engine)
+        _assert_not_wal(self.engine, database_path)
+        with _db_writer_lock(database_path):
+            FullSRCacheEntry.__table__.create(self.engine, checkfirst=True)
+
+    @staticmethod
+    def _hash_dict(payload: Dict[str, Any]) -> str:
+        encoded = json.dumps(
+            payload,
+            sort_keys=True,
+            ensure_ascii=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(encoded.encode()).hexdigest()
+
+    def make_hashes(
+        self,
+        config_identity: Dict[str, Any],
+        request_identity: Dict[str, Any],
+    ) -> tuple[str, str]:
+        """Return ``(config_hash, request_hash)`` for a FullSR task."""
+        config_hash = self._hash_dict(config_identity)
+        request_hash = self._hash_dict({
+            "config_hash": config_hash,
+            "request": request_identity,
+        })
+        return config_hash, request_hash
+
+    def lookup(
+        self,
+        config_identity: Dict[str, Any],
+        request_identity: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Return a cached result payload, or ``None`` on a miss/corrupt row."""
+        _, request_hash = self.make_hashes(config_identity, request_identity)
+        stmt = select(FullSRCacheEntry.result_json).where(
+            FullSRCacheEntry.request_hash == request_hash
+        )
+        with Session(self.engine) as session:
+            row = session.execute(stmt).first()
+        if not row:
+            return None
+        try:
+            payload = json.loads(row[0])
+        except (TypeError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def build_entry(
+        self,
+        config_identity: Dict[str, Any],
+        request_identity: Dict[str, Any],
+        dataset_name: str,
+        result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Build the normalized dictionary consumed by :meth:`store_many`."""
+        config_hash, request_hash = self.make_hashes(
+            config_identity, request_identity
+        )
+        return {
+            "request_hash": request_hash,
+            "config_hash": config_hash,
+            "dataset_name": dataset_name,
+            "result_json": json.dumps(result, separators=(",", ":")),
+        }
+
+    def store_many(self, entries: List[Dict[str, Any]]) -> int:
+        """Merge many FullSR results in one serialized transaction."""
+        if not entries:
+            return 0
+        rows = [
+            FullSRCacheEntry(
+                request_hash=entry["request_hash"],
+                config_hash=entry["config_hash"],
+                dataset_name=entry["dataset_name"],
+                result_json=entry["result_json"],
+                created_at=entry.get("created_at", datetime.utcnow()),
+            )
+            for entry in entries
+        ]
+        with _db_writer_lock(self.database_path):
+            with Session(self.engine) as session:
+                for row in rows:
+                    session.merge(row)
+                session.commit()
+        return len(rows)
+
+
+_fullsr_cache: Optional[FullSRCacheDB] = None
+_fullsr_cache_enabled: bool = True
+
+
+def get_fullsr_cache() -> Optional[FullSRCacheDB]:
+    """Get the shared FullSR cache, creating it on first use."""
+    global _fullsr_cache
+    if not _fullsr_cache_enabled:
+        return None
+    if _fullsr_cache is None:
+        _fullsr_cache = FullSRCacheDB()
+    return _fullsr_cache
+
+
+def set_fullsr_cache_path(database_path: str):
+    """Point FullSR caching at a different SQLite database."""
+    global _fullsr_cache
+    _fullsr_cache = FullSRCacheDB(database_path)
+
+
+def disable_fullsr_cache():
+    """Disable FullSR cache access for this process."""
+    global _fullsr_cache_enabled
+    _fullsr_cache_enabled = False
+
+
+def enable_fullsr_cache():
+    """Enable FullSR cache access for this process."""
+    global _fullsr_cache_enabled
+    _fullsr_cache_enabled = True
+
+
+def get_fullsr_cache_stats() -> Dict[str, Any]:
+    cache = get_fullsr_cache()
+    if cache is None:
+        return {"enabled": False, "num_entries": 0}
+    with Session(cache.engine) as session:
+        count = session.query(FullSRCacheEntry).count()
+    return {"enabled": True, "num_entries": count}

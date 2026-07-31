@@ -139,7 +139,7 @@ def test_fullsr_black_box_protocol_and_frontier(monkeypatch):
 
     monkeypatch.setattr(
         "utils.load_srbench_dataset",
-        lambda dataset_name, max_samples=None: (X, y, ""),
+        lambda dataset_name, max_samples=None, **_kwargs: (X, y, ""),
     )
     monkeypatch.setattr(parallel_eval_fullsr, "_import_julia", lambda: object())
 
@@ -152,6 +152,7 @@ def test_fullsr_black_box_protocol_and_frontier(monkeypatch):
                 {"complexity": 2, "loss": 0.0, "equation": "x0"},
             ],
             "n_evals": 123,
+            "execution_trace": [],
         }
 
     monkeypatch.setattr(parallel_eval_fullsr, "_run_fit", fake_fit)

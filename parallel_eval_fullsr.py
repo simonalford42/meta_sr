@@ -15,15 +15,17 @@ Mirrors the structure of parallel_eval_minisr.py / parallel_eval_pysr.py:
 """
 import json
 import re
+import subprocess
 import sys
 import traceback
+from functools import lru_cache
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from parallel_eval_pysr import _remap_formula_variables, add_noise
+from parallel_eval_pysr import _remap_formula_variables, _write_json_atomic, add_noise
 from slurm_eval import (
     TERMINAL_SLURM_STATES,
     BaseSlurmEvaluator,
@@ -46,6 +48,12 @@ ALL_POLICIES = (POLICY_BASIC, POLICY_PYSR, POLICY_SR)
 # long gap is the initial queue+compile. Sized below this, the stall watchdog
 # cancels a healthy array and every dataset scores zero.
 _WATCHDOG_MARGIN_S = 900
+
+# Increment when Python-side dataset splitting/scoring semantics change in a
+# way that makes old successful results incomparable.  The SkeletonSR git
+# revision is also part of every config identity, so committed Julia engine or
+# policy changes invalidate the cache automatically.
+FULLSR_CACHE_PROTOCOL_VERSION = 1
 
 # The eight policy functions that SkeletonSRPolicy carries. Used by the worker
 # to splice in custom Julia code when policy_code is set.
@@ -145,6 +153,123 @@ def _summarize_error(msg: Optional[str]) -> str:
     if len(line) > 240:
         line = line[:237] + "..."
     return line
+
+
+@lru_cache(maxsize=1)
+def _fullsr_backend_revision() -> str:
+    """Committed SymbolicRegression.jl revision used by cache identities."""
+    backend_dir = Path(__file__).resolve().parent / "SymbolicRegression.jl"
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(backend_dir), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+        revision = proc.stdout.strip()
+        if revision:
+            return revision
+    except Exception:
+        pass
+    # A stable fallback is preferable to disabling cache reuse on installations
+    # that vendor the backend without its .git metadata. Protocol bumps remain
+    # available for explicit invalidation in that case.
+    return "unknown"
+
+
+def _build_fullsr_cache_identity(
+    spec: FullSRTaskSpec,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Return deterministic ``(config, request)`` cache identity dictionaries.
+
+    Resource limits and ``fitness_metric`` are intentionally absent: only
+    successful results are cached, and the same result contains both R² and GT
+    scores. A larger wall limit or a different aggregate metric can therefore
+    safely reuse it.
+    """
+    config_identity = {
+        "cache_protocol": FULLSR_CACHE_PROTOCOL_VERSION,
+        "backend_revision": _fullsr_backend_revision(),
+        "policy_name": spec.policy_name,
+        "engine_kwargs": spec.engine_kwargs,
+        "policy_code": spec.policy_code,
+        "policy_module_code": spec.policy_module_code,
+    }
+    request_identity = {
+        "dataset_name": spec.dataset_name,
+        "seed": spec.seed,
+        "data_seed": spec.data_seed,
+        "max_samples": spec.max_samples,
+        "run_index": spec.run_index,
+        "target_noise": spec.target_noise,
+        "black_box": spec.black_box,
+        "domain": getattr(spec, "domain", "srbench"),
+    }
+    return config_identity, request_identity
+
+
+def _cached_fullsr_result(
+    spec: FullSRTaskSpec,
+    payload: Optional[Dict[str, Any]],
+) -> Optional[FullSRTaskResult]:
+    """Validate and rebind a cached payload to this batch's transient IDs."""
+    if not payload or payload.get("error") is not None:
+        return None
+    if payload.get("r2_score") is None or payload.get("best_loss") is None:
+        return None
+    if spec.black_box:
+        if not payload.get("pareto_frontier"):
+            return None
+    elif payload.get("gt_match_score") is None:
+        return None
+    if int(spec.engine_kwargs.get("trace_n_steps", 0) or 0) > 0:
+        if not payload.get("execution_trace"):
+            return None
+
+    rebound = dict(payload)
+    rebound.update(
+        config_id=spec.config_id,
+        dataset_name=spec.dataset_name,
+        run_index=spec.run_index,
+        target_noise=spec.target_noise,
+    )
+    try:
+        return FullSRTaskResult.from_json_dict(rebound)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_fullsr_cache_entry(
+    spec: FullSRTaskSpec,
+    result: FullSRTaskResult,
+    cache=None,
+) -> Optional[Dict[str, Any]]:
+    """Build one cache row for a successful, complete FullSR task result."""
+    if result.error is not None or result.config_id < 0:
+        return None
+    if (
+        result.config_id != spec.config_id
+        or result.dataset_name != spec.dataset_name
+        or result.run_index != spec.run_index
+        or result.target_noise != spec.target_noise
+    ):
+        return None
+    if _cached_fullsr_result(spec, result.to_json_dict()) is None:
+        return None
+    if cache is None:
+        from evaluation_cache import get_fullsr_cache
+
+        cache = get_fullsr_cache()
+    if cache is None:
+        raise RuntimeError("FullSR cache is disabled")
+    config_identity, request_identity = _build_fullsr_cache_identity(spec)
+    return cache.build_entry(
+        config_identity=config_identity,
+        request_identity=request_identity,
+        dataset_name=spec.dataset_name,
+        result=result.to_json_dict(),
+    )
 
 
 # ─── Worker side ───────────────────────────────────────────────────────────
@@ -786,6 +911,8 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
             use_cache=use_cache,
         )
         self.target_noise = target_noise
+        self.total_sr_evals = 0
+        self.total_sr_cached = 0
         self.warm_start = warm_start
         self.warm_start_timeout = warm_start_timeout
         self.wall_limit = wall_limit
@@ -871,15 +998,51 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         )
 
         tasks_file = batch_dir / "tasks.json"
-        with open(tasks_file, "w") as f:
-            json.dump([t.to_json_dict() for t in tasks], f)
+        _write_json_atomic(tasks_file, [t.to_json_dict() for t in tasks])
 
-        if self.warm_start:
+        uncached_indices: List[int] = []
+        n_cached = 0
+        cache = None
+        if self.use_cache:
+            try:
+                from evaluation_cache import get_fullsr_cache
+
+                cache = get_fullsr_cache()
+                if cache is None:
+                    raise RuntimeError("FullSR cache is disabled")
+                for task_idx, task in enumerate(tasks):
+                    config_identity, request_identity = (
+                        _build_fullsr_cache_identity(task)
+                    )
+                    payload = cache.lookup(config_identity, request_identity)
+                    cached_result = _cached_fullsr_result(task, payload)
+                    if cached_result is None:
+                        uncached_indices.append(task_idx)
+                        continue
+                    _write_json_atomic(
+                        results_subdir / f"task_{task_idx:06d}.json",
+                        cached_result.to_json_dict(),
+                    )
+                    n_cached += 1
+            except Exception as e:
+                raise RuntimeError(f"FullSR cache pre-filter failed: {e}") from e
+        else:
+            uncached_indices = list(range(n_tasks))
+
+        self.total_sr_evals += n_tasks
+        self.total_sr_cached += n_cached
+        if n_cached:
+            print(
+                f"    Cache: {n_cached} tasks cached, "
+                f"{len(uncached_indices)} tasks to run"
+            )
+
+        if self.warm_start and uncached_indices:
             self._run_warmstart(batch_dir)
 
         task_chunks = [
-            list(range(start, min(start + self.MAX_ARRAY_SIZE, n_tasks)))
-            for start in range(0, n_tasks, self.MAX_ARRAY_SIZE)
+            uncached_indices[start:start + self.MAX_ARRAY_SIZE]
+            for start in range(0, len(uncached_indices), self.MAX_ARRAY_SIZE)
         ]
         job_ids: List[str] = []
         for chunk_num, chunk_indices in enumerate(task_chunks):
@@ -895,7 +1058,10 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
             )
             print(f"    Script: {job_script}")
         logs_dir = batch_dir / "logs"
-        print(f"    Watch logs: tail -f {logs_dir}/task_<N>.out")
+        if job_ids:
+            print(f"    Watch logs: tail -f {logs_dir}/task_<N>.out")
+        else:
+            print(f"  All {n_tasks} tasks served from cache - skipping SLURM")
 
         # Size the driver watchdogs off this call's effective per-task wall limit
         # (val evals raise it above the instance default). A FullSR task can take
@@ -941,14 +1107,17 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
             f"(wall={effective_wall}s, ~{n_waves} waves @ concurrency "
             f"{effective_concurrency}, floor={watchdog_floor}s)"
         )
-        job_completed = self._wait_for_jobs(
-            job_ids,
-            n_tasks,
-            batch_dir,
-            initial_cached=0,
-            stall_timeout=call_stall_timeout,
-            job_timeout=call_job_timeout,
-        )
+        if job_ids:
+            job_completed = self._wait_for_jobs(
+                job_ids,
+                n_tasks,
+                batch_dir,
+                initial_cached=n_cached,
+                stall_timeout=call_stall_timeout,
+                job_timeout=call_job_timeout,
+            )
+        else:
+            job_completed = True
 
         try:
             self._update_bad_nodes_from_logs(batch_dir)
@@ -1016,9 +1185,21 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         if failed_indices:
             print(f"  WARNING: {len(failed_indices)} tasks still failed")
 
+        if self.use_cache:
+            assert cache is not None
+            entries = []
+            for idx in uncached_indices:
+                if idx >= len(results):
+                    continue
+                entry = _build_fullsr_cache_entry(tasks[idx], results[idx], cache)
+                if entry is not None:
+                    entries.append(entry)
+            imported = cache.store_many(entries)
+            if imported:
+                print(f"    Imported {imported} task results into FullSR cache")
+
         combined_file = batch_dir / "combined.json"
-        with open(combined_file, "w") as f:
-            json.dump([r.to_json_dict() for r in results], f, indent=2)
+        _write_json_atomic(combined_file, [r.to_json_dict() for r in results])
 
         try:
             from eval_log import log_bundle_eval as _log_bundle_eval
@@ -1049,8 +1230,8 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
                 source="fullsr",
                 bundle=batch_dir.name,
                 n_tasks=n_tasks,
-                n_cached=0,
-                n_executed=n_tasks,
+                n_cached=n_cached,
+                n_executed=max(0, n_tasks - n_cached),
                 n_errors=n_err,
                 n_timed_out=n_to,
                 bundle_wall_s=_time_mod.time() - bundle_submit_time,
