@@ -15,7 +15,7 @@ role: user
 Your task is to create a NEW custom loss operator for PySR/SymbolicRegression.jl.
 Your proposal is being considered as part of a meta-evolutionary loop that samples
 and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
-Our goal is to improve the algorithm's ability to discover the ground-truth expression across SRBench, other symbolic regression benchmarks, and real-world symbolic regression tasks.
+Our objective is to improve the algorithm's ability to discover the ground-truth expression across SRBench, other symbolic regression benchmarks, and real-world symbolic regression tasks.
 
 
 ## Reference: relevant API
@@ -130,7 +130,7 @@ role: user
 Your task is to create a NEW custom loss operator for PySR/SymbolicRegression.jl.
 Your proposal is being considered as part of a meta-evolutionary loop that samples
 and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
-Our goal is to improve the algorithm's ability to discover the ground-truth expression; when it does not, the goal is to discover accurate expressions with a strong held-out R²–complexity tradeoff. We want these improvements to generalize across SRBench, other symbolic regression benchmarks, and real-world symbolic regression tasks.
+Our objective is to improve the algorithm's ability to discover the ground-truth expression; when it does not, the goal is to discover accurate expressions with a strong held-out R²–complexity tradeoff. We want these improvements to generalize across SRBench, other symbolic regression benchmarks, and real-world symbolic regression tasks.
 
 
 ## Reference: relevant API
@@ -245,7 +245,7 @@ role: user
 Your task is to create a NEW custom loss operator for PySR/SymbolicRegression.jl.
 Your proposal is being considered as part of a meta-evolutionary loop that samples
 and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.
-Our goal is to improve the algorithm's ability to discover accurate expressions with a strong held-out R²–complexity tradeoff across SRBench, other symbolic regression benchmarks, and real-world symbolic regression tasks.
+Our objective is to improve the algorithm's ability to discover accurate expressions with a strong held-out R²–complexity tradeoff across SRBench, other symbolic regression benchmarks, and real-world symbolic regression tasks.
 
 
 ## Reference: relevant API

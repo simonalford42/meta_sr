@@ -161,9 +161,9 @@ def extract_function_name(code: str, expected_arities: Optional[Tuple[int, ...]]
     return matches[-1].group(1)
 
 _BRAINSTORM_INSTRUCTION = (
-    "The SR algorithm failed to discover the ground-truth equation for this task. "
-    "Examine how the Pareto front of best equations evolved over the course of the search, "
-    "and consider proposing an operator that would better reach the GT structure."
+    "To help you brainstorm a better operator, the trace above shows how the Pareto frontier "
+    "of best equations evolved during the search on one task. Use it to identify weaknesses in "
+    "the search and consider an operator that could address them."
 )
 
 @dataclass
@@ -449,17 +449,17 @@ class OperatorType(ABC):
         """Describe the high-level search goal for the selected fitness metric."""
         objectives = {
             "gt": (
-                "Our goal is to improve the algorithm's ability to discover the ground-truth expression "
+                "Our objective is to improve the algorithm's ability to discover the ground-truth expression "
                 "across SRBench, other symbolic regression benchmarks, and real-world symbolic regression "
                 "tasks.\n"
             ),
             "r2": (
-                "Our goal is to improve the algorithm's ability to discover accurate expressions with a "
+                "Our objective is to improve the algorithm's ability to discover accurate expressions with a "
                 "strong held-out R²–complexity tradeoff across SRBench, other symbolic regression "
                 "benchmarks, and real-world symbolic regression tasks.\n"
             ),
             "gt-r2": (
-                "Our goal is to improve the algorithm's ability to discover the ground-truth expression; "
+                "Our objective is to improve the algorithm's ability to discover the ground-truth expression; "
                 "when it does not, the goal is to discover accurate expressions with a strong held-out "
                 "R²–complexity tradeoff. We want these improvements to generalize across SRBench, other "
                 "symbolic regression benchmarks, and real-world symbolic regression tasks.\n"
