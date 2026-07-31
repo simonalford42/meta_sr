@@ -446,28 +446,23 @@ class OperatorType(ABC):
 
     @staticmethod
     def _objective_text(fitness_metric: str) -> str:
-        """Describe the meta-evolution score exactly enough to guide proposals."""
+        """Describe the high-level search goal for the selected fitness metric."""
         objectives = {
             "gt": (
-                "Our meta-evolution objective is the average ground-truth solve rate. For each task and "
-                "search run, the score is 1 if any equation on PySR's final Pareto frontier symbolically "
-                "matches the ground-truth expression, and 0 otherwise.\n"
+                "Our goal is to improve the algorithm's ability to discover the ground-truth expression "
+                "across SRBench, other symbolic regression benchmarks, and real-world symbolic regression "
+                "tasks.\n"
             ),
             "r2": (
-                "Our meta-evolution objective is average held-out frontier R². At each complexity budget "
-                "from 1 through `maxsize`, we take the best held-out R² achieved by any frontier equation "
-                "at or below that complexity (clipped at 0), then average over complexity budgets, tasks, "
-                "and search runs. Improve predictive accuracy across the whole complexity frontier, not "
-                "just the single best equation.\n"
+                "Our goal is to improve the algorithm's ability to discover accurate expressions with a "
+                "strong held-out R²–complexity tradeoff across SRBench, other symbolic regression "
+                "benchmarks, and real-world symbolic regression tasks.\n"
             ),
             "gt-r2": (
-                "Our meta-evolution objective is an average hybrid GT–R² reward. For each task and search "
-                "run, the score is 1 if any equation on PySR's final Pareto frontier symbolically matches "
-                "the ground truth. Otherwise, the score is held-out frontier R²: at each complexity budget "
-                "from 1 through `maxsize`, take the best held-out R² achieved by any frontier equation at "
-                "or below that complexity (clipped at 0), then average over the budgets. Thus exact symbolic "
-                "recovery is the priority, while better predictive frontiers receive partial credit when "
-                "recovery fails.\n"
+                "Our goal is to improve the algorithm's ability to discover the ground-truth expression; "
+                "when it does not, the goal is to discover accurate expressions with a strong held-out "
+                "R²–complexity tradeoff. We want these improvements to generalize across SRBench, other "
+                "symbolic regression benchmarks, and real-world symbolic regression tasks.\n"
             ),
         }
         try:

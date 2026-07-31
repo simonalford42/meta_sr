@@ -9,9 +9,9 @@ from operator_types import (
 
 
 OBJECTIVE_MARKERS = {
-    "gt": "average ground-truth solve rate",
-    "r2": "average held-out frontier R²",
-    "gt-r2": "average hybrid GT–R² reward",
+    "gt": "ability to discover the ground-truth expression across SRBench",
+    "r2": "strong held-out R²–complexity tradeoff across SRBench",
+    "gt-r2": "when it does not, the goal is to discover accurate expressions",
 }
 
 
