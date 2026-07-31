@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# 7/31 — BasicSR baseline on full SRBench (driver submits chunked arrays).
+srb_prev=$(sbatch --parsable -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
+
 # 7/29
 
 # # Seed the shared cache with successful black-box artifacts from 7/28. Failed

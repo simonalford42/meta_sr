@@ -720,6 +720,9 @@ class FullSRConfig:
 
 
 class FullSRSlurmEvaluator(BaseSlurmEvaluator):
+    # This cluster has MaxArraySize=1001, so keep both the array length and its
+    # largest local task ID below that scheduler limit.
+    MAX_ARRAY_SIZE = 1000
     def __init__(
         self,
         results_dir: str,
@@ -853,10 +856,23 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         if self.warm_start:
             self._run_warmstart(batch_dir)
 
-        job_script = self._create_job_script(batch_dir, n_tasks)
-        job_id = self._submit_job(job_script)
-        print(f"  Submitted SLURM job array: {job_id} ({n_tasks} tasks)")
-        print(f"    Script: {job_script}")
+        task_chunks = [
+            list(range(start, min(start + self.MAX_ARRAY_SIZE, n_tasks)))
+            for start in range(0, n_tasks, self.MAX_ARRAY_SIZE)
+        ]
+        job_ids: List[str] = []
+        for chunk_num, chunk_indices in enumerate(task_chunks):
+            job_script = self._create_chunk_job_script(
+                batch_dir, chunk_indices, chunk_num
+            )
+            job_id = self._submit_job(job_script)
+            job_ids.append(job_id)
+            print(
+                f"  Submitted SLURM job array: {job_id} "
+                f"(chunk {chunk_num + 1}/{len(task_chunks)}, "
+                f"{len(chunk_indices)} tasks)"
+            )
+            print(f"    Script: {job_script}")
         logs_dir = batch_dir / "logs"
         print(f"    Watch logs: tail -f {logs_dir}/task_<N>.out")
 
@@ -904,8 +920,8 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
             f"(wall={effective_wall}s, ~{n_waves} waves @ concurrency "
             f"{effective_concurrency}, floor={watchdog_floor}s)"
         )
-        job_completed = self._wait_for_job(
-            job_id,
+        job_completed = self._wait_for_jobs(
+            job_ids,
             n_tasks,
             batch_dir,
             initial_cached=0,
@@ -943,13 +959,26 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
                     stale_result.unlink()
                 except FileNotFoundError:
                     pass
-            retry_script = self._create_retry_job_script(
-                batch_dir, failed_indices, retry_count
-            )
-            retry_job_id = self._submit_job(retry_script)
-            print(f"    Submitted retry job: {retry_job_id}")
-            self._wait_for_retry_job(
-                retry_job_id, len(failed_indices), batch_dir, failed_indices
+            retry_chunks = [
+                failed_indices[i:i + self.MAX_ARRAY_SIZE]
+                for i in range(0, len(failed_indices), self.MAX_ARRAY_SIZE)
+            ]
+            retry_job_ids: List[str] = []
+            for chunk_num, chunk_indices in enumerate(retry_chunks):
+                retry_script = self._create_chunk_job_script(
+                    batch_dir,
+                    chunk_indices,
+                    1000 + retry_count * 100 + chunk_num,
+                    job_name=f"fullsr_retry_{retry_count}",
+                )
+                retry_job_id = self._submit_job(retry_script)
+                retry_job_ids.append(retry_job_id)
+                print(
+                    f"    Submitted retry job: {retry_job_id} "
+                    f"(chunk {chunk_num + 1}/{len(retry_chunks)})"
+                )
+            self._wait_for_retry_jobs(
+                retry_job_ids, len(failed_indices), batch_dir, failed_indices
             )
             for idx in failed_indices:
                 rf = results_subdir / f"task_{idx:06d}.json"
@@ -1043,6 +1072,29 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
             job_name=f"fullsr_retry_{retry_num}",
             script_name=f"retry_{retry_num}.sh",
             log_prefix=f"retry{retry_num}_task",
+        )
+
+    def _create_chunk_job_script(
+        self,
+        batch_dir: Path,
+        task_indices: List[int],
+        chunk_num: int,
+        job_name: str = "fullsr_eval",
+    ) -> Path:
+        """Write an array whose local slots map to arbitrary global task IDs."""
+        local_spec = self._get_array_spec(len(task_indices))
+        real_indices = " ".join(str(i) for i in task_indices)
+        task_index_expr = (
+            f"REAL_INDICES=({real_indices})\n"
+            'TASK_INDEX=${REAL_INDICES[$SLURM_ARRAY_TASK_ID]}'
+        )
+        return self._write_script(
+            batch_dir,
+            array_spec=local_spec,
+            job_name=job_name,
+            script_name=f"chunk_{chunk_num}.sh",
+            log_prefix=f"chunk{chunk_num}_slot",
+            task_index_setup=task_index_expr,
         )
 
     def _run_warmstart(self, batch_dir: Path) -> None:
@@ -1179,6 +1231,7 @@ PY
         job_name: str,
         script_name: str,
         log_prefix: str,
+        task_index_setup: str = 'TASK_INDEX=$SLURM_ARRAY_TASK_ID',
     ) -> Path:
         abs_batch = batch_dir.resolve()
         logs_dir = abs_batch / "logs"
@@ -1221,11 +1274,12 @@ export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
 # is unaffected — offline only disables package *resolution*, not compilation.
 export PYTHON_JULIAPKG_OFFLINE=yes
 
-echo "Task $SLURM_ARRAY_TASK_ID running on node: $(hostname)"
+{task_index_setup}
+echo "Slot $SLURM_ARRAY_TASK_ID -> task $TASK_INDEX on node: $(hostname)"
 
 python -u -m parallel_eval_fullsr --worker \\
     --tasks-file "{tasks_file}" \\
-    --task-index $SLURM_ARRAY_TASK_ID \\
+    --task-index $TASK_INDEX \\
     --output-dir "{results_dir}"
 """
         script_path = abs_batch / script_name

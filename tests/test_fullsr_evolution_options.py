@@ -54,6 +54,32 @@ def test_all_noise_aggregation_includes_every_level():
     assert details[0]["run_target_noises"] == [0.0, 0.1, 0.0, 0.1]
 
 
+def test_fullsr_large_array_chunks_use_local_slurm_indices(tmp_path):
+    evaluator = FullSRSlurmEvaluator(results_dir=str(tmp_path), warm_start=False)
+    batch_dir = evaluator._new_batch_dir()
+
+    chunks = [
+        list(range(start, min(start + evaluator.MAX_ARRAY_SIZE, 5320)))
+        for start in range(0, 5320, evaluator.MAX_ARRAY_SIZE)
+    ]
+    scripts = [
+        evaluator._create_chunk_job_script(batch_dir, chunk, chunk_num)
+        for chunk_num, chunk in enumerate(chunks)
+    ]
+
+    assert [len(chunk) for chunk in chunks] == [1000, 1000, 1000, 1000, 1000, 320]
+    first = scripts[0].read_text()
+    second = scripts[1].read_text()
+    last = scripts[-1].read_text()
+    assert "#SBATCH --array=0-999" in first
+    assert "REAL_INDICES=(0 1 2" in first
+    assert "#SBATCH --array=0-999" in second
+    assert "REAL_INDICES=(1000 1001 1002" in second
+    assert "#SBATCH --array=0-319" in last
+    assert "5319)" in last
+    assert "--task-index $TASK_INDEX" in last
+
+
 def test_evaluator_expands_noise_levels_and_applies_seed_and_wall_overrides(
     tmp_path, monkeypatch
 ):

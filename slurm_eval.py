@@ -606,6 +606,92 @@ class BaseSlurmEvaluator(ABC):
 
             time.sleep(poll_interval)
 
+    def _wait_for_jobs(
+        self,
+        job_ids: List[str],
+        n_tasks: int,
+        batch_dir: Path,
+        initial_cached: int = 0,
+        stall_timeout: Optional[float] = _UNSET,
+        job_timeout: Optional[float] = _UNSET,
+    ) -> bool:
+        """Wait for multiple arrays writing into one batch results directory."""
+        if len(job_ids) == 1:
+            return self._wait_for_job(
+                job_ids[0], n_tasks, batch_dir, initial_cached,
+                stall_timeout=stall_timeout, job_timeout=job_timeout,
+            )
+        if stall_timeout is _UNSET:
+            stall_timeout = self.stall_timeout
+        if job_timeout is _UNSET:
+            job_timeout = self.job_timeout
+
+        start_time = time.time()
+        last_completed = initial_cached
+        last_progress_time = start_time
+        previous_poll_time = start_time
+        unknown_streaks: Dict[str, int] = {}
+        results_dir = batch_dir / "results"
+
+        while True:
+            completed = len(list(results_dir.glob("task_*.json")))
+            now = time.time()
+            terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
+            start_time, last_progress_time, previous_poll_time = (
+                _credit_pending_watchdog_time(
+                    statuses, now, previous_poll_time,
+                    start_time, last_progress_time,
+                )
+            )
+            elapsed = now - start_time
+
+            if completed != last_completed:
+                print(
+                    f"    Progress: {completed}/{n_tasks} tasks complete "
+                    f"({elapsed:.0f}s active elapsed)"
+                )
+                last_completed = completed
+                last_progress_time = now
+
+            if completed >= n_tasks:
+                print(f"  All {n_tasks} tasks completed in {elapsed:.1f}s active time")
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return True
+
+            if terminal:
+                print(
+                    f"  WARNING: Jobs ended with statuses={statuses}, but only "
+                    f"{completed}/{n_tasks} results found"
+                )
+                for jid in job_ids:
+                    _untrack_job(jid)
+                return True
+
+            if job_timeout is not None and elapsed > job_timeout:
+                print(
+                    f"  TIMEOUT: Jobs {job_ids} exceeded {job_timeout:.0f}s "
+                    f"({completed}/{n_tasks} tasks complete)"
+                )
+                for jid in job_ids:
+                    self._cancel_job(jid)
+                return False
+
+            if (
+                stall_timeout is not None
+                and (now - last_progress_time) > stall_timeout
+            ):
+                print(
+                    f"  STALL: Jobs {job_ids} made no progress for "
+                    f"{now - last_progress_time:.0f}s "
+                    f"({completed}/{n_tasks} tasks complete)"
+                )
+                for jid in job_ids:
+                    self._cancel_job(jid)
+                return False
+
+            time.sleep(10)
+
     def _wait_for_retry_job(
         self,
         job_id: str,
