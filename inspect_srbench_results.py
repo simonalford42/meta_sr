@@ -121,7 +121,15 @@ def _black_box_summary(run_dir: Path, manifest: dict) -> tuple[int, int, float |
         datasets = (json.load(f).get("datasets") or {})
     best_r2 = []
     completed = 0
-    for trials in datasets.values():
+    for stored_frontiers in datasets.values():
+        # Before multi-trial black-box evaluation was added, each dataset was
+        # stored as one frontier directly: ``[point, ...]``.  Current files
+        # store a list of trial frontiers: ``[[point, ...], ...]``.  Normalize
+        # the historical single-trial layout so old runs remain inspectable.
+        if stored_frontiers and isinstance(stored_frontiers[0], dict):
+            trials = [stored_frontiers]
+        else:
+            trials = stored_frontiers
         completed += len(trials)
         for frontier in trials:
             values = [point.get("test_r2") for point in frontier
