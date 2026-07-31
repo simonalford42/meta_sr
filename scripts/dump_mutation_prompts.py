@@ -83,6 +83,8 @@ def dump_fullsr() -> None:
     from skeleton_operator_types import (
         SLOTS_BY_NAME,
         SkeletonBundle,
+        SkeletonGenerationSpec,
+        _build_prompt,
         build_explore_prompt,
         build_refine_prompt,
         build_simplify_prompt,
@@ -106,6 +108,8 @@ def dump_fullsr() -> None:
         "(included in full below — this is the bulk of the token cost).\n"
         "- No data-aware/structural toggle and no per-seed variation in the "
         "prompt text (unlike pysr).\n"
+        "- The four standard modes below use the default GT objective. Additional "
+        "sections show the R² and GT-R² objective variants and an execution-feedback appendix.\n"
     )
 
     sections.append("\n## explore\n")
@@ -125,6 +129,28 @@ def dump_fullsr() -> None:
     sections.append(
         _fence(build_crossover_prompt(slot, bundle, parent_code, parent2_code))
     )
+
+    for metric in ("r2", "gt-r2"):
+        sections.append(f"\n## explore (`fitness_metric={metric}`)\n")
+        sections.append(_fence(build_explore_prompt(slot, bundle, metric)))
+
+    sections.append("\n## explore with execution-guided feedback\n")
+    feedback_spec = SkeletonGenerationSpec(
+        bundle=bundle,
+        slot=slot,
+        mode="explore",
+        fitness_metric="gt",
+        task_info={
+            "execution_trace_text": (
+                "=== Unsolved task: example_task ===\n"
+                "Ground truth: x0 + x1\n\n"
+                "--- Pareto front after 1,000 evals ---\n"
+                "  c=  1  loss=1.2   0.0\n"
+                "  c=  3  loss=0.4   x0"
+            )
+        },
+    )
+    sections.append(_fence(_build_prompt(feedback_spec)))
 
     out = OUT_DIR / "mutation_prompts_fullsr.md"
     out.write_text("".join(sections))

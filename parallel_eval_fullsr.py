@@ -117,6 +117,7 @@ class FullSRTaskResult:
     target_noise: float = 0.0
     # Test-set R²/complexity rows retained for SRBench black-box reporting.
     pareto_frontier: Optional[List[Dict[str, Any]]] = None
+    execution_trace: Optional[List[Dict[str, Any]]] = None
 
     def to_json_dict(self) -> Dict:
         return asdict(self)
@@ -129,6 +130,7 @@ class FullSRTaskResult:
         d.setdefault("n_evals", None)
         d.setdefault("target_noise", 0.0)
         d.setdefault("pareto_frontier", None)
+        d.setdefault("execution_trace", None)
         return cls(**d)
 
 
@@ -484,6 +486,20 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                 }
             )
         n_evals = int(result_dict["n_evals"])
+        execution_trace = [
+            {
+                "milestone_evals": int(step["milestone_evals"]),
+                "equations": [
+                    {
+                        "complexity": int(eq["complexity"]),
+                        "loss": float(eq["loss"]),
+                        "equation": str(eq["equation"]),
+                    }
+                    for eq in list(step["equations"])
+                ],
+            }
+            for step in list(result_dict["execution_trace"])
+        ]
         _log(f"Search returned {len(rows)} frontier rows, n_evals={n_evals}")
 
         if not rows:
@@ -604,6 +620,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             n_evals=n_evals,
             target_noise=spec.target_noise,
             pareto_frontier=pareto_frontier,
+            execution_trace=execution_trace or None,
         )
     except Exception as e:
         return FullSRTaskResult(
@@ -678,6 +695,9 @@ def _aggregate_fullsr_results(
                         "run_best_equations": best_eqs,
                         "run_target_noises": target_noises,
                         "best_equations": [eq for eq in best_eqs if eq],
+                        "execution_traces": [
+                            r.execution_trace for r in runs_sorted if r.execution_trace
+                        ],
                         "errors": [r.error for r in runs_sorted if r.error] or None,
                     }
                 )
@@ -695,6 +715,7 @@ def _aggregate_fullsr_results(
                         "run_best_equations": [],
                         "run_target_noises": [],
                         "best_equations": [],
+                        "execution_traces": [],
                         "errors": ["No results found"],
                     }
                 )

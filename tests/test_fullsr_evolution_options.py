@@ -54,6 +54,28 @@ def test_all_noise_aggregation_includes_every_level():
     assert details[0]["run_target_noises"] == [0.0, 0.1, 0.0, 0.1]
 
 
+def test_execution_traces_are_retained_in_aggregate_details():
+    trace = [{
+        "milestone_evals": 100,
+        "equations": [{"complexity": 1, "loss": 1.0, "equation": "0.0"}],
+    }]
+    result = FullSRTaskResult(
+        config_id=0,
+        dataset_name="dataset",
+        r2_score=0.2,
+        best_equation="0.0",
+        best_loss=1.0,
+        gt_match_score=0.0,
+        execution_trace=trace,
+    )
+
+    _, _, details = _aggregate_fullsr_results(
+        [result], ["dataset"], num_configs=1, fitness_metric="gt"
+    )[0]
+
+    assert details[0]["execution_traces"] == [trace]
+
+
 def test_fullsr_large_array_chunks_use_local_slurm_indices(tmp_path):
     evaluator = FullSRSlurmEvaluator(results_dir=str(tmp_path), warm_start=False)
     batch_dir = evaluator._new_batch_dir()

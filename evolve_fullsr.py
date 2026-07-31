@@ -45,6 +45,9 @@ from evolution_helpers import (
     _build_target_noise_map,
     format_solved_str as _shared_format_solved_str,
     job_success_stats,
+    load_task_formulas,
+    select_unsolved_task_with_trace,
+    format_pareto_trace_for_task,
     select_parent,
     select_survivors,
 )
@@ -411,6 +414,8 @@ def run_evolution(
     wandb_run: Optional[Any],
     resume_state: Optional[Dict[str, Any]] = None,
     domain: str = "srbench",
+    execution_feedback_n: int = 3,
+    execution_feedback_prob: float = 0.5,
 ) -> Tuple[SkeletonBundle, FullSRSlurmEvaluator, float]:
     rng = random.Random(seed)
     np.random.seed(seed)
@@ -441,6 +446,7 @@ def run_evolution(
     # niterations instead).
     domain_obj = get_domain(domain)
     engine_kwargs = domain_obj.base_engine_kwargs()
+    engine_kwargs["trace_n_steps"] = execution_feedback_n
     if domain_obj.uses_run_budget:
         engine_kwargs["max_evals"] = max_evals
         engine_kwargs["timeout_in_seconds"] = timeout
@@ -481,10 +487,13 @@ def run_evolution(
         "random_target_noise": random_target_noise,
         "eval_all_noise_levels": eval_all_noise_levels,
         "full_file_diff": full_file_diff,
+        "execution_feedback_n": execution_feedback_n,
+        "execution_feedback_prob": execution_feedback_prob,
         "continued_from": resume_state["source_path"] if resume_state else None,
         "engine_kwargs": engine_kwargs,
     })
     print(f"Evolving {len(operator_slots)} operator slots: {', '.join(operator_slots)}")
+    task_formulas = load_task_formulas(dataset_names) if execution_feedback_n > 0 else {}
 
     # The evaluator's SLURM --time is shared across train and held-out val evals,
     # but the val path raises each task's wall limit to val_fullsr_wall_limit. If
@@ -850,6 +859,7 @@ def run_evolution(
                     log_prompt_dir=prompts_log_dir,
                     log_generation=0,
                     full_file=full_file_diff,
+                    fitness_metric=fitness_metric,
                 )
                 wave_specs.append(spec)
                 wave_meta.append((bundle_idx, slot_name, attempt, baseline, parent_fn))
@@ -953,6 +963,20 @@ def run_evolution(
                 elif mode == "explore":
                     parent_code = None  # explore prompt uses full-bundle context only.
 
+                task_info: Optional[Dict[str, str]] = None
+                if execution_feedback_n > 0 and rng.random() < execution_feedback_prob:
+                    trace_idx = select_unsolved_task_with_trace(
+                        parent_bundle, dataset_names, task_formulas, rng,
+                    )
+                    if trace_idx is not None:
+                        detail = (parent_bundle.result_details or [])[trace_idx]
+                        name = dataset_names[trace_idx]
+                        trace_text = format_pareto_trace_for_task(
+                            detail, name, task_formulas.get(name, ""),
+                        )
+                        if trace_text:
+                            task_info = {"execution_trace_text": trace_text}
+
                 spec = SkeletonGenerationSpec(
                     bundle=parent_bundle,
                     slot=slot,
@@ -968,6 +992,8 @@ def run_evolution(
                     log_prompt_dir=prompts_log_dir if gen <= log_prompt_gens_max else None,
                     log_generation=gen,
                     full_file=full_file_diff,
+                    fitness_metric=fitness_metric,
+                    task_info=task_info,
                 )
                 wave_specs.append(spec)
                 wave_meta.append((slot_idx, slot_name, attempt, parent_bundle))
@@ -1248,6 +1274,14 @@ def main():
         type=str,
         default="random",
         choices=["random", "explore", "refine", "simplify", "crossover"],
+    )
+    parser.add_argument(
+        "--exec-feedback-n", type=int, default=3,
+        help="Record this many search-frontier checkpoints per fit for execution-guided prompts (0 disables feedback).",
+    )
+    parser.add_argument(
+        "--exec-feedback-prob", type=float, default=0.5,
+        help="Fraction of offspring prompts that include execution feedback when checkpoints are enabled.",
     )
     parser.add_argument(
         "--operator-type",
@@ -1576,6 +1610,8 @@ def main():
         "eval_all_noise_levels": args.eval_all_noise_levels,
         "full_file_diff": args.full_file_diff,
         "fitness_metric": args.fitness_metric,
+        "execution_feedback_n": args.exec_feedback_n,
+        "execution_feedback_prob": args.exec_feedback_prob,
         "continue_from": args.continue_from,
     }
     wandb_run = init_wandb(
@@ -1623,6 +1659,8 @@ def main():
         wandb_run=wandb_run,
         domain=args.domain,
         resume_state=resume_state,
+        execution_feedback_n=args.exec_feedback_n,
+        execution_feedback_prob=args.exec_feedback_prob,
     )
 
     log_wandb_summary(

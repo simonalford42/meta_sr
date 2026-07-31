@@ -552,14 +552,45 @@ def extract_function_name(code: str) -> str:
 # ─── Prompt construction ───────────────────────────────────────────────────
 
 
+_OBJECTIVE_TEXT = {
+    "gt": (
+        "Our objective is to improve the algorithm's ability to discover the ground-truth expression "
+        "across SRBench, other symbolic regression benchmarks, and real-world symbolic regression tasks.\n"
+    ),
+    "r2": (
+        "Our objective is to improve the algorithm's ability to discover accurate expressions with a "
+        "strong held-out R²–complexity tradeoff across SRBench, other symbolic regression benchmarks, "
+        "and real-world symbolic regression tasks.\n"
+    ),
+    "gt-r2": (
+        "Our objective is to improve the algorithm's ability to discover the ground-truth expression; "
+        "when it does not, the goal is to discover accurate expressions with a strong held-out "
+        "R²–complexity tradeoff. We want these improvements to generalize across SRBench, other "
+        "symbolic regression benchmarks, and real-world symbolic regression tasks.\n"
+    ),
+}
+
 _DEFAULT_INTRO = (
     "You are an expert in symbolic regression, physics, and genetic programming.\n"
-    "Our goal is to improve a symbolic regression algorithm so it discovers the\n"
-    "correct ground-truth equation for more SRBench tasks (e.g. equations like\n"
-    "`0.5 sin(x - y) - sin(x)` or `q/(4*pi*epsilon*r*(1-v/c))`).\n"
     "Your proposed improvement is being considered as part of a meta-evolutionary\n"
     "loop that samples and evaluates many proposed improvements to the algorithm.\n"
 )
+
+_BRAINSTORM_INSTRUCTION = (
+    "To help you brainstorm a better operator, the trace above shows how the Pareto frontier "
+    "of best equations evolved during the search on one task. Use it to identify weaknesses in "
+    "the search and consider an operator that could address them."
+)
+
+
+def _intro(fitness_metric: str) -> str:
+    try:
+        objective = _OBJECTIVE_TEXT[fitness_metric]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unknown fitness_metric={fitness_metric!r}; expected one of {tuple(_OBJECTIVE_TEXT)}"
+        ) from exc
+    return _DEFAULT_INTRO + objective
 
 
 def _slot_explanation(slot: SkeletonSlot) -> str:
@@ -667,11 +698,12 @@ def build_full_context(bundle: SkeletonBundle) -> str:
     )
 
 
-def build_explore_prompt(slot: SkeletonSlot, bundle: SkeletonBundle) -> str:
+def build_explore_prompt(slot: SkeletonSlot, bundle: SkeletonBundle,
+                         fitness_metric: str = "gt") -> str:
     context = build_full_context(bundle)
     reqs = "\n".join(f"{i+1}. {r}" for i, r in enumerate(_common_requirements(slot)))
     return (
-        f"{_DEFAULT_INTRO}\n"
+        f"{_intro(fitness_metric)}\n"
         f"{context}\n\n"
         f"{_slot_explanation(slot)}\n"
         "## Task\n"
@@ -683,11 +715,12 @@ def build_explore_prompt(slot: SkeletonSlot, bundle: SkeletonBundle) -> str:
     )
 
 
-def build_refine_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_code: str) -> str:
+def build_refine_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_code: str,
+                        fitness_metric: str = "gt") -> str:
     context = build_full_context(bundle)
     reqs = "\n".join(f"{i+1}. {r}" for i, r in enumerate(_common_requirements(slot)))
     return (
-        f"{_DEFAULT_INTRO}\n"
+        f"{_intro(fitness_metric)}\n"
         f"{context}\n\n"
         f"{_slot_explanation(slot)}\n"
         "## Parent implementation to refine\n"
@@ -701,11 +734,12 @@ def build_refine_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_code:
     )
 
 
-def build_simplify_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_code: str) -> str:
+def build_simplify_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_code: str,
+                          fitness_metric: str = "gt") -> str:
     context = build_full_context(bundle)
     reqs = "\n".join(f"{i+1}. {r}" for i, r in enumerate(_common_requirements(slot)))
     return (
-        f"{_DEFAULT_INTRO}\n"
+        f"{_intro(fitness_metric)}\n"
         f"{context}\n\n"
         f"{_slot_explanation(slot)}\n"
         "## Parent implementation to simplify\n"
@@ -729,11 +763,12 @@ def build_crossover_prompt(
     bundle: SkeletonBundle,
     parent1_code: str,
     parent2_code: str,
+    fitness_metric: str = "gt",
 ) -> str:
     context = build_full_context(bundle)
     reqs = "\n".join(f"{i+1}. {r}" for i, r in enumerate(_common_requirements(slot)))
     return (
-        f"{_DEFAULT_INTRO}\n"
+        f"{_intro(fitness_metric)}\n"
         f"{context}\n\n"
         f"{_slot_explanation(slot)}\n"
         "## Parent 1\n"
@@ -750,7 +785,7 @@ def build_crossover_prompt(
 
 
 def build_full_file_prompt(
-    slot: SkeletonSlot, bundle: SkeletonBundle, mode: str
+    slot: SkeletonSlot, bundle: SkeletonBundle, mode: str, fitness_metric: str = "gt"
 ) -> str:
     """Diff baseline: ask the LLM to return the whole module body.
 
@@ -787,7 +822,7 @@ def build_full_file_prompt(
             "implementation that explores a new promising approach."
         )
     return (
-        f"{_DEFAULT_INTRO}\n"
+        f"{_intro(fitness_metric)}\n"
         f"{context}\n\n"
         "## Task\n"
         f"{focus}\n\n"
@@ -842,28 +877,47 @@ class SkeletonGenerationSpec:
     # asks for an entire module body, and the response is parsed by
     # parse_sr_config_module() into per-slot replacements.
     full_file: bool = False
+    fitness_metric: str = "gt"
+    task_info: Optional[Dict[str, str]] = None
 
 
 def _build_prompt(spec: SkeletonGenerationSpec) -> str:
     if spec.full_file:
-        return build_full_file_prompt(spec.slot, spec.bundle, spec.mode)
-    if spec.mode == "explore":
-        return build_explore_prompt(spec.slot, spec.bundle)
-    if spec.mode == "refine":
+        prompt = build_full_file_prompt(
+            spec.slot, spec.bundle, spec.mode, spec.fitness_metric,
+        )
+    elif spec.mode == "explore":
+        prompt = build_explore_prompt(spec.slot, spec.bundle, spec.fitness_metric)
+    elif spec.mode == "refine":
         if not spec.parent_code:
             raise ValueError("refine mode requires parent_code")
-        return build_refine_prompt(spec.slot, spec.bundle, spec.parent_code)
-    if spec.mode == "simplify":
+        prompt = build_refine_prompt(
+            spec.slot, spec.bundle, spec.parent_code, spec.fitness_metric,
+        )
+    elif spec.mode == "simplify":
         if not spec.parent_code:
             raise ValueError("simplify mode requires parent_code")
-        return build_simplify_prompt(spec.slot, spec.bundle, spec.parent_code)
-    if spec.mode == "crossover":
+        prompt = build_simplify_prompt(
+            spec.slot, spec.bundle, spec.parent_code, spec.fitness_metric,
+        )
+    elif spec.mode == "crossover":
         if not spec.parent_code or not spec.parent2_code:
             raise ValueError("crossover mode requires parent_code AND parent2_code")
-        return build_crossover_prompt(
-            spec.slot, spec.bundle, spec.parent_code, spec.parent2_code
+        prompt = build_crossover_prompt(
+            spec.slot, spec.bundle, spec.parent_code, spec.parent2_code,
+            spec.fitness_metric,
         )
-    raise ValueError(f"unknown mode: {spec.mode!r}")
+    else:
+        raise ValueError(f"unknown mode: {spec.mode!r}")
+
+    if spec.task_info and spec.task_info.get("execution_trace_text"):
+        prompt = (
+            f"{prompt}\n\n"
+            "## Execution trace from a recent search using this bundle\n"
+            f"{spec.task_info['execution_trace_text']}\n\n"
+            f"{_BRAINSTORM_INSTRUCTION}\n"
+        )
+    return prompt
 
 
 def _log_prompt(spec: SkeletonGenerationSpec, prompt: str, content: str, code: str, model: str) -> None:
