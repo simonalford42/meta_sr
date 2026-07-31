@@ -708,7 +708,7 @@ def run_bundle_evolution(
     llm_max_workers: int = 16,
     resume_state: Optional[Dict[str, Any]] = None,
     execution_feedback_n: int = 0,
-    execution_feedback_prob: float = 0.75,
+    execution_feedback_prob: float = 0.5,
     val_split: Optional[str] = None,
     val_n_runs: int = 10,
     identify_topk: int = 10,
@@ -2667,8 +2667,8 @@ def main():
 
     parser.add_argument("--exec-feedback-n", type=int, default=3,
                         help="Enable execution-trace prompt feedback and record this many search checkpoints per PySR fit (0 = disabled)")
-    parser.add_argument("--exec-feedback-prob", type=float, default=0.75,
-                        help="Fraction of mutations that attach an execution-trace to the prompt when --exec-feedback-n > 0 (default 0.75)")
+    parser.add_argument("--exec-feedback-prob", type=float, default=0.5,
+                        help="Fraction of mutations that attach an execution-trace to the prompt when --exec-feedback-n > 0 (default 0.5)")
 
     parser.add_argument("--mutation-mode", type=str, default="random",
                         choices=["random", "explore", "refine", "simplify", "crossover"],
