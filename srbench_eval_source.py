@@ -39,7 +39,7 @@ def saved_run_soft_timeout(path: str) -> Optional[int]:
     it by returning the frontier it has so far. Only the eval cap used to reach
     full evaluation, so a bundle selected for what it achieves in T seconds was
     then graded on completing 1e6 evals with no time bound at all — in
-    runs/656234 that discarded 87% of the fits outright. Reading the training
+    runs/archive/656234 that discarded 87% of the fits outright. Reading the training
     value back keeps both protocols on the same budget.
 
     Returns None when ``path`` is not a run directory (raw .jl bundles,

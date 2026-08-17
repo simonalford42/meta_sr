@@ -23,7 +23,7 @@ or tuned under, read back from the source run (``--timeout`` overrides it;
 budget: the search checks it between iterations and returns the frontier it has,
 whereas overrunning the hard wall discards the fit entirely. Evaluating on
 ``max_evals`` alone therefore grades a bundle on a budget it was never selected
-under -- see runs/656234, where a bundle scoring 0.53 on validation under a 500s
+under -- see runs/archive/656234, where a bundle scoring 0.53 on validation under a 500s
 soft timeout lost 87% of its ground-truth fits to the wall once that timeout was
 dropped.
 

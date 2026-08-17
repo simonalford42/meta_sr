@@ -1,7 +1,32 @@
 #!/usr/bin/env bash
 
+# 8/17
+# evolve_full gt-r2
+# sbatch -J full-gt-r2 run.sh evolve_fullsr.py --generations 30 --offspring 10 --population 10 --n-runs 3 --models best --fitness-metric gt-r2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
+
+# 8/17 — full SRBench re-evaluation under the soft timeout each bundle evolved
+# under. srbench_full_eval.py now inherits timeout_in_seconds from the source
+# run (500s for all three below), so a fit that overruns returns the frontier it
+# has instead of being discarded at the hard wall. The 7/31 chain had no soft
+# timeout and bounded fits only by max_evals=1e6: runs/225437 lost 4652/5320
+# ground-truth fits that way (archived as runs/archive/656234).
+#
+# The baseline is re-run rather than reused. runs/656233 searched unbounded in
+# time to the full 1e6 evals, which is strictly more compute than a 500s cap, so
+# comparing a timed bundle against it would be biased against the bundle.
+#
+# All three are cache misses by construction: timeout_in_seconds is part of
+# engine_kwargs and so part of the FullSR cache identity, so no untimed result
+# gets reused. Expect full-length runs.
+# srb_prev=$(sbatch --parsable -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-548741 run.sh srbench_full_eval.py --evolve-results runs/548741 --ground-truth --black-box)
+
+
 # 7/31 — BasicSR baseline on full SRBench (driver submits chunked arrays).
-srb_prev=$(sbatch --parsable -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
+# Superseded by the 8/17 block above: these ran with no soft timeout.
+# srb_prev=$(sbatch --parsable -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box)
 
 # 7/29
 
