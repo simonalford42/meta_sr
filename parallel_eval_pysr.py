@@ -1763,6 +1763,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         pysr_wall_limit: int = 600,
         eval_noise_levels: Optional[List[float]] = None,
         domain: str = "srbench",
+        black_box: bool = False,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -1792,6 +1793,11 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # Run-level evaluation domain, stamped onto every spec submit_configs
         # builds (one evolution/HPO run is one domain). See domains.py.
         self.domain = domain
+        # Run-level data protocol. Evolution creates many batches through
+        # helper layers that do not pass per-call protocol flags, so retain a
+        # default here; one-off callers can still override it in
+        # submit_configs(black_box=...).
+        self.black_box = black_box
         # All-noise mode: when set, every task is evaluated at each of these noise
         # levels sequentially in one worker and scored as the mean (see
         # _evaluate_pysr_task). Each task then runs len(levels) PySR fits back to
@@ -1899,7 +1905,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         run_index_start_per_config: Optional[List[int]] = None,
         hof_csv_map: Optional[Dict[str, List[str]]] = None,
         pysr_wall_limit: Optional[int] = None,
-        black_box: bool = False,
+        black_box: Optional[bool] = None,
     ) -> PySRBatchHandle:
         """
         Build task specs, pre-filter cache, and submit SLURM job(s) without waiting.
@@ -1920,6 +1926,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             pysr_wall_limit: Optional per-call override for the hard per-fit
                              wall-clock limit (seconds). Falls back to the
                              evaluator default when None.
+            black_box: Optional per-call override for the SRBench black-box
+                       protocol. Falls back to the evaluator's run-level mode.
         """
         import time as _time_mod
         _bundle_submit_time = _time_mod.time()
@@ -1931,6 +1939,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         traces_batch_dir = Path(self.results_dir) / "traces" / batch_dir.name
 
         # Build task specs
+        effective_black_box = self.black_box if black_box is None else black_box
         tasks = []
         for config_id, config in enumerate(configs):
             run_start = (
@@ -1988,7 +1997,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         hof_csv_paths=hof_csv_paths,
                         hof_n_steps=self.hof_n_steps,
                         pysr_wall_limit=(pysr_wall_limit if pysr_wall_limit is not None else self.pysr_wall_limit),
-                        black_box=black_box,
+                        black_box=effective_black_box,
                         domain=self.domain,
                     ))
 

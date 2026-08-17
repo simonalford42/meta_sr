@@ -1,10 +1,12 @@
+import csv
 import json
+from pathlib import Path
 
 import numpy as np
 
 import parallel_eval_fullsr
 from parallel_eval_fullsr import FullSRTaskResult, FullSRTaskSpec
-from parallel_eval_pysr import PySRTaskResult
+from parallel_eval_pysr import PySRConfig, PySRSlurmEvaluator, PySRTaskResult
 from srbench_full_eval import (
     SRBENCH_2025_BLACK_BOX_DATASETS,
     SRBENCH_2025_GROUND_TRUTH_DATASETS,
@@ -56,6 +58,50 @@ def test_every_black_box_dataset_resolves_on_disk():
         if not resolve_pmlb_paths(name)[0].exists()
     ]
     assert missing == []
+
+
+def test_black_box_evolution_splits_are_balanced_disjoint_and_exhaustive():
+    root = Path(__file__).resolve().parents[1]
+    split_names = {
+        name: (root / "splits" / f"bb_{name}.txt").read_text().splitlines()
+        for name in ("train", "val", "test")
+    }
+
+    assert {name: len(values) for name, values in split_names.items()} == {
+        "train": 20,
+        "val": 20,
+        "test": 82,
+    }
+    assert set(split_names["train"]).isdisjoint(split_names["val"])
+    assert set(split_names["train"]).isdisjoint(split_names["test"])
+    assert set(split_names["val"]).isdisjoint(split_names["test"])
+    assert set().union(*map(set, split_names.values())) == set(load_black_box_datasets())
+
+    with (root / "srbench/docs/csv/blackbox_results_datasets.csv").open(newline="") as f:
+        group = {
+            row["dataset"]: row["friedman_dataset"] == "True"
+            for row in csv.DictReader(f)
+        }
+    assert sum(group[name] for name in split_names["train"]) == 10
+    assert sum(group[name] for name in split_names["val"]) == 10
+    assert sum(group[name] for name in split_names["test"]) == 42
+
+
+def test_pysr_evaluator_applies_run_level_black_box_default(tmp_path, monkeypatch):
+    evaluator = PySRSlurmEvaluator(
+        results_dir=str(tmp_path), use_cache=False, black_box=True
+    )
+    monkeypatch.setattr(evaluator, "_ensure_julia_env_resolved", lambda: None)
+    monkeypatch.setattr(evaluator, "_submit_job", lambda _script: "fake-job")
+
+    config = PySRConfig(mutation_weights={})
+    inherited = evaluator.submit_configs([config], ["1027_ESL"])
+    overridden = evaluator.submit_configs(
+        [config], ["1027_ESL"], black_box=False
+    )
+
+    assert inherited.tasks[0].black_box is True
+    assert overridden.tasks[0].black_box is False
 
 
 def test_test_pareto_removes_dominated_and_duplicate_complexities():

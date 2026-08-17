@@ -146,6 +146,16 @@ from smart_reeval import (
 DEFAULT_SMART_SIGMA = 0.064689
 
 
+def is_canonical_black_box_split(dataset_names: List[str]) -> bool:
+    """Whether every name belongs to SRBench's canonical black-box suite."""
+    if not dataset_names:
+        return False
+    from srbench_full_eval import load_black_box_datasets
+
+    canonical = set(load_black_box_datasets())
+    return set(dataset_names).issubset(canonical)
+
+
 def _rename_function_identifier(code: str, old_name: str, new_name: str) -> str:
     """Rename every identifier occurrence of `old_name` to `new_name`.
 
@@ -710,6 +720,7 @@ def run_bundle_evolution(
     execution_feedback_n: int = 0,
     execution_feedback_prob: float = 0.5,
     val_split: Optional[str] = None,
+    test_split: Optional[str] = None,
     val_n_runs: int = 10,
     identify_topk: int = 10,
     pysr_wall_limit: int = 600,
@@ -718,6 +729,7 @@ def run_bundle_evolution(
     split_label: Optional[str] = None,
     mutation_mode: str = "random",
     domain: str = "srbench",
+    black_box: bool = False,
 ) -> Tuple[OperatorBundle, Any, float]:
     """Run bundle evolution across multiple operator types.
 
@@ -807,6 +819,10 @@ def run_bundle_evolution(
         "eval_all_noise_levels": eval_all_noise_levels,
         "fitness_metric": fitness_metric,
         "domain": domain,
+        "black_box": black_box,
+        "split_label": split_label,
+        "val_split": val_split,
+        "test_split": test_split,
         "repo_root": repo_root,
         "population_type": population_type,
         "reeval": reeval,
@@ -933,6 +949,7 @@ def run_bundle_evolution(
         pysr_wall_limit=pysr_wall_limit,
         eval_noise_levels=eval_noise_levels,
         domain=domain,
+        black_box=black_box,
     )
     if split_label is not None:
         evaluator.split_label = split_label
@@ -2485,13 +2502,14 @@ def main():
                              "--reeval smart* where it defaults to --population // 2.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=10)
-    parser.add_argument("--fitness-metric", type=str, default="gt", choices=["r2", "gt", "gt-r2"],
+    parser.add_argument("--fitness-metric", type=str, default=None, choices=["r2", "gt", "gt-r2"],
                         help="Meta-evolution fitness metric: "
                              "'gt' = whole-frontier ground-truth symbolic match rate; "
                              "'r2' = average validation R² across the fixed complexity grid "
                              "1..maxsize (frontier-averaged R²); "
                              "'gt-r2' = 1.0 if the task is solved (gt match), else "
-                             "the frontier-averaged R².")
+                             "the frontier-averaged R². Defaults to r2 for Boolean and "
+                             "canonical SRBench black-box splits, otherwise gt.")
 
     parser.add_argument("--domain", type=str, default="srbench",
                         choices=["srbench", "boolean"],
@@ -2507,6 +2525,10 @@ def main():
     parser.add_argument("--val-split", type=str, default='splits/barely_unsolvable_val2.txt',
                         help="If set, after each generation submit the current best bundle "
                              "for background evaluation on this split (--val-n-runs seeds). ")
+    parser.add_argument("--test-split", type=str, default=None,
+                        help="Optional held-out split evaluated only during the end-of-run "
+                             "final evaluation; never used for evolution, validation, or "
+                             "bundle selection.")
     parser.add_argument("--val-n-runs", type=int, default=10,
                         help="Number of seeds per val-split run (used when --val-split is set)")
     parser.add_argument("--val-pysr-wall-limit", type=int, default=1800,
@@ -2679,17 +2701,46 @@ def main():
 
     args = parser.parse_args()
 
-    # Boolean-domain defaults: applied only where the user left the SRBench
-    # defaults in place, so explicit flags still win. (gt/gt-r2 now work in
-    # the Boolean domain too — check_solved is an exact truth-table match —
-    # but r2 remains the historical default there.)
+    # Boolean-domain split defaults are applied only where the user left the
+    # SRBench defaults in place, so explicit flags still win.
     if args.domain == "boolean":
-        if args.fitness_metric == "gt":
-            args.fitness_metric = "r2"
         if args.split == "splits/barely_unsolvable.txt":
             args.split = "splits/boolean_train.txt"
         if args.val_split == "splits/barely_unsolvable_val2.txt":
             args.val_split = None  # no separate Boolean val split by default
+
+    # Resolve the protocol and metric before warming up Julia. Canonical
+    # black-box tasks have no target formula, so symbolic-match metrics are
+    # undefined and held-out R² is mandatory.
+    dataset_names = load_dataset_names_from_split(args.split)
+    args.black_box = (
+        args.domain == "srbench"
+        and is_canonical_black_box_split(dataset_names)
+    )
+    if args.fitness_metric is None:
+        args.fitness_metric = "r2" if (args.domain == "boolean" or args.black_box) else "gt"
+    if args.black_box and args.fitness_metric != "r2":
+        parser.error(
+            "Canonical SRBench black-box splits require --fitness-metric r2 "
+            "because they do not have ground-truth formulas."
+        )
+
+    if args.black_box:
+        for held_out_split in (args.val_split, args.test_split):
+            if not held_out_split:
+                continue
+            held_out_names = load_dataset_names_from_split(held_out_split)
+            if not is_canonical_black_box_split(held_out_names):
+                parser.error(
+                    f"Black-box train split {args.split} cannot be combined with "
+                    f"non-black-box split {held_out_split}."
+                )
+
+    print(f"Loaded {len(dataset_names)} datasets from {args.split}")
+    warn_on_dataset_domain_mismatch(dataset_names, args.domain)
+    if args.black_box:
+        print("[srbench] canonical black-box protocol enabled; fitness_metric=r2")
+    elif args.domain == "boolean":
         print(f"[boolean] domain defaults: fitness_metric={args.fitness_metric}, "
               f"split={args.split}, val_split={args.val_split}")
 
@@ -2776,10 +2827,6 @@ def main():
         _using_stmts.append(f"using SymbolicRegression.{OPERATOR_TYPES[_t].julia_module}")
     warmup_seconds = warmup_julia(warmup_log, using_statements=_using_stmts)
     print(f"Julia environment ready ({warmup_seconds:.1f}s)")
-
-    dataset_names = load_dataset_names_from_split(args.split)
-    print(f"Loaded {len(dataset_names)} datasets from {args.split}")
-    warn_on_dataset_domain_mismatch(dataset_names, args.domain)
 
     # Resolve reasoning effort from the preset name before --models is rewritten
     # to its ensemble string below.
@@ -2896,6 +2943,7 @@ def main():
         execution_feedback_n=args.exec_feedback_n,
         execution_feedback_prob=args.exec_feedback_prob,
         val_split=args.val_split,
+        test_split=args.test_split,
         val_n_runs=args.val_n_runs,
         identify_topk=args.identify_topk,
         reeval_budget=args.reeval_budget,
@@ -2904,6 +2952,7 @@ def main():
         val_pysr_timeout=args.val_pysr_timeout,
         mutation_mode=args.mutation_mode,
         domain=args.domain,
+        black_box=args.black_box,
     )
 
     if len(operator_type_names) > 1:
@@ -2920,8 +2969,10 @@ def main():
         "seed": args.seed,
         "n_runs": args.n_runs,
         "fitness_metric": args.fitness_metric,
+        "black_box": args.black_box,
         "split": args.split,
         "val_split": args.val_split,
+        "test_split": args.test_split,
         "val_n_runs": args.val_n_runs,
         "identify_topk": args.identify_topk,
         "reeval_budget": args.reeval_budget,
@@ -2978,9 +3029,10 @@ def main():
         },
     )
 
-    # Final evaluation on --split and --val-split (10 seeds), with a fresh
-    # data seed so the final-eval training subsample is not the one the
-    # operators were evolved on.
+    # Final evaluation on train/val and the optional held-out test split (10
+    # seeds), with a fresh data seed so the final-eval training subsample is
+    # not the one the operators were evolved on. --test-split reaches this
+    # point only; it is never visible to evolution or model selection.
     run_data_path = str(Path(args.output_dir) / "run_data.json")
     if Path(run_data_path).exists():
         try:
@@ -2988,6 +3040,8 @@ def main():
             final_splits = [args.split]
             if args.val_split:
                 final_splits.append(args.val_split)
+            if args.test_split:
+                final_splits.append(args.test_split)
             # Build noise map matching evolution settings. With --random-target-noise,
             # also pass the full set of noise levels so the final eval runs every level
             # (10 seeds each) and reports avg_gt (fixed per-task level, matching
@@ -3024,6 +3078,7 @@ def main():
                 wandb_run=wandb_run,
                 target_noise_map=target_noise_map,
                 noise_levels=final_noise_levels,
+                black_box=args.black_box,
             )
         except Exception as e:
             print(f"\nFinal evaluation failed: {e}")

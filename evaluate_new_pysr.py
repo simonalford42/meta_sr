@@ -365,8 +365,9 @@ def run_final_evaluation(
     target_noise_map: Optional[Dict[str, float]] = None,
     noise_levels: Optional[List[float]] = None,
     pysr_wall_limit: int = 600,
+    black_box: bool = False,
 ) -> Dict[str, "EvalSummary"]:
-    """Run final evaluation on train/val splits after an evolution, OpenEvolve, or HPO run.
+    """Run final evaluation on requested splits after an evolution, OpenEvolve, or HPO run.
 
     Args:
         output_dir: Parent output directory; final eval results go in output_dir/final_eval/
@@ -391,6 +392,8 @@ def run_final_evaluation(
             seeds per level per dataset), and the report includes both avg_gt (the
             per-dataset fixed-noise assignment, matching training/validation) and
             avg_gt_all_noise (averaged across all noise levels).
+        black_box: Use SRBench's black-box split/scaling protocol and held-out
+            R² scoring for every split.
 
     Returns:
         Dict mapping split name to EvalSummary
@@ -425,6 +428,7 @@ def run_final_evaluation(
         max_concurrent_jobs=max_concurrent_jobs,
         use_cache=use_cache,
         pysr_wall_limit=pysr_wall_limit,
+        black_box=black_box,
     )
 
     # Single converter: bundle -> PySRConfig (merges custom code + HPO hparams).
@@ -538,6 +542,7 @@ def run_final_evaluation(
         "splits": splits,
         "n_runs": n_runs,
         "seed": seed,
+        "black_box": black_box,
     }
     summary_data.update(_bundle_summary_fields(bundle))
     for split_name, s in split_summaries.items():
