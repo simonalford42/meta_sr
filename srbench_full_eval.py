@@ -17,6 +17,16 @@ and bad-node handling.
 ``--evolve-results`` auto-detects both evolve_pysr.py OperatorBundles and
 evolve_fullsr.py SkeletonBundles from their run_data.json schema.
 
+Each fit runs under the same soft ``timeout_in_seconds`` the bundle was evolved
+or tuned under, read back from the source run (``--timeout`` overrides it;
+``--timeout 0`` removes it). This matters because the soft timeout is the real
+budget: the search checks it between iterations and returns the frontier it has,
+whereas overrunning the hard wall discards the fit entirely. Evaluating on
+``max_evals`` alone therefore grades a bundle on a budget it was never selected
+under -- see runs/656234, where a bundle scoring 0.53 on validation under a 500s
+soft timeout lost 87% of its ground-truth fits to the wall once that timeout was
+dropped.
+
 Default scale: 133 tasks x 10 seeds x 4 noise levels (0.0, 0.001, 0.01, 0.1)
 for ground truth, and 122 datasets x 10 seeds for --black-box. ``--2025``
 switches those selections to the 12 first-principles or 12 black-box problems
@@ -218,8 +228,26 @@ def run_black_box(args, output_dir, source, manifest, run):
         wall_limit = max(60, int(slurm_s) - 120)
         print(f"  --black-box-wall-limit disabled: using --time-limit "
               f"{args.time_limit} -> {wall_limit}s per fit")
+    # Black-box fits get their own soft budget too, scaled off the ratio of the
+    # two wall limits so the graceful-stop margin is preserved at either size.
+    from srbench_eval_source import apply_soft_timeout, scale_soft_timeout
+
+    gt_wall = (args.fullsr_wall_limit if source.backend == "fullsr"
+               else args.pysr_wall_limit)
+    if args.black_box_timeout is not None:
+        soft_timeout = args.black_box_timeout if args.black_box_timeout > 0 else None
+    else:
+        soft_timeout = scale_soft_timeout(source.soft_timeout, gt_wall, wall_limit)
+    if soft_timeout is not None and soft_timeout >= wall_limit:
+        raise ValueError(
+            f"black-box soft timeout ({soft_timeout}s) must be < the black-box "
+            f"hard wall ({wall_limit}s); raise --black-box-wall-limit or lower "
+            f"--black-box-timeout"
+        )
+    config = apply_soft_timeout(source.config, source.backend, soft_timeout)
     print(f"Black-box: {len(datasets)} datasets x {n_trials} trials = "
-          f"{len(datasets) * n_trials} runs  |  per-fit wall limit: {wall_limit}s")
+          f"{len(datasets) * n_trials} runs  |  per-fit wall limit: {wall_limit}s"
+          f"  |  soft timeout: {soft_timeout if soft_timeout is not None else 'none'}")
     if source.backend == "fullsr":
         from parallel_eval_fullsr import FullSRSlurmEvaluator
 
@@ -237,7 +265,7 @@ def run_black_box(args, output_dir, source, manifest, run):
         )
         before = set(evaluator.slurm_dir.glob("eval_*"))
         evaluator.evaluate_configs(
-            configs=[source.config],
+            configs=[config],
             dataset_names=datasets,
             seed=args.seed,
             n_runs=n_trials,
@@ -268,7 +296,7 @@ def run_black_box(args, output_dir, source, manifest, run):
             max_retries=args.max_retries,
         )
         handle = evaluator.submit_configs(
-            configs=[source.config],
+            configs=[config],
             dataset_names=datasets,
             seed=args.seed,
             n_runs=n_trials,
@@ -281,6 +309,7 @@ def run_black_box(args, output_dir, source, manifest, run):
     manifest["black_box"] = {
         "n_datasets": len(datasets), "datasets": datasets, "n_runs": n_trials,
         "wall_limit": wall_limit,
+        "timeout_in_seconds": soft_timeout,
         "backend": source.backend,
         "batch_dir": (
             f"slurm_fullsr/{Path(batch_dir).name}"
@@ -371,6 +400,20 @@ def main():
                              "Black-box datasets are far larger than the "
                              "ground-truth ones; 0 disables the limit entirely "
                              "(only SLURM --time bounds the fit).")
+    parser.add_argument("--timeout", type=int, default=None,
+                        help="Soft timeout_in_seconds per ground-truth fit. The "
+                             "search checks it between iterations and returns "
+                             "the frontier it has, so an over-budget config is "
+                             "scored on partial progress instead of discarded by "
+                             "the hard wall. Default: inherit the value the "
+                             "evolve/HPO run trained with, else 500s. 0 disables "
+                             "it (search bounded only by --max-evals).")
+    parser.add_argument("--black-box-timeout", type=int, default=None,
+                        help="Soft timeout_in_seconds per black-box fit. Default: "
+                             "the ground-truth soft timeout scaled by the ratio of "
+                             "the black-box to ground-truth wall limits (500s -> "
+                             "1500s at the defaults), matching how evolve_fullsr "
+                             "sizes its validation budget.")
     parser.add_argument("--max-retries", type=int, default=5,
                         help="Retry rounds for transient/missing tasks per batch.")
     parser.add_argument("--no-cache", action="store_true")
@@ -401,6 +444,22 @@ def main():
     source = load_evaluation_source(args)
     config, mode_name, method_meta = source.config, source.mode, source.method_meta
     print(f"Mode: {mode_name}  |  backend: {source.backend}")
+
+    gt_wall = (args.fullsr_wall_limit if source.backend == "fullsr"
+               else args.pysr_wall_limit)
+    if source.soft_timeout is None:
+        print(f"Soft timeout: none ({source.soft_timeout_source})  |  hard wall: "
+              f"{gt_wall}s. Fits that overrun the wall are discarded, not scored.")
+    else:
+        print(f"Soft timeout: {source.soft_timeout}s per fit "
+              f"(from {source.soft_timeout_source})  |  hard wall: {gt_wall}s")
+        if source.soft_timeout >= gt_wall:
+            parser.error(
+                f"soft timeout ({source.soft_timeout}s, from "
+                f"{source.soft_timeout_source}) must be < the hard wall "
+                f"({gt_wall}s) or the search never gets to stop gracefully; "
+                f"raise the wall limit or lower --timeout"
+            )
     do_ground_truth = args.ground_truth or not args.black_box
 
     # Black-box-only mode bypasses all ground-truth result aggregation.
@@ -408,6 +467,8 @@ def main():
         manifest = {
             "mode": mode_name, "backend": source.backend,
             "method_meta": method_meta, "max_evals": args.max_evals,
+            "timeout_in_seconds": source.soft_timeout,
+            "timeout_source": source.soft_timeout_source,
             "srbench_edition": 2025 if args.srbench_2025 else 2021,
             "evaluation_types": ["black_box"], "batches": [],
         }
@@ -471,6 +532,8 @@ def main():
                 "mode": mode_name,
                 "backend": source.backend,
                 "max_evals": args.max_evals,
+                "timeout_in_seconds": source.soft_timeout,
+                "timeout_source": source.soft_timeout_source,
                 "max_samples": args.max_samples,
                 "seed": args.seed,
                 "n_runs": args.n_trials_per_dataset,
@@ -490,6 +553,8 @@ def main():
         "srbench_edition": 2025 if args.srbench_2025 else 2021,
         "method_meta": method_meta,
         "max_evals": args.max_evals,
+        "timeout_in_seconds": source.soft_timeout,
+        "timeout_source": source.soft_timeout_source,
         "max_samples": args.max_samples,
         "seed": args.seed,
         "n_runs": args.n_trials_per_dataset,
