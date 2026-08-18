@@ -19,7 +19,7 @@ import subprocess
 import sys
 import traceback
 from functools import lru_cache
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -69,6 +69,30 @@ POLICY_FUNCTION_NAMES = (
 )
 
 
+_WARNED_UNKNOWN_FIELDS: set = set()
+
+
+def _drop_unknown_fields(cls, d: Dict) -> Dict:
+    """Keep only keys that ``cls`` declares as fields.
+
+    Result/spec JSON is written by worker processes that can be running a
+    different revision than the driver that reads it back (a long array
+    submitted before a code change, or a rerun against an older batch dir).
+    An unknown key used to blow up the whole collection pass with
+    ``TypeError: __init__() got an unexpected keyword argument`` and lose
+    every result in the run - drop the extras and warn once instead.
+    """
+    known = {f.name for f in fields(cls)}
+    extra = [k for k in d if k not in known]
+    if extra:
+        key = (cls.__name__, tuple(sorted(extra)))
+        if key not in _WARNED_UNKNOWN_FIELDS:
+            _WARNED_UNKNOWN_FIELDS.add(key)
+            print(f"  WARNING: ignoring unknown {cls.__name__} field(s) "
+                  f"{sorted(extra)} (result written by a different revision)")
+    return {k: v for k, v in d.items() if k in known}
+
+
 @dataclass
 class FullSRTaskSpec:
     config_id: int
@@ -106,7 +130,7 @@ class FullSRTaskSpec:
 
     @classmethod
     def from_json_dict(cls, d: Dict) -> "FullSRTaskSpec":
-        return cls(**d)
+        return cls(**_drop_unknown_fields(cls, d))
 
 
 @dataclass
@@ -139,7 +163,7 @@ class FullSRTaskResult:
         d.setdefault("target_noise", 0.0)
         d.setdefault("pareto_frontier", None)
         d.setdefault("execution_trace", None)
-        return cls(**d)
+        return cls(**_drop_unknown_fields(cls, d))
 
 
 class FullSRWallLimitExceeded(TimeoutError):
@@ -866,7 +890,7 @@ class FullSRConfig:
 
     @classmethod
     def from_json_dict(cls, d: Dict) -> "FullSRConfig":
-        return cls(**d)
+        return cls(**_drop_unknown_fields(cls, d))
 
 
 class FullSRSlurmEvaluator(BaseSlurmEvaluator):
@@ -1171,8 +1195,26 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
                     f"    Submitted retry job: {retry_job_id} "
                     f"(chunk {chunk_num + 1}/{len(retry_chunks)})"
                 )
+            # Same watchdog sizing as the initial wait. Falling back to the
+            # instance default (300s) here guaranteed every retry was cancelled
+            # with 0 results: a FullSR task needs its full wall (plus Julia
+            # compile) before it can write anything, so no retry could ever
+            # report progress inside 300s.
+            retry_waves = _math.ceil(len(failed_indices) / effective_concurrency)
+            retry_job_timeout = (
+                None
+                if self.job_timeout is None
+                else max(self.job_timeout, watchdog_floor,
+                         retry_waves * effective_wall + _WATCHDOG_MARGIN_S)
+            )
+            print(
+                f"    Retry watchdog: stall_timeout={call_stall_timeout}s "
+                f"job_timeout={retry_job_timeout}s "
+                f"(~{retry_waves} waves @ concurrency {effective_concurrency})"
+            )
             self._wait_for_retry_jobs(
-                retry_job_ids, len(failed_indices), batch_dir, failed_indices
+                retry_job_ids, len(failed_indices), batch_dir, failed_indices,
+                stall_timeout=call_stall_timeout, job_timeout=retry_job_timeout,
             )
             for idx in failed_indices:
                 rf = results_subdir / f"task_{idx:06d}.json"

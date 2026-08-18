@@ -950,7 +950,17 @@ class BaseSlurmEvaluator(ABC):
         for i in range(n_tasks):
             result_file = results_dir / f"task_{i:06d}.json"
             if result_file.exists():
-                result = self._parse_result_file(result_file)
+                # One unreadable/parse-failing file must not abort the whole
+                # collection pass and discard every other task's result -
+                # treat it as a retryable failure for that task only.
+                try:
+                    result = self._parse_result_file(result_file)
+                except Exception as e:
+                    print(f"  WARNING: failed to parse {result_file.name}: {e}")
+                    failed_indices.append(i)
+                    results.append(self._create_placeholder_result(
+                        f"Result parse error for task {i}: {e}"))
+                    continue
                 results.append(result)
                 # Check if this result has a retryable error
                 if self._is_retryable_error(result):
