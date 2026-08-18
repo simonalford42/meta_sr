@@ -1096,6 +1096,24 @@ def main() -> None:
         print_status(args)
     elif args.command == "report":
         build_report(args)
+        # The matplotlib-only document above also materializes the compact
+        # results archive consumed by the publication-style LaTeX report.
+        # For the complete production matrix, replace that interim PDF with
+        # the LaTeX version. Incomplete smoke reports retain the lightweight
+        # renderer because the LaTeX report intentionally requires all 36 runs.
+        if not args.allow_incomplete and args.output_pdf.resolve() == DEFAULT_REPORT.resolve():
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "build_neuronbench_latex_report.py"),
+                    "--results",
+                    str(args.output_pdf.with_suffix(".results.json")),
+                    "--tex",
+                    str(args.output_pdf.with_suffix(".tex")),
+                ],
+                cwd=ROOT,
+                check=True,
+            )
     else:
         raise AssertionError(args.command)
 

@@ -23,6 +23,7 @@ Reproduction:
 
 ```bash
 bash scripts/install_neuronbench.sh
+mamba install -n meta_sr -c conda-forge tectonic -y  # LaTeX report compiler
 conda run -n meta_sr python scripts/neuronbench_fully_observable.py validate
 # Ask before submitting the next command, per AGENTS.md:
 sbatch scripts/neuronbench_fully_observable_slurm.sh
