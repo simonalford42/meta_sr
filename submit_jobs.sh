@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 
+# 8/18
+# Top off the 8/17 FullSR evals. Both phases pre-filter against the FullSR
+# cache, so resubmitting the identical command reruns only what the first
+# attempt lost -- 0 / 104 / 4 runs respectively, not the 6540-run grid. Check
+# first with: python srbench_full_eval.py <same flags> --cache-report
+# (Don't add --no-cache, and don't change --timeout/--max-evals or the
+# SymbolicRegression.jl submodule commit: all three are in the cache identity.)
+# srb_prev=$(sbatch --parsable -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-548741 run.sh srbench_full_eval.py --evolve-results runs/548741 --ground-truth --black-box)
+
+# sbatch --parsable -J srb-full-gtr2 run.sh srbench_full_eval.py --evolve-results runs/91887 --ground-truth --black-box
+# sbatch -J simp-538 run.sh evolve_pysr.py --operator-type all --mutation-mode simplify --population-type complexity --generations 10 --population 10 --offspring 10 --n-runs 3 --models best --continue-from runs/538190 --reeval population --n-reevals 10
+
 # 8/17
 # evolve_full gt-r2
 # sbatch -J full-gt-r2 run.sh evolve_fullsr.py --generations 30 --offspring 10 --population 10 --n-runs 3 --models best --fitness-metric gt-r2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
 
-# 8/17 — full SRBench re-evaluation under the soft timeout each bundle evolved
-# under. srbench_full_eval.py now inherits timeout_in_seconds from the source
-# run (500s for all three below), so a fit that overruns returns the frontier it
-# has instead of being discarded at the hard wall. The 7/31 chain had no soft
-# timeout and bounded fits only by max_evals=1e6: runs/225437 lost 4652/5320
-# ground-truth fits that way (archived as runs/archive/656234).
-#
-# The baseline is re-run rather than reused. runs/656233 searched unbounded in
-# time to the full 1e6 evals, which is strictly more compute than a 500s cap, so
-# comparing a timed bundle against it would be biased against the bundle.
-#
-# All three are cache misses by construction: timeout_in_seconds is part of
-# engine_kwargs and so part of the FullSR cache identity, so no untimed result
-# gets reused. Expect full-length runs.
 # srb_prev=$(sbatch --parsable -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
 # srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box)
 # srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-548741 run.sh srbench_full_eval.py --evolve-results runs/548741 --ground-truth --black-box)

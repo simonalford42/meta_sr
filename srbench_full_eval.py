@@ -344,6 +344,86 @@ def build_config(args):
     return load_pysr_evaluation_config(args)
 
 
+def cache_report(args) -> None:
+    """Print what a rerun of this command would actually execute.
+
+    Both eval phases pre-filter their task grid against the FullSR cache, so
+    resubmitting the same command tops off only the runs a previous attempt
+    lost (preemption, a cancelled retry pass, a hung GT check) instead of
+    redoing the grid. This reports those counts without submitting anything.
+
+    The cache identity covers the committed SymbolicRegression.jl revision and
+    the engine kwargs (soft timeout and max-evals included), so a moved
+    submodule or a different --timeout/--max-evals invalidates every entry -
+    which this report makes visible before you spend the cluster time.
+    """
+    import shutil
+    import tempfile
+
+    from srbench_eval_source import (apply_soft_timeout, load_evaluation_source,
+                                     scale_soft_timeout)
+    from utils import load_dataset_names_from_split
+
+    source = load_evaluation_source(args)
+    if source.backend != "fullsr":
+        raise SystemExit(f"--cache-report supports the fullsr backend only "
+                         f"(this command resolves to {source.backend!r})")
+    from parallel_eval_fullsr import FullSRSlurmEvaluator
+
+    print(f"Mode: {source.mode}  |  soft timeout: {source.soft_timeout}s "
+          f"({source.soft_timeout_source})")
+
+    def _report(label, datasets, config, n_runs, wall_limit, max_samples,
+                noise_levels, black_box, fitness_metric):
+        scratch = tempfile.mkdtemp(prefix="cache_report_")
+        evaluator = FullSRSlurmEvaluator(
+            results_dir=scratch,
+            dataset_max_samples=max_samples,
+            data_seed=args.seed,
+            wall_limit=wall_limit,
+            eval_noise_levels=noise_levels,
+        )
+        tasks = evaluator.build_task_specs(
+            configs=[config], dataset_names=datasets, seed=args.seed,
+            n_runs=n_runs, fitness_metric=fitness_metric,
+            fullsr_wall_limit=wall_limit, black_box=black_box,
+        )
+        n_cached, uncached = evaluator.count_cached_specs(tasks)
+        print(f"\n{label}: {n_cached}/{len(tasks)} cached  ->  "
+              f"{len(uncached)} runs would execute")
+        for spec in uncached[:10]:
+            print(f"    {spec.dataset_name}  run={spec.run_index}  "
+                  f"noise={spec.target_noise}")
+        if len(uncached) > 10:
+            print(f"    ... and {len(uncached) - 10} more")
+        shutil.rmtree(scratch, ignore_errors=True)
+
+    if args.datasets:
+        datasets = [d.strip() for d in args.datasets.split(",") if d.strip()]
+    elif args.srbench_2025:
+        datasets = load_ground_truth_datasets_2025()
+    else:
+        datasets = load_dataset_names_from_split(args.split_file)
+
+    if args.ground_truth or not args.black_box:
+        _report("ground truth", datasets, source.config,
+                args.n_trials_per_dataset, args.fullsr_wall_limit,
+                args.max_samples, args.noise_levels, False, "gt")
+
+    if args.black_box:
+        bb_datasets = (datasets if args.datasets
+                       else load_black_box_datasets(args.srbench_2025))
+        bb_wall = args.black_box_wall_limit
+        if args.black_box_timeout is not None:
+            bb_timeout = args.black_box_timeout if args.black_box_timeout > 0 else None
+        else:
+            bb_timeout = scale_soft_timeout(
+                source.soft_timeout, args.fullsr_wall_limit, bb_wall)
+        bb_config = apply_soft_timeout(source.config, "fullsr", bb_timeout)
+        _report("black box", bb_datasets, bb_config, args.n_trials_per_dataset,
+                bb_wall, args.black_box_max_samples, None, True, "r2")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Submit a full SRBench evaluation.",
@@ -417,12 +497,21 @@ def main():
     parser.add_argument("--max-retries", type=int, default=5,
                         help="Retry rounds for transient/missing tasks per batch.")
     parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--cache-report", action="store_true",
+                        help="Print how many of this command's runs are already "
+                             "in the FullSR cache (i.e. how much work a rerun "
+                             "would actually do) and exit. Submits nothing and "
+                             "creates no run directory. FullSR backends only.")
     parser.add_argument("--results-dir", type=str, default=None,
                         help="Run directory (default: runs/<SLURM_JOB_ID> or local_*).")
     parser.add_argument("--no-wandb", action="store_true")
     args = parser.parse_args()
 
     print("Executing command: " + " ".join(sys.argv))
+
+    if args.cache_report:
+        cache_report(args)
+        return
 
     from utils import resolve_run_dir, load_dataset_names_from_split, copy_slurm_log
     from srbench_eval_source import load_evaluation_source

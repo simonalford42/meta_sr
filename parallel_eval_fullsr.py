@@ -25,7 +25,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from parallel_eval_pysr import _remap_formula_variables, _write_json_atomic, add_noise
+from parallel_eval_pysr import (
+    _compute_fixed_grid_frontier_avg_r2,
+    _remap_formula_variables,
+    _write_json_atomic,
+    add_noise,
+    select_run_scores,
+)
 from slurm_eval import (
     TERMINAL_SLURM_STATES,
     BaseSlurmEvaluator,
@@ -53,7 +59,7 @@ _WATCHDOG_MARGIN_S = 900
 # way that makes old successful results incomparable.  The SkeletonSR git
 # revision is also part of every config identity, so committed Julia engine or
 # policy changes invalidate the cache automatically.
-FULLSR_CACHE_PROTOCOL_VERSION = 1
+FULLSR_CACHE_PROTOCOL_VERSION = 2
 
 # The eight policy functions that SkeletonSRPolicy carries. Used by the worker
 # to splice in custom Julia code when policy_code is set.
@@ -138,6 +144,9 @@ class FullSRTaskResult:
     config_id: int
     dataset_name: str
     r2_score: float
+    # Fixed-grid Pareto-envelope validation R² used by the ground-truth-task
+    # r2 and gt-r2 objectives. This exactly matches parallel_eval_pysr.py.
+    r2_frontier_score: Optional[float] = None
     best_equation: Optional[str]
     best_loss: float
     gt_match_score: Optional[float] = None
@@ -981,7 +990,7 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         self.domain = domain
         self.split_label: Optional[str] = None
 
-    def evaluate_configs(
+    def build_task_specs(
         self,
         configs: List[FullSRConfig],
         dataset_names: List[str],
@@ -991,15 +1000,14 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         fitness_metric: str = "r2",
         run_index_start_per_config: Optional[List[int]] = None,
         fullsr_wall_limit: Optional[int] = None,
-        split_label: Optional[str] = None,
         black_box: bool = False,
-    ) -> List[Tuple[float, List[float], List[Dict]]]:
-        import time as _time_mod
+    ) -> List[FullSRTaskSpec]:
+        """The (config x dataset x run x noise) task grid this eval would run.
 
-        bundle_submit_time = _time_mod.time()
-        batch_dir = self._new_batch_dir()
-        results_subdir = batch_dir / "results"
-
+        Split out of evaluate_configs so callers can build the exact same specs
+        without submitting anything - see count_cached_specs and
+        srbench_full_eval.py --cache-report.
+        """
         tasks: List[FullSRTaskSpec] = []
         for config_id, config in enumerate(configs):
             run_start = (
@@ -1043,6 +1051,63 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
                             )
                         )
 
+        return tasks
+
+    def count_cached_specs(
+        self, tasks: List[FullSRTaskSpec]
+    ) -> Tuple[int, List[FullSRTaskSpec]]:
+        """Return ``(n_cached, uncached_specs)`` for ``tasks``, touching nothing.
+
+        Mirrors evaluate_configs' cache pre-filter, so it answers "what would a
+        rerun of this command actually execute?" - a resubmit tops off the
+        tasks a previous run lost rather than redoing the grid.
+        """
+        from evaluation_cache import get_fullsr_cache
+
+        cache = get_fullsr_cache()
+        if cache is None:
+            raise RuntimeError("FullSR cache is disabled")
+        n_cached = 0
+        uncached: List[FullSRTaskSpec] = []
+        for task in tasks:
+            config_identity, request_identity = _build_fullsr_cache_identity(task)
+            payload = cache.lookup(config_identity, request_identity)
+            if _cached_fullsr_result(task, payload) is None:
+                uncached.append(task)
+            else:
+                n_cached += 1
+        return n_cached, uncached
+
+    def evaluate_configs(
+        self,
+        configs: List[FullSRConfig],
+        dataset_names: List[str],
+        seed: int = 42,
+        n_runs: int = 1,
+        target_noise_map: Optional[Dict[str, float]] = None,
+        fitness_metric: str = "r2",
+        run_index_start_per_config: Optional[List[int]] = None,
+        fullsr_wall_limit: Optional[int] = None,
+        split_label: Optional[str] = None,
+        black_box: bool = False,
+    ) -> List[Tuple[float, List[float], List[Dict]]]:
+        import time as _time_mod
+
+        bundle_submit_time = _time_mod.time()
+        batch_dir = self._new_batch_dir()
+        results_subdir = batch_dir / "results"
+
+        tasks = self.build_task_specs(
+            configs=configs,
+            dataset_names=dataset_names,
+            seed=seed,
+            n_runs=n_runs,
+            target_noise_map=target_noise_map,
+            fitness_metric=fitness_metric,
+            run_index_start_per_config=run_index_start_per_config,
+            fullsr_wall_limit=fullsr_wall_limit,
+            black_box=black_box,
+        )
         n_tasks = len(tasks)
         print(
             f"  FullSR SLURM eval: {n_tasks} tasks "
