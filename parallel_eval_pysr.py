@@ -160,7 +160,8 @@ def _spec_expects_execution_trace(task: "PySRTaskSpec") -> bool:
 # Fitness metrics
 # =============================================================================
 # Supported meta-evolution fitness metrics for the PySR pipeline:
-#   "gt"    — ground-truth symbolic solve rate (1.0 if any frontier eq matches GT)
+#   "gt"    — domain-defined ground-truth solve rate (1.0 if any frontier eq
+#             satisfies the domain's recovery check)
 #   "r2"    — average validation R² across the Pareto frontier (see
 #             _compute_frontier_avg_r2). NOTE: as of the frontier-R² change this
 #             is the *whole-frontier* average, not PySR's single best equation.
@@ -958,6 +959,9 @@ class PySRTaskSpec:
     # Evaluation domain (see domains.py): dataset loading, sympy mappings, and
     # the "solved" check all dispatch through DOMAINS[domain] in the worker.
     domain: str = "srbench"
+    # Retain domain-specific metrics for every Pareto row. Evolution normally
+    # needs only aggregate fitness; dedicated full-eval drivers opt in.
+    retain_pareto_frontier: bool = False
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -1005,8 +1009,10 @@ class PySRTaskResult:
     # lowest-successful-noise level's representative values (equation/trace).
     # None for single-noise tasks.
     noise_results: Optional[List[Dict]] = None
-    # Test-set Pareto frontier for black-box evaluation. Each row contains
-    # complexity, test_r2, and equation. None for ground-truth evaluations.
+    # Domain-specific held-out Pareto frontier.  SRBench black-box rows contain
+    # complexity/test_r2/equation; NeuronBench rows contain complexity,
+    # test_nrmse, assessment, and equation.  None when the domain does not
+    # request frontier retention.
     pareto_frontier: Optional[List[Dict]] = None
 
     def to_json_dict(self) -> Dict:
@@ -1088,12 +1094,26 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         print(f"[{spec.dataset_name}] Loading dataset...", flush=True)
         np.random.seed(spec.data_seed)
         _rnd.seed(spec.data_seed)
-        # Black-box data must be split before the training-only row cap is
-        # applied (SRBench evaluate_model.py). Ground-truth evaluation retains
-        # the historical pre-split cap.
-        load_cap = None if spec.black_box else spec.max_samples
-        X, y, ground_truth_formula = domain.load_dataset(spec.dataset_name, max_samples=load_cap)
-        if spec.black_box:
+        # A domain may provide a benchmark-defined held-out set (NeuronBench's
+        # independent Sobol collocation states). Otherwise use the shared
+        # seeded split protocols below.
+        fixed_split = domain.load_train_validation(
+            spec.dataset_name,
+            max_samples=spec.max_samples,
+            data_seed=spec.data_seed,
+        )
+        if fixed_split is not None:
+            X_train, y_train_base, X_val, y_val, ground_truth_formula = fixed_split
+            X = y = None
+        else:
+            # Black-box data must be split before the training-only row cap is
+            # applied (SRBench evaluate_model.py). Ground-truth evaluation retains
+            # the historical pre-split cap.
+            load_cap = None if spec.black_box else spec.max_samples
+            X, y, ground_truth_formula = domain.load_dataset(
+                spec.dataset_name, max_samples=load_cap, data_seed=spec.data_seed
+            )
+        if fixed_split is None and spec.black_box:
             finite_rows = np.isfinite(y) & np.isfinite(X).all(axis=1)
             if not finite_rows.all():
                 n_removed = int((~finite_rows).sum())
@@ -1113,7 +1133,10 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         np.random.seed(run_seed)
         _rnd.seed(run_seed)
 
-        if spec.black_box:
+        if fixed_split is not None:
+            # The domain already supplied train/validation arrays.
+            pass
+        elif spec.black_box:
             # Use sklearn here (rather than an equivalent-looking manual
             # permutation) to reproduce SRBench's exact seeded split.
             from sklearn.model_selection import train_test_split
@@ -1380,6 +1403,21 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                                 })
                         except Exception:
                             continue
+                elif spec.retain_pareto_frontier:
+                    try:
+                        pareto_frontier = domain.pareto_metrics(
+                            equations_df=model.equations_,
+                            predict_fn=lambda idx: model.predict(
+                                X_val, index=int(idx)
+                            ),
+                            y_val=y_val,
+                        )
+                    except Exception as _e:
+                        print(
+                            f"[{spec.dataset_name}] domain Pareto metrics failed: {_e}",
+                            flush=True,
+                        )
+                        pareto_frontier = None
 
                 # Frontier-averaged R² is an evolution metric for ground-truth
                 # tasks. Black-box output retains the complete test frontier.
@@ -1806,6 +1844,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         eval_noise_levels: Optional[List[float]] = None,
         domain: str = "srbench",
         black_box: bool = False,
+        retain_pareto_frontier: bool = False,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -1835,6 +1874,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # Run-level evaluation domain, stamped onto every spec submit_configs
         # builds (one evolution/HPO run is one domain). See domains.py.
         self.domain = domain
+        self.retain_pareto_frontier = retain_pareto_frontier
         # Run-level data protocol. Evolution creates many batches through
         # helper layers that do not pass per-call protocol flags, so retain a
         # default here; one-off callers can still override it in
@@ -2041,6 +2081,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         pysr_wall_limit=(pysr_wall_limit if pysr_wall_limit is not None else self.pysr_wall_limit),
                         black_box=effective_black_box,
                         domain=self.domain,
+                        retain_pareto_frontier=self.retain_pareto_frontier,
                     ))
 
         n_tasks = len(tasks)
@@ -2112,7 +2153,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             or cached.get("error") is not None
                         )
                         cached_has_required_frontier = (
-                            not task.black_box
+                            not (task.black_box or task.retain_pareto_frontier)
                             or cached is None
                             or bool(cached.get("pareto_frontier"))
                         )

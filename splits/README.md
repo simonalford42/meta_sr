@@ -113,6 +113,14 @@ Hand-picked SRBench tasks where PyPySR and PySR disagreed during the
 parity-debugging effort (commit 1989425, see `parity_debug_log.md`).
 Used as a focused split for `scripts/test_pypysr_vs_pysr_srbench*.py`.
 
+### `neuron_all.txt` / `neuron_loocv1.txt` ... `neuron_loocv6.txt`
+
+The six fully-observable NeuronBench vector-field tasks and their deterministic
+leave-one-out training splits.  LOOCV indices follow the order in
+`neuron_all.txt`: `z_rebound`, `h_sag`, `na_fatigue`, `ca_rebound`, `d_type`,
+and `textbook_M`.  Each LOOCV file therefore contains the other five tasks.
+Use these with `evolve_pysr.py --domain neuron`.
+
 ## Regenerating
 
 All writes go to `splits/` and each split family is opt-in, so running the

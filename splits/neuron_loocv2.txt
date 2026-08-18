@@ -1,0 +1,5 @@
+z_rebound
+na_fatigue
+ca_rebound
+d_type
+textbook_M

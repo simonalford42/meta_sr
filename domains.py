@@ -1,4 +1,4 @@
-"""Domain registry: everything that differs between SRBench and LogicBench.
+"""Domain registry: dataset-specific behavior for SRBench, LogicBench, and NeuronBench.
 
 A ``Domain`` encapsulates the four things that vary between evaluation domains
 (see plans/logicbench_domain.md):
@@ -50,6 +50,19 @@ class Domain:
         hyperparameters and budget fields layer on top in the drivers."""
         raise NotImplementedError
 
+    def load_train_validation(
+        self,
+        dataset_name: str,
+        max_samples: Optional[int] = None,
+        data_seed: Optional[int] = None,
+    ):
+        """Optional benchmark-defined train/validation split.
+
+        Return ``(X_train, y_train, X_val, y_val, target_formula)`` or ``None``
+        to use the shared seeded split protocol.
+        """
+        return None
+
     def base_engine_kwargs(self) -> Dict[str, Any]:
         """Base SkeletonSR engine kwargs for the fullsr pipeline."""
         raise NotImplementedError
@@ -85,6 +98,22 @@ class Domain:
         rows, enabling full-truth-table verification for small Boolean tasks.
         """
         raise NotImplementedError
+
+    def pareto_metrics(
+        self,
+        *,
+        equations_df,
+        predict_fn,
+        y_val,
+    ):
+        """Optional domain-specific metrics for every Pareto-frontier row.
+
+        The normal evolution path only needs ``check_solved``.  Full-domain
+        evaluation drivers can ask the worker to retain richer frontier data
+        (for example NeuronBench NRMSE and recovery classifications) without
+        teaching the shared evaluator about a particular benchmark.
+        """
+        return None
 
 
 class SRBenchDomain(Domain):
@@ -249,9 +278,154 @@ class LogicBenchDomain(Domain):
         }
 
 
+class NeuronBenchDomain(Domain):
+    """Fully-observable NeuronBench membrane vector fields.
+
+    Each task exposes ``I_ext``, voltage, and every channel open fraction, so
+    learning ``dV/dt`` is an ordinary noiseless SR problem.  Targets are scaled
+    by their RMS before fitting (an invertible conditioning step used by the
+    original NeuronBench demo); NRMSE and the recovery thresholds are invariant
+    to that scaling.
+    """
+
+    name = "neuron"
+    RECOVERED_NRMSE = 1e-6
+    NEAR_EXACT_NRMSE = 1e-3
+    CLOSE_NRMSE = 5e-2
+
+    def _load_saved(self, dataset_name, max_samples=None):
+        from scripts.neuronbench_fully_observable import (
+            DEFAULT_RESULTS,
+            WORLDS,
+            ensure_data,
+            load_data,
+        )
+
+        if dataset_name not in WORLDS:
+            raise ValueError(
+                f"Unknown NeuronBench world {dataset_name!r}; expected one of {WORLDS}"
+            )
+        ensure_data(
+            DEFAULT_RESULTS,
+            n_train=1024,
+            n_test=16384,
+            data_seed=260809696,
+        )
+        spec, data = load_data(DEFAULT_RESULTS, dataset_name)
+        X_train = np.asarray(data["X_train"], dtype=np.float64)
+        y_train = np.asarray(data["y_train"], dtype=np.float64)
+        X_val = np.asarray(data["X_test"], dtype=np.float64)
+        y_val = np.asarray(data["y_test"], dtype=np.float64)
+        if max_samples is not None and len(y_train) > max_samples:
+            X_train, y_train = X_train[:max_samples], y_train[:max_samples]
+        scale = float(np.sqrt(np.mean(y_train ** 2)))
+        if not np.isfinite(scale) or scale <= np.finfo(float).tiny:
+            raise ValueError(f"Invalid target RMS for {dataset_name}: {scale}")
+        # The worker uses x0, x1, ... names.  NeuronBench's solved check below
+        # is numerical, so this human-readable formula is metadata rather than
+        # a brittle floating-point symbolic-equality target.
+        target = f"({spec['ground_truth']}) / ({scale:.17g})"
+        return X_train, y_train / scale, X_val, y_val / scale, target
+
+    def load_dataset(self, dataset_name, max_samples=None, data_seed=None):
+        X_train, y_train, _, _, target = self._load_saved(
+            dataset_name, max_samples=max_samples
+        )
+        return X_train, y_train, target
+
+    def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
+        # NeuronBench's Sobol collocation sets are already independently
+        # generated.  Preserve the 1,024-state training / 16,384-state held-out
+        # protocol rather than re-splitting and weakening the recovery check.
+        return self._load_saved(dataset_name, max_samples=max_samples)
+
+    def base_pysr_kwargs(self):
+        # Match the controlled fully-observable experiment: only arithmetic
+        # needed by the bilinear current-balance law, with enough size for all
+        # six exact vector fields.
+        from parallel_eval_pysr import get_default_pysr_kwargs
+
+        kwargs = get_default_pysr_kwargs()
+        kwargs.update({
+            "binary_operators": ["+", "-", "*"],
+            "unary_operators": [],
+            "constraints": {},
+            "nested_constraints": {},
+            "maxsize": 35,
+            "maxdepth": 16,
+            "precision": 64,
+            "early_stop_condition": "stop_if(loss, complexity) = loss < 1e-24",
+        })
+        return kwargs
+
+    def base_engine_kwargs(self):
+        raise NotImplementedError("NeuronBench is currently a PySR-only domain")
+
+    @classmethod
+    def classify_nrmse(cls, value: float) -> str:
+        if value <= cls.RECOVERED_NRMSE:
+            return "recovered"
+        if value <= cls.NEAR_EXACT_NRMSE:
+            return "near-exact"
+        if value <= cls.CLOSE_NRMSE:
+            return "close"
+        return "miss"
+
+    def pareto_metrics(self, *, equations_df, predict_fn, y_val):
+        target = np.asarray(y_val, dtype=float).reshape(-1)
+        denom = max(
+            float(np.sqrt(np.mean(target ** 2))),
+            float(np.finfo(float).tiny),
+        )
+        rows = []
+        for idx, row in equations_df.sort_values("complexity").iterrows():
+            try:
+                pred = np.asarray(predict_fn(idx), dtype=float).reshape(-1)
+                if pred.shape != target.shape or not np.all(np.isfinite(pred)):
+                    raise ValueError("non-finite or wrong-shape prediction")
+                nrmse = float(np.sqrt(np.mean((pred - target) ** 2)) / denom)
+                rows.append({
+                    "pysr_index": int(idx),
+                    "complexity": int(row["complexity"]),
+                    "equation": str(row["equation"]),
+                    "loss": float(row["loss"]),
+                    "test_nrmse": nrmse,
+                    "assessment": self.classify_nrmse(nrmse),
+                })
+            except Exception as exc:
+                rows.append({
+                    "pysr_index": int(idx),
+                    "complexity": int(row["complexity"]),
+                    "equation": str(row["equation"]),
+                    "loss": float(row["loss"]),
+                    "test_nrmse": float("inf"),
+                    "assessment": "miss",
+                    "prediction_error": str(exc),
+                })
+        return rows
+
+    def check_solved(self, *, equations_df, best_df_index, target, var_names,
+                     predict_fn, y_val, predict_on=None, dataset_name=None):
+        frontier = self.pareto_metrics(
+            equations_df=equations_df,
+            predict_fn=predict_fn,
+            y_val=y_val,
+        )
+        finite = [r for r in frontier if np.isfinite(r["test_nrmse"])]
+        best = min(finite, key=lambda r: r["test_nrmse"]) if finite else None
+        matched = best is not None and best["test_nrmse"] <= self.RECOVERED_NRMSE
+        return {
+            "match": bool(matched),
+            "matched_df_index": best["pysr_index"] if matched else None,
+            "best_nrmse": best["test_nrmse"] if best is not None else None,
+            "checked_count": len(frontier),
+        }
+
+
 DOMAINS: Dict[str, Domain] = {
     "srbench": SRBenchDomain(),
     "boolean": LogicBenchDomain(),
+    "neuron": NeuronBenchDomain(),
 }
 
 

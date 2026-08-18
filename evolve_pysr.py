@@ -2504,7 +2504,8 @@ def main():
     parser.add_argument("--n-runs", type=int, default=10)
     parser.add_argument("--fitness-metric", type=str, default=None, choices=["r2", "gt", "gt-r2"],
                         help="Meta-evolution fitness metric: "
-                             "'gt' = whole-frontier ground-truth symbolic match rate; "
+                             "'gt' = domain-defined whole-frontier ground-truth recovery "
+                             "rate (symbolic match for SRBench; NRMSE <= 1e-6 for neuron); "
                              "'r2' = average validation R² across the fixed complexity grid "
                              "1..maxsize (frontier-averaged R²); "
                              "'gt-r2' = 1.0 if the task is solved (gt match), else "
@@ -2512,13 +2513,13 @@ def main():
                              "canonical SRBench black-box splits, otherwise gt.")
 
     parser.add_argument("--domain", type=str, default="srbench",
-                        choices=["srbench", "boolean"],
+                        choices=["srbench", "boolean", "neuron"],
                         help="Evaluation domain (see domains.py). 'srbench' (default) = "
                              "symbolic regression on PMLB/Feynman datasets. 'boolean' = "
                              "Boolean-function synthesis over band/bor/bxor/bnot with L2 "
-                             "loss; defaults --fitness-metric to r2 and --split to the "
-                             "Boolean train split unless overridden. All domains run "
-                             "through SLURM.")
+                             "loss. 'neuron' = fully-observable NeuronBench vector fields "
+                             "with numerical ground-truth recovery at NRMSE <= 1e-6. "
+                             "All domains run through SLURM.")
 
     parser.add_argument("--split", type=str, default='splits/barely_unsolvable.txt',
                         help="Path to dataset split file")
@@ -2699,6 +2700,20 @@ def main():
                              "Default 'random' picks uniformly each time, matching prior behavior. "
                              "If a non-'random' mode requires a parent the bundle lacks, falls back to explore.")
 
+    parser.add_argument(
+        "--neuron-full-eval",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="For --domain neuron, automatically evaluate the final bundle on all "
+             "six worlds after evolution (disable with --no-neuron-full-eval).",
+    )
+    parser.add_argument("--neuron-eval-runs", type=int, default=5,
+                        help="Seeds per world in automatic NeuronBench full evaluation")
+    parser.add_argument("--neuron-eval-seed", type=int, default=10_000,
+                        help="Base seed for automatic NeuronBench full evaluation")
+    parser.add_argument("--neuron-eval-max-evals", type=int, default=1_000_000,
+                        help="Per-fit evaluation budget for automatic NeuronBench full evaluation")
+
     args = parser.parse_args()
 
     # Boolean-domain split defaults are applied only where the user left the
@@ -2708,11 +2723,26 @@ def main():
             args.split = "splits/boolean_train.txt"
         if args.val_split == "splits/barely_unsolvable_val2.txt":
             args.val_split = None  # no separate Boolean val split by default
+    elif args.domain == "neuron":
+        if args.split == "splits/barely_unsolvable.txt":
+            args.split = "splits/neuron_loocv1.txt"
+        if args.val_split == "splits/barely_unsolvable_val2.txt":
+            args.val_split = None
 
     # Resolve the protocol and metric before warming up Julia. Canonical
     # black-box tasks have no target formula, so symbolic-match metrics are
     # undefined and held-out R² is mandatory.
     dataset_names = load_dataset_names_from_split(args.split)
+    if args.domain == "neuron":
+        from scripts.neuronbench_fully_observable import WORLDS as NEURON_WORLDS
+
+        unknown = sorted(set(dataset_names) - set(NEURON_WORLDS))
+        if unknown:
+            parser.error(
+                f"NeuronBench split {args.split} contains unknown world(s): {unknown}"
+            )
+        if not dataset_names:
+            parser.error(f"NeuronBench split {args.split} is empty")
     args.black_box = (
         args.domain == "srbench"
         and is_canonical_black_box_split(dataset_names)
@@ -2742,6 +2772,9 @@ def main():
         print("[srbench] canonical black-box protocol enabled; fitness_metric=r2")
     elif args.domain == "boolean":
         print(f"[boolean] domain defaults: fitness_metric={args.fitness_metric}, "
+              f"split={args.split}, val_split={args.val_split}")
+    elif args.domain == "neuron":
+        print(f"[neuron] fully-observable domain: fitness_metric={args.fitness_metric}, "
               f"split={args.split}, val_split={args.val_split}")
 
     # KG-dynamic is temporarily disabled: the pruned KG curve implementation
@@ -2969,6 +3002,7 @@ def main():
         "seed": args.seed,
         "n_runs": args.n_runs,
         "fitness_metric": args.fitness_metric,
+        "domain": args.domain,
         "black_box": args.black_box,
         "split": args.split,
         "val_split": args.val_split,
@@ -3004,6 +3038,10 @@ def main():
         "exec_feedback_prob": args.exec_feedback_prob,
         "continue_from": args.continue_from,
         "mutation_mode": args.mutation_mode,
+        "neuron_full_eval": args.neuron_full_eval,
+        "neuron_eval_runs": args.neuron_eval_runs,
+        "neuron_eval_seed": args.neuron_eval_seed,
+        "neuron_eval_max_evals": args.neuron_eval_max_evals,
     }
     wandb_run = init_wandb(
         config=wandb_config,
@@ -3029,57 +3067,90 @@ def main():
         },
     )
 
-    # Final evaluation on train/val and the optional held-out test split (10
-    # seeds), with a fresh data seed so the final-eval training subsample is
-    # not the one the operators were evolved on. --test-split reaches this
-    # point only; it is never visible to evolution or model selection.
+    # Final evaluation. NeuronBench uses its dedicated all-six-world evaluator
+    # (five fresh seeds by default); other domains retain the train/val/test
+    # final evaluation below.
     run_data_path = str(Path(args.output_dir) / "run_data.json")
     if Path(run_data_path).exists():
         try:
-            from evaluate_new_pysr import run_final_evaluation
-            final_splits = [args.split]
-            if args.val_split:
-                final_splits.append(args.val_split)
-            if args.test_split:
-                final_splits.append(args.test_split)
-            # Build noise map matching evolution settings. With --random-target-noise,
-            # also pass the full set of noise levels so the final eval runs every level
-            # (10 seeds each) and reports avg_gt (fixed per-task level, matching
-            # training/validation) and avg_gt_all_noise (averaged over all levels).
-            # --eval-all-noise-levels also runs every level at final eval so the
-            # reported metric matches the all-noise-averaged evolution objective.
-            target_noise_map = None
-            final_noise_levels = None
-            if args.random_target_noise or args.eval_all_noise_levels:
-                all_datasets = []
-                for sp in final_splits:
-                    all_datasets.extend(load_dataset_names_from_split(sp))
-                target_noise_map = _build_target_noise_map(
-                    list(dict.fromkeys(all_datasets)), args.seed, TARGET_NOISE_LEVELS,
+            if args.domain == "neuron":
+                if args.neuron_full_eval:
+                    from scripts.neuronbench_fully_observable import WORLDS
+
+                    train_worlds = set(dataset_names)
+                    held_out = [world for world in WORLDS if world not in train_worlds]
+                    command = [
+                        sys.executable,
+                        str(Path(__file__).resolve().parent / "neuron_full_eval.py"),
+                        "--evolve-results", run_data_path,
+                        "--output-dir", str(Path(args.output_dir) / "neuron_full_eval"),
+                        "--n-runs", str(args.neuron_eval_runs),
+                        "--seed", str(args.neuron_eval_seed),
+                        "--max-evals", str(args.neuron_eval_max_evals),
+                        "--max-samples", str(args.max_samples),
+                        "--partition", args.partition,
+                        "--time-limit", budget["slurm_time_limit"],
+                        "--mem-per-cpu", args.mem_per_cpu,
+                        "--timeout", str(budget["timeout_in_seconds"]),
+                        "--pysr-wall-limit", str(budget["wall_limit"]),
+                        "--job-timeout", str(budget["job_timeout"]),
+                        "--train-split", args.split,
+                    ]
+                    if len(held_out) == 1:
+                        command.extend(["--held-out-world", held_out[0]])
+                    if args.max_concurrent_jobs is not None:
+                        command.extend([
+                            "--max-concurrent-jobs", str(args.max_concurrent_jobs)
+                        ])
+                    if args.no_cache:
+                        command.append("--no-cache")
+                    print("\nRunning automatic all-world NeuronBench evaluation...")
+                    subprocess.run(command, cwd=Path(__file__).resolve().parent, check=True)
+            else:
+                from evaluate_new_pysr import run_final_evaluation
+                final_splits = [args.split]
+                if args.val_split:
+                    final_splits.append(args.val_split)
+                if args.test_split:
+                    final_splits.append(args.test_split)
+                # Build noise map matching evolution settings. With --random-target-noise,
+                # also pass the full set of noise levels so the final eval runs every level
+                # (10 seeds each) and reports avg_gt (fixed per-task level, matching
+                # training/validation) and avg_gt_all_noise (averaged over all levels).
+                # --eval-all-noise-levels also runs every level at final eval so the
+                # reported metric matches the all-noise-averaged evolution objective.
+                target_noise_map = None
+                final_noise_levels = None
+                if args.random_target_noise or args.eval_all_noise_levels:
+                    all_datasets = []
+                    for sp in final_splits:
+                        all_datasets.extend(load_dataset_names_from_split(sp))
+                    target_noise_map = _build_target_noise_map(
+                        list(dict.fromkeys(all_datasets)), args.seed, TARGET_NOISE_LEVELS,
+                    )
+                    final_noise_levels = list(TARGET_NOISE_LEVELS)
+                final_eval_seed = 192
+                run_final_evaluation(
+                    output_dir=args.output_dir,
+                    method_source="evolve",
+                    method_path=run_data_path,
+                    partition=args.partition,
+                    splits=final_splits,
+                    n_runs=10,
+                    seed=final_eval_seed,
+                    max_samples=args.max_samples,
+                    max_evals=budget["max_evals"],
+                    timeout=budget["timeout_in_seconds"],
+                    time_limit=budget["slurm_time_limit"],
+                    mem_per_cpu=args.mem_per_cpu,
+                    job_timeout=budget["job_timeout"],
+                    pysr_wall_limit=budget["wall_limit"],
+                    use_cache=not args.no_cache,
+                    wandb_run=wandb_run,
+                    target_noise_map=target_noise_map,
+                    noise_levels=final_noise_levels,
+                    black_box=args.black_box,
                 )
-                final_noise_levels = list(TARGET_NOISE_LEVELS)
-            final_eval_seed = 192
-            run_final_evaluation(
-                output_dir=args.output_dir,
-                method_source="evolve",
-                method_path=run_data_path,
-                partition=args.partition,
-                splits=final_splits,
-                n_runs=10,
-                seed=final_eval_seed,
-                max_samples=args.max_samples,
-                max_evals=budget["max_evals"],
-                timeout=budget["timeout_in_seconds"],
-                time_limit=budget["slurm_time_limit"],
-                mem_per_cpu=args.mem_per_cpu,
-                job_timeout=budget["job_timeout"],
-                pysr_wall_limit=budget["wall_limit"],
-                use_cache=not args.no_cache,
-                wandb_run=wandb_run,
-                target_noise_map=target_noise_map,
-                noise_levels=final_noise_levels,
-                black_box=args.black_box,
-            )
         except Exception as e:
             print(f"\nFinal evaluation failed: {e}")
 
