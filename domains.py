@@ -193,6 +193,33 @@ class LogicBenchDomain(Domain):
         from utils import _load_boolean_dataset
         return _load_boolean_dataset(dataset_name, max_samples, data_seed)
 
+    def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
+        """Use IWLS's own train/test minterm files for bare ``iwls:<ex>`` names.
+
+        The IWLS 2020 contest protocol is: fit on the 6400 sampled train
+        minterms, score on a disjoint 6400-minterm held-out sample. Honoring it
+        here means the benchmark is evaluated the way it is defined instead of
+        by re-splitting the train file.
+
+        Returns None (deferring to the shared seeded split) for:
+          * ``bool:`` synthetic tasks — an 80/20 split of the truth table is the
+            right in-distribution generalization test there, and small tables
+            are additionally checked exhaustively by check_solved;
+          * ``iwls:<ex>:<split>`` names with an explicit split — the caller
+            asked for one specific file, so don't silently pair it with another.
+        """
+        if not dataset_name.startswith("iwls:"):
+            return None
+        rest = dataset_name[len("iwls:"):]
+        if ":" in rest:  # explicit split requested
+            return None
+        from boolean_tasks import load_iwls_task
+        seed = data_seed if data_seed is not None else 0
+        train = load_iwls_task(rest, split="train", max_samples=max_samples, seed=seed)
+        # Score on every held-out minterm; max_samples caps the fit, not the test.
+        test = load_iwls_task(rest, split="test", max_samples=None, seed=seed)
+        return train.X, train.y, test.X, test.y, (train.target or "")
+
     def base_pysr_kwargs(self):
         from boolean_pysr import get_boolean_pysr_kwargs
         kwargs = get_boolean_pysr_kwargs(maxsize=30, niterations=50)
@@ -227,6 +254,36 @@ class LogicBenchDomain(Domain):
         from boolean_tasks import accuracy
         return float(accuracy(np.asarray(y_true, dtype=float),
                               np.asarray(y_pred, dtype=float)))
+
+    def pareto_metrics(self, *, equations_df, predict_fn, y_val):
+        """Per-frontier-row accuracy + exact-match flag on the held-out rows.
+
+        Not used by the fitness metrics (which score the single
+        model_selection="best" equation); this is for evaluation drivers that
+        retain the whole frontier for reporting.
+        """
+        target = np.asarray(y_val, dtype=float).reshape(-1)
+        rows = []
+        for idx, row in equations_df.sort_values("complexity").iterrows():
+            entry = {
+                "pysr_index": int(idx),
+                "complexity": int(row["complexity"]),
+                "equation": str(row["equation"]),
+                "loss": float(row["loss"]),
+            }
+            try:
+                pred = np.asarray(predict_fn(idx), dtype=float).reshape(-1)
+                if pred.shape != target.shape:
+                    raise ValueError("wrong-shape prediction")
+                acc = self.accuracy_score(target, pred)
+                entry["accuracy"] = acc
+                entry["solved"] = bool(acc == 1.0)
+            except Exception as exc:
+                entry["accuracy"] = 0.0
+                entry["solved"] = False
+                entry["prediction_error"] = str(exc)
+            rows.append(entry)
+        return rows
 
     def predict_namespace(self):
         return {

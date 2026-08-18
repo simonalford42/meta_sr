@@ -60,6 +60,7 @@ from budget_utils import (
     _seconds_to_hms,
 )
 from parallel_eval_fullsr import (
+    ACCURACY_METRICS,
     FullSRConfig,
     FullSRSlurmEvaluator,
     POLICY_SR,
@@ -1257,10 +1258,12 @@ def main():
         "--fitness-metric",
         type=str,
         default="gt",
-        choices=["r2", "gt", "gt-r2"],
+        choices=["r2", "gt", "gt-r2", "acc", "gt-acc"],
         help=(
             "Evolution objective: 'gt' = symbolic match rate; 'r2' = validation "
-            "R²; 'gt-r2' = 1.0 for a symbolic match, otherwise validation R²."
+            "R²; 'gt-r2' = 1.0 for a symbolic match, otherwise validation R²; "
+            "'acc' = validation accuracy of the best-loss equation (Boolean "
+            "domain only); 'gt-acc' = 1.0 if solved, otherwise that accuracy."
         ),
     )
     parser.add_argument("--domain", type=str, default="srbench",
@@ -1433,14 +1436,20 @@ def main():
     # Boolean-domain defaults: applied only where the user left the SRBench
     # defaults in place, so explicit flags still win.
     if args.domain == "boolean":
-        if args.fitness_metric == "gt":
-            args.fitness_metric = "r2"
+        if args.fitness_metric == "gt":  # the argparse default
+            args.fitness_metric = "gt-acc"
         if args.split == "splits/barely_unsolvable.txt":
             args.split = "splits/boolean_train.txt"
         if args.val_split == "splits/barely_unsolvable_val2.txt":
             args.val_split = None
         print(f"[boolean] domain defaults: fitness_metric={args.fitness_metric}, "
               f"split={args.split}, val_split={args.val_split}")
+    if (args.fitness_metric in ACCURACY_METRICS
+            and not get_domain(args.domain).supports_accuracy):
+        parser.error(
+            f"--fitness-metric {args.fitness_metric} needs a domain that defines an "
+            f"accuracy; --domain {args.domain} does not (only 'boolean' does)."
+        )
 
     if args.target_noise < 0:
         parser.error("--target-noise must be >= 0")

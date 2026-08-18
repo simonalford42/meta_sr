@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from parallel_eval_pysr import (
+    ACCURACY_METRICS,
     _compute_fixed_grid_frontier_avg_r2,
     _remap_formula_variables,
     _write_json_atomic,
@@ -149,6 +150,10 @@ class FullSRTaskResult:
     # Fixed-grid Pareto-envelope validation R² used by the ground-truth-task
     # r2 and gt-r2 objectives. This exactly matches parallel_eval_pysr.py.
     r2_frontier_score: Optional[float] = None
+    # Domain accuracy of the best-loss equation on the validation rows (Boolean
+    # domain: bit-wise accuracy). Drives the "acc"/"gt-acc" metrics; None for
+    # domains without an accuracy (Domain.supports_accuracy).
+    acc_score: Optional[float] = None
     gt_match_score: Optional[float] = None
     error: Optional[str] = None
     run_index: int = 0
@@ -171,6 +176,7 @@ class FullSRTaskResult:
         d.setdefault("n_evals", None)
         d.setdefault("target_noise", 0.0)
         d.setdefault("r2_frontier_score", None)
+        d.setdefault("acc_score", None)
         d.setdefault("pareto_frontier", None)
         d.setdefault("execution_trace", None)
         return cls(**_drop_unknown_fields(cls, d))
@@ -261,6 +267,14 @@ def _cached_fullsr_result(
         not spec.black_box
         and spec.fitness_metric in ("r2", "gt-r2")
         and payload.get("r2_frontier_score") is None
+    ):
+        return None
+    # Accuracy cannot be recovered from a stored (clipped) R², so an accuracy
+    # metric must re-run entries written before that field existed.
+    if (
+        not spec.black_box
+        and spec.fitness_metric in ACCURACY_METRICS
+        and payload.get("acc_score") is None
     ):
         return None
     if spec.black_box:
@@ -818,13 +832,24 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                         })
                 except Exception:
                     continue
-        _log(f"Validation R²={r2:.4f}, gt={gt_match_score}, best={best_equation}")
+        # Domain accuracy of the SAME best-loss equation scored for R² above.
+        # None for domains without a discrete target.
+        try:
+            acc_score = domain.accuracy_score(y_val, y_pred)
+        except Exception as e:
+            _log(f"Accuracy scoring failed ({e})")
+            acc_score = None
+
+        _log(f"Validation R²={r2:.4f}"
+             + ("" if acc_score is None else f", acc={acc_score:.4f}")
+             + f", gt={gt_match_score}, best={best_equation}")
 
         return FullSRTaskResult(
             config_id=spec.config_id,
             dataset_name=spec.dataset_name,
             r2_score=float(r2),
             r2_frontier_score=float(r2_frontier),
+            acc_score=(None if acc_score is None else float(acc_score)),
             best_equation=best_equation,
             best_loss=float(best_loss),
             gt_match_score=gt_match_score,
@@ -842,9 +867,12 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             dataset_name=spec.dataset_name,
             r2_score=-1.0,
             r2_frontier_score=None,
+            acc_score=0.0 if spec.fitness_metric in ACCURACY_METRICS else None,
             best_equation=None,
             best_loss=float("inf"),
-            gt_match_score=0.0 if spec.fitness_metric in ("gt", "gt-r2") else None,
+            gt_match_score=(
+                0.0 if spec.fitness_metric in ("gt", "gt-r2", "gt-acc") else None
+            ),
             error=f"Error: {_summarize_error(str(e))}",
             run_index=spec.run_index,
             runtime_seconds=float(_time.time() - start_time),
@@ -885,6 +913,14 @@ def _aggregate_fullsr_results(
                     r.gt_match_score if r.gt_match_score is not None else 0.0
                     for r in runs_sorted
                 ]
+                # Domain accuracy per seed; empty when no run reported one, so
+                # the detail carries no column rather than fabricated zeros.
+                accs = [
+                    float(r.acc_score) if r.acc_score is not None else 0.0
+                    for r in runs_sorted
+                ]
+                if all(r.acc_score is None for r in runs_sorted):
+                    accs = []
                 losses = [
                     r.best_loss
                     if r.best_loss is not None and np.isfinite(r.best_loss)
@@ -893,7 +929,8 @@ def _aggregate_fullsr_results(
                 ]
                 best_eqs = [r.best_equation for r in runs_sorted]
                 target_noises = [r.target_noise for r in runs_sorted]
-                scores = select_run_scores(r2s, gts, r2cs, fitness_metric)
+                scores = select_run_scores(r2s, gts, r2cs, fitness_metric,
+                                           run_acc=accs)
                 score_vector.append(float(np.mean(scores)))
                 evals = [r.n_evals for r in runs_sorted if r.n_evals is not None]
                 details.append(
@@ -902,10 +939,12 @@ def _aggregate_fullsr_results(
                         "avg_r2": float(np.mean(r2s)),
                         "avg_r2c": float(np.mean(r2cs)),
                         "avg_gt": float(np.mean(gts)),
+                        "avg_acc": float(np.mean(accs)) if accs else None,
                         "avg_n_evals": float(np.mean(evals)) if evals else None,
                         "run_r2_scores": r2s,
                         "run_r2c_scores": r2cs,
                         "run_gt_scores": gts,
+                        "run_acc_scores": accs,
                         "run_losses": losses,
                         "run_best_equations": best_eqs,
                         "run_target_noises": target_noises,
@@ -926,10 +965,12 @@ def _aggregate_fullsr_results(
                         "avg_r2": -1.0,
                         "avg_r2c": -1.0,
                         "avg_gt": 0.0,
+                        "avg_acc": None,
                         "avg_n_evals": None,
                         "run_r2_scores": [],
                         "run_r2c_scores": [],
                         "run_gt_scores": [],
+                        "run_acc_scores": [],
                         "run_losses": [],
                         "run_best_equations": [],
                         "run_target_noises": [],

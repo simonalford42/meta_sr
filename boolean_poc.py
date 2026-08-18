@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from boolean_eval import BooleanEvaluator, BooleanJob, default_n_workers
+from boolean_poc_eval import BooleanEvaluator, BooleanJob, default_n_workers
 from boolean_pysr import get_boolean_pysr_kwargs
 from boolean_tasks import load_iwls_task, tractable_iwls_ids
 from evolve_boolean import BooleanEvolver, EvolveConfig

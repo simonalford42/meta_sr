@@ -1,26 +1,48 @@
 #!/usr/bin/env bash
 
 # 8/18
-# sbatch -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box
-# sbatch -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box
-# sbatch -J srb-full-548741 run.sh srbench_full_eval.py --evolve-results runs/548741 --ground-truth --black-box
-# sbatch --parsable -J srb-full-gtr2 run.sh srbench_full_eval.py --evolve-results runs/91887 --ground-truth --black-box
 # sbatch -J simp-538 run.sh evolve_pysr.py --operator-type all --mutation-mode simplify --population-type complexity --generations 10 --population 10 --offspring 10 --n-runs 3 --models best --continue-from runs/538190 --reeval population --n-reevals 10
 
 # NeuronBench LOOCV: each evolution job trains on five worlds and automatically
 # evaluates its final bundle on all six worlds (5 fresh seeds, 1e6 evals).
-# sbatch -J neuron-loocv1 run.sh evolve_pysr.py --domain neuron --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models best --max-evals 1000000 --max-samples 1024 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --neuron-full-eval --neuron-eval-runs 5 --neuron-eval-seed 10000 --neuron-eval-max-evals 1000000 --split splits/neuron_loocv1.txt --val-split "" --seed 0
-# sbatch -J neuron-loocv2 run.sh evolve_pysr.py --domain neuron --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models best --max-evals 1000000 --max-samples 1024 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --neuron-full-eval --neuron-eval-runs 5 --neuron-eval-seed 10000 --neuron-eval-max-evals 1000000 --split splits/neuron_loocv2.txt --val-split "" --seed 0
-# sbatch -J neuron-loocv3 run.sh evolve_pysr.py --domain neuron --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models best --max-evals 1000000 --max-samples 1024 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --neuron-full-eval --neuron-eval-runs 5 --neuron-eval-seed 10000 --neuron-eval-max-evals 1000000 --split splits/neuron_loocv3.txt --val-split "" --seed 0
-# sbatch -J neuron-loocv4 run.sh evolve_pysr.py --domain neuron --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models best --max-evals 1000000 --max-samples 1024 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --neuron-full-eval --neuron-eval-runs 5 --neuron-eval-seed 10000 --neuron-eval-max-evals 1000000 --split splits/neuron_loocv4.txt --val-split "" --seed 0
-# sbatch -J neuron-loocv5 run.sh evolve_pysr.py --domain neuron --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models best --max-evals 1000000 --max-samples 1024 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --neuron-full-eval --neuron-eval-runs 5 --neuron-eval-seed 10000 --neuron-eval-max-evals 1000000 --split splits/neuron_loocv5.txt --val-split "" --seed 0
-# sbatch -J neuron-loocv6 run.sh evolve_pysr.py --domain neuron --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models best --max-evals 1000000 --max-samples 1024 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --neuron-full-eval --neuron-eval-runs 5 --neuron-eval-seed 10000 --neuron-eval-max-evals 1000000 --split splits/neuron_loocv6.txt --val-split "" --seed 0
+srb_prev=$(sbatch --parsable -J neuron-loocv1 run.sh evolve_pysr.py --domain neuron --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models best --max-evals 1000000 --max-samples 1024 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --neuron-full-eval --neuron-eval-runs 5 --neuron-eval-seed 10000 --neuron-eval-max-evals 1000000 --split splits/neuron_loocv1.txt --val-split "" --seed 0)
 
 # Base-PySR control: same all-world 5-seed, 1e6-eval evaluation protocol.
-# sbatch -J neuron-baseline run.sh neuron_full_eval.py --n-runs 5 --seed 10000 --max-evals 1000000 --max-samples 1024 --partition default_partition --max-concurrent-jobs 100
-# srb_prev=$(sbatch --parsable -J srb-hpo-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644009 --ground-truth --black-box)
-# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-r2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644046 --ground-truth --black-box)
-# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644293 --ground-truth --black-box)
+sbatch --dependency=afterany:"$srb_prev" -J neuron-baseline run.sh neuron_full_eval.py --n-runs 5 --seed 10000 --max-evals 1000000 --max-samples 1024 --partition default_partition --max-concurrent-jobs 100
+
+# LogicBench (Boolean synthesis): evolve on the 10 synthetic training tasks.
+# Same hyperparameters as the GT evolution jobs above; the objective is gt-acc
+# (1.0 when the truth table is recovered exactly, else held-out bit accuracy),
+# which is the Boolean-domain analog of gt-r2. --max-evals/--max-samples are
+# omitted on purpose: Boolean fits are bounded by niterations + early-stop, and
+# the tasks are whole truth tables rather than sampled rows.
+bool_prev=$(sbatch --parsable -J logic-evolve run.sh evolve_pysr.py --domain boolean --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt-acc --reeval population --n-reevals 10 --models best --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --split splits/boolean_train.txt --val-split "" --seed 0)
+
+# Base-PySR control on the 100 held-out IWLS 2020 problems (3 seeds, 1e6 evals).
+# Fits each problem's 6400 train minterms, scores its held-out 6400 test
+# minterms. Run the same script with --evolve-results runs/<id> to score the
+# evolved bundle from the job above on the identical protocol.
+sbatch --dependency=afterany:"$bool_prev" -J logic-baseline run.sh boolean_eval.py --n-runs 3 --seed 10000 --max-evals 1000000 --partition default_partition --max-concurrent-jobs 100
+
+# Two independent chains, so at most two of these run at once. Each job depends
+# on the last job of its OWN chain -- chain_a and chain_b never reference each
+# other, or they collapse into a single serial chain.
+#
+# chain_a leads with the three srb-full-* cache top-offs (0 / 104 / 4 runs left,
+# so minutes each) to get an HPO grid started early; chain_b carries the two long
+# evolve_fullsr runs. The HPO evals are cold 6540-run grids -- --timeout 0 keeps
+# them on the same no-soft-timeout protocol as the PySR rows they are compared
+# against, and so guarantees full cache misses.
+# chain_a=$(sbatch --parsable -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box)
+# chain_b=$(sbatch --parsable -J full-r2 run.sh evolve_fullsr.py --generations 30 --offspring 10 --population 10 --n-runs 3 --models best --fitness-metric r2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt)
+
+# chain_a=$(sbatch --parsable --dependency=afterany:"$chain_a" -J srb-full-548741 run.sh srbench_full_eval.py --evolve-results runs/548741 --ground-truth --black-box)
+# chain_a=$(sbatch --parsable --dependency=afterany:"$chain_a" -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
+# chain_b=$(sbatch --parsable --dependency=afterany:"$chain_b" -J full-gt-r2 run.sh evolve_fullsr.py --generations 30 --offspring 10 --population 10 --n-runs 3 --models best --fitness-metric gt-r2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt)
+
+# chain_a=$(sbatch --parsable --dependency=afterany:"$chain_a" -J srb-hpo-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644009 --ground-truth --black-box --timeout 0)
+# chain_a=$(sbatch --parsable --dependency=afterany:"$chain_a" -J srb-hpo-r2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644046 --ground-truth --black-box --timeout 0)
+# chain_b=$(sbatch --parsable --dependency=afterany:"$chain_b" -J srb-hpo-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644293 --ground-truth --black-box --timeout 0)
 
 # 8/17
 # evolve_full gt-r2
