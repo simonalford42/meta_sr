@@ -706,6 +706,8 @@ def build_report(args: argparse.Namespace) -> None:
 
     with PdfPages(output_pdf) as pdf:
         fig = plt.figure(figsize=(8.5, 11))
+        page_ax = fig.add_axes([0, 0, 1, 1])
+        page_ax.axis("off")
         fig.text(0.08, 0.94, "PySR on Fully Observable NeuronBench", fontsize=22, weight="bold")
         fig.text(
             0.08,
@@ -752,7 +754,13 @@ def build_report(args: argparse.Namespace) -> None:
                     f"{values['median_affine_calibrated_nrmse']:.2e}",
                 ]
             )
-        table = plt.table(cellText=rows, colLabels=headers, bbox=[0.08, y - 0.12, 0.84, 0.12], cellLoc="center")
+        table = page_ax.table(
+            cellText=rows,
+            colLabels=headers,
+            bbox=[0.08, y - 0.12, 0.84, 0.12],
+            cellLoc="center",
+            colWidths=[0.24, 0.10, 0.13, 0.09, 0.18, 0.20],
+        )
         table.auto_set_font_size(False)
         table.set_fontsize(8.5)
         paired = aggregate.get("paired")
@@ -763,6 +771,19 @@ def build_report(args: argparse.Namespace) -> None:
                 f"= {paired['median_evolved_over_baseline_nrmse']:.3g} (<1 favors evolved)."
             )
             fig.text(0.08, y - 0.17, verdict, fontsize=10, va="top", wrap=True)
+            base = aggregate["methods"].get("baseline", {})
+            evolved = aggregate["methods"].get("evolved_538190", {})
+            conclusion = (
+                "Verdict: 538190 does not clearly improve full equation recovery. Vanilla is the only method "
+                f"with a strict recovery (1 vs 0) and has the lower raw median NRMSE "
+                f"({base.get('median_nrmse', float('nan')):.2e} vs "
+                f"{evolved.get('median_nrmse', float('nan')):.2e}). The paired result is exactly split 9–9. "
+                "The evolved method is modestly better only on the secondary affine-calibrated shape metric "
+                f"({evolved.get('median_affine_calibrated_nrmse', float('nan')):.2e} vs "
+                f"{base.get('median_affine_calibrated_nrmse', float('nan')):.2e}), consistent with the "
+                "affine-invariant loss it evolved."
+            )
+            fig.text(0.08, y - 0.235, conclusion, fontsize=10, va="top", wrap=True, linespacing=1.35)
         if missing:
             fig.text(
                 0.08, 0.17, f"INCOMPLETE SMOKE REPORT: {len(missing)} requested runs are missing.",
@@ -927,11 +948,51 @@ def build_report(args: argparse.Namespace) -> None:
             f"Paired: evolved wins {p['evolved_wins']}/{p['n']}; baseline wins "
             f"{p['baseline_wins']}/{p['n']}; median evolved/baseline NRMSE ratio "
             f"{p['median_evolved_over_baseline_nrmse']:.3g}.",
+            "",
+            "Conclusion: evolved 538190 does not clearly improve full dynamics recovery. "
+            "Vanilla has the only strict recovery and the lower median raw NRMSE; the paired "
+            "comparison is 9–9. Evolved 538190 is modestly better on affine-calibrated shape "
+            "NRMSE, consistent with its affine-invariant custom loss.",
         ])
+    md_lines.extend([
+        "",
+        "## Best raw NRMSE by world",
+        "",
+        "| world | vanilla (3 seeds) | evolved 538190 (3 seeds) |",
+        "|---|---:|---:|",
+    ])
+    for world in args.worlds:
+        baseline_values = [
+            float(result_index[("baseline", world, seed)]["best_frontier"]["test_nrmse"])
+            for seed in args.seeds if ("baseline", world, seed) in result_index
+        ]
+        evolved_values = [
+            float(result_index[("evolved_538190", world, seed)]["best_frontier"]["test_nrmse"])
+            for seed in args.seeds if ("evolved_538190", world, seed) in result_index
+        ]
+        fmt = lambda values: ", ".join(f"{value:.3e}" for value in values) if values else "missing"
+        md_lines.append(f"| {world} | {fmt(baseline_values)} | {fmt(evolved_values)} |")
     if missing:
         md_lines.extend(["", f"**Incomplete:** {len(missing)} requested task(s) missing."])
     output_md.write_text("\n".join(md_lines) + "\n", encoding="utf-8")
     write_json(output_pdf.with_suffix(".summary.json"), {"aggregate": aggregate, "missing": missing})
+    write_json(
+        output_pdf.with_suffix(".results.json"),
+        {
+            "protocol": {
+                "methods": list(args.methods),
+                "worlds": list(args.worlds),
+                "seeds": list(args.seeds),
+                "max_evals": args.max_evals,
+                "paper": PAPER_URL,
+                "neuronbench_repo": REPO_URL,
+                "neuronbench_commit": NEURONBENCH_COMMIT,
+                "evolved_source": EVOLVED_SOURCE,
+            },
+            "aggregate": aggregate,
+            "results": results,
+        },
+    )
     print(f"Wrote {output_pdf}")
     print(f"Wrote {output_md}")
 

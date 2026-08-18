@@ -1,0 +1,32 @@
+{
+  "aggregate": {
+    "methods": {
+      "baseline": {
+        "geometric_mean_nrmse": 0.0022253337851437464,
+        "median_affine_calibrated_nrmse": 0.0040181237533958546,
+        "median_nrmse": 0.00408898623655023,
+        "n": 18,
+        "recovered": 1,
+        "symbolic_exact": 0
+      },
+      "evolved_538190": {
+        "geometric_mean_nrmse": 0.0037370419333858985,
+        "median_affine_calibrated_nrmse": 0.003513595065150878,
+        "median_nrmse": 0.004626552443383028,
+        "n": 18,
+        "recovered": 0,
+        "symbolic_exact": 0
+      }
+    },
+    "n_results": 36,
+    "paired": {
+      "baseline_wins": 9,
+      "evolved_wins": 9,
+      "median_evolved_over_baseline_nrmse": 0.9674524876284826,
+      "n": 18,
+      "ties": 0
+    },
+    "solve_threshold_nrmse": 1e-06
+  },
+  "missing": []
+}
