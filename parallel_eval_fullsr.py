@@ -824,6 +824,8 @@ def _aggregate_fullsr_results(
                             r.execution_trace for r in runs_sorted if r.execution_trace
                         ],
                         "errors": [r.error for r in runs_sorted if r.error] or None,
+                        "n_successful_runs": sum(r.error is None for r in runs_sorted),
+                        "n_total_runs": len(runs_sorted),
                     }
                 )
             else:
@@ -842,6 +844,8 @@ def _aggregate_fullsr_results(
                         "best_equations": [],
                         "execution_traces": [],
                         "errors": ["No results found"],
+                        "n_successful_runs": 0,
+                        "n_total_runs": 0,
                     }
                 )
         out.append((float(np.mean(score_vector)), score_vector, details))

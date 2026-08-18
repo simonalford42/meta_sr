@@ -76,6 +76,39 @@ def test_execution_traces_are_retained_in_aggregate_details():
     assert details[0]["execution_traces"] == [trace]
 
 
+def test_aggregate_details_count_successful_errored_and_missing_runs():
+    results = [
+        FullSRTaskResult(
+            config_id=0,
+            dataset_name="present",
+            r2_score=0.8,
+            best_equation="x0",
+            best_loss=0.2,
+            gt_match_score=0.0,
+            run_index=0,
+        ),
+        FullSRTaskResult(
+            config_id=0,
+            dataset_name="present",
+            r2_score=-1.0,
+            best_equation=None,
+            best_loss=float("inf"),
+            gt_match_score=0.0,
+            error="worker failed",
+            run_index=1,
+        ),
+    ]
+
+    _, _, details = _aggregate_fullsr_results(
+        results, ["present", "missing"], num_configs=1, fitness_metric="r2"
+    )[0]
+
+    assert details[0]["n_successful_runs"] == 1
+    assert details[0]["n_total_runs"] == 2
+    assert details[1]["n_successful_runs"] == 0
+    assert details[1]["n_total_runs"] == 0
+
+
 def test_fullsr_large_array_chunks_use_local_slurm_indices(tmp_path):
     evaluator = FullSRSlurmEvaluator(results_dir=str(tmp_path), warm_start=False)
     batch_dir = evaluator._new_batch_dir()
