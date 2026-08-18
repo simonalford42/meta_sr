@@ -170,6 +170,11 @@ class FullSRWallLimitExceeded(TimeoutError):
     """Raised when the SkeletonSR search exceeds its hard wall-clock budget."""
 
 
+# Backstop for the post-search ground-truth check, above its own
+# evaluation.GT_MATCH_TOTAL_TIMEOUT_S budget so the inner cap normally wins.
+_GT_CHECK_WALL_LIMIT_S = 300
+
+
 def _summarize_error(msg: Optional[str]) -> str:
     if not msg:
         return ""
@@ -707,6 +712,21 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
 
         gt_match_score = None
         if not spec.black_box:
+            # Backstop around the whole GT check. The check has its own
+            # per-expression and per-task budgets (evaluation.py), but the
+            # search's wall alarm is already disarmed here, so without this a
+            # hang anywhere in the post-search phase runs unbounded: it takes
+            # out the array's stall watchdog and zeroes every sibling task.
+            # evaluation._alarm_scope keeps the inner per-expression alarms
+            # from cancelling this deadline.
+            def _gt_alarm(_signum, _frame):
+                raise FullSRWallLimitExceeded(
+                    f"GT match check exceeded {_GT_CHECK_WALL_LIMIT_S}s"
+                )
+
+            gt_prev = _signal.signal(_signal.SIGALRM, _gt_alarm)
+            _signal.alarm(_GT_CHECK_WALL_LIMIT_S)
+            t_gt = _time.time()
             try:
                 gt_match_result = domain.check_solved(
                     equations_df=equations_df,
@@ -719,8 +739,17 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                     dataset_name=spec.dataset_name,
                 )
                 gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
+                if gt_match_result.get("budget_exhausted"):
+                    _log(f"GT match check hit its {_GT_CHECK_WALL_LIMIT_S}s-capped "
+                         f"budget after {_time.time() - t_gt:.1f}s -> non-match")
+            except FullSRWallLimitExceeded as e:
+                _log(f"{e} -> scoring non-match")
+                gt_match_score = 0.0
             except Exception:
                 gt_match_score = 0.0
+            finally:
+                _signal.alarm(0)
+                _signal.signal(_signal.SIGALRM, gt_prev)
 
         # Validation R²
         try:

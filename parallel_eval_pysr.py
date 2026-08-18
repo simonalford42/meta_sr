@@ -108,6 +108,11 @@ class PySRWallLimitExceeded(TimeoutError):
     """
 
 
+# Backstop for the post-fit ground-truth check, above the check's own
+# evaluation.GT_MATCH_TOTAL_TIMEOUT_S budget so the inner cap normally wins.
+_GT_CHECK_WALL_LIMIT_S = 300
+
+
 def _summarize_error(error_msg: Optional[str]) -> str:
     """Collapse a PySR error (possibly containing a Julia stacktrace) to a single line."""
     if not error_msg:
@@ -1285,6 +1290,17 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 best_loss = float(best["loss"]) if best is not None else float("inf")
                 gt_match_score = None
                 gt_matched_equation = None
+                # Backstop around the GT check: the fit's wall alarm is already
+                # disarmed, and the check's own per-expression/per-task budgets
+                # (evaluation.py) cannot interrupt a hang outside sympy. Inner
+                # alarms nest safely via evaluation._alarm_scope.
+                def _gt_alarm(_signum, _frame):
+                    raise PySRWallLimitExceeded(
+                        f"GT match check exceeded {_GT_CHECK_WALL_LIMIT_S}s"
+                    )
+
+                _gt_prev = _signal.signal(_signal.SIGALRM, _gt_alarm)
+                _signal.alarm(_GT_CHECK_WALL_LIMIT_S)
                 try:
                     gt_match_result = domain.check_solved(
                         equations_df=model.equations_,
@@ -1303,8 +1319,15 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                             gt_matched_equation = str(model.equations_.loc[matched_idx]["equation"])
                         except Exception:
                             gt_matched_equation = None
+                except PySRWallLimitExceeded as _gt_e:
+                    print(f"[{spec.dataset_name}] WARNING: {_gt_e} -> scoring "
+                          f"non-match", flush=True)
+                    gt_match_score = 0.0
                 except Exception:
                     gt_match_score = 0.0
+                finally:
+                    _signal.alarm(0)
+                    _signal.signal(_signal.SIGALRM, _gt_prev)
 
                 # Evaluate on validation set
                 y_pred = model.predict(X_val)

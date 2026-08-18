@@ -107,7 +107,10 @@ class SRBenchDomain(Domain):
 
     def check_solved(self, *, equations_df, best_df_index, target, var_names,
                      predict_fn, y_val, predict_on=None, dataset_name=None):
-        from evaluation import check_pysr_frontier_symbolic_match
+        from evaluation import (
+            GT_MATCH_TOTAL_TIMEOUT_S,
+            check_pysr_frontier_symbolic_match,
+        )
         return check_pysr_frontier_symbolic_match(
             equations_df=equations_df,
             best_df_index=best_df_index,
@@ -117,6 +120,9 @@ class SRBenchDomain(Domain):
             predict_fn=predict_fn,
             y=y_val,
             min_r2=0.5,
+            # Whole-check cap; on exhaustion the task scores a non-match
+            # instead of hanging its SLURM array (see evaluation.py).
+            total_timeout_seconds=GT_MATCH_TOTAL_TIMEOUT_S,
         )
 
 

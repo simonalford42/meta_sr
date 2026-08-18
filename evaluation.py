@@ -8,6 +8,9 @@ Provides functions for:
 """
 
 import json
+import time
+from contextlib import contextmanager
+
 import numpy as np
 import sympy
 from sympy import Symbol, simplify, Float, Integer, preorder_traversal
@@ -389,6 +392,45 @@ def get_dataset_var_names(dataset_name):
     return [col for col in df.columns if col != 'target']
 
 
+# Whole-task budget for the ground-truth symbolic check (see
+# scripts/gt_check_timing.py). Measured on the 8/17 SRBench runs, the check
+# costs ~n_frontier_rows x timeout_seconds_per_expression: p99 = 48s, p99.9 =
+# 65s. 120s therefore truncates ~0.02% of checks that finish today while
+# bounding the tail that used to hang a task forever (an unbounded sympify of a
+# pathological expression), stall the whole array, and zero every dataset in it.
+GT_MATCH_TOTAL_TIMEOUT_S = 120
+
+
+@contextmanager
+def _alarm_scope(seconds, handler):
+    """SIGALRM for ``seconds``, preserving any outer alarm's deadline.
+
+    ``signal.alarm`` is process-global with a single deadline, so a naive
+    ``alarm(n) ... alarm(0)`` pair silently cancels an enclosing guard (e.g. the
+    FullSR worker's post-search wall limit). Clamp to whatever the outer alarm
+    had left, then re-arm the outer deadline with its remaining time on exit.
+    """
+    import signal
+    import time as _t
+
+    seconds = max(1, int(seconds))
+    start = _t.monotonic()
+    prev_handler = signal.signal(signal.SIGALRM, handler)
+    outer_remaining = signal.alarm(seconds)
+    if outer_remaining:
+        # Never push the outer deadline out; re-arm with the tighter of the two.
+        if outer_remaining < seconds:
+            signal.alarm(outer_remaining)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, prev_handler)
+        if outer_remaining:
+            left = outer_remaining - (_t.monotonic() - start)
+            signal.alarm(max(1, int(left)))
+
+
 def check_pysr_symbolic_match(expr_str, ground_truth_str, var_names=None, timeout_seconds=5):
     """
     Check if a PySR expression symbolically matches ground truth.
@@ -402,24 +444,17 @@ def check_pysr_symbolic_match(expr_str, ground_truth_str, var_names=None, timeou
     Returns:
         dict with match results (see check_symbolic_match)
     """
-    import signal
-
     def timeout_handler(signum, frame):
         raise TimeoutError("Symbolic match timed out")
 
     try:
-        predicted = parse_expr_str_to_sympy(expr_str, var_names)
-        ground_truth = parse_expr_str_to_sympy(ground_truth_str, var_names)
-
-        # Set timeout for complex expressions
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(timeout_seconds)
-
-        try:
+        # Parsing is inside the guard: sympify of a pathological frontier
+        # expression can itself run unbounded, which is how a GT check that is
+        # nominally capped at timeout_seconds ended up hanging for >1500s.
+        with _alarm_scope(timeout_seconds, timeout_handler):
+            predicted = parse_expr_str_to_sympy(expr_str, var_names)
+            ground_truth = parse_expr_str_to_sympy(ground_truth_str, var_names)
             result = check_symbolic_match(predicted, ground_truth)
-        finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
 
         return result
 
@@ -429,6 +464,17 @@ def check_pysr_symbolic_match(expr_str, ground_truth_str, var_names=None, timeou
             'error': 'timeout',
             'simplified_predicted': expr_str,
             'symbolic_error': None,
+        }
+    except Exception as e:
+        # A row that cannot be parsed (deeply nested expressions hit
+        # RecursionError in sympy's parser, for one) is a non-match for that
+        # row only. Letting it escape aborted the whole frontier sweep, so a
+        # later row that did match was never reached.
+        return {
+            'match': False,
+            'error': f'{type(e).__name__}: {e}'[:200],
+            'simplified_predicted': expr_str,
+            'symbolic_error': str(e)[:200],
         }
 
 
@@ -476,6 +522,7 @@ def check_pysr_frontier_symbolic_match(
     predict_fn=None,
     y=None,
     min_r2=0.5,
+    total_timeout_seconds=GT_MATCH_TOTAL_TIMEOUT_S,
 ):
     """
     Check symbolic match across entire Pareto frontier.
@@ -505,6 +552,8 @@ def check_pysr_frontier_symbolic_match(
             "timeouts": 0,
             "skipped_low_r2": 0,
             "order": [],
+            "budget_exhausted": False,
+            "elapsed_seconds": 0.0,
         }
 
     use_r2_gate = predict_fn is not None and y is not None
@@ -513,7 +562,16 @@ def check_pysr_frontier_symbolic_match(
 
     n_timeouts = 0
     n_skipped = 0
+    t_start = time.monotonic()
+    budget_exhausted = False
+    n_considered = 0
     for pos, idx in enumerate(ordered_indices, start=1):
+        if total_timeout_seconds is not None:
+            remaining = total_timeout_seconds - (time.monotonic() - t_start)
+            if remaining <= 0:
+                budget_exhausted = True
+                break
+        n_considered = pos
         row = equations_df.loc[idx]
         expr = str(row["equation"])
 
@@ -537,11 +595,15 @@ def check_pysr_frontier_symbolic_match(
                 n_skipped += 1
                 continue
 
+        # Never let one expression overrun what is left of the task budget.
+        per_expr_timeout = timeout_seconds_per_expression
+        if total_timeout_seconds is not None:
+            per_expr_timeout = max(1, min(per_expr_timeout, int(remaining)))
         res = check_pysr_symbolic_match(
             expr,
             ground_truth_str,
             var_names=var_names,
-            timeout_seconds=timeout_seconds_per_expression,
+            timeout_seconds=per_expr_timeout,
         )
         if res.get("error") == "timeout":
             n_timeouts += 1
@@ -553,15 +615,19 @@ def check_pysr_frontier_symbolic_match(
                 "timeouts": n_timeouts,
                 "skipped_low_r2": n_skipped,
                 "order": ordered_indices,
+                "budget_exhausted": False,
+                "elapsed_seconds": time.monotonic() - t_start,
             }
 
     return {
         "match": False,
         "matched_df_index": None,
-        "checked_count": len(ordered_indices),
+        "checked_count": n_considered,
         "timeouts": n_timeouts,
         "skipped_low_r2": n_skipped,
         "order": ordered_indices,
+        "budget_exhausted": budget_exhausted,
+        "elapsed_seconds": time.monotonic() - t_start,
     }
 
 
