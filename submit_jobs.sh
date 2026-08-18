@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 
 # 8/18
-# Top off the 8/17 FullSR evals. Both phases pre-filter against the FullSR
-# cache, so resubmitting the identical command reruns only what the first
-# attempt lost -- 0 / 104 / 4 runs respectively, not the 6540-run grid. Check
-# first with: python srbench_full_eval.py <same flags> --cache-report
-# (Don't add --no-cache, and don't change --timeout/--max-evals or the
-# SymbolicRegression.jl submodule commit: all three are in the cache identity.)
-# srb_prev=$(sbatch --parsable -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box)
-# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box)
-# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-full-548741 run.sh srbench_full_eval.py --evolve-results runs/548741 --ground-truth --black-box)
-
+# sbatch -J srb-full-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box
+# sbatch -J srb-full-225437 run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --black-box
+# sbatch -J srb-full-548741 run.sh srbench_full_eval.py --evolve-results runs/548741 --ground-truth --black-box
 # sbatch --parsable -J srb-full-gtr2 run.sh srbench_full_eval.py --evolve-results runs/91887 --ground-truth --black-box
 # sbatch -J simp-538 run.sh evolve_pysr.py --operator-type all --mutation-mode simplify --population-type complexity --generations 10 --population 10 --offspring 10 --n-runs 3 --models best --continue-from runs/538190 --reeval population --n-reevals 10
+
+# srb_prev=$(sbatch --parsable -J srb-hpo-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644009 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-r2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644046 --ground-truth --black-box)
+# srb_prev=$(sbatch --parsable --dependency=afterany:"$srb_prev" -J srb-hpo-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644293 --ground-truth --black-box)
 
 # 8/17
 # evolve_full gt-r2
