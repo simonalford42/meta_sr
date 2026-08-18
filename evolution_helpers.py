@@ -111,6 +111,17 @@ def merge_result_details(
         old_r2c = list(old_d.get("run_r2c_scores", old_r2) or [])
         new_r2c = list(new_d.get("run_r2c_scores", new_r2) or [])
         run_r2c = old_r2c + new_r2c
+        # Domain accuracy per seed (Boolean domain). There is no fallback for a
+        # missing accuracy, so when only one side has it the other is padded
+        # with 0.0 to keep seed-indexed lookups aligned — this can only happen
+        # when the metric changed mid-run, and 0.0 errs downward rather than
+        # inflating a score. Absent on both sides -> no column at all.
+        old_acc = list(old_d.get("run_acc_scores", []) or [])
+        new_acc = list(new_d.get("run_acc_scores", []) or [])
+        if old_acc or new_acc:
+            old_acc = old_acc + [0.0] * max(0, len(old_r2) - len(old_acc))
+            new_acc = new_acc + [0.0] * max(0, len(new_r2) - len(new_acc))
+        run_acc = old_acc + new_acc
 
         old_eqs = list(old_d.get("best_equations", []) or [])
         new_eqs = list(new_d.get("best_equations", []) or [])
@@ -144,9 +155,11 @@ def merge_result_details(
             "avg_r2": float(np.mean(run_r2)) if run_r2 else -1.0,
             "avg_r2c": float(np.mean(run_r2c)) if run_r2c else -1.0,
             "avg_gt": float(np.mean(run_gt)) if run_gt else 0.0,
+            "avg_acc": float(np.mean(run_acc)) if run_acc else None,
             "run_r2_scores": run_r2,
             "run_r2c_scores": run_r2c,
             "run_gt_scores": run_gt,
+            "run_acc_scores": run_acc,
             "best_equations": all_eqs,
             "run_best_equations": run_best_equations,
             "run_gt_matched_equations": run_gt_matched_equations,

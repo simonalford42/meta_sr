@@ -35,6 +35,9 @@ class Domain:
     uses_run_budget: bool = True
     # HPO search-space params the domain owns (fixed, not tunable).
     hpo_excluded_params: frozenset = frozenset()
+    # Whether the "acc"/"gt-acc" fitness metrics are meaningful here. Only
+    # domains with a discrete, exactly-checkable target define an accuracy.
+    supports_accuracy: bool = False
 
     def load_dataset(
         self,
@@ -75,6 +78,15 @@ class Domain:
     def predict_namespace(self) -> Dict[str, Any]:
         """Extra callables for fullsr's numpy-eval expression predictor."""
         return {}
+
+    def accuracy_score(self, y_true, y_pred) -> Optional[float]:
+        """Accuracy of one equation's predictions on the validation rows.
+
+        Returns ``None`` for domains without a discrete target (the shared
+        pipeline then never populates an accuracy for them). Domains that
+        implement this must set ``supports_accuracy = True``.
+        """
+        return None
 
     def check_solved(
         self,
@@ -166,6 +178,7 @@ class LogicBenchDomain(Domain):
 
     name = "boolean"
     uses_run_budget = False
+    supports_accuracy = True
     hpo_excluded_params = frozenset({
         "binary_operators", "unary_operators", "constraints",
         "nested_constraints", "elementwise_loss", "loss_function",
@@ -205,6 +218,15 @@ class LogicBenchDomain(Domain):
     def sympy_mappings(self):
         from boolean_pysr import boolean_sympy_mappings
         return boolean_sympy_mappings()
+
+    def accuracy_score(self, y_true, y_pred) -> Optional[float]:
+        """Bit-wise accuracy: fraction of rows whose rounded prediction matches
+        the {0,1} target. Non-finite predictions round to 0 (see
+        boolean_tasks.accuracy), so a diverging equation scores as wrong rather
+        than erroring."""
+        from boolean_tasks import accuracy
+        return float(accuracy(np.asarray(y_true, dtype=float),
+                              np.asarray(y_pred, dtype=float)))
 
     def predict_namespace(self):
         return {

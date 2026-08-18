@@ -166,13 +166,27 @@ def _spec_expects_execution_trace(task: "PySRTaskSpec") -> bool:
 #             _compute_frontier_avg_r2). NOTE: as of the frontier-R² change this
 #             is the *whole-frontier* average, not PySR's single best equation.
 #   "gt-r2" — 1.0 if the task is solved (gt match), else frontier-avg R².
-PYSR_FITNESS_METRICS = ("gt", "r2", "gt-r2")
+#   "acc"   — validation accuracy of the equation PySR's model_selection="best"
+#             picked. Boolean domain only (bit-wise accuracy over {0,1}); needs
+#             a domain with supports_accuracy=True. Unlike "r2" this is a single
+#             equation, not a frontier average, and it is NOT clipped — a
+#             balanced Boolean task with R²=0 can still separate on accuracy
+#             anywhere in 0.5..0.75.
+#   "gt-acc" — 1.0 if the task is solved (gt match), else that accuracy.
+PYSR_FITNESS_METRICS = ("gt", "r2", "gt-r2", "acc", "gt-acc")
 
 # Metrics that require per-frontier R² (run_r2c / r2_frontier_score) to be present
 # in a cached result before it can be reused. Cache entries written before the
 # r2_frontier column existed lack it, so they are re-run when one of these metrics
 # is active (the "gt" metric reuses them unchanged).
 _FRONTIER_R2_METRICS = ("r2", "gt-r2")
+
+# Metrics that require the domain accuracy (run_acc / acc_score) to be present in
+# a cached result before it can be reused. Cache entries written before the
+# acc_score column existed lack it, and accuracy is NOT recoverable from the
+# stored R² (which is clipped at 0), so those entries are re-run when one of
+# these metrics is active. Boolean domain only — see Domain.supports_accuracy.
+ACCURACY_METRICS = ("acc", "gt-acc")
 
 
 def metric_missing_fill(fitness_metric: str) -> float:
@@ -196,20 +210,45 @@ def _blend_gt_r2(r2_scores: List[float], gt_scores: List[float]) -> List[float]:
     return out
 
 
+def _blend_gt_acc(acc_scores: List[float], gt_scores: List[float]) -> List[float]:
+    """gt-acc reward per run: 1.0 if solved, else the validation accuracy.
+
+    Accuracy of a non-solving equation is < 1 (a perfect equation on the
+    validation rows would itself be an exact match on those rows), so a solved
+    task always outranks an unsolved one."""
+    out: List[float] = []
+    for i, a in enumerate(acc_scores):
+        g = gt_scores[i] if i < len(gt_scores) else 0.0
+        out.append(1.0 if (g is not None and g >= 1.0) else max(a, 0.0))
+    return out
+
+
 def select_run_scores(
     run_r2: List[float],
     run_gt: List[float],
     run_r2c: Optional[List[float]],
     fitness_metric: str,
+    run_acc: Optional[List[float]] = None,
 ) -> List[float]:
     """Pick the per-run fitness score array for a metric from raw score lists.
 
     `run_r2c` is the frontier-averaged R² per run; when it is unavailable
     (legacy detail / a backend that doesn't compute it) we fall back to the
     best-equation R² in `run_r2`, so the metric still produces sensible numbers.
+
+    `run_acc` is the domain accuracy per run (Boolean domain: bit-wise accuracy
+    of the model_selection="best" equation on the validation rows). Unlike the
+    R² fallback there is no substitute for it: accuracy cannot be recovered from
+    a clipped R², so an accuracy metric with no `run_acc` scores 0 rather than
+    silently reporting a different quantity.
     """
     if fitness_metric == "gt":
         return run_gt
+    if fitness_metric in ACCURACY_METRICS:
+        acc = list(run_acc) if run_acc else [0.0] * len(run_gt)
+        if fitness_metric == "acc":
+            return acc
+        return _blend_gt_acc(acc, run_gt)
     base = run_r2c if run_r2c else run_r2
     if fitness_metric == "r2":
         return list(base)
@@ -225,6 +264,7 @@ def run_scores_for_metric(detail: Dict[str, Any], fitness_metric: str) -> List[f
         detail.get("run_gt_scores", []) or [],
         detail.get("run_r2c_scores"),
         fitness_metric,
+        run_acc=detail.get("run_acc_scores"),
     )
 
 
@@ -403,6 +443,7 @@ def _build_pysr_cache_entry(
         "dataset_name": spec.dataset_name,
         "r2_score": result.r2_score,
         "r2_frontier_score": result.r2_frontier_score,
+        "acc_score": result.acc_score,
         "gt_match_score": result.gt_match_score,
         "gt_matched_equation": result.gt_matched_equation,
         "best_equation": result.best_equation,
@@ -438,6 +479,7 @@ def _build_pysr_cache_entries(
             dataset_name=spec.dataset_name,
             r2_score=nr.get("r2_score"),
             r2_frontier_score=nr.get("r2_frontier_score"),
+            acc_score=nr.get("acc_score"),
             best_equation=nr.get("best_equation"),
             best_loss=nr.get("best_loss", float("inf")),
             gt_match_score=nr.get("gt_match_score"),
@@ -492,10 +534,17 @@ def _lookup_cached_level(
         or cached.get("r2_frontier_score") is not None
         or cached.get("error") is not None
     )
+    cached_has_required_acc = (
+        task.fitness_metric not in ACCURACY_METRICS
+        or cached is None
+        or cached.get("acc_score") is not None
+        or cached.get("error") is not None
+    )
     if not (
         _has_usable_pysr_cached_result(cached)
         and cached_has_required_trace
         and cached_has_required_r2c
+        and cached_has_required_acc
     ):
         return None
     r2_score = cached["r2_score"]
@@ -508,6 +557,7 @@ def _lookup_cached_level(
         "target_noise": noise_level,
         "r2_score": r2_score,
         "r2_frontier_score": cached.get("r2_frontier_score"),
+        "acc_score": cached.get("acc_score"),
         "best_equation": cached["best_equation"],
         "best_loss": best_loss,
         "gt_match_score": cached.get("gt_match_score"),
@@ -544,11 +594,17 @@ def _combine_noise_level_results(
     r2_vals: List[float] = []
     r2c_vals: List[float] = []
     gt_vals: List[float] = []
+    # Accuracy is domain-specific and absent for domains without it; collect
+    # only real values so a domain that never reports one averages to None
+    # rather than to a fabricated 0.
+    acc_vals: List[float] = []
+    any_acc = False
     for d in level_dicts:
         if d.get("error") is not None:
             r2_vals.append(-1.0)
             r2c_vals.append(-1.0)
             gt_vals.append(0.0)
+            acc_vals.append(0.0)  # a failed level is counted as zero accuracy
             continue
         r2 = d.get("r2_score")
         r2 = -1.0 if (r2 is None or np.isnan(r2)) else float(r2)
@@ -556,9 +612,16 @@ def _combine_noise_level_results(
         r2c = r2 if (r2c is None or (isinstance(r2c, float) and np.isnan(r2c))) else float(r2c)
         gt = d.get("gt_match_score")
         gt = 0.0 if (gt is None or np.isnan(gt)) else float(gt)
+        acc = d.get("acc_score")
+        if acc is None or (isinstance(acc, float) and np.isnan(acc)):
+            acc = 0.0
+        else:
+            acc = float(acc)
+            any_acc = True
         r2_vals.append(r2)
         r2c_vals.append(r2c)
         gt_vals.append(gt)
+        acc_vals.append(acc)
 
     successful = [d for d in level_dicts if d.get("error") is None]
     rep = min(successful, key=lambda d: d["target_noise"]) if successful else None
@@ -589,6 +652,7 @@ def _combine_noise_level_results(
         dataset_name=spec.dataset_name,
         r2_score=float(np.mean(r2_vals)) if r2_vals else -1.0,
         r2_frontier_score=float(np.mean(r2c_vals)) if r2c_vals else None,
+        acc_score=(float(np.mean(acc_vals)) if (acc_vals and any_acc) else None),
         best_equation=(rep.get("best_equation") if rep else None),
         best_loss=(rep.get("best_loss", float("inf")) if rep else float("inf")),
         gt_match_score=(
@@ -985,6 +1049,11 @@ class PySRTaskResult:
     # frontier-averaged R² used by the "r2"/"gt-r2" fitness metrics). None for
     # results produced before this field existed / backends that don't compute it.
     r2_frontier_score: Optional[float] = None
+    # Domain accuracy of the model_selection="best" equation on the validation
+    # rows (Boolean domain: bit-wise accuracy). Drives the "acc"/"gt-acc"
+    # metrics. None for domains without an accuracy (Domain.supports_accuracy)
+    # and for results produced before this field existed.
+    acc_score: Optional[float] = None
     gt_match_score: Optional[float] = None  # 1.0 if any frontier expression matches GT else 0.0
     # The frontier expression that matched GT (when gt_match_score == 1.0).
     # Lets evolve_pysr.py log "this is the expression we're claiming solved the
@@ -1029,6 +1098,7 @@ class PySRTaskResult:
         d.setdefault('execution_trace', None)
         d.setdefault('gt_matched_equation', None)
         d.setdefault('r2_frontier_score', None)
+        d.setdefault('acc_score', None)
         d.setdefault('noise_results', None)
         d.setdefault('pareto_frontier', None)
         return cls(**d)
@@ -1383,6 +1453,16 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 r2 = 1 - (ss_res / (ss_tot + 1e-10))
                 r2 = max(r2, 0)  # Clip negative R^2 to 0
 
+                # Domain accuracy of the SAME equation PySR's model_selection
+                # picked (y_pred above), so this costs no extra prediction.
+                # None for domains without a discrete target.
+                try:
+                    acc_score = domain.accuracy_score(y_val, y_pred)
+                except Exception as _e:
+                    print(f"[{spec.dataset_name}] accuracy scoring failed: {_e}",
+                          flush=True)
+                    acc_score = None
+
                 pareto_frontier = None
                 if spec.black_box:
                     pareto_frontier = []
@@ -1439,12 +1519,14 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 if spec.hof_n_steps > 0:
                     execution_trace = _load_execution_trace([hof_csv_out])
 
-                print(f"[{spec.dataset_name}] Done (noise={noise_level}): R²={r2:.4f}, "
-                      f"equation={best_equation}", flush=True)
+                _acc_str = "" if acc_score is None else f", acc={acc_score:.4f}"
+                print(f"[{spec.dataset_name}] Done (noise={noise_level}): R²={r2:.4f}"
+                      f"{_acc_str}, equation={best_equation}", flush=True)
                 return {
                     "target_noise": noise_level,
                     "r2_score": float(r2),
                     "r2_frontier_score": float(r2_frontier),
+                    "acc_score": (None if acc_score is None else float(acc_score)),
                     "best_equation": best_equation,
                     "best_loss": best_loss,
                     "gt_match_score": gt_match_score,
@@ -1461,6 +1543,9 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     "target_noise": noise_level,
                     "r2_score": -1.0,
                     "r2_frontier_score": None,
+                    "acc_score": (
+                        0.0 if spec.fitness_metric in ACCURACY_METRICS else None
+                    ),
                     "best_equation": None,
                     "best_loss": float("inf"),
                     "gt_match_score": 0.0 if spec.fitness_metric == "gt" else None,
@@ -1490,6 +1575,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 dataset_name=spec.dataset_name,
                 r2_score=nr["r2_score"],
                 r2_frontier_score=nr["r2_frontier_score"],
+                acc_score=nr.get("acc_score"),
                 best_equation=nr["best_equation"],
                 best_loss=nr["best_loss"],
                 gt_match_score=nr["gt_match_score"],
@@ -1579,6 +1665,11 @@ def _aggregate_pysr_results(
                 run_r2_scores = []
                 run_r2c_scores = []
                 run_gt_scores = []
+                # Domain accuracy per seed. Stays empty when no run reported one
+                # (domains without an accuracy), so the detail carries no
+                # run_acc_scores rather than a column of fabricated zeros.
+                run_acc_scores: List[float] = []
+                any_acc = False
                 run_best_equations: List[Optional[str]] = []
                 run_gt_matched_equations: List[Optional[str]] = []
                 for r in all_run_results:
@@ -1586,6 +1677,7 @@ def _aggregate_pysr_results(
                         run_r2_scores.append(-1.0)
                         run_r2c_scores.append(-1.0)
                         run_gt_scores.append(0.0)
+                        run_acc_scores.append(0.0)
                         run_best_equations.append(None)
                         run_gt_matched_equations.append(None)
                     else:
@@ -1601,10 +1693,19 @@ def _aggregate_pysr_results(
                         run_gt_scores.append(
                             r.gt_match_score if (r.gt_match_score is not None and not np.isnan(r.gt_match_score)) else 0.0
                         )
+                        acc = getattr(r, "acc_score", None)
+                        if acc is None or np.isnan(acc):
+                            run_acc_scores.append(0.0)
+                        else:
+                            run_acc_scores.append(float(acc))
+                            any_acc = True
                         run_best_equations.append(r.best_equation)
                         run_gt_matched_equations.append(r.gt_matched_equation)
+                if not any_acc:
+                    run_acc_scores = []
                 run_scores = select_run_scores(
-                    run_r2_scores, run_gt_scores, run_r2c_scores, fitness_metric
+                    run_r2_scores, run_gt_scores, run_r2c_scores, fitness_metric,
+                    run_acc=run_acc_scores,
                 )
                 avg_score = float(np.mean(run_scores))
 
@@ -1623,9 +1724,12 @@ def _aggregate_pysr_results(
                     "avg_r2": float(np.mean(run_r2_scores)),
                     "avg_r2c": float(np.mean(run_r2c_scores)),
                     "avg_gt": float(np.mean(run_gt_scores)),
+                    "avg_acc": (float(np.mean(run_acc_scores))
+                                if run_acc_scores else None),
                     "run_r2_scores": run_r2_scores,
                     "run_r2c_scores": run_r2c_scores,
                     "run_gt_scores": run_gt_scores,
+                    "run_acc_scores": run_acc_scores,
                     "best_equations": all_equations,
                     # Per-seed best/matched equations aligned with run_r2_scores
                     # (None for errored seeds). best_equations above is the
@@ -1647,9 +1751,11 @@ def _aggregate_pysr_results(
                     "avg_r2": -1.0,
                     "avg_r2c": -1.0,
                     "avg_gt": 0.0,
+                    "avg_acc": None,
                     "run_r2_scores": [],
                     "run_r2c_scores": [],
                     "run_gt_scores": [],
+                    "run_acc_scores": [],
                     "run_best_equations": [],
                     "run_gt_matched_equations": [],
                     "best_equations": [],
@@ -2157,11 +2263,22 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                             or cached is None
                             or bool(cached.get("pareto_frontier"))
                         )
+                        # Domain accuracy is only present in entries written
+                        # after that column was added, and cannot be recovered
+                        # from the stored (clipped) R², so accuracy metrics must
+                        # re-run older entries.
+                        cached_has_required_acc = (
+                            task.fitness_metric not in ACCURACY_METRICS
+                            or cached is None
+                            or cached.get("acc_score") is not None
+                            or cached.get("error") is not None
+                        )
                         if (
                             _has_usable_pysr_cached_result(cached)
                             and cached_has_required_trace
                             and cached_has_required_r2c
                             and cached_has_required_frontier
+                            and cached_has_required_acc
                         ):
                             # Execution trace is persisted in the cache alongside
                             # the other result fields; None for entries written
@@ -2179,6 +2296,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                                 dataset_name=task.dataset_name,
                                 r2_score=r2_score,
                                 r2_frontier_score=cached.get("r2_frontier_score"),
+                                acc_score=cached.get("acc_score"),
                                 best_equation=cached["best_equation"],
                                 best_loss=best_loss,
                                 gt_match_score=cached.get("gt_match_score"),

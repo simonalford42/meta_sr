@@ -31,6 +31,7 @@ from typing import Dict, List, Tuple, Any, Optional
 import numpy as np
 
 from parallel_eval_pysr import (
+    ACCURACY_METRICS,
     PySRConfig,
     PySRSlurmEvaluator,
     get_default_mutation_weights,
@@ -927,6 +928,8 @@ def run_hpo(
         "gt": "GT match rate",
         "r2": "R²",
         "gt-r2": "GT-R² reward",
+        "acc": "accuracy",
+        "gt-acc": "GT+accuracy reward",
     }[fitness_metric]
 
     logger = HPOLogger(output_dir, fitness_metric=fitness_metric)
@@ -1289,10 +1292,13 @@ def main():
     parser.add_argument("--seed", type=int, default=42,
                         help="Master seed for reproducibility")
     parser.add_argument("--fitness-metric", type=str, default="gt",
-                        choices=["gt", "r2", "gt-r2"],
+                        choices=["gt", "r2", "gt-r2", "acc", "gt-acc"],
                         help="HPO objective: 'gt' = whole-frontier ground-truth "
                              "symbolic match rate; 'r2' = frontier-averaged validation "
-                             "R²; 'gt-r2' = 1.0 when solved, otherwise frontier-averaged R²")
+                             "R²; 'gt-r2' = 1.0 when solved, otherwise frontier-averaged R²; "
+                             "'acc' = validation accuracy of the model_selection='best' "
+                             "equation (Boolean domain only); 'gt-acc' = 1.0 when solved, "
+                             "otherwise that accuracy")
     parser.add_argument("--domain", type=str, default="srbench",
                         choices=["srbench", "boolean"],
                         help="Evaluation domain (see domains.py). The domain owns the "
@@ -1352,14 +1358,20 @@ def main():
     # Boolean-domain defaults: applied only where the user left the SRBench
     # defaults in place, so explicit flags still win.
     if args.domain == "boolean":
-        if args.fitness_metric == "gt":
-            args.fitness_metric = "r2"
+        if args.fitness_metric == "gt":  # the argparse default
+            args.fitness_metric = "gt-acc"
         if args.split == "splits/train.txt":
             args.split = "splits/boolean_train.txt"
         if args.val_split == "splits/val.txt":
             args.val_split = None
         print(f"[boolean] domain defaults: fitness_metric={args.fitness_metric}, "
               f"split={args.split}, val_split={args.val_split}")
+    if (args.fitness_metric in ACCURACY_METRICS
+            and not get_domain(args.domain).supports_accuracy):
+        parser.error(
+            f"--fitness-metric {args.fitness_metric} needs a domain that defines an "
+            f"accuracy; --domain {args.domain} does not (only 'boolean' does)."
+        )
 
     if args.n_runs_final < 1:
         parser.error("--n-runs-final must be at least 1")

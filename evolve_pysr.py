@@ -38,6 +38,7 @@ import numpy as np
 
 from wandb_utils import init_wandb, log_wandb_summary, log_cpu_usage, finish_wandb
 from parallel_eval_pysr import (
+    ACCURACY_METRICS,
     PySRSlurmEvaluator,
 )
 from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log, resolve_run_dir
@@ -842,6 +843,8 @@ def run_bundle_evolution(
         "r2": "frontier R²",
         "gt": "GT match rate",
         "gt-r2": "GT+R² reward",
+        "acc": "accuracy",
+        "gt-acc": "GT+accuracy reward",
     }.get(fitness_metric, "GT match rate")
 
     racing_on = n_extra_runs > 0
@@ -2502,15 +2505,20 @@ def main():
                              "--reeval smart* where it defaults to --population // 2.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=10)
-    parser.add_argument("--fitness-metric", type=str, default=None, choices=["r2", "gt", "gt-r2"],
+    parser.add_argument("--fitness-metric", type=str, default=None,
+                        choices=["r2", "gt", "gt-r2", "acc", "gt-acc"],
                         help="Meta-evolution fitness metric: "
                              "'gt' = domain-defined whole-frontier ground-truth recovery "
                              "rate (symbolic match for SRBench; NRMSE <= 1e-6 for neuron); "
                              "'r2' = average validation R² across the fixed complexity grid "
                              "1..maxsize (frontier-averaged R²); "
                              "'gt-r2' = 1.0 if the task is solved (gt match), else "
-                             "the frontier-averaged R². Defaults to r2 for Boolean and "
-                             "canonical SRBench black-box splits, otherwise gt.")
+                             "the frontier-averaged R²; "
+                             "'acc' = validation accuracy of the model_selection='best' "
+                             "equation (Boolean domain only: bit-wise accuracy); "
+                             "'gt-acc' = 1.0 if solved, else that accuracy. "
+                             "Defaults to gt-acc for Boolean, r2 for canonical SRBench "
+                             "black-box splits, otherwise gt.")
 
     parser.add_argument("--domain", type=str, default="srbench",
                         choices=["srbench", "boolean", "neuron"],
@@ -2748,11 +2756,20 @@ def main():
         and is_canonical_black_box_split(dataset_names)
     )
     if args.fitness_metric is None:
-        args.fitness_metric = "r2" if (args.domain == "boolean" or args.black_box) else "gt"
+        if args.domain == "boolean":
+            args.fitness_metric = "gt-acc"
+        else:
+            args.fitness_metric = "r2" if args.black_box else "gt"
     if args.black_box and args.fitness_metric != "r2":
         parser.error(
             "Canonical SRBench black-box splits require --fitness-metric r2 "
             "because they do not have ground-truth formulas."
+        )
+    if (args.fitness_metric in ACCURACY_METRICS
+            and not get_domain(args.domain).supports_accuracy):
+        parser.error(
+            f"--fitness-metric {args.fitness_metric} needs a domain that defines an "
+            f"accuracy; --domain {args.domain} does not (only 'boolean' does)."
         )
 
     if args.black_box:

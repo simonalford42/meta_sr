@@ -121,6 +121,11 @@ class PySRCacheEntry(Base):
     # entries written before this column existed lack it and are re-run when one
     # of those metrics is active.
     r2_frontier_score = Column(Float, nullable=True)
+    # Domain-specific accuracy of the model_selection="best" equation on the
+    # validation rows (Boolean domain: bit-wise accuracy; used by the
+    # "acc"/"gt-acc" fitness metrics). Nullable: entries written before this
+    # column existed lack it and are re-run when one of those metrics is active.
+    acc_score = Column(Float, nullable=True)
     gt_match_score = Column(Float, nullable=True)
     best_equation = Column(Text, nullable=True)
     # Frontier expression that matched GT (only set when gt_match_score == 1.0);
@@ -405,6 +410,12 @@ class PySRCacheDB:
                     "ALTER TABLE pysr_evaluations ADD COLUMN r2_frontier_score FLOAT"
                 ))
                 conn.commit()
+        if "acc_score" not in columns:
+            with self.engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE pysr_evaluations ADD COLUMN acc_score FLOAT"
+                ))
+                conn.commit()
         if "num_evaluations" not in columns:
             with self.engine.connect() as conn:
                 conn.execute(text(
@@ -559,6 +570,7 @@ class PySRCacheDB:
             PySRCacheEntry.r2_frontier_score,
             PySRCacheEntry.num_evaluations,
             PySRCacheEntry.pareto_frontier_json,
+            PySRCacheEntry.acc_score,
         ).where(PySRCacheEntry.request_hash == request_hash)
 
         with Session(self.engine) as session:
@@ -589,6 +601,7 @@ class PySRCacheDB:
                     "r2_frontier_score": result[9],
                     "num_evaluations": result[10],
                     "pareto_frontier": frontier,
+                    "acc_score": result[12],
                 }
         return None
 
@@ -607,6 +620,7 @@ class PySRCacheDB:
         target_noise: float = 0.0,
         r2_score: float = 0.0,
         r2_frontier_score: Optional[float] = None,
+        acc_score: Optional[float] = None,
         best_equation: Optional[str] = None,
         best_loss: float = float("inf"),
         error: Optional[str] = None,
@@ -640,6 +654,7 @@ class PySRCacheDB:
             dataset_name=dataset_name,
             r2_score=r2_score,
             r2_frontier_score=r2_frontier_score,
+            acc_score=acc_score,
             gt_match_score=gt_match_score,
             best_equation=best_equation,
             gt_matched_equation=gt_matched_equation,
@@ -692,6 +707,7 @@ class PySRCacheDB:
                 dataset_name=entry["dataset_name"],
                 r2_score=entry["r2_score"],
                 r2_frontier_score=entry.get("r2_frontier_score"),
+                acc_score=entry.get("acc_score"),
                 gt_match_score=entry.get("gt_match_score"),
                 best_equation=entry.get("best_equation"),
                 gt_matched_equation=entry.get("gt_matched_equation"),
