@@ -221,6 +221,7 @@ def test_fullsr_black_box_protocol_and_frontier(monkeypatch):
     np.testing.assert_allclose(captured["X_train"].mean(), 0.0, atol=1e-12)
     np.testing.assert_allclose(captured["y_train"].mean(), 0.0, atol=1e-12)
     assert result.r2_score > 0.999
+    assert result.r2_frontier_score == result.r2_score
     assert result.gt_match_score is None
     assert len(result.pareto_frontier) == 2
     assert result.pareto_frontier[1]["test_r2"] > 0.999
@@ -228,3 +229,51 @@ def test_fullsr_black_box_protocol_and_frontier(monkeypatch):
         FullSRTaskResult.from_json_dict(result.to_json_dict()).pareto_frontier
         == result.pareto_frontier
     )
+
+
+def test_fullsr_ground_truth_uses_fixed_grid_frontier_r2(monkeypatch):
+    X = np.arange(20, dtype=float).reshape(-1, 1)
+    y = X[:, 0].copy()
+
+    class FakeDomain:
+        def load_dataset(self, _dataset_name, max_samples=None):
+            return X, y, "x0"
+
+        def predict_namespace(self):
+            return {}
+
+        def check_solved(self, **_kwargs):
+            return {"match": False}
+
+    monkeypatch.setattr("domains.get_domain", lambda _name: FakeDomain())
+    monkeypatch.setattr(parallel_eval_fullsr, "_import_julia", lambda: object())
+    monkeypatch.setattr(
+        parallel_eval_fullsr,
+        "_run_fit",
+        lambda *_args, **_kwargs: {
+            "rows": [
+                {"complexity": 1, "loss": 1.0, "equation": "0.0"},
+                {"complexity": 2, "loss": 0.0, "equation": "x0"},
+            ],
+            "n_evals": 10,
+            "execution_trace": [],
+        },
+    )
+    spec = FullSRTaskSpec(
+        config_id=0,
+        dataset_name="toy",
+        policy_name="basic",
+        engine_kwargs={"maxsize": 4},
+        seed=42,
+        data_seed=42,
+    )
+
+    result = parallel_eval_fullsr._evaluate_fullsr_task(spec)
+
+    assert result.error is None
+    assert result.r2_score == 1.0
+    # Complexity 1 contributes zero; complexities 2, 3, and 4 contribute one.
+    assert result.r2_frontier_score == 0.75
+    assert FullSRTaskResult.from_json_dict(
+        result.to_json_dict()
+    ).r2_frontier_score == 0.75

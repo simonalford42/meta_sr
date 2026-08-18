@@ -144,11 +144,11 @@ class FullSRTaskResult:
     config_id: int
     dataset_name: str
     r2_score: float
+    best_equation: Optional[str]
+    best_loss: float
     # Fixed-grid Pareto-envelope validation R² used by the ground-truth-task
     # r2 and gt-r2 objectives. This exactly matches parallel_eval_pysr.py.
     r2_frontier_score: Optional[float] = None
-    best_equation: Optional[str]
-    best_loss: float
     gt_match_score: Optional[float] = None
     error: Optional[str] = None
     run_index: int = 0
@@ -170,6 +170,7 @@ class FullSRTaskResult:
         d.setdefault("runtime_seconds", 0.0)
         d.setdefault("n_evals", None)
         d.setdefault("target_noise", 0.0)
+        d.setdefault("r2_frontier_score", None)
         d.setdefault("pareto_frontier", None)
         d.setdefault("execution_trace", None)
         return cls(**_drop_unknown_fields(cls, d))
@@ -255,6 +256,12 @@ def _cached_fullsr_result(
     if not payload or payload.get("error") is not None:
         return None
     if payload.get("r2_score") is None or payload.get("best_loss") is None:
+        return None
+    if (
+        not spec.black_box
+        and spec.fitness_metric in ("r2", "gt-r2")
+        and payload.get("r2_frontier_score") is None
+    ):
         return None
     if spec.black_box:
         if not payload.get("pareto_frontier"):
@@ -774,6 +781,25 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
         r2 = 1 - (ss_res / (ss_tot + 1e-10))
         r2 = max(float(r2), 0.0)
 
+        # Match the PySR evolution/HPO objective exactly for ground-truth
+        # tasks: average the validation-R² Pareto envelope over the fixed
+        # complexity grid 1..maxsize. Keep r2_score as the selected/best
+        # equation's validation R² for reporting.
+        if spec.black_box:
+            r2_frontier = float(r2)
+        else:
+            frontier_maxsize = int(spec.engine_kwargs.get("maxsize", 40))
+            try:
+                r2_frontier = _compute_fixed_grid_frontier_avg_r2(
+                    equations_df.iterrows(),
+                    lambda idx: _predict_row(int(idx)),
+                    y_val,
+                    frontier_maxsize,
+                )
+            except Exception as e:
+                _log(f"Frontier-R² failed ({e}); using best-eq R²")
+                r2_frontier = float(r2)
+
         pareto_frontier = None
         if spec.black_box:
             pareto_frontier = []
@@ -798,6 +824,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             config_id=spec.config_id,
             dataset_name=spec.dataset_name,
             r2_score=float(r2),
+            r2_frontier_score=float(r2_frontier),
             best_equation=best_equation,
             best_loss=float(best_loss),
             gt_match_score=gt_match_score,
@@ -814,6 +841,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             config_id=spec.config_id,
             dataset_name=spec.dataset_name,
             r2_score=-1.0,
+            r2_frontier_score=None,
             best_equation=None,
             best_loss=float("inf"),
             gt_match_score=0.0 if spec.fitness_metric in ("gt", "gt-r2") else None,
@@ -847,6 +875,12 @@ def _aggregate_fullsr_results(
             if runs:
                 runs_sorted = sorted(runs, key=lambda r: r.run_index)
                 r2s = [r.r2_score if r.r2_score is not None else -1.0 for r in runs_sorted]
+                r2cs = [
+                    r.r2_frontier_score
+                    if r.r2_frontier_score is not None
+                    else r2
+                    for r, r2 in zip(runs_sorted, r2s)
+                ]
                 gts = [
                     r.gt_match_score if r.gt_match_score is not None else 0.0
                     for r in runs_sorted
@@ -859,24 +893,18 @@ def _aggregate_fullsr_results(
                 ]
                 best_eqs = [r.best_equation for r in runs_sorted]
                 target_noises = [r.target_noise for r in runs_sorted]
-                if fitness_metric == "gt":
-                    scores = gts
-                elif fitness_metric == "gt-r2":
-                    scores = [
-                        1.0 if gt >= 1.0 else max(r2, 0.0)
-                        for r2, gt in zip(r2s, gts)
-                    ]
-                else:
-                    scores = r2s
+                scores = select_run_scores(r2s, gts, r2cs, fitness_metric)
                 score_vector.append(float(np.mean(scores)))
                 evals = [r.n_evals for r in runs_sorted if r.n_evals is not None]
                 details.append(
                     {
                         "dataset": dataset_name,
                         "avg_r2": float(np.mean(r2s)),
+                        "avg_r2c": float(np.mean(r2cs)),
                         "avg_gt": float(np.mean(gts)),
                         "avg_n_evals": float(np.mean(evals)) if evals else None,
                         "run_r2_scores": r2s,
+                        "run_r2c_scores": r2cs,
                         "run_gt_scores": gts,
                         "run_losses": losses,
                         "run_best_equations": best_eqs,
@@ -896,9 +924,11 @@ def _aggregate_fullsr_results(
                     {
                         "dataset": dataset_name,
                         "avg_r2": -1.0,
+                        "avg_r2c": -1.0,
                         "avg_gt": 0.0,
                         "avg_n_evals": None,
                         "run_r2_scores": [],
+                        "run_r2c_scores": [],
                         "run_gt_scores": [],
                         "run_losses": [],
                         "run_best_equations": [],

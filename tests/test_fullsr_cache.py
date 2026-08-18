@@ -106,6 +106,12 @@ def test_fullsr_cache_rejects_errors_and_incomplete_special_results(tmp_path):
         spec, _result(spec, dataset_name="wrong-dataset"), cache
     ) is None
 
+    r2_spec = replace(spec, fitness_metric="r2")
+    assert _build_fullsr_cache_entry(r2_spec, _result(r2_spec), cache) is None
+    assert _build_fullsr_cache_entry(
+        r2_spec, _result(r2_spec, r2_frontier_score=0.5), cache
+    ) is not None
+
     trace_spec = replace(spec, engine_kwargs={"max_evals": 1000, "trace_n_steps": 3})
     assert _build_fullsr_cache_entry(trace_spec, _result(trace_spec), cache) is None
     traced = _result(trace_spec, execution_trace=[{"milestone_evals": 100}])

@@ -54,6 +54,40 @@ def test_all_noise_aggregation_includes_every_level():
     assert details[0]["run_target_noises"] == [0.0, 0.1, 0.0, 0.1]
 
 
+def test_r2_objective_uses_frontier_average_but_reports_best_equation_r2():
+    results = [
+        FullSRTaskResult(
+            config_id=0,
+            dataset_name="dataset",
+            r2_score=best_r2,
+            r2_frontier_score=frontier_r2,
+            best_equation="x0",
+            best_loss=1.0 - best_r2,
+            gt_match_score=gt,
+            run_index=run_index,
+        )
+        for run_index, best_r2, frontier_r2, gt in (
+            (0, 0.99, 0.4, 0.0),
+            (1, 0.97, 0.6, 1.0),
+        )
+    ]
+
+    avg, vector, details = _aggregate_fullsr_results(
+        results, ["dataset"], num_configs=1, fitness_metric="r2"
+    )[0]
+    assert avg == pytest.approx(0.5)
+    assert vector == pytest.approx([0.5])
+    assert details[0]["avg_r2"] == pytest.approx(0.98)
+    assert details[0]["avg_r2c"] == pytest.approx(0.5)
+    assert details[0]["run_r2_scores"] == pytest.approx([0.99, 0.97])
+    assert details[0]["run_r2c_scores"] == pytest.approx([0.4, 0.6])
+
+    gt_r2_avg, _, _ = _aggregate_fullsr_results(
+        results, ["dataset"], num_configs=1, fitness_metric="gt-r2"
+    )[0]
+    assert gt_r2_avg == pytest.approx(0.7)
+
+
 def test_execution_traces_are_retained_in_aggregate_details():
     trace = [{
         "milestone_evals": 100,

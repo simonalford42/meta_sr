@@ -227,7 +227,12 @@ def run_scores_for_metric(detail: Dict[str, Any], fitness_metric: str) -> List[f
     )
 
 
-def _compute_frontier_avg_r2(model, X_val, y_val, maxsize: int) -> float:
+def _compute_fixed_grid_frontier_avg_r2(
+    rows,
+    predict_fn,
+    y_val,
+    maxsize: int,
+) -> float:
     """Average validation R² across a FIXED complexity grid 1..maxsize.
 
     For each complexity level c we take the Pareto *envelope*: the best
@@ -240,19 +245,19 @@ def _compute_frontier_avg_r2(model, X_val, y_val, maxsize: int) -> float:
     dropping any frontier point can never raise any R²(c) — the metric is robust
     to frontier pruning in both directions.
     """
-    eqs = getattr(model, "equations_", None)
-    if eqs is None or len(eqs) == 0 or maxsize < 1:
+    if rows is None or maxsize < 1:
+        return 0.0
+    rows = list(rows)
+    if not rows:
         return 0.0
     y_val = np.asarray(y_val)
     ss_tot = float(np.sum((y_val - np.mean(y_val)) ** 2)) + 1e-10
 
-    # Frontier rows in ascending complexity. PySR's equations_ is Pareto in
-    # train loss, but validation R² need not be monotone — the envelope (max so
-    # far) handles that.
-    rows = eqs.sort_values("complexity")
+    # The rows are a Pareto frontier in train loss, but validation R² need not
+    # be monotone — the envelope (max so far) handles that.
     complexities: List[int] = []
     r2_at: List[float] = []
-    for idx, row in rows.iterrows():
+    for idx, row in rows:
         try:
             c = int(row["complexity"])
         except Exception:
@@ -260,7 +265,7 @@ def _compute_frontier_avg_r2(model, X_val, y_val, maxsize: int) -> float:
         if c < 1 or c > maxsize:
             continue
         try:
-            y_pred = np.clip(np.asarray(model.predict(X_val, index=int(idx))), -1e10, 1e10)
+            y_pred = np.clip(np.asarray(predict_fn(idx)), -1e10, 1e10)
             if y_pred.shape != y_val.shape or np.any(~np.isfinite(y_pred)):
                 r2 = 0.0
             else:
@@ -286,6 +291,20 @@ def _compute_frontier_avg_r2(model, X_val, y_val, maxsize: int) -> float:
             j += 1
         total += cur
     return total / maxsize
+
+
+def _compute_frontier_avg_r2(model, X_val, y_val, maxsize: int) -> float:
+    """PySR adapter for the shared fixed-grid frontier R² objective."""
+    eqs = getattr(model, "equations_", None)
+    if eqs is None:
+        return 0.0
+    rows = eqs.sort_values("complexity").iterrows()
+    return _compute_fixed_grid_frontier_avg_r2(
+        rows,
+        lambda idx: model.predict(X_val, index=int(idx)),
+        y_val,
+        maxsize,
+    )
 
 
 def _write_json_atomic(path: Path, payload: Any) -> None:
