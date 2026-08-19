@@ -134,6 +134,7 @@ from evolution_helpers import (
     select_survivors,
     select_survivors_diverse,
     select_survivors_complexity,
+    generation_evolution_policy,
     _bundle_loc,
 )
 from smart_reeval import (
@@ -604,6 +605,8 @@ class EvolutionLogger:
         best: OperatorBundle,
         evolved_type: str,
         job_success: Optional[Dict[str, Any]] = None,
+        mutation_mode: Optional[str] = None,
+        population_type: Optional[str] = None,
     ):
         gen_data = {
             "generation": generation,
@@ -613,6 +616,8 @@ class EvolutionLogger:
             "best_name": best.display_name,
             "best_score": best.score,
             "job_success": job_success,
+            "mutation_mode": mutation_mode,
+            "population_type": population_type,
         }
         self.run_data["generations"].append(gen_data)
         self._save()
@@ -730,6 +735,7 @@ def run_bundle_evolution(
     val_pysr_timeout: Optional[int] = None,
     split_label: Optional[str] = None,
     mutation_mode: str = "random",
+    simplify_cooldown: int = 0,
     domain: str = "srbench",
     black_box: bool = False,
 ) -> Tuple[OperatorBundle, Any, float]:
@@ -752,6 +758,12 @@ def run_bundle_evolution(
     """
     rng = random.Random(seed)
     np.random.seed(seed)
+
+    if simplify_cooldown < 0 or simplify_cooldown > n_generations:
+        raise ValueError(
+            "simplify_cooldown must be between 0 and n_generations "
+            f"(got {simplify_cooldown} for {n_generations} generations)"
+        )
 
     # Legacy aliases (pre-7/26 CLI); resolve before the run config is recorded
     # so the stored value names the concrete policy.
@@ -839,6 +851,7 @@ def run_bundle_evolution(
         "execution_feedback_n": execution_feedback_n,
         "execution_feedback_prob": execution_feedback_prob,
         "mutation_mode": mutation_mode,
+        "simplify_cooldown": simplify_cooldown,
     })
     metric_label = {
         "r2": "frontier R²",
@@ -1534,13 +1547,34 @@ def run_bundle_evolution(
         print(f"Population reeval enabled: offspring get {n_runs} initial seeds; "
               f"each generation's survivors are topped up to {n_reevals} seeds.")
 
+    if simplify_cooldown:
+        cooldown_start = start_gen + n_generations - simplify_cooldown
+        cooldown_end = start_gen + n_generations - 1
+        print(
+            f"Simplify cooldown: generations {cooldown_start}-{cooldown_end} "
+            "use simplify-only mutations and complexity-aware survivors."
+        )
+
     # Evolution loop: each generation splits offspring evenly across operator types
     for gen in range(start_gen, start_gen + n_generations):
         gen_start = time.perf_counter()
 
+        generation_mutation_mode, generation_population_type, cooldown_active = (
+            generation_evolution_policy(
+                gen,
+                start_gen,
+                n_generations,
+                simplify_cooldown,
+                mutation_mode,
+                population_type,
+            )
+        )
+
         print("\n" + "=" * 60)
         print(f"Generation {gen}/{start_gen + n_generations - 1}")
         print("=" * 60)
+        if cooldown_active:
+            print("  Simplify cooldown active: mode=simplify, population=complexity")
 
         offspring_bundles: List[OperatorBundle] = []
         offspring_futs: List[Tuple[OperatorBundle, Future]] = []
@@ -1829,10 +1863,10 @@ def run_bundle_evolution(
             # an operator from any population member that has one. If the
             # population can't supply enough parents for the chosen mode, fall
             # back along: crossover -> refine -> explore, simplify -> explore.
-            if mutation_mode == "random":
+            if generation_mutation_mode == "random":
                 mode = rng.choice(["explore", "refine", "simplify", "crossover"])
             else:
-                mode = mutation_mode
+                mode = generation_mutation_mode
             parent = None
             parent2 = None
             type_candidates = [
@@ -2118,13 +2152,18 @@ def run_bundle_evolution(
                 surv_pool = dedup_archive_by_code(archive)
                 print(f"  [hof] Selecting survivors from code-deduped archive of "
                       f"{len(surv_pool)} (raw {len(archive)}) bundles")
-                population = select_survivors(surv_pool, [], population_size)
+                if generation_population_type == "complexity":
+                    population = select_survivors_complexity(
+                        surv_pool, [], population_size
+                    )
+                else:
+                    population = select_survivors(surv_pool, [], population_size)
             elif pop_reeval_on:
                 # Select over the re-scored current population plus fresh
                 # offspring using the configured fixed-size survivor policy.
                 # Dropped bundles do not re-enter, so their reeval seeds stop
                 # accumulating.
-                if population_type == "complexity":
+                if generation_population_type == "complexity":
                     population = select_survivors_complexity(
                         population, offspring_bundles, population_size
                     )
@@ -2134,7 +2173,12 @@ def run_bundle_evolution(
                     )
             else:
                 print(f"  [hof] Selecting survivors from all-time archive of {len(archive)} bundles")
-                population = select_survivors(archive, [], population_size)
+                if generation_population_type == "complexity":
+                    population = select_survivors_complexity(
+                        archive, [], population_size
+                    )
+                else:
+                    population = select_survivors(archive, [], population_size)
 
             # Smart reeval: measure the realized improvement from the reeval
             # batch (Δ in expected parent fitness over the pre-reeval pool),
@@ -2169,9 +2213,9 @@ def run_bundle_evolution(
                 else:
                     print(f"  {avg_score:.4f} {bundle.display_name}: {solved_str}{suffix}")
 
-            if population_type == "task":
+            if generation_population_type == "task":
                 population = select_survivors_diverse(population, offspring_bundles, population_size, dataset_names)
-            elif population_type == "complexity":
+            elif generation_population_type == "complexity":
                 population = select_survivors_complexity(population, offspring_bundles, population_size)
             else:
                 population = select_survivors(population, offspring_bundles, population_size)
@@ -2243,6 +2287,8 @@ def run_bundle_evolution(
                 "n_total": n_total_jobs,
                 "percent": job_success_pct,
             },
+            mutation_mode=generation_mutation_mode,
+            population_type=generation_population_type,
         )
 
         if wandb_run is not None:
@@ -2255,6 +2301,9 @@ def run_bundle_evolution(
                 "best_score": best.score,
                 "improvement_over_baseline": best.score - baseline_score,
                 "evolved_type": evolved_type_label,
+                "generation_mutation_mode": generation_mutation_mode,
+                "generation_population_type": generation_population_type,
+                "simplify_cooldown_active": int(cooldown_active),
                 "gen_time_sec": gen_elapsed,
                 "offspring_gen_time_sec": offspring_gen_elapsed,
                 "offspring_eval_time_sec": offspring_eval_elapsed,
@@ -2265,7 +2314,7 @@ def run_bundle_evolution(
             offspring_scores = [c.score for c in offspring_bundles if c.score is not None]
             if offspring_scores:
                 log_data["avg_offspring_score"] = sum(offspring_scores) / len(offspring_scores)
-            if population_type == "task":
+            if generation_population_type == "task":
                 avg_best, n_covered, n_tasks = compute_per_task_best_stats(
                     population, dataset_names
                 )
@@ -2303,7 +2352,7 @@ def run_bundle_evolution(
                 log_data["smart/seeds_reeval"] = seeds_reeval
                 log_data["smart/seeds_total"] = seeds_offspring_init + seeds_reeval
                 log_data["smart/n_arms_reeval"] = len(pop_futs)
-            if population_type == "complexity":
+            if generation_population_type == "complexity":
                 fig = _make_complexity_pareto_figure(population, gen)
                 log_data["pareto_plot"] = wandb.Image(fig)
                 import matplotlib.pyplot as plt
@@ -2502,6 +2551,14 @@ def main():
                              "Defaults to all.")
 
     parser.add_argument("--generations", type=int, default=25)
+    parser.add_argument(
+        "--simplify-cooldown",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Use simplify-only mutations and complexity-aware survivor selection "
+             "for the final N generations (0 disables).",
+    )
     parser.add_argument("--population", type=int, default=10)
     parser.add_argument("--offspring", type=int, default=None,
                         help="Offspring per generation. Default 20, except under "
@@ -2708,6 +2765,7 @@ def main():
                         choices=["random", "explore", "refine", "simplify", "crossover"],
                         help="Restrict the meta-mutation operator to a single mode for the entire run "
                              "(applied to both the initial population and per-generation offspring). "
+                             "The final generations are overridden when --simplify-cooldown is set. "
                              "Default 'random' picks uniformly each time, matching prior behavior. "
                              "If a non-'random' mode requires a parent the bundle lacks, falls back to explore.")
 
@@ -2726,6 +2784,12 @@ def main():
                         help="Per-fit evaluation budget for automatic NeuronBench full evaluation")
 
     args = parser.parse_args()
+
+    if args.simplify_cooldown < 0 or args.simplify_cooldown > args.generations:
+        parser.error(
+            "--simplify-cooldown must be between 0 and --generations "
+            f"(got {args.simplify_cooldown} for {args.generations} generations)"
+        )
 
     # Boolean-domain split defaults are applied only where the user left the
     # SRBench defaults in place, so explicit flags still win.
@@ -3004,6 +3068,7 @@ def main():
         val_pysr_wall_limit=args.val_pysr_wall_limit,
         val_pysr_timeout=args.val_pysr_timeout,
         mutation_mode=args.mutation_mode,
+        simplify_cooldown=args.simplify_cooldown,
         domain=args.domain,
         black_box=args.black_box,
     )
@@ -3058,6 +3123,7 @@ def main():
         "exec_feedback_prob": args.exec_feedback_prob,
         "continue_from": args.continue_from,
         "mutation_mode": args.mutation_mode,
+        "simplify_cooldown": args.simplify_cooldown,
         "neuron_full_eval": args.neuron_full_eval,
         "neuron_eval_runs": args.neuron_eval_runs,
         "neuron_eval_seed": args.neuron_eval_seed,

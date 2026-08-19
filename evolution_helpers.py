@@ -828,10 +828,52 @@ def select_survivors(population: list, offspring: list, population_size: int) ->
     scored.sort(key=lambda m: m.score, reverse=True)
     return scored[:population_size]
 
+
+def simplify_cooldown_active(
+    generation: int,
+    start_generation: int,
+    n_generations: int,
+    simplify_cooldown: int,
+) -> bool:
+    """Whether this generation is in the final simplify-only phase.
+
+    ``n_generations`` is the number of generations in the current invocation,
+    so resumed runs apply the cooldown to their final additional generations.
+    """
+    if simplify_cooldown <= 0:
+        return False
+    cooldown_start = start_generation + n_generations - simplify_cooldown
+    return generation >= cooldown_start
+
+
+def generation_evolution_policy(
+    generation: int,
+    start_generation: int,
+    n_generations: int,
+    simplify_cooldown: int,
+    mutation_mode: str,
+    population_type: str,
+) -> Tuple[str, str, bool]:
+    """Resolve mutation and survivor policies for one generation."""
+    cooldown_active = simplify_cooldown_active(
+        generation, start_generation, n_generations, simplify_cooldown
+    )
+    if cooldown_active:
+        return "simplify", "complexity", True
+    return mutation_mode, population_type, False
+
+
 def _bundle_loc(bundle) -> int:
-    """Total non-blank lines of code across a bundle's operators."""
+    """Total non-blank lines across an operator or FullSR policy bundle."""
+    raw_module_body = getattr(bundle, "raw_module_body", None)
+    if raw_module_body:
+        return sum(1 for line in raw_module_body.splitlines() if line.strip())
+
     total = 0
-    for op in (getattr(bundle, "operators", {}) or {}).values():
+    components = getattr(bundle, "operators", None)
+    if components is None:
+        components = getattr(bundle, "functions", {})
+    for op in (components or {}).values():
         if op is None or not getattr(op, "code", None):
             continue
         total += sum(1 for line in op.code.splitlines() if line.strip())

@@ -50,6 +50,8 @@ from evolution_helpers import (
     format_pareto_trace_for_task,
     select_parent,
     select_survivors,
+    select_survivors_complexity,
+    generation_evolution_policy,
 )
 from julia_env import warmup_julia
 from budget_utils import (
@@ -216,6 +218,8 @@ class EvolutionLogger:
         offspring: List[SkeletonBundle],
         best: SkeletonBundle,
         job_success: Optional[Dict[str, Any]] = None,
+        mutation_mode: Optional[str] = None,
+        population_type: Optional[str] = None,
     ):
         gen_data = {
             "generation": generation,
@@ -224,6 +228,8 @@ class EvolutionLogger:
             "best_name": best.display_name,
             "best_score": best.score,
             "job_success": job_success,
+            "mutation_mode": mutation_mode,
+            "population_type": population_type,
         }
         self.run_data["generations"].append(gen_data)
         self._save()
@@ -407,6 +413,7 @@ def run_evolution(
     use_cache: bool,
     fitness_metric: str,
     mutation_mode: str,
+    simplify_cooldown: int,
     operator_slots: List[str],
     target_noise: float,
     random_target_noise: bool,
@@ -420,6 +427,12 @@ def run_evolution(
 ) -> Tuple[SkeletonBundle, FullSRSlurmEvaluator, float]:
     rng = random.Random(seed)
     np.random.seed(seed)
+
+    if simplify_cooldown < 0 or simplify_cooldown > n_generations:
+        raise ValueError(
+            "simplify_cooldown must be between 0 and n_generations "
+            f"(got {simplify_cooldown} for {n_generations} generations)"
+        )
 
     dataset_names = load_dataset_names_from_split(split)
     print(f"Loaded {len(dataset_names)} datasets from {split}")
@@ -483,6 +496,7 @@ def run_evolution(
         "fitness_metric": fitness_metric,
         "domain": domain,
         "mutation_mode": mutation_mode,
+        "simplify_cooldown": simplify_cooldown,
         "operator_slots": operator_slots,
         "target_noise": target_noise,
         "random_target_noise": random_target_noise,
@@ -914,12 +928,32 @@ def run_evolution(
         _maybe_submit_train_reeval(best, gen=0)
         start_gen = 1
 
+    if simplify_cooldown:
+        cooldown_start = start_gen + n_generations - simplify_cooldown
+        cooldown_end = start_gen + n_generations - 1
+        print(
+            f"Simplify cooldown: generations {cooldown_start}-{cooldown_end} "
+            "use simplify-only mutations and complexity-aware survivors."
+        )
+
     # ─── Per-generation loop ───────────────────────────────────────────
     for gen in range(start_gen, start_gen + n_generations):
         gen_start = time.time()
+        generation_mutation_mode, generation_population_type, cooldown_active = (
+            generation_evolution_policy(
+                gen,
+                start_gen,
+                n_generations,
+                simplify_cooldown,
+                mutation_mode,
+                "topk",
+            )
+        )
         print("\n" + "=" * 60)
         print(f"Generation {gen}/{start_gen + n_generations - 1}")
         print("=" * 60)
+        if generation_population_type == "complexity":
+            print("  Simplify cooldown active: mode=simplify, population=complexity")
         _check_val_future(wait=False)
         _check_train_reeval_future(wait=False)
 
@@ -946,10 +980,10 @@ def run_evolution(
                 slot = SLOTS_BY_NAME[slot_name]
                 parent_bundle = select_parent(population, rng)
                 parent_fn = parent_bundle.functions[slot_name]
-                if mutation_mode == "random":
+                if generation_mutation_mode == "random":
                     mode = rng.choice(list(META_MUTATION_MODES))
                 else:
-                    mode = mutation_mode
+                    mode = generation_mutation_mode
                 parent_code = parent_fn.code
                 parent2_code: Optional[str] = None
                 if mode == "crossover":
@@ -1063,7 +1097,12 @@ def run_evolution(
             "n_total": n_total_jobs,
             "percent": job_success_pct,
         }
-        population = select_survivors(population, offspring, population_size)
+        if generation_population_type == "complexity":
+            population = select_survivors_complexity(
+                population, offspring, population_size
+            )
+        else:
+            population = select_survivors(population, offspring, population_size)
         best = population[0]
         gen_elapsed = time.time() - gen_start
         print(
@@ -1071,7 +1110,15 @@ def run_evolution(
             f"baseline={baseline_score:.4f}, improvement={best.score - baseline_score:+.4f}, "
             f"time={_fmt_elapsed(gen_elapsed)}"
         )
-        logger.log_generation(gen, population, offspring, best, job_success)
+        logger.log_generation(
+            gen,
+            population,
+            offspring,
+            best,
+            job_success,
+            mutation_mode=generation_mutation_mode,
+            population_type=generation_population_type,
+        )
         _maybe_submit_val(best, gen=gen)
         _maybe_submit_train_reeval(best, gen=gen)
 
@@ -1089,6 +1136,9 @@ def run_evolution(
                 "job_success_pct": job_success_pct,
                 "n_jobs_successful": n_successful_jobs,
                 "n_jobs_total": n_total_jobs,
+                "generation_mutation_mode": generation_mutation_mode,
+                "generation_population_type": generation_population_type,
+                "simplify_cooldown_active": int(cooldown_active),
             }
             offspring_scores = [b.score for b in offspring if b.score is not None]
             if offspring_scores:
@@ -1249,6 +1299,14 @@ def main():
     parser.add_argument("--split", type=str, default="splits/barely_unsolvable.txt")
     parser.add_argument("--val-split", type=str, default="splits/barely_unsolvable_val2.txt")
     parser.add_argument("--generations", type=int, default=25)
+    parser.add_argument(
+        "--simplify-cooldown",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Use simplify-only mutations and complexity-aware survivor selection "
+             "for the final N generations (0 disables).",
+    )
     parser.add_argument("--population", type=int, default=10)
     parser.add_argument("--offspring", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)
@@ -1277,6 +1335,8 @@ def main():
         type=str,
         default="random",
         choices=["random", "explore", "refine", "simplify", "crossover"],
+        help="Meta-mutation mode. The final generations are overridden when "
+             "--simplify-cooldown is set.",
     )
     parser.add_argument(
         "--exec-feedback-n", type=int, default=3,
@@ -1432,6 +1492,12 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if args.simplify_cooldown < 0 or args.simplify_cooldown > args.generations:
+        parser.error(
+            "--simplify-cooldown must be between 0 and --generations "
+            f"(got {args.simplify_cooldown} for {args.generations} generations)"
+        )
 
     # Boolean-domain defaults: applied only where the user left the SRBench
     # defaults in place, so explicit flags still win.
@@ -1613,6 +1679,7 @@ def main():
         "partition": args.partition,
         "no_cache": args.no_cache,
         "mutation_mode": args.mutation_mode,
+        "simplify_cooldown": args.simplify_cooldown,
         "operator_type": args.operator_type,
         "target_noise": args.target_noise,
         "random_target_noise": args.random_target_noise,
@@ -1660,6 +1727,7 @@ def main():
         use_cache=not args.no_cache,
         fitness_metric=args.fitness_metric,
         mutation_mode=args.mutation_mode,
+        simplify_cooldown=args.simplify_cooldown,
         operator_slots=operator_slots,
         target_noise=args.target_noise,
         random_target_noise=args.random_target_noise,
