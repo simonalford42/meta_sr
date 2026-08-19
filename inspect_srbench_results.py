@@ -12,11 +12,13 @@ Usage:
     python inspect_srbench_results.py --run-id <run-id> --exclude-unsolvable
     python inspect_srbench_results.py --run-id <run-id> --wandb
     python inspect_srbench_results.py --see-all
+    python inspect_srbench_results.py --see-all --since 7
 """
 
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 import srbench_results_io as srio
@@ -63,15 +65,22 @@ def subset_solve_rate(keyed: "dict", datasets: "set[str]",
     return solved / len(present)
 
 
-def find_full_srbench_runs(runs_root: "str | Path") -> "list[Path]":
+def find_full_srbench_runs(
+    runs_root: "str | Path", since_days: "int | None" = None
+) -> "list[Path]":
     """Return all run directories under ``runs_root`` that are full-SRBench runs.
 
     A full-SRBench run is identified by the ground-truth manifest grid or by a
-    black-box evaluation marker written by ``srbench_full_eval.py``.
+    black-box evaluation marker written by ``srbench_full_eval.py``. If
+    ``since_days`` is provided, only manifests modified within that many days
+    are included.
     """
     runs_root = Path(runs_root)
+    cutoff = time.time() - since_days * 24 * 60 * 60 if since_days is not None else None
     found = []
     for manifest_path in sorted(runs_root.glob("*/manifest.json")):
+        if cutoff is not None and manifest_path.stat().st_mtime < cutoff:
+            continue
         try:
             manifest = srio.load_manifest(manifest_path.parent)
         except Exception:
@@ -323,6 +332,8 @@ def main():
                         help="Run id / directory name under --runs-root.")
     parser.add_argument("--see-all", action="store_true",
                         help="Inspect every full-SRBench run under --runs-root.")
+    parser.add_argument("--since", type=int, metavar="NDAYS",
+                        help="With --see-all, only include runs from the past NDAYS days.")
     parser.add_argument("--runs-root", type=str, default="runs")
     parser.add_argument("--show-missing", type=int, default=50,
                         help="Max number of missing (task,seed,noise) triples to print.")
@@ -332,10 +343,16 @@ def main():
                         help="Re-log the results table + metrics to wandb.")
     args = parser.parse_args()
 
+    if args.since is not None and args.since < 0:
+        parser.error("--since must be non-negative")
+    if args.since is not None and not args.see_all:
+        parser.error("--since requires --see-all")
+
     if args.see_all:
-        run_dirs = find_full_srbench_runs(args.runs_root)
+        run_dirs = find_full_srbench_runs(args.runs_root, since_days=args.since)
         if not run_dirs:
-            print(f"No full-SRBench runs found under {args.runs_root}")
+            suffix = f" from the past {args.since} day(s)" if args.since is not None else ""
+            print(f"No full-SRBench runs found under {args.runs_root}{suffix}")
             sys.exit(1)
         rows = []
         for run_dir in run_dirs:

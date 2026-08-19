@@ -2,15 +2,17 @@
 """Regression tests for SRBench result inspection."""
 
 import json
+import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from inspect_srbench_results import _black_box_summary
+from inspect_srbench_results import _black_box_summary, find_full_srbench_runs
 
 
 class BlackBoxSummaryTests(unittest.TestCase):
@@ -53,6 +55,30 @@ class BlackBoxSummaryTests(unittest.TestCase):
         )
         self.assertEqual(summary[:2], (2, 2))
         self.assertAlmostEqual(summary[2], 0.85)
+
+
+class FindRunsTests(unittest.TestCase):
+    def test_since_filters_by_manifest_modification_time(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs_root = Path(tmp)
+            now = time.time()
+            for run_id, age_days in (("recent", 3), ("old", 10)):
+                run_dir = runs_root / run_id
+                run_dir.mkdir()
+                manifest_path = run_dir / "manifest.json"
+                with open(manifest_path, "w") as f:
+                    json.dump({"datasets": [], "noise_levels": [], "batches": []}, f)
+                timestamp = now - age_days * 24 * 60 * 60
+                os.utime(manifest_path, (timestamp, timestamp))
+
+            self.assertEqual(
+                find_full_srbench_runs(runs_root, since_days=7),
+                [runs_root / "recent"],
+            )
+            self.assertEqual(
+                find_full_srbench_runs(runs_root),
+                [runs_root / "old", runs_root / "recent"],
+            )
 
 
 if __name__ == "__main__":
