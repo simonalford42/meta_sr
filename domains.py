@@ -130,6 +130,8 @@ class Domain:
                 f"Unknown fitness_metric={fitness_metric!r}; expected one of "
                 "('gt', 'r2', 'gt-r2', 'acc', 'gt-acc')"
             )
+        if not self.prompt_task_summary:
+            return f"Our objective is to {body}.\n"
         return (
             f"Our objective is to {body}. We want these improvements to hold "
             f"across {self.prompt_task_summary}.\n"
@@ -264,21 +266,16 @@ class LogicBenchDomain(Domain):
     uses_run_budget = False
     supports_accuracy = True
     prompt_task_summary = (
-        "Boolean-function synthesis tasks (LogicBench): the search runs over "
-        "the Boolean operators band(x,y)=x*y, bor(x,y)=x+y-x*y, "
-        "bxor(x,y)=x+y-2*x*y and bnot(x)=1-x, which are closed on {0,1}, with "
-        "inputs and targets that are 0/1 truth-table rows rather than "
-        "continuous measurements. Numeric constants are of little use here and "
-        "expressions are logic circuits, so structural moves matter far more "
-        "than constant optimization"
+        "Boolean-function synthesis tasks, including a held-out set of IWLS "
+        "2020 circuit-learning problems"
     )
     prompt_recovery_criterion = (
         "recover the exact Boolean function (a circuit matching the target "
         "truth table on every row)"
     )
     prompt_quality_criterion = (
-        "discover circuits with high bit-wise accuracy on held-out truth-table "
-        "rows at low complexity"
+        "discover circuits with high bit-wise accuracy on held-out "
+        "truth-table rows"
     )
     hpo_excluded_params = frozenset({
         "binary_operators", "unary_operators", "constraints",
@@ -472,19 +469,14 @@ class NeuronBenchDomain(Domain):
     RECOVERED_NRMSE = 1e-6
     NEAR_EXACT_NRMSE = 1e-3
     CLOSE_NRMSE = 5e-2
-    prompt_task_summary = (
-        "NeuronBench membrane vector-field tasks: noiseless, fully-observable "
-        "biophysical dynamics where the target dV/dt is a smooth function of "
-        "the injected current, voltage, and channel open fractions. Success is "
-        "measured by numerical closeness rather than symbolic form, and the "
-        "search runs over +, -, and * only, so precise constants matter"
-    )
+    # Empty: the objective stays a single sentence (see Domain.objective_text).
+    prompt_task_summary = ""
     prompt_recovery_criterion = (
-        "recover the governing vector field to numerical precision "
-        "(NRMSE <= 1e-6 on held-out states)"
+        "recover the governing equation of a neuron's membrane dynamics"
     )
     prompt_quality_criterion = (
-        "discover expressions with low held-out NRMSE at low complexity"
+        "discover expressions that predict the membrane dynamics accurately "
+        "on held-out states"
     )
 
     def _load_saved(self, dataset_name, max_samples=None):

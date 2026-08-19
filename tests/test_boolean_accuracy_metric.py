@@ -388,11 +388,22 @@ class TestPromptObjectiveText(unittest.TestCase):
             with self.subTest(domain=domain):
                 self.assertNotIn("SRBench", ot._objective_text("gt", domain))
 
-    def test_boolean_prompt_names_its_operators(self):
+    def test_boolean_objective_names_its_benchmark_and_stays_short(self):
         from operator_types import OPERATOR_TYPES
         text = OPERATOR_TYPES["mutation"]._objective_text("gt-acc", "boolean")
-        for op in ("band", "bor", "bxor", "bnot"):
-            self.assertIn(op, text)
+        self.assertIn("Boolean", text)
+        self.assertIn("IWLS", text)
+        # Kept to roughly the length of the SRBench objective (2 sentences).
+        self.assertLessEqual(text.count(". "), 2)
+
+    def test_neuron_objective_is_a_single_sentence(self):
+        # NeuronBench supplies no generalization clause, so objective_text must
+        # drop the trailing "We want these improvements..." sentence entirely
+        # rather than emitting a dangling "across .".
+        from operator_types import OPERATOR_TYPES
+        text = OPERATOR_TYPES["mutation"]._objective_text("gt", "neuron").strip()
+        self.assertTrue(text.endswith("membrane dynamics."))
+        self.assertNotIn("hold across", text)
 
     def test_spec_carries_domain_into_prompt(self):
         from operator_types import (
