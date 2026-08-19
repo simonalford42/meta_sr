@@ -445,41 +445,28 @@ class OperatorType(ABC):
         """Create a baseline PySRConfig (no custom operator)."""
 
     @staticmethod
-    def _objective_text(fitness_metric: str) -> str:
-        """Describe the high-level search goal for the selected fitness metric."""
-        objectives = {
-            "gt": (
-                "Our objective is to improve the algorithm's ability to discover the ground-truth expression "
-                "across SRBench, other symbolic regression benchmarks, and real-world symbolic regression "
-                "tasks.\n"
-            ),
-            "r2": (
-                "Our objective is to improve the algorithm's ability to discover accurate expressions with a "
-                "strong held-out R²–complexity tradeoff across SRBench, other symbolic regression "
-                "benchmarks, and real-world symbolic regression tasks.\n"
-            ),
-            "gt-r2": (
-                "Our objective is to improve the algorithm's ability to discover the ground-truth expression; "
-                "when it does not, the goal is to discover accurate expressions with a strong held-out "
-                "R²–complexity tradeoff. We want these improvements to generalize across SRBench, other "
-                "symbolic regression benchmarks, and real-world symbolic regression tasks.\n"
-            ),
-        }
-        try:
-            return objectives[fitness_metric]
-        except KeyError as exc:
-            raise ValueError(
-                f"Unknown fitness_metric={fitness_metric!r}; expected one of {tuple(objectives)}"
-            ) from exc
+    def _objective_text(fitness_metric: str, domain: str = "srbench") -> str:
+        """Describe the high-level search goal for this metric AND domain.
+
+        Delegated to the domain because what "success" means differs per
+        domain: recovering a Feynman formula symbolically, recovering a Boolean
+        circuit exactly, and matching a vector field to 1e-6 NRMSE are
+        different targets over different operator sets. Naming SRBench while
+        the search runs over band/bor/bxor would actively mislead the model.
+        """
+        from domains import get_domain
+
+        return get_domain(domain).objective_text(fitness_metric)
 
     def build_explore_prompt(self, reference: str, variation_seed: int = 0,
-                             fitness_metric: str = "gt") -> str:
+                             fitness_metric: str = "gt",
+                             domain: str = "srbench") -> str:
         intro_tail, explore_extra_reqs, example_section = self._explore_extras(variation_seed)
         return (
             f"Your task is to create a NEW custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
             "and evaluates many proposed improvements to the PySR algorithm, so be creative in your proposal.\n"
-            f"{self._objective_text(fitness_metric)}"
+            f"{self._objective_text(fitness_metric, domain)}"
             f"{intro_tail}\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
@@ -499,12 +486,13 @@ class OperatorType(ABC):
         )
 
     def build_refine_prompt(self, parent: JuliaOperator, reference: str,
-                            fitness_metric: str = "gt") -> str:
+                            fitness_metric: str = "gt",
+                            domain: str = "srbench") -> str:
         return (
             f"Your task is to IMPROVE an existing custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
             "and evaluates many proposed improvements to the PySR algorithm.\n"
-            f"{self._objective_text(fitness_metric)}"
+            f"{self._objective_text(fitness_metric, domain)}"
             f"## Parent {self.name} operator code\n```julia\n{parent.code}\n```\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
@@ -523,7 +511,8 @@ class OperatorType(ABC):
         )
 
     def build_simplify_prompt(self, parent_code: str, reference: str,
-                              fitness_metric: str = "gt") -> str:
+                              fitness_metric: str = "gt",
+                              domain: str = "srbench") -> str:
         return (
             f"Your task is to SIMPLIFY an existing custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Produce a streamlined version of the parent that keeps its core idea but removes complexity.\n"
@@ -531,7 +520,7 @@ class OperatorType(ABC):
             "or trim heuristics. If the parent combines many factors (e.g. five distinct heuristics),\n"
             "you might keep only the most important three or four. The goal is to simplify the operator\n"
             "while maintaining performance under the following objective.\n"
-            f"{self._objective_text(fitness_metric)}"
+            f"{self._objective_text(fitness_metric, domain)}"
             f"## Parent {self.name} operator code\n```julia\n{parent_code}\n```\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
             "## Requirements\n"
@@ -551,12 +540,13 @@ class OperatorType(ABC):
         )
 
     def build_crossover_prompt(self, p1_code: str, p2_code: str, reference: str,
-                               fitness_metric: str = "gt") -> str:
+                               fitness_metric: str = "gt",
+                               domain: str = "srbench") -> str:
         return (
             f"Your task is to COMBINE ideas from two {self.name} operators into a new one.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
             "and evaluates many proposed improvements to the PySR algorithm.\n"
-            f"{self._objective_text(fitness_metric)}"
+            f"{self._objective_text(fitness_metric, domain)}"
             f"## Parent {self.name} operator 1\n```julia\n{p1_code}\n```\n\n"
             f"## Parent {self.name} operator 2\n```julia\n{p2_code}\n```\n\n"
             f"## Reference: relevant API\n{reference}\n\n"
@@ -1063,6 +1053,9 @@ class OperatorGenerationSpec:
     log_generation: int = -1
     # Kept last to preserve positional compatibility for older callers.
     fitness_metric: str = "gt"
+    # Evaluation domain (see domains.py). Selects the task framing the prompt
+    # gives the LLM; "srbench" reproduces the historical wording exactly.
+    domain: str = "srbench"
 
 
 def _build_operator_prompt(spec: OperatorGenerationSpec) -> str:
@@ -1070,24 +1063,26 @@ def _build_operator_prompt(spec: OperatorGenerationSpec) -> str:
     if spec.mode == "explore":
         prompt = spec.op_type.build_explore_prompt(
             spec.reference, spec.variation_seed, spec.fitness_metric,
+            spec.domain,
         )
     elif spec.mode == "refine":
         if spec.parent is None:
             raise ValueError("refine mode requires a parent")
         prompt = spec.op_type.build_refine_prompt(
-            spec.parent, spec.reference, spec.fitness_metric,
+            spec.parent, spec.reference, spec.fitness_metric, spec.domain,
         )
     elif spec.mode == "crossover":
         if spec.parent is None or spec.parent2 is None:
             raise ValueError("crossover mode requires two parents")
         prompt = spec.op_type.build_crossover_prompt(
-            spec.parent.code, spec.parent2.code, spec.reference, spec.fitness_metric,
+            spec.parent.code, spec.parent2.code, spec.reference,
+            spec.fitness_metric, spec.domain,
         )
     elif spec.mode == "simplify":
         if spec.parent is None:
             raise ValueError("simplify mode requires a parent")
         prompt = spec.op_type.build_simplify_prompt(
-            spec.parent.code, spec.reference, spec.fitness_metric,
+            spec.parent.code, spec.reference, spec.fitness_metric, spec.domain,
         )
     else:
         raise ValueError(f"Unknown mode: {spec.mode}")

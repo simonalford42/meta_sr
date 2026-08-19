@@ -88,6 +88,53 @@ class Domain:
         """
         return None
 
+    # --- LLM-prompt facing description ------------------------------------
+    # The meta-evolution prompts (operator_types.py) tell the LLM what it is
+    # optimizing. That framing is domain-specific: an operator tuned for
+    # Feynman-style arithmetic recovery is not the same object as one tuned
+    # for Boolean circuit synthesis, and telling the model "SRBench" while it
+    # searches over band/bor/bxor is actively misleading.
+
+    # One sentence naming the task family and the operator set being searched.
+    prompt_task_summary: str = (
+        "symbolic regression tasks"
+    )
+    # What counts as fully recovering the ground truth ("gt" metric).
+    prompt_recovery_criterion: str = (
+        "discover the ground-truth expression"
+    )
+    # The continuous quality signal ("r2"/"acc" metrics).
+    prompt_quality_criterion: str = (
+        "discover accurate expressions with a strong held-out R\u00b2\u2013complexity tradeoff"
+    )
+
+    def objective_text(self, fitness_metric: str) -> str:
+        """The "Our objective is ..." paragraph for the meta-evolution prompts.
+
+        Composed from the three pieces above so a new domain only supplies
+        phrases. SRBenchDomain overrides this with its historical wording
+        verbatim, so existing SRBench prompts (and their LLM cache entries)
+        are unchanged.
+        """
+        if fitness_metric == "gt":
+            body = f"improve the algorithm's ability to {self.prompt_recovery_criterion}"
+        elif fitness_metric in ("r2", "acc"):
+            body = f"improve the algorithm's ability to {self.prompt_quality_criterion}"
+        elif fitness_metric in ("gt-r2", "gt-acc"):
+            body = (
+                f"improve the algorithm's ability to {self.prompt_recovery_criterion}; "
+                f"when it does not, the goal is to {self.prompt_quality_criterion}"
+            )
+        else:
+            raise ValueError(
+                f"Unknown fitness_metric={fitness_metric!r}; expected one of "
+                "('gt', 'r2', 'gt-r2', 'acc', 'gt-acc')"
+            )
+        return (
+            f"Our objective is to {body}. We want these improvements to hold "
+            f"across {self.prompt_task_summary}.\n"
+        )
+
     def check_solved(
         self,
         *,
@@ -132,6 +179,43 @@ class SRBenchDomain(Domain):
     """Symbolic regression on PMLB/Feynman datasets (today's default behavior)."""
 
     name = "srbench"
+    prompt_task_summary = (
+        "SRBench, other symbolic regression benchmarks, and real-world "
+        "symbolic regression tasks"
+    )
+    prompt_recovery_criterion = "discover the ground-truth expression"
+    prompt_quality_criterion = (
+        "discover accurate expressions with a strong held-out "
+        "R\u00b2\u2013complexity tradeoff"
+    )
+
+    # Verbatim historical wording. Kept byte-identical so SRBench prompts (and
+    # the LLM completion cache keyed on them) do not shift under this
+    # refactor; the composed default in Domain would reword them slightly.
+    _LEGACY_OBJECTIVES = {
+        "gt": (
+            "Our objective is to improve the algorithm's ability to discover the ground-truth expression "
+            "across SRBench, other symbolic regression benchmarks, and real-world symbolic regression "
+            "tasks.\n"
+        ),
+        "r2": (
+            "Our objective is to improve the algorithm's ability to discover accurate expressions with a "
+            "strong held-out R\u00b2\u2013complexity tradeoff across SRBench, other symbolic regression "
+            "benchmarks, and real-world symbolic regression tasks.\n"
+        ),
+        "gt-r2": (
+            "Our objective is to improve the algorithm's ability to discover the ground-truth expression; "
+            "when it does not, the goal is to discover accurate expressions with a strong held-out "
+            "R\u00b2\u2013complexity tradeoff. We want these improvements to generalize across SRBench, other "
+            "symbolic regression benchmarks, and real-world symbolic regression tasks.\n"
+        ),
+    }
+
+    def objective_text(self, fitness_metric: str) -> str:
+        legacy = self._LEGACY_OBJECTIVES.get(fitness_metric)
+        # acc/gt-acc are rejected for this domain upstream (supports_accuracy),
+        # so falling through raises the same ValueError as before.
+        return legacy if legacy is not None else super().objective_text(fitness_metric)
 
     def load_dataset(self, dataset_name, max_samples=None, data_seed=None):
         from utils import load_srbench_dataset
@@ -179,6 +263,23 @@ class LogicBenchDomain(Domain):
     name = "boolean"
     uses_run_budget = False
     supports_accuracy = True
+    prompt_task_summary = (
+        "Boolean-function synthesis tasks (LogicBench): the search runs over "
+        "the Boolean operators band(x,y)=x*y, bor(x,y)=x+y-x*y, "
+        "bxor(x,y)=x+y-2*x*y and bnot(x)=1-x, which are closed on {0,1}, with "
+        "inputs and targets that are 0/1 truth-table rows rather than "
+        "continuous measurements. Numeric constants are of little use here and "
+        "expressions are logic circuits, so structural moves matter far more "
+        "than constant optimization"
+    )
+    prompt_recovery_criterion = (
+        "recover the exact Boolean function (a circuit matching the target "
+        "truth table on every row)"
+    )
+    prompt_quality_criterion = (
+        "discover circuits with high bit-wise accuracy on held-out truth-table "
+        "rows at low complexity"
+    )
     hpo_excluded_params = frozenset({
         "binary_operators", "unary_operators", "constraints",
         "nested_constraints", "elementwise_loss", "loss_function",
@@ -371,6 +472,20 @@ class NeuronBenchDomain(Domain):
     RECOVERED_NRMSE = 1e-6
     NEAR_EXACT_NRMSE = 1e-3
     CLOSE_NRMSE = 5e-2
+    prompt_task_summary = (
+        "NeuronBench membrane vector-field tasks: noiseless, fully-observable "
+        "biophysical dynamics where the target dV/dt is a smooth function of "
+        "the injected current, voltage, and channel open fractions. Success is "
+        "measured by numerical closeness rather than symbolic form, and the "
+        "search runs over +, -, and * only, so precise constants matter"
+    )
+    prompt_recovery_criterion = (
+        "recover the governing vector field to numerical precision "
+        "(NRMSE <= 1e-6 on held-out states)"
+    )
+    prompt_quality_criterion = (
+        "discover expressions with low held-out NRMSE at low complexity"
+    )
 
     def _load_saved(self, dataset_name, max_samples=None):
         from scripts.neuronbench_fully_observable import (

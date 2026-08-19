@@ -343,3 +343,73 @@ class TestJsonRoundTrip(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPromptObjectiveText(unittest.TestCase):
+    """runs/191267 crashed because the prompt objective table was a hardcoded
+    dict keyed on fitness_metric that predated acc/gt-acc, and its wording was
+    SRBench-specific regardless of --domain."""
+
+    def test_every_domain_metric_pair_builds(self):
+        from operator_types import OPERATOR_TYPES
+        ot = OPERATOR_TYPES["mutation"]
+        for domain, metrics in [
+            ("srbench", ["gt", "r2", "gt-r2"]),
+            ("boolean", ["gt", "r2", "gt-r2", "acc", "gt-acc"]),
+            ("neuron", ["gt", "r2", "gt-r2"]),
+        ]:
+            for metric in metrics:
+                with self.subTest(domain=domain, metric=metric):
+                    text = ot._objective_text(metric, domain)
+                    self.assertTrue(text.startswith("Our objective is to"))
+                    self.assertTrue(text.endswith("\n"))
+
+    def test_unknown_metric_still_raises(self):
+        from operator_types import OPERATOR_TYPES
+        with self.assertRaises(ValueError):
+            OPERATOR_TYPES["mutation"]._objective_text("bogus", "srbench")
+
+    def test_srbench_wording_is_unchanged(self):
+        # These are the exact historical strings; the LLM completion cache is
+        # keyed on the prompt, so a reword would silently invalidate it.
+        from operator_types import OPERATOR_TYPES
+        ot = OPERATOR_TYPES["mutation"]
+        self.assertEqual(
+            ot._objective_text("gt", "srbench"),
+            "Our objective is to improve the algorithm's ability to discover the ground-truth expression "
+            "across SRBench, other symbolic regression benchmarks, and real-world symbolic regression "
+            "tasks.\n",
+        )
+
+    def test_non_srbench_domains_do_not_mention_srbench(self):
+        from operator_types import OPERATOR_TYPES
+        ot = OPERATOR_TYPES["mutation"]
+        for domain in ("boolean", "neuron"):
+            with self.subTest(domain=domain):
+                self.assertNotIn("SRBench", ot._objective_text("gt", domain))
+
+    def test_boolean_prompt_names_its_operators(self):
+        from operator_types import OPERATOR_TYPES
+        text = OPERATOR_TYPES["mutation"]._objective_text("gt-acc", "boolean")
+        for op in ("band", "bor", "bxor", "bnot"):
+            self.assertIn(op, text)
+
+    def test_spec_carries_domain_into_prompt(self):
+        from operator_types import (
+            OPERATOR_TYPES, OperatorGenerationSpec, _build_operator_prompt,
+        )
+        ot = OPERATOR_TYPES["mutation"]
+        spec = OperatorGenerationSpec(
+            op_type=ot, reference="REF", mode="explore",
+            fitness_metric="gt-acc", domain="boolean",
+        )
+        prompt = _build_operator_prompt(spec)
+        self.assertIn("Boolean-function synthesis", prompt)
+        self.assertNotIn("SRBench", prompt)
+
+    def test_spec_defaults_to_srbench(self):
+        from operator_types import OperatorGenerationSpec, OPERATOR_TYPES
+        spec = OperatorGenerationSpec(
+            op_type=OPERATOR_TYPES["mutation"], reference="REF",
+        )
+        self.assertEqual(spec.domain, "srbench")
