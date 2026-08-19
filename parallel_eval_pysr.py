@@ -25,7 +25,7 @@ from pathlib import Path
 
 from slurm_eval import (
     BaseSlurmEvaluator, TERMINAL_SLURM_STATES, init_worker, _untrack_job, _UNSET,
-    _credit_pending_watchdog_time,
+    _credit_pending_watchdog_time, _wait_for_terminal_result_visibility,
 )
 from julia_env import (
     julia_load_operator,
@@ -2805,6 +2805,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 return True
 
             if terminal:
+                completed = _wait_for_terminal_result_visibility(
+                    lambda: sum(
+                        len(list(rd.glob("task_*.json"))) for rd in results_dirs
+                    ),
+                    n_tasks_total,
+                )
                 if completed < n_tasks_total:
                     print(
                         f"  WARNING: all {label} jobs ended (statuses={statuses}) "
@@ -2904,6 +2910,13 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 return
 
             if terminal:
+                completed = _wait_for_terminal_result_visibility(
+                    lambda: sum(
+                        1 for (bd, i) in batch_indices
+                        if (bd / "results" / f"task_{i:06d}.json").exists()
+                    ),
+                    n_total,
+                )
                 if completed < n_total:
                     print(
                         f"    Retry jobs ended with statuses={statuses}, "
@@ -3291,6 +3304,10 @@ python -u -m parallel_eval_pysr --worker \\
                 return True
 
             if terminal:
+                completed = _wait_for_terminal_result_visibility(
+                    lambda: len(list(results_dir.glob("task_*.json"))),
+                    n_tasks,
+                )
                 if completed < n_tasks:
                     print(
                         f"  WARNING: All jobs ended (statuses={statuses}) "

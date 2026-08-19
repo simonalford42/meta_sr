@@ -55,3 +55,62 @@ def test_array_status_prefers_running_over_pending(monkeypatch):
     status = slurm_eval.BaseSlurmEvaluator._get_job_status(evaluator, "123")
 
     assert status == "RUNNING"
+
+
+def test_terminal_result_visibility_rechecks_before_sleep(monkeypatch):
+    counts = iter([1])
+    monkeypatch.setattr(
+        slurm_eval.time,
+        "sleep",
+        lambda *_: pytest.fail("result was visible on the immediate recount"),
+    )
+
+    completed = slurm_eval._wait_for_terminal_result_visibility(
+        lambda: next(counts), expected=1,
+    )
+
+    assert completed == 1
+
+
+def test_terminal_result_visibility_waits_through_filesystem_lag(monkeypatch):
+    counts = iter([0, 0, 1])
+    clock = iter([0.0, 0.0, 0.5])
+    sleeps = []
+    monkeypatch.setattr(slurm_eval.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(slurm_eval.time, "sleep", sleeps.append)
+
+    completed = slurm_eval._wait_for_terminal_result_visibility(
+        lambda: next(counts), expected=1, grace_seconds=1.0,
+    )
+
+    assert completed == 1
+    assert sleeps == [1.0, 0.5]
+
+
+def test_terminal_poll_race_recounts_new_result(tmp_path, capsys):
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+
+    def poll_terminal(*_args):
+        # The worker result becomes visible while the SLURM status query is in
+        # flight, after the waiter's first result count for this iteration.
+        (results_dir / "task_000000.json").write_text("{}")
+        return True, ["COMPLETED"]
+
+    evaluator = SimpleNamespace(
+        stall_timeout=None,
+        job_timeout=None,
+        _poll_jobs_terminal=poll_terminal,
+    )
+
+    completed = slurm_eval.BaseSlurmEvaluator._wait_for_job(
+        evaluator,
+        "123",
+        1,
+        tmp_path,
+        stall_timeout=None,
+        job_timeout=None,
+    )
+
+    assert completed is True
+    assert "results found" not in capsys.readouterr().out

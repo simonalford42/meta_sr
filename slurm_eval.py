@@ -16,7 +16,7 @@ import signal
 import subprocess
 import threading
 from abc import ABC, abstractmethod
-from typing import Dict, List, Tuple, Optional, Set, Any, TypeVar, Generic
+from typing import Callable, Dict, List, Tuple, Optional, Set, Any, TypeVar, Generic
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,6 +50,30 @@ TERMINAL_SLURM_STATES = frozenset({
     'OUT_OF_MEMORY', 'REVOKED', 'SPECIAL_EXIT',
 })
 PENDING_SLURM_STATES = frozenset({"PENDING"})
+
+# A worker writes its result before exiting, but SLURM's terminal state and the
+# result file can become visible to the driver in the opposite order across
+# NFS clients.  Give the shared filesystem a short window to catch up before
+# converting an otherwise successful task into a missing-result failure.
+_RESULT_VISIBILITY_GRACE_S = 10.0
+_RESULT_VISIBILITY_POLL_S = 1.0
+
+
+def _wait_for_terminal_result_visibility(
+    count_results: Callable[[], int],
+    expected: int,
+    grace_seconds: float = _RESULT_VISIBILITY_GRACE_S,
+) -> int:
+    """Recount results after terminal SLURM state, allowing for NFS lag."""
+    completed = count_results()
+    deadline = time.monotonic() + max(0.0, grace_seconds)
+    while completed < expected:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(_RESULT_VISIBILITY_POLL_S, remaining))
+        completed = count_results()
+    return completed
 
 
 def _credit_pending_watchdog_time(
@@ -577,6 +601,10 @@ class BaseSlurmEvaluator(ABC):
                 return True
 
             if terminal:
+                completed = _wait_for_terminal_result_visibility(
+                    lambda: len(list(results_dir.glob("task_*.json"))),
+                    n_tasks,
+                )
                 if completed < n_tasks:
                     print(f"  WARNING: Job {job_id} ended with status {statuses[0]} "
                           f"but only {completed}/{n_tasks} results found")
@@ -660,10 +688,15 @@ class BaseSlurmEvaluator(ABC):
                 return True
 
             if terminal:
-                print(
-                    f"  WARNING: Jobs ended with statuses={statuses}, but only "
-                    f"{completed}/{n_tasks} results found"
+                completed = _wait_for_terminal_result_visibility(
+                    lambda: len(list(results_dir.glob("task_*.json"))),
+                    n_tasks,
                 )
+                if completed < n_tasks:
+                    print(
+                        f"  WARNING: Jobs ended with statuses={statuses}, but only "
+                        f"{completed}/{n_tasks} results found"
+                    )
                 for jid in job_ids:
                     _untrack_job(jid)
                 return True
@@ -767,6 +800,13 @@ class BaseSlurmEvaluator(ABC):
                 break
 
             if terminal:
+                completed = _wait_for_terminal_result_visibility(
+                    lambda: sum(
+                        1 for i in task_indices
+                        if (results_dir / f"task_{i:06d}.json").exists()
+                    ),
+                    n_tasks,
+                )
                 if completed < n_tasks:
                     print(
                         f"    Retry jobs ended with statuses={statuses}, "
