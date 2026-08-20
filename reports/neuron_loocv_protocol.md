@@ -15,9 +15,9 @@ Evolution settings are fixed in `scripts/submit_neuron_loocv.sh`:
 - fully observable state and the `+`, `-`, `*` operator set
 
 After evolution, `evolve_pysr.py` invokes `neuron_full_eval.py` on the final
-bundle. This evaluates all six worlds—not only the omitted world—with five
+bundle. This evaluates every world not present in the training split, with five
 fresh seeds (`10000` through `10004`) and 1,000,000 evaluations per fit. The
-seventh outer job runs the same evaluation for base PySR.
+seventh outer job runs the all-six-world evaluation for base PySR.
 
 Preview the seven submissions without changing SLURM state:
 

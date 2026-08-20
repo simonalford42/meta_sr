@@ -98,9 +98,16 @@ def _table(
 
 def overview_row(path: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
     loocv = payload.get("loocv") or {}
-    held_out = loocv.get("held_out_world")
+    held_out_worlds = loocv.get("held_out_worlds")
+    if held_out_worlds is None:
+        held_out = loocv.get("held_out_world")
+        held_out_worlds = [held_out] if held_out else []
     per_world = payload.get("per_world") or {}
-    held_counts = (per_world.get(held_out) or {}).get("counts") if held_out else None
+    held_records = [per_world.get(world) or {} for world in held_out_worlds]
+    held_counts = {
+        name: sum(int((record.get("counts") or {}).get(name, 0)) for record in held_records)
+        for name in ("recovered", "near-exact", "close", "miss")
+    } if held_records else None
     split = loocv.get("train_split")
     match = re.search(r"neuron_loocv(\d+)", str(split or ""))
     method = (payload.get("method") or {}).get("kind", "?")
@@ -108,7 +115,7 @@ def overview_row(path: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
         "run": run_id_for_path(path),
         "method": method,
         "fold": match.group(1) if match else "-",
-        "held_out": held_out or "-",
+        "held_out": ",".join(held_out_worlds) or "-",
         "completed": f"{payload.get('completed', 0)}/{payload.get('expected', 0)}",
         "all": _counts_text(payload.get("counts") or {}),
         "held": _counts_text(held_counts) if held_counts is not None else "-",
@@ -118,7 +125,10 @@ def overview_row(path: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def world_rows(path: Path, payload: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
     loocv = payload.get("loocv") or {}
-    held_out = loocv.get("held_out_world")
+    held_out_worlds = loocv.get("held_out_worlds")
+    if held_out_worlds is None:
+        held_out = loocv.get("held_out_world")
+        held_out_worlds = [held_out] if held_out else []
     per_world = payload.get("per_world") or {}
     for world in WORLDS:
         summary = per_world.get(world) or {}
@@ -126,7 +136,7 @@ def world_rows(path: Path, payload: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
         yield {
             "run": run_id_for_path(path),
             "method": (payload.get("method") or {}).get("kind", "?"),
-            "world": world + (" *" if world == held_out else ""),
+            "world": world + (" *" if world in held_out_worlds else ""),
             "completed": f"{summary.get('completed', 0)}/{summary.get('expected', 0)}",
             "r": str(int(counts.get("recovered", 0))),
             "n": str(int(counts.get("near-exact", 0))),

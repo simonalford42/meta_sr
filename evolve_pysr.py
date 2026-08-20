@@ -3204,8 +3204,8 @@ def main():
                         "--job-timeout", str(budget["job_timeout"]),
                         "--train-split", args.split,
                     ]
-                    if len(held_out) == 1:
-                        command.extend(["--held-out-world", held_out[0]])
+                    for held_out_world in held_out:
+                        command.extend(["--held-out-world", held_out_world])
                     if args.max_concurrent_jobs is not None:
                         command.extend([
                             "--max-concurrent-jobs", str(args.max_concurrent_jobs)

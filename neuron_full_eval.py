@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Evaluate one PySR algorithm on all six fully-observable NeuronBench tasks.
+"""Evaluate one PySR algorithm on selected fully-observable NeuronBench tasks.
 
-The driver submits one SLURM array containing ``6 tasks x n_runs seeds`` and
+The driver submits one SLURM array containing ``n_worlds x n_runs`` tasks and
 stores every held-out Pareto frontier.  Each seed contributes exactly one
 outcome, based on the lowest-NRMSE equation anywhere on its frontier:
 
@@ -10,8 +10,9 @@ outcome, based on the lowest-NRMSE equation anywhere on its frontier:
     close      NRMSE <= 5e-2
     miss       otherwise
 
-With no ``--evolve-results`` this evaluates base PySR.  Pointing that option at
-an evolve_pysr.py run evaluates its final training-selected bundle.
+With no ``--evolve-results`` this evaluates base PySR on all six worlds.  Pointing
+that option at an evolve_pysr.py run evaluates its final training-selected bundle
+on the explicitly supplied held-out worlds.
 """
 
 from __future__ import annotations
@@ -127,9 +128,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--held-out-world",
+        action="append",
         choices=WORLDS,
         default=None,
-        help="metadata only: LOOCV problem excluded during evolution",
+        help=(
+            "world excluded during evolution; may be supplied multiple times. "
+            "When supplied, evaluate only these worlds."
+        ),
     )
     return parser
 
@@ -192,14 +197,17 @@ def main() -> None:
         retain_pareto_frontier=True,
     )
 
+    held_out_worlds = list(dict.fromkeys(args.held_out_world or []))
+    eval_worlds = held_out_worlds or list(WORLDS)
+
     print(
         f"Neuron full evaluation: {method['kind']}; "
-        f"{len(WORLDS)} worlds x {args.n_runs} seeds; "
+        f"{len(eval_worlds)} worlds x {args.n_runs} seeds; "
         f"max_evals={args.max_evals:,}"
     )
     handle = evaluator.submit_configs(
         configs=[config],
-        dataset_names=list(WORLDS),
+        dataset_names=eval_worlds,
         seed=args.seed,
         n_runs=args.n_runs,
         fitness_metric="gt",
@@ -208,7 +216,7 @@ def main() -> None:
     raw = _load_raw_results(handle)
 
     records: List[Dict[str, Any]] = []
-    for result in sorted(raw, key=lambda r: (WORLDS.index(r.dataset_name), r.run_index)):
+    for result in sorted(raw, key=lambda r: (eval_worlds.index(r.dataset_name), r.run_index)):
         frontier = result.pareto_frontier or []
         best = _best_frontier_row(frontier)
         assessment = (
@@ -231,7 +239,7 @@ def main() -> None:
         })
 
     per_world = {}
-    for world in WORLDS:
+    for world in eval_worlds:
         selected = [record for record in records if record["world"] == world]
         finite = [r["best_nrmse"] for r in selected if r["best_nrmse"] is not None]
         per_world[world] = {
@@ -249,11 +257,13 @@ def main() -> None:
         "method": method,
         "loocv": {
             "train_split": args.train_split,
-            "held_out_world": args.held_out_world,
+            # Keep the old scalar field for consumers of one-fold results.
+            "held_out_world": held_out_worlds[0] if len(held_out_worlds) == 1 else None,
+            "held_out_worlds": held_out_worlds,
         },
         "protocol": {
             "domain": "fully_observable_neuronbench",
-            "worlds": list(WORLDS),
+            "worlds": eval_worlds,
             "n_runs": args.n_runs,
             "base_seed": args.seed,
             "seeds": [args.seed + i for i in range(args.n_runs)],
