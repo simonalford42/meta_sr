@@ -121,6 +121,12 @@ leave-one-out training splits.  LOOCV indices follow the order in
 and `textbook_M`.  Each LOOCV file therefore contains the other five tasks.
 Use these with `evolve_pysr.py --domain neuron`.
 
+### `neuron_first1.txt` / `neuron_first2.txt`
+
+Focused NeuronBench training splits containing the first one or first two
+tasks in `neuron_all.txt`, respectively. Use these to compare training on a
+small fixed task subset against the leave-one-out runs.
+
 ## Regenerating
 
 All writes go to `splits/` and each split family is opt-in, so running the
