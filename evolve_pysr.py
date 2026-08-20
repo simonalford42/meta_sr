@@ -82,6 +82,23 @@ MODEL_ENSEMBLE_PRESETS: Dict[str, str] = {
         "google/gemini-3.1-pro-preview:0.25,"
         "x-ai/grok-4.20:0.25"
     ),
+    "cheap2": (
+        "openai/gpt-5.6-luna:0.40,"
+        "google/gemini-3.7-flash:0.35,"
+        "deepseek/deepseek-v4-flash-0731:0.25"
+    ),
+    "medium2": (
+        "openai/gpt-5.6-terra:0.35,"
+        "google/gemini-3.7-flash:0.30,"
+        "openai/gpt-5.6-luna:0.20,"
+        "deepseek/deepseek-v4-flash-0731:0.15"
+    ),
+    "best2": (
+        "anthropic/claude-opus-5:0.30,"
+        "openai/gpt-5.6-sol:0.30,"
+        "google/gemini-3.7-flash:0.20,"
+        "anthropic/claude-sonnet-5:0.20"
+    ),
 }
 
 
@@ -91,6 +108,9 @@ MODEL_ENSEMBLE_PRESET_EFFORT: Dict[str, str] = {
     "cheap": "low",
     "medium": "medium",
     "best": "high",
+    "cheap2": "low",
+    "medium2": "medium",
+    "best2": "high",
 }
 
 
@@ -104,7 +124,8 @@ def resolve_models_arg(value: str) -> str:
 def resolve_reasoning_effort(effort_arg: str, models_arg: str) -> str:
     """Resolve --reasoning-effort to a concrete level.
 
-    When "auto", derive from the --models preset name (cheap/medium/best); for
+    When "auto", derive from the --models preset name (cheap/medium/best and
+    their *2 variants); for
     a raw ensemble string or unknown preset, fall back to "high" (the prior
     default). An explicit low/medium/high always wins.
     """
@@ -2653,7 +2674,7 @@ def main():
         f"{name}={spec!r}" for name, spec in MODEL_ENSEMBLE_PRESETS.items()
     )
     parser.add_argument("--models", type=str, default="best",
-                        help="Ensemble of models with weights, or a preset name. "  # cheap, medium, best
+                        help="Ensemble of models with weights, or a preset name. "  # cheap, medium, best, cheap2, medium2, best2
                              "Overrides --model when set. "
                              f"Presets: {preset_help}")
     parser.add_argument("--temperature", type=float, default=0.0)
@@ -2661,7 +2682,8 @@ def main():
                         choices=["auto", "low", "medium", "high"],
                         help="LLM reasoning effort for operator generation. "
                              "'auto' derives it from the --models preset "
-                             "(cheap=low, medium=medium, best=high); a raw "
+                             "(cheap/cheap2=low, medium/medium2=medium, "
+                             "best/best2=high); a raw "
                              "ensemble string defaults to high. An explicit "
                              "value overrides the preset pairing.")
     parser.add_argument("--llm-max-workers", type=int, default=16,
