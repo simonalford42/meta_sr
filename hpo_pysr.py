@@ -62,6 +62,50 @@ def _build_target_noise_map(
     return {name: _stable_target_noise(name, seed, noise_levels) for name in dataset_names}
 
 
+def load_reselection_source(
+    source_dir: str,
+    n_trials: int,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
+    """Load the first ``n_trials`` completed trials from an existing HPO run.
+
+    Reselection models an intervention immediately after trial ``n_trials - 1``.
+    Trial numbers therefore must contain every integer in ``[0, n_trials)``;
+    later trials and the source run's old final-selection result are ignored.
+    """
+    run_data_path = Path(source_dir) / "run_data.json"
+    if not run_data_path.exists():
+        raise ValueError(f"Cannot find HPO run_data.json in {source_dir}")
+    if n_trials < 1:
+        raise ValueError("n_trials must be at least 1 for reselection")
+
+    with open(run_data_path) as f:
+        source_data = json.load(f)
+
+    by_number: Dict[int, Dict[str, Any]] = {}
+    for trial in source_data.get("trials", []):
+        number = trial.get("trial_number")
+        if isinstance(number, int) and number < n_trials:
+            if number in by_number:
+                raise ValueError(f"Duplicate trial {number} in {run_data_path}")
+            by_number[number] = trial
+
+    missing = sorted(set(range(n_trials)) - set(by_number))
+    if missing:
+        preview = ", ".join(str(number) for number in missing[:10])
+        suffix = "..." if len(missing) > 10 else ""
+        raise ValueError(
+            f"Cannot intervene after {n_trials} trials: source is missing trial(s) "
+            f"{preview}{suffix}"
+        )
+
+    baseline = source_data.get("baseline") or {}
+    if baseline.get("avg_score") is None:
+        raise ValueError(f"Source HPO run has no reusable baseline in {run_data_path}")
+
+    trials = [by_number[number] for number in range(n_trials)]
+    return trials, baseline, source_data.get("config") or {}
+
+
 # =============================================================================
 # Constants: Generic HPO Search Specs
 # =============================================================================
@@ -879,6 +923,8 @@ def run_hpo(
     use_cache: bool = True,
     prior_trials: Optional[List[Dict]] = None,
     continue_from: Optional[str] = None,
+    reselect_from: Optional[str] = None,
+    source_baseline: Optional[Dict[str, Any]] = None,
     wandb_run: Any = None,
     target_noise_map: Optional[Dict[str, float]] = None,
     domain: str = "srbench",
@@ -901,6 +947,9 @@ def run_hpo(
         job_timeout: SLURM job timeout in seconds
         fitness_metric: Optimization objective ('gt', 'r2', or 'gt-r2')
         use_cache: Whether to use evaluation caching
+        reselect_from: Existing HPO run whose first ``n_trials`` trials should
+            be reused without running new HPO evaluations
+        source_baseline: Baseline record copied from ``reselect_from``
 
     Returns:
         (best_params, best_score) tuple
@@ -949,6 +998,8 @@ def run_hpo(
             "max_samples": max_samples,
             "max_concurrent_jobs": max_concurrent_jobs,
             "fitness_metric": fitness_metric,
+            "reselect_from": reselect_from,
+            "selection_only": bool(reselect_from),
             "search_space": {
                 name: {
                     "kind": spec.kind,
@@ -978,15 +1029,27 @@ def run_hpo(
             domain=domain,
         )
 
-        # Phase 1: Evaluate baseline
+        # Phase 1: Evaluate baseline, or preserve the exact baseline observed
+        # by the source run when performing a historical intervention.
         print("=" * 60)
-        print("Phase 1: Evaluating baseline (current base PySR config, no HPO overrides)...")
+        if reselect_from:
+            print(f"Phase 1: Reusing baseline from {reselect_from}")
+        else:
+            print("Phase 1: Evaluating baseline (current base PySR config, no HPO overrides)...")
         print("=" * 60)
 
-        baseline_r2, baseline_vector, baseline_details, baseline_weights = evaluate_baseline(
-            evaluator, dataset_names, base_pysr_kwargs, seed, n_runs, fitness_metric,
-            target_noise_map=target_noise_map,
-        )
+        if reselect_from:
+            if not source_baseline or source_baseline.get("avg_score") is None:
+                raise ValueError("Reselection requires a reusable source baseline")
+            baseline_r2 = source_baseline["avg_score"]
+            baseline_vector = source_baseline.get("score_vector", [])
+            baseline_details = source_baseline.get("result_details", [])
+            baseline_weights = source_baseline.get("weights", {})
+        else:
+            baseline_r2, baseline_vector, baseline_details, baseline_weights = evaluate_baseline(
+                evaluator, dataset_names, base_pysr_kwargs, seed, n_runs, fitness_metric,
+                target_noise_map=target_noise_map,
+            )
         if n_runs > 1 and baseline_details:
             per_run_avgs = []
             metric_scores = [
@@ -1004,7 +1067,10 @@ def run_hpo(
             print(f"Baseline avg {metric_label}: {baseline_r2:.4f} [{runs_str}]")
         else:
             print(f"Baseline avg {metric_label}: {baseline_r2:.4f}")
-        print("Baseline uses the base PySR kwargs from this script with no additional HPO overrides.")
+        if reselect_from:
+            print("Baseline copied from the source run; no PySR baseline jobs were submitted.")
+        else:
+            print("Baseline uses the base PySR kwargs from this script with no additional HPO overrides.")
         logger.log_baseline(baseline_r2, baseline_vector, baseline_weights, baseline_details)
 
         if wandb_run is not None:
@@ -1014,7 +1080,10 @@ def run_hpo(
 
         # Phase 2: Optuna HPO Loop
         print("\n" + "=" * 60)
-        print(f"Phase 2: Running HPO ({n_trials} trials, {n_parallel} parallel)...")
+        if reselect_from:
+            print(f"Phase 2: Reusing source trials 0-{n_trials - 1} (no new HPO fits)")
+        else:
+            print(f"Phase 2: Running HPO ({n_trials} trials, {n_parallel} parallel)...")
         print("=" * 60)
 
         db_path = Path(output_dir) / "optuna_study.db"
@@ -1046,11 +1115,26 @@ def run_hpo(
             if prior_trials:
                 n_replayed = _replay_trials_into_study(study, prior_trials, search_space)
                 print(f"  Replayed {n_replayed}/{len(prior_trials)} prior trials into Optuna study (from JSON)")
+                if reselect_from and n_replayed != n_trials:
+                    raise RuntimeError(
+                        f"Expected to replay {n_trials} source trials, replayed {n_replayed}"
+                    )
                 if n_replayed > 0:
                     best_prior = study.best_trial
                     print(f"  Best prior trial: {best_prior.number} (score: {best_prior.value:.4f})")
 
-        trials_completed = 0
+        if reselect_from:
+            # Keep the output compatible with ordinary HPO runs while recording
+            # only the information that existed at the intervention point.
+            logger.run_data["trials"] = list(prior_trials or [])
+            logger.run_data["reselection"] = {
+                "source": reselect_from,
+                "trial_cutoff": n_trials,
+                "source_final_selection_ignored": True,
+            }
+            logger._save()
+
+        trials_completed = n_trials if reselect_from else 0
         best_score = baseline_r2
         best_params = {}
         trial_param_map = {}
@@ -1352,8 +1436,19 @@ def main():
                         help="Continue a previous HPO run. Pass the output directory of a prior run "
                              "(e.g., outputs/hpo_pysr_20260407_152534). Replays saved trials into "
                              "the Optuna study so TPE benefits from prior history.")
+    parser.add_argument(
+        "--reselect-from",
+        type=str,
+        default=None,
+        help="Reuse trials 0..--n-trials-1 from an existing HPO output, skip new "
+             "HPO evaluations, and redo fresh-seed finalist selection plus final evaluation. "
+             "This models stopping the source study at the requested trial count.",
+    )
 
     args = parser.parse_args()
+
+    if args.continue_from and args.reselect_from:
+        parser.error("--continue-from and --reselect-from are mutually exclusive")
 
     # Boolean-domain defaults: applied only where the user left the SRBench
     # defaults in place, so explicit flags still win.
@@ -1482,6 +1577,8 @@ def main():
 
     # Load prior trials from JSON as fallback (for runs predating DB persistence)
     prior_trials = None
+    source_baseline = None
+    source_config = None
     if args.continue_from:
         prior_db_path = Path(args.continue_from) / "optuna_study.db"
         if not prior_db_path.exists():
@@ -1494,6 +1591,36 @@ def main():
             print(f"Continuing from {args.continue_from}: {len(prior_trials)} prior trials (JSON fallback)")
         else:
             print(f"Continuing from {args.continue_from}: found optuna_study.db")
+    elif args.reselect_from:
+        try:
+            prior_trials, source_baseline, source_config = load_reselection_source(
+                args.reselect_from, args.n_trials,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+
+        expected_source_values = {
+            "fitness_metric": args.fitness_metric,
+            "seed": args.seed,
+            "n_runs": args.n_runs,
+            "max_samples": args.max_samples,
+            "dataset_names": dataset_names,
+            "active_hpo_params": active_hpo_params,
+        }
+        mismatches = []
+        for name, expected in expected_source_values.items():
+            observed = source_config.get(name)
+            if observed is not None and observed != expected:
+                mismatches.append(f"{name}: source={observed!r}, requested={expected!r}")
+        if mismatches:
+            parser.error(
+                "--reselect-from protocol does not match the source run:\n  "
+                + "\n  ".join(mismatches)
+            )
+        print(
+            f"Reselecting from {args.reselect_from}: reusing exactly "
+            f"{len(prior_trials)} trials and the saved baseline"
+        )
 
     # Initialize wandb
     wandb_config = {
@@ -1513,6 +1640,7 @@ def main():
         "target_noise": args.target_noise,
         "random_target_noise": args.random_target_noise,
         "continue_from": args.continue_from,
+        "reselect_from": args.reselect_from,
         "no_cache": args.no_cache,
         "domain": args.domain,
         "active_hpo_params": active_hpo_params,
@@ -1545,6 +1673,8 @@ def main():
         use_cache=not args.no_cache,
         prior_trials=prior_trials,
         continue_from=args.continue_from,
+        reselect_from=args.reselect_from,
+        source_baseline=source_baseline,
         wandb_run=wandb_run,
         target_noise_map=target_noise_map,
         domain=args.domain,

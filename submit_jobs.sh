@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 
 # 8/24
+# Counterfactual 300-trial HPO selections. Each driver reuses trials 0-299 and
+# the baseline from the corresponding 500-trial run, submits only the 10-way ×
+# 10-seed finalist comparison, then automatically runs the standard 10-seed
+# final evaluation on barely_unsolvable + val.
+# sbatch -J hpo300-gt run.sh hpo_pysr.py --reselect-from outputs/hpo_pysr_20260727_172105_644009 --n-trials 300 --n-runs 3 --n-runs-final 10 --final-topk 10 --n-parallel 20 --split splits/barely_unsolvable.txt --val-split splits/val.txt --fitness-metric gt --random-target-noise
+# sbatch -J hpo300-r2 run.sh hpo_pysr.py --reselect-from outputs/hpo_pysr_20260727_172105_644046 --n-trials 300 --n-runs 3 --n-runs-final 10 --final-topk 10 --n-parallel 20 --split splits/barely_unsolvable.txt --val-split splits/val.txt --fitness-metric r2 --random-target-noise
+# sbatch -J hpo300-gt-r2 run.sh hpo_pysr.py --reselect-from outputs/hpo_pysr_20260727_172105_644293 --n-trials 300 --n-runs 3 --n-runs-final 10 --final-topk 10 --n-parallel 20 --split splits/barely_unsolvable.txt --val-split splits/val.txt --fitness-metric gt-r2 --random-target-noise
+
 # sbatch -J neuron-eval-313196 run.sh neuron_full_eval.py --evolve-results runs/313196 --output-dir runs/313196/neuron_full_eval --n-runs 5 --seed 10000 --max-evals 1000000 --max-samples 1024 --partition default_partition --time-limit 00:15:00 --mem-per-cpu 8G --timeout 500 --pysr-wall-limit 600 --job-timeout 1800 --train-split splits/neuron_first1.txt --held-out-world h_sag --held-out-world na_fatigue --held-out-world ca_rebound --held-out-world d_type --held-out-world textbook_M
 # sbatch -J boolean-eval-313197 run.sh boolean_eval.py --evolve-results runs/313197 --output-dir runs/313197/boolean_eval --n-runs 3 --seed 10000 --max-evals 1000000 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --mem-per-cpu 8G --timeout 1800 --pysr-wall-limit 2400 --job-timeout 14400 --train-split splits/boolean_train.txt
 
