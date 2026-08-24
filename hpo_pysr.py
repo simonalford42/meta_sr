@@ -1588,6 +1588,8 @@ def main():
                 use_cache=not args.no_cache,
                 wandb_run=wandb_run,
                 target_noise_map=final_noise_map,
+                domain=args.domain,
+                fitness_metric=args.fitness_metric,
             )
         except Exception as e:
             print(f"\nFinal evaluation failed: {e}")

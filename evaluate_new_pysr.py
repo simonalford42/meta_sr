@@ -39,6 +39,7 @@ Usage:
 
 import argparse
 import atexit
+import copy
 import importlib.util
 import json
 import os
@@ -56,8 +57,6 @@ import numpy as np
 from parallel_eval_pysr import (
     PySRConfig,
     PySRSlurmEvaluator,
-    get_default_mutation_weights,
-    get_default_pysr_kwargs,
 )
 from utils import load_dataset_names_from_split, copy_slurm_log, resolve_run_dir
 from wandb_utils import init_wandb, log_wandb_summary, finish_wandb
@@ -113,6 +112,58 @@ def load_method(method_source, method_path):
         return bundle, "hpo_best"
     prefix = "openevolve" if method_source == "openevolve" else "evolve"
     return bundle, _bundle_label(bundle, prefix)
+
+
+def _saved_evolve_config(method_source: Optional[str], method_path: Optional[str]) -> Dict[str, Any]:
+    """Read the run configuration needed to faithfully replay an evolve run.
+
+    ``load_bundle`` intentionally returns only the winning bundle. Final
+    evaluation also needs run-level settings (most importantly the domain and
+    its base operators), which live alongside the bundle in ``run_data.json``.
+    """
+    if method_source != "evolve" or not method_path:
+        return {}
+
+    path = Path(method_path)
+    if not path.exists() and len(path.parts) == 1 and path.name.isdigit():
+        path = Path(__file__).resolve().parent / "runs" / path.name
+    if path.is_dir():
+        path = path / "run_data.json"
+    if path.name != "run_data.json" or not path.exists():
+        return {}
+
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"  WARNING: could not read final-eval settings from {path}: {exc}")
+        return {}
+    config = data.get("config")
+    return config if isinstance(config, dict) else {}
+
+
+def _resolve_final_eval_context(
+    method_source: Optional[str],
+    method_path: Optional[str],
+    domain: Optional[str],
+    fitness_metric: Optional[str],
+) -> Tuple[str, str, Dict[str, Any]]:
+    """Resolve domain, metric, and base kwargs for a final evaluation."""
+    saved = _saved_evolve_config(method_source, method_path)
+    domain_name = domain or saved.get("domain") or "srbench"
+    default_metric = "gt-acc" if domain_name == "boolean" else (
+        "gt" if domain_name == "neuron" else "r2"
+    )
+    metric_name = fitness_metric or saved.get("fitness_metric") or default_metric
+
+    from domains import get_domain
+    domain_obj = get_domain(domain_name)
+    saved_kwargs = saved.get("pysr_kwargs")
+    if isinstance(saved_kwargs, dict) and saved_kwargs:
+        pysr_kwargs = copy.deepcopy(saved_kwargs)
+    else:
+        pysr_kwargs = domain_obj.base_pysr_kwargs()
+    return domain_name, metric_name, pysr_kwargs
 
 
 def _bundle_summary_fields(bundle) -> Dict[str, Any]:
@@ -251,12 +302,14 @@ def evaluate_config(
     n_runs: int,
     name: str,
     target_noise_map: Optional[Dict[str, float]] = None,
+    fitness_metric: str = "r2",
 ) -> EvalSummary:
     """Evaluate a PySRConfig and return summary. Cache stats tracked on evaluator."""
     config.name = name
     results = evaluator.evaluate_configs(
         [config], dataset_names, seed=seed, n_runs=n_runs,
         target_noise_map=target_noise_map,
+        fitness_metric=fitness_metric,
     )
 
     avg_r2, r2_vector, result_details = results[0]
@@ -366,6 +419,8 @@ def run_final_evaluation(
     noise_levels: Optional[List[float]] = None,
     pysr_wall_limit: int = 600,
     black_box: bool = False,
+    domain: Optional[str] = None,
+    fitness_metric: Optional[str] = None,
 ) -> Dict[str, "EvalSummary"]:
     """Run final evaluation on requested splits after an evolution, OpenEvolve, or HPO run.
 
@@ -394,6 +449,10 @@ def run_final_evaluation(
             avg_gt_all_noise (averaged across all noise levels).
         black_box: Use SRBench's black-box split/scaling protocol and held-out
             R² scoring for every split.
+        domain: Evaluation domain. For evolve runs this defaults to the domain
+            persisted in run_data.json; otherwise it defaults to ``srbench``.
+        fitness_metric: Aggregation metric. For evolve runs this defaults to
+            the persisted metric; otherwise it uses the domain default.
 
     Returns:
         Dict mapping split name to EvalSummary
@@ -407,15 +466,26 @@ def run_final_evaluation(
     # Load method as an OperatorBundle via the single loader (bundle_loader).
     bundle, method_label = load_method(method_source, method_path)
 
+    domain, fitness_metric, pysr_kwargs = _resolve_final_eval_context(
+        method_source, method_path, domain, fitness_metric,
+    )
+    from domains import get_domain
+    domain_obj = get_domain(domain)
+    # LogicBench is iteration-bounded and deliberately does not use the
+    # SRBench max-evals/timeout budget. Preserve that distinction in final eval.
+    if domain_obj.uses_run_budget:
+        pysr_kwargs["max_evals"] = max_evals
+        pysr_kwargs["timeout_in_seconds"] = timeout
+    else:
+        pysr_kwargs.pop("max_evals", None)
+        pysr_kwargs.pop("timeout_in_seconds", None)
+
     print(f"\n{'=' * 60}")
     print(f"Final Evaluation: {method_label}")
     print(f"  Splits: {', '.join(Path(s).stem for s in splits)}")
     print(f"  Seeds: {n_runs}")
+    print(f"  Domain: {domain} (fitness_metric={fitness_metric})")
     print(f"{'=' * 60}")
-
-    pysr_kwargs = get_default_pysr_kwargs()
-    pysr_kwargs["max_evals"] = max_evals
-    pysr_kwargs["timeout_in_seconds"] = timeout
 
     evaluator = PySRSlurmEvaluator(
         results_dir=eval_dir,
@@ -429,6 +499,7 @@ def run_final_evaluation(
         use_cache=use_cache,
         pysr_wall_limit=pysr_wall_limit,
         black_box=black_box,
+        domain=domain,
     )
 
     # Single converter: bundle -> PySRConfig (merges custom code + HPO hparams).
@@ -463,6 +534,7 @@ def run_final_evaluation(
                     evaluator, datasets, config,
                     seed, n_runs, f"final_{split_name}_noise{level}_{method_label}",
                     target_noise_map=uniform_map,
+                    fitness_metric=fitness_metric,
                 )
 
             # Fixed-noise summary: each dataset uses its training-time assigned level.
@@ -519,6 +591,7 @@ def run_final_evaluation(
                 evaluator, datasets, config,
                 seed, n_runs, f"final_{split_name}_{method_label}",
                 target_noise_map=target_noise_map,
+                fitness_metric=fitness_metric,
             )
             split_summaries[split_name] = summary
 
@@ -543,6 +616,8 @@ def run_final_evaluation(
         "n_runs": n_runs,
         "seed": seed,
         "black_box": black_box,
+        "domain": domain,
+        "fitness_metric": fitness_metric,
     }
     summary_data.update(_bundle_summary_fields(bundle))
     for split_name, s in split_summaries.items():
@@ -636,6 +711,13 @@ def main() -> None:
                         help="Output directory (default: outputs/eval_pysr_TIMESTAMP)")
     parser.add_argument("--no-cache", action="store_true",
                         help="Disable evaluation caching")
+    parser.add_argument("--domain", choices=["srbench", "boolean", "neuron"],
+                        default=None,
+                        help="Evaluation domain (inferred from evolve run_data when possible)")
+    parser.add_argument("--fitness-metric",
+                        choices=["r2", "gt", "gt-r2", "acc", "gt-acc"],
+                        default=None,
+                        help="Task aggregation metric (inferred from evolve run_data when possible)")
 
     args = parser.parse_args()
 
@@ -661,16 +743,25 @@ def main() -> None:
 
     # Determine method (as an OperatorBundle) and label via the single loader.
     if args.evolve_results:
-        bundle, method_label = load_method("evolve", args.evolve_results)
+        method_source, method_path = "evolve", args.evolve_results
     elif args.openevolve_results:
-        bundle, method_label = load_method("openevolve", args.openevolve_results)
+        method_source, method_path = "openevolve", args.openevolve_results
     elif args.best_weights:
-        bundle, method_label = load_method("hpo", args.best_weights)
+        method_source, method_path = "hpo", args.best_weights
     elif args.autoresearch:
-        bundle, method_label = load_method("baseline", None)
-        method_label = f"autoresearch_{autoresearch_commit[:8]}"
+        method_source, method_path = "baseline", None
     else:
-        bundle, method_label = load_method("baseline", None)
+        method_source, method_path = "baseline", None
+
+    bundle, method_label = load_method(method_source, method_path)
+    if args.autoresearch:
+        method_label = f"autoresearch_{autoresearch_commit[:8]}"
+
+    domain, fitness_metric, pysr_kwargs = _resolve_final_eval_context(
+        method_source, method_path, args.domain, args.fitness_metric,
+    )
+    from domains import get_domain
+    domain_obj = get_domain(domain)
 
     args.output_dir = resolve_run_dir(args.output_dir, label="eval_pysr")
 
@@ -691,6 +782,8 @@ def main() -> None:
         "pysr_wall_limit": args.pysr_wall_limit,
         "partition": args.partition,
         "no_cache": args.no_cache,
+        "domain": domain,
+        "fitness_metric": fitness_metric,
     }
     _ops = [(t, op) for t, op in bundle.operators.items() if op is not None]
     if _ops:
@@ -717,10 +810,15 @@ def main() -> None:
         extra_tags=[wandb_tag],
     )
 
-    pysr_kwargs = get_default_pysr_kwargs()
-    pysr_kwargs["timeout_in_seconds"] = args.timeout
-    if not args.wall_clock_only:
-        pysr_kwargs["max_evals"] = args.max_evals
+    if domain_obj.uses_run_budget:
+        pysr_kwargs["timeout_in_seconds"] = args.timeout
+        if not args.wall_clock_only:
+            pysr_kwargs["max_evals"] = args.max_evals
+        else:
+            pysr_kwargs.pop("max_evals", None)
+    else:
+        pysr_kwargs.pop("max_evals", None)
+        pysr_kwargs.pop("timeout_in_seconds", None)
 
     evaluator_kwargs: Dict[str, Any] = {}
     if autoresearch_worktree is not None:
@@ -737,6 +835,7 @@ def main() -> None:
         max_concurrent_jobs=args.max_concurrent_jobs,
         use_cache=not args.no_cache,
         pysr_wall_limit=args.pysr_wall_limit,
+        domain=domain,
         **evaluator_kwargs,
     )
 
@@ -773,6 +872,7 @@ def main() -> None:
             evaluator, datasets, config,
             args.seed, args.n_runs, f"{split_name}_{method_label}",
             target_noise_map=target_noise_map,
+            fitness_metric=fitness_metric,
         )
         split_summaries[split_name] = summary
 
@@ -825,6 +925,8 @@ def main() -> None:
         "cache_fraction": cache_fraction,
         "total_evals": total_evals,
         "total_cached": total_cached,
+        "domain": domain,
+        "fitness_metric": fitness_metric,
     }
     summary_data.update(_bundle_summary_fields(bundle))
     for split_name, s in split_summaries.items():

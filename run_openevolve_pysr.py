@@ -528,6 +528,8 @@ def main() -> int:
                 use_cache=True,
                 wandb_run=wandb_run,
                 target_noise_map=target_noise_map,
+                domain="srbench",
+                fitness_metric=args.fitness_metric,
             )
         except Exception as e:
             print(f"\nFinal evaluation failed: {e}")

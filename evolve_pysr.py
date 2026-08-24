@@ -3258,6 +3258,8 @@ def main():
                     target_noise_map=target_noise_map,
                     noise_levels=final_noise_levels,
                     black_box=args.black_box,
+                    domain=args.domain,
+                    fitness_metric=args.fitness_metric,
                 )
         except Exception as e:
             print(f"\nFinal evaluation failed: {e}")
