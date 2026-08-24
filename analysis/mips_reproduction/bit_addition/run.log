@@ -1,0 +1,70 @@
+verification success
+{
+  "upstream_repo": "https://github.com/ejmichaud/neural-verification",
+  "upstream_commit": "680e7d590b046d60e602db1781d01e1c1c474599",
+  "task": "bit_addition",
+  "method": "MIPS integer autoencoder + notebook boolean regression",
+  "notebooks": [
+    "/home/sca63/mips_reproduction/neural-verification/regression/linear_regression.ipynb",
+    "/home/sca63/mips_reproduction/neural-verification/regression/boolean_regression.ipynb"
+  ],
+  "notebook_sha256": {
+    "/home/sca63/mips_reproduction/neural-verification/regression/linear_regression.ipynb": "16614a1ba059c03f3d7949b579e66942ff93061ac7171401225bdce885365f1d",
+    "/home/sca63/mips_reproduction/neural-verification/regression/boolean_regression.ipynb": "220572d24db9fa75e7eef88082d1577abe557cc580ff6e3133beba38c2874aa5"
+  },
+  "dataset": "/home/sca63/mips_reproduction/neural-verification/tasks/bit_addition/data.pt",
+  "dataset_sha256": "fcc214b8290dfd668d4f60fb5349cb2821e99969d280f6efe1e4a980d96a985d",
+  "hidden_dim": 2,
+  "notebook_success_flag": 1,
+  "published_program_sha256": "78c6c139738628a5550a3ae687ef205620c38a90553d914a259d26ae62733d99",
+  "generated_program_sha256": "78c6c139738628a5550a3ae687ef205620c38a90553d914a259d26ae62733d99",
+  "generated_matches_published_exactly": true,
+  "train": {
+    "sequences": 900000,
+    "elements": 9000000,
+    "correct_sequences": 900000,
+    "correct_elements": 9000000,
+    "sequence_accuracy": 1.0,
+    "element_accuracy": 1.0,
+    "max_abs_error": 0.0
+  },
+  "test": {
+    "sequences": 100000,
+    "elements": 1000000,
+    "correct_sequences": 100000,
+    "correct_elements": 1000000,
+    "sequence_accuracy": 1.0,
+    "element_accuracy": 1.0,
+    "max_abs_error": 0.0
+  },
+  "elapsed_seconds_excluding_autoencoder": 3.11168822995387,
+  "environment": {
+    "python": "3.10.19",
+    "torch": "1.13.1+cu117",
+    "numpy": "1.25.2",
+    "platform": "Linux-6.8.0-137-generic-x86_64-with-glibc2.39"
+  }
+}
+	Command being timed: "python scripts/reproduce_mips_subset.py --repo /home/sca63/mips_reproduction/neural-verification --task bit_addition --method boolean --output-dir analysis/mips_reproduction/bit_addition"
+	User time (seconds): 6.92
+	System time (seconds): 3.60
+	Percent of CPU this job got: 213%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:04.94
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 613168
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 57
+	Minor (reclaiming a frame) page faults: 135983
+	Voluntary context switches: 3571
+	Involuntary context switches: 439202
+	Swaps: 0
+	File system inputs: 52760
+	File system outputs: 24
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

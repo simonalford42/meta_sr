@@ -1,0 +1,44 @@
+{
+  "upstream_repo": "https://github.com/ejmichaud/neural-verification",
+  "upstream_commit": "680e7d590b046d60e602db1781d01e1c1c474599",
+  "task": "rnn_prev3_numerical",
+  "method": "MIPS integer autoencoder + notebook linear regression",
+  "notebooks": [
+    "/home/sca63/mips_reproduction/neural-verification/regression/linear_regression.ipynb"
+  ],
+  "notebook_sha256": {
+    "/home/sca63/mips_reproduction/neural-verification/regression/linear_regression.ipynb": "16614a1ba059c03f3d7949b579e66942ff93061ac7171401225bdce885365f1d"
+  },
+  "dataset": "/home/sca63/mips_reproduction/neural-verification/tasks/rnn_prev3_numerical/data.pt",
+  "dataset_sha256": "c99da5eb55ba1920aca1017f8caab9f35ebfc41c6027ed7f511f85c3cf6835f8",
+  "hidden_dim": 4,
+  "notebook_success_flag": 1,
+  "published_program_sha256": "ce634b9a60e9e89b7956722453d9a74b8abc8968dc0015274cae714fdf407dfa",
+  "generated_program_sha256": "ce634b9a60e9e89b7956722453d9a74b8abc8968dc0015274cae714fdf407dfa",
+  "generated_matches_published_exactly": true,
+  "train": {
+    "sequences": 900000,
+    "elements": 9000000,
+    "correct_sequences": 900000,
+    "correct_elements": 9000000,
+    "sequence_accuracy": 1.0,
+    "element_accuracy": 1.0,
+    "max_abs_error": 0.0
+  },
+  "test": {
+    "sequences": 100000,
+    "elements": 1000000,
+    "correct_sequences": 100000,
+    "correct_elements": 1000000,
+    "sequence_accuracy": 1.0,
+    "element_accuracy": 1.0,
+    "max_abs_error": 0.0
+  },
+  "elapsed_seconds_excluding_autoencoder": 2.0496741130482405,
+  "environment": {
+    "python": "3.10.19",
+    "torch": "1.13.1+cu117",
+    "numpy": "1.25.2",
+    "platform": "Linux-6.8.0-137-generic-x86_64-with-glibc2.39"
+  }
+}
