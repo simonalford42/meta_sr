@@ -2,6 +2,7 @@
 
 # 8/24
 # sbatch -J neuron-eval-313196 run.sh neuron_full_eval.py --evolve-results runs/313196 --output-dir runs/313196/neuron_full_eval --n-runs 5 --seed 10000 --max-evals 1000000 --max-samples 1024 --partition default_partition --time-limit 00:15:00 --mem-per-cpu 8G --timeout 500 --pysr-wall-limit 600 --job-timeout 1800 --train-split splits/neuron_first1.txt --held-out-world h_sag --held-out-world na_fatigue --held-out-world ca_rebound --held-out-world d_type --held-out-world textbook_M
+# sbatch -J boolean-eval-313197 run.sh boolean_eval.py --evolve-results runs/313197 --output-dir runs/313197/boolean_eval --n-runs 3 --seed 10000 --max-evals 1000000 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --mem-per-cpu 8G --timeout 1800 --pysr-wall-limit 2400 --job-timeout 14400 --train-split splits/boolean_train.txt
 
 # 8/20
 # chain_a=$(sbatch --parsable -J srb-hpo-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644009 --black-box --timeout 0)
