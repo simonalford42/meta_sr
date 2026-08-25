@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+# 8/25
+# srbench full evaluation for the 300-trial HPO selections
+# chain_a=$(sbatch --parsable -J srb-hpo300-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --ground-truth --black-box --timeout 0)
+# chain_a=$(sbatch --parsable --dependency=afterany:"$chain_a" -J srb-hpo300-r2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_183759_524347 --ground-truth --black-box --timeout 0)
+# chain_a=$(sbatch --parsable --dependency=afterany:"$chain_a" -J srb-hpo300-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --ground-truth --black-box --timeout 0)
+
 # 8/24
 # Counterfactual 300-trial HPO selections. Each driver reuses trials 0-299 and
 # the baseline from the corresponding 500-trial run, submits only the 10-way ×
