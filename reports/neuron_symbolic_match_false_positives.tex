@@ -1,0 +1,124 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.78in]{geometry}
+\usepackage{amsmath,booktabs,microtype}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{accent}{HTML}{245A73}
+\definecolor{warning}{HTML}{8A3B12}
+\definecolor{soft}{HTML}{F2F6F8}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\newcommand{\nrmse}{\mathrm{NRMSE}}
+\newcommand{\phina}{\phi_{\mathrm{Na}}}
+\newcommand{\phik}{\phi_{\mathrm{K}}}
+
+\title{\vspace{-2em}\textcolor{accent}{\bfseries Why four NeuronBench symbolic matches are false positives}}
+\author{Follow-up to runs 313195 and 313196}
+\date{25 August 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1.4em}
+
+\colorbox{soft}{\parbox{0.965\linewidth}{
+\textbf{Answer.} The four Pareto rows with $10^{-3}<\nrmse<0.05$ are not
+genuine recoveries of the physical ground-truth equation.  All four omit the
+variable input $I_{\rm ext}$; three also omit the standalone leak term $-0.3V$.
+They pass only because the current SRBench-style checker rounds their
+target-scaled coefficients and then accepts a constant symbolic difference.
+}}
+
+\section*{The four rows}
+
+Every one has different polynomial support from ground truth.
+
+\begin{center}
+\small
+\begin{tabular}{lccclc}
+\toprule
+Run & World & Seed & Test NRMSE & Missing terms & Rounded error\\
+\midrule
+313196 & \texttt{d\_type} & 10000 & $3.2881\times10^{-3}$ & $I_{\rm ext},\ V$ & $0.001$\\
+313196 & \texttt{d\_type} & 10002 & $3.2881\times10^{-3}$ & $I_{\rm ext},\ V$ & $0.001$\\
+313196 & \texttt{d\_type} & 10004 & $3.1933\times10^{-3}$ & $I_{\rm ext}$ & $0.002$\\
+313195 & \texttt{ca\_rebound} & 10002 & $3.2264\times10^{-3}$ & $I_{\rm ext},\ V$ & $0.002$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The ``rounded error'' column is the symbolic difference returned by the project
+checker.  Each row is accepted by its \emph{difference-is-constant} rule; none
+has zero unrounded difference and none has the full ground-truth support.
+
+\section*{Concrete example: \texttt{d\_type}, seed 10002}
+
+The ground-truth physical equation is
+\begin{align*}
+f_{\rm GT}={}&I_{\rm ext}
+-120V\phina-36V\phik-9V\phi_D-0.3V\\
+&+6000\phina-2772\phik-693\phi_D-16.32.
+\end{align*}
+
+The complexity-27 Pareto equation that the checker labels a match has
+$\nrmse=0.003288$.  After undoing target scaling and expanding it, the equation is
+approximately
+\begin{align*}
+\hat f={}&-120.196V\phina-36.163V\phik-9.168V\phi_D\\
+&+5997.642\phina-2775.432\phik-695.790\phi_D-21.897.
+\end{align*}
+
+Most importantly, $\hat f$ has no $I_{\rm ext}$ term and no standalone $V$
+term.  Its physical difference from the target is approximately
+\begin{align*}
+\hat f-f_{\rm GT}={}&-I_{\rm ext}+0.3V
+-0.196V\phina-0.163V\phik-0.168V\phi_D\\
+&-2.358\phina-3.432\phik-2.790\phi_D-5.577.
+\end{align*}
+This is plainly not an algebraic equivalent of the governing equation.
+
+\section*{Why the checker accepts it}
+
+PySR fits the target divided by its training RMS, which is roughly $5{,}400$ for
+this world.  In the normalized equation, the exact coefficients become roughly
+\[
+I_{\rm ext}:\ 1.84\times10^{-4},
+\qquad
+V:\ -5.53\times10^{-5}.
+\]
+The project checker applies its SRBench-inspired floating-point cleanup before
+symbolic simplification:
+
+\begin{enumerate}
+  \item constants smaller than $10^{-4}$ are replaced by zero;
+  \item other floating constants are rounded to three decimal places; and
+  \item a constant difference is accepted as a symbolic match.
+\end{enumerate}
+
+Consequently, the normalized $V$ coefficient is explicitly zeroed and the
+$I_{\rm ext}$ coefficient rounds to $0.000$.  Other coefficient discrepancies
+also vanish at this resolution.  What remains is the constant $0.001$, and the
+constant-difference rule declares a match.
+
+\section*{Conclusion}
+
+\textcolor{warning}{\textbf{These four rows should not count as NeuronBench
+ground-truth recoveries.}}  The issue is not merely that fitted constants differ
+in their final decimals: the expressions omit variable-dependent terms from the
+physical law.  The held-out NRMSE correctly exposes the omission, whereas the
+combination of target scaling, coarse coefficient rounding, and the
+constant-difference rule produces a symbolic false positive.
+
+For NeuronBench, symbolic checks should operate on canonical expanded equations
+in physical units, or use scale-aware coefficient tolerances that never erase a
+ground-truth variable term.  Numerical recovery and polynomial-support equality
+should remain separately reported.
+
+\vfill
+\footnotesize\raggedright
+Source rows: the saved Pareto frontiers in
+\path{runs/313195/neuron_full_eval/neuron_results.json} and
+\path{runs/313196/neuron_full_eval/neuron_results.json}.  The checker is
+\path{evaluation.check_pysr_symbolic_match}.
+
+\end{document}
