@@ -2602,11 +2602,13 @@ def main():
                              "black-box splits, otherwise gt.")
 
     parser.add_argument("--domain", type=str, default="srbench",
-                        choices=["srbench", "boolean", "neuron"],
+                        choices=["srbench", "boolean", "boolformer", "neuron"],
                         help="Evaluation domain (see domains.py). 'srbench' (default) = "
                              "symbolic regression on PMLB/Feynman datasets. 'boolean' = "
                              "Boolean-function synthesis over band/bor/bxor/bnot with L2 "
-                             "loss. 'neuron' = fully-observable NeuronBench vector fields "
+                             "loss. 'boolformer' = noisy Boolean synthesis and Boolformer "
+                             "PMLB classification over band/bor/bnot. 'neuron' = "
+                             "fully-observable NeuronBench vector fields "
                              "with numerical ground-truth recovery at NRMSE <= 1e-6. "
                              "All domains run through SLURM.")
 
@@ -2619,6 +2621,9 @@ def main():
                         help="Optional held-out split evaluated only during the end-of-run "
                              "final evaluation; never used for evolution, validation, or "
                              "bundle selection.")
+    parser.add_argument("--extra-test-split", action="append", default=[],
+                        help="Additional held-out split for end-of-run final evaluation. "
+                             "May be repeated; never used for evolution or selection.")
     parser.add_argument("--val-n-runs", type=int, default=10,
                         help="Number of seeds per val-split run (used when --val-split is set)")
     parser.add_argument("--val-pysr-wall-limit", type=int, default=1800,
@@ -2820,6 +2825,11 @@ def main():
             args.split = "splits/boolean_train.txt"
         if args.val_split == "splits/barely_unsolvable_val2.txt":
             args.val_split = None  # no separate Boolean val split by default
+    elif args.domain == "boolformer":
+        if args.split == "splits/barely_unsolvable.txt":
+            args.split = "splits/boolformer_noisy_train.txt"
+        if args.val_split == "splits/barely_unsolvable_val2.txt":
+            args.val_split = "splits/boolformer_noisy_val.txt"
     elif args.domain == "neuron":
         if args.split == "splits/barely_unsolvable.txt":
             args.split = "splits/neuron_loocv1.txt"
@@ -2845,7 +2855,7 @@ def main():
         and is_canonical_black_box_split(dataset_names)
     )
     if args.fitness_metric is None:
-        if args.domain == "boolean":
+        if args.domain in ("boolean", "boolformer"):
             args.fitness_metric = "gt-acc"
         else:
             args.fitness_metric = "r2" if args.black_box else "gt"
@@ -2858,11 +2868,11 @@ def main():
             and not get_domain(args.domain).supports_accuracy):
         parser.error(
             f"--fitness-metric {args.fitness_metric} needs a domain that defines an "
-            f"accuracy; --domain {args.domain} does not (only 'boolean' does)."
+            f"accuracy; --domain {args.domain} does not define one."
         )
 
     if args.black_box:
-        for held_out_split in (args.val_split, args.test_split):
+        for held_out_split in (args.val_split, args.test_split, *args.extra_test_split):
             if not held_out_split:
                 continue
             held_out_names = load_dataset_names_from_split(held_out_split)
@@ -2876,8 +2886,8 @@ def main():
     warn_on_dataset_domain_mismatch(dataset_names, args.domain)
     if args.black_box:
         print("[srbench] canonical black-box protocol enabled; fitness_metric=r2")
-    elif args.domain == "boolean":
-        print(f"[boolean] domain defaults: fitness_metric={args.fitness_metric}, "
+    elif args.domain in ("boolean", "boolformer"):
+        print(f"[{args.domain}] domain defaults: fitness_metric={args.fitness_metric}, "
               f"split={args.split}, val_split={args.val_split}")
     elif args.domain == "neuron":
         print(f"[neuron] fully-observable domain: fitness_metric={args.fitness_metric}, "
@@ -3114,6 +3124,7 @@ def main():
         "split": args.split,
         "val_split": args.val_split,
         "test_split": args.test_split,
+        "extra_test_splits": list(args.extra_test_split),
         "val_n_runs": args.val_n_runs,
         "identify_topk": args.identify_topk,
         "reeval_budget": args.reeval_budget,
@@ -3221,6 +3232,7 @@ def main():
                     final_splits.append(args.val_split)
                 if args.test_split:
                     final_splits.append(args.test_split)
+                final_splits.extend(args.extra_test_split)
                 # Build noise map matching evolution settings. With --random-target-noise,
                 # also pass the full set of noise levels so the final eval runs every level
                 # (10 seeds each) and reports avg_gt (fixed per-task level, matching

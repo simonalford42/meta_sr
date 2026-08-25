@@ -127,6 +127,26 @@ Focused NeuronBench training splits containing the first one or first two
 tasks in `neuron_all.txt`, respectively. Use these to compare training on a
 small fixed task subset against the leave-one-out runs.
 
+### `boolformer_noisy_train.txt` / `boolformer_noisy_val.txt` / `boolformer_noisy_test.txt` (24 / 48 / 100)
+
+Fixed, mutually exclusive target functions for adapting PySR to Boolformer's
+noisy Boolean synthesis distribution. Train and validation are balanced over
+requested support sizes 1..6 (4 and 8 targets per size); test is a fresh
+100-target IID draw. Each evaluation seed redraws the observations but not the
+target: 30..300 random-walk points over up to 126 variables, input/output flip
+probability 0..0.10 on the fit sample, and a clean continuation for scoring.
+Use these with `--domain boolformer`.
+
+### `pmlb_classification.txt` (31)
+
+The 31 binary PMLB datasets displayed in Boolformer's classification
+comparison. The `pmlb_classification:` prefix selects the paper's Boolformer
+protocol: columns with more than five values are dropped, 3..5-valued columns
+are one-hot encoded, training is capped at 600 rows after a 75/25 seeded
+shuffle, fewer than 120 Boolean features are required, and scoring uses the
+untouched held-out rows. Deprecated PMLB
+names resolve through the repository's existing `_deprecated_*` fallback.
+
 ## Regenerating
 
 All writes go to `splits/` and each split family is opt-in, so running the

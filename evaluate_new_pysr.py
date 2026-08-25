@@ -151,7 +151,7 @@ def _resolve_final_eval_context(
     """Resolve domain, metric, and base kwargs for a final evaluation."""
     saved = _saved_evolve_config(method_source, method_path)
     domain_name = domain or saved.get("domain") or "srbench"
-    default_metric = "gt-acc" if domain_name == "boolean" else (
+    default_metric = "gt-acc" if domain_name in ("boolean", "boolformer") else (
         "gt" if domain_name == "neuron" else "r2"
     )
     metric_name = fitness_metric or saved.get("fitness_metric") or default_metric
@@ -283,7 +283,9 @@ def cleanup_sr_worktree(submodule_path: Path, wt_dir: Path) -> None:
 def compute_per_run_avgs(result_details: List[Dict], n_runs: int,
                          score_key: str = "run_r2_scores") -> List[float]:
     """Compute per-run averages across datasets."""
-    missing_fill = 0.0 if score_key == "run_gt_scores" else -1.0
+    missing_fill = (0.0 if score_key in {
+        "run_gt_scores", "run_acc_scores", "run_f1_scores"
+    } else -1.0)
     per_run_avgs = []
     for run_idx in range(n_runs):
         run_scores = []
@@ -292,6 +294,19 @@ def compute_per_run_avgs(result_details: List[Dict], n_runs: int,
             run_scores.append(run_values[run_idx] if len(run_values) > run_idx else missing_fill)
         per_run_avgs.append(float(np.mean(run_scores)) if run_scores else missing_fill)
     return per_run_avgs
+
+
+def _classification_avgs(summary: EvalSummary, n_runs: int) -> Tuple[float, float]:
+    """Mean selected-equation accuracy/F1, or NaN for nonclassification domains."""
+    has_acc = any(d.get("run_acc_scores") for d in summary.result_details)
+    has_f1 = any(d.get("run_f1_scores") for d in summary.result_details)
+    acc = (float(np.mean(compute_per_run_avgs(
+        summary.result_details, n_runs, "run_acc_scores"
+    ))) if has_acc else float("nan"))
+    f1 = (float(np.mean(compute_per_run_avgs(
+        summary.result_details, n_runs, "run_f1_scores"
+    ))) if has_f1 else float("nan"))
+    return acc, f1
 
 
 def evaluate_config(
@@ -344,6 +359,9 @@ def print_results(split_summaries: Dict[str, EvalSummary], n_runs: int, method_l
         avg_r2 = float(np.mean(summary.per_run_r2_avgs)) if summary.per_run_r2_avgs else float("nan")
         avg_gt = float(np.mean(summary.per_run_gt_avgs)) if summary.per_run_gt_avgs else float("nan")
         print(f"  {'Avg':>6}  {avg_r2:>10.4f}  {avg_gt:>10.4f}")
+        avg_acc, avg_f1 = _classification_avgs(summary, n_runs)
+        if np.isfinite(avg_acc) or np.isfinite(avg_f1):
+            print(f"  Selected-equation accuracy={avg_acc:.4f}, F1={avg_f1:.4f}")
 
         # Per-dataset breakdown
         print(f"\n  Per-dataset breakdown:")
@@ -597,7 +615,10 @@ def run_final_evaluation(
 
             avg_r2 = float(np.mean(summary.per_run_r2_avgs)) if summary.per_run_r2_avgs else float("nan")
             avg_gt = float(np.mean(summary.per_run_gt_avgs)) if summary.per_run_gt_avgs else float("nan")
-            print(f"  {split_name}: R²={avg_r2:.4f}, GT={avg_gt:.4f}")
+            avg_acc, avg_f1 = _classification_avgs(summary, n_runs)
+            class_suffix = (f", accuracy={avg_acc:.4f}, F1={avg_f1:.4f}"
+                            if np.isfinite(avg_acc) or np.isfinite(avg_f1) else "")
+            print(f"  {split_name}: R²={avg_r2:.4f}, GT={avg_gt:.4f}{class_suffix}")
 
             if wandb_run is not None:
                 import wandb
@@ -622,6 +643,11 @@ def run_final_evaluation(
     summary_data.update(_bundle_summary_fields(bundle))
     for split_name, s in split_summaries.items():
         summary_data[split_name] = asdict(s)
+        avg_acc, avg_f1 = _classification_avgs(s, n_runs)
+        if np.isfinite(avg_acc):
+            summary_data[split_name]["avg_accuracy"] = avg_acc
+        if np.isfinite(avg_f1):
+            summary_data[split_name]["avg_f1"] = avg_f1
     if multi_noise:
         summary_data["noise_levels"] = list(noise_levels)
         summary_data["multi_noise"] = multi_noise_data
@@ -639,6 +665,11 @@ def run_final_evaluation(
             avg_gt = float(np.mean(s.per_run_gt_avgs)) if s.per_run_gt_avgs else float("nan")
             wandb.summary[f"final_eval_{split_name}_avg_r2"] = avg_r2
             wandb.summary[f"final_eval_{split_name}_avg_gt"] = avg_gt
+            avg_acc, avg_f1 = _classification_avgs(s, n_runs)
+            if np.isfinite(avg_acc):
+                wandb.summary[f"final_eval_{split_name}_avg_accuracy"] = avg_acc
+            if np.isfinite(avg_f1):
+                wandb.summary[f"final_eval_{split_name}_avg_f1"] = avg_f1
             if multi_noise:
                 wandb.summary[f"final_eval_{split_name}_avg_gt_all_noise"] = \
                     multi_noise_data[split_name]["avg_gt_all_noise"]
@@ -711,7 +742,7 @@ def main() -> None:
                         help="Output directory (default: outputs/eval_pysr_TIMESTAMP)")
     parser.add_argument("--no-cache", action="store_true",
                         help="Disable evaluation caching")
-    parser.add_argument("--domain", choices=["srbench", "boolean", "neuron"],
+    parser.add_argument("--domain", choices=["srbench", "boolean", "boolformer", "neuron"],
                         default=None,
                         help="Evaluation domain (inferred from evolve run_data when possible)")
     parser.add_argument("--fitness-metric",

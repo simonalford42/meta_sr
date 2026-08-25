@@ -88,6 +88,10 @@ class Domain:
         """
         return None
 
+    def f1_score(self, y_true, y_pred) -> Optional[float]:
+        """Binary F1 for classification domains, otherwise ``None``."""
+        return None
+
     # --- LLM-prompt facing description ------------------------------------
     # The meta-evolution prompts (operator_types.py) tell the LLM what it is
     # optimizing. That framing is domain-specific: an operator tuned for
@@ -353,6 +357,15 @@ class LogicBenchDomain(Domain):
         return float(accuracy(np.asarray(y_true, dtype=float),
                               np.asarray(y_pred, dtype=float)))
 
+    def f1_score(self, y_true, y_pred) -> Optional[float]:
+        from sklearn.metrics import f1_score
+
+        target = np.asarray(y_true, dtype=float).reshape(-1).astype(int)
+        pred = np.round(np.nan_to_num(
+            np.asarray(y_pred, dtype=float).reshape(-1), nan=0.5
+        )).clip(0, 1).astype(int)
+        return float(f1_score(target, pred, zero_division=0))
+
     def pareto_metrics(self, *, equations_df, predict_fn, y_val):
         """Per-frontier-row accuracy + exact-match flag on the held-out rows.
 
@@ -453,6 +466,64 @@ class LogicBenchDomain(Domain):
             "checked_count": checked,
             "full_table_verified": full is not None,
         }
+
+
+class BoolformerDomain(LogicBenchDomain):
+    """Noisy Boolformer synthesis plus its PMLB classification benchmark.
+
+    Synthetic tasks fit corrupted random-walk observations and are scored on a
+    clean continuation. PMLB tasks use Boolformer's categorical-to-Boolean
+    preprocessing and benchmark-defined train/test split. XOR is intentionally
+    excluded because Boolformer's target language is AND/OR/NOT.
+    """
+
+    name = "boolformer"
+    prompt_task_summary = (
+        "noisy Boolformer-style Boolean synthesis and binary PMLB "
+        "classification tasks over AND, OR, and NOT"
+    )
+    prompt_recovery_criterion = (
+        "recover a Boolean formula that perfectly matches clean held-out rows"
+    )
+    prompt_quality_criterion = (
+        "discover compact formulas with high clean held-out classification accuracy"
+    )
+
+    def load_dataset(self, dataset_name, max_samples=None, data_seed=None):
+        from boolformer_tasks import load_boolformer_train_validation
+
+        X_train, y_train, _, _, target = load_boolformer_train_validation(
+            dataset_name, max_samples=max_samples,
+            data_seed=data_seed if data_seed is not None else 0,
+        )
+        return X_train, y_train, target
+
+    def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
+        from boolformer_tasks import load_boolformer_train_validation
+
+        return load_boolformer_train_validation(
+            dataset_name, max_samples=max_samples,
+            data_seed=data_seed if data_seed is not None else 0,
+        )
+
+    def base_pysr_kwargs(self):
+        from boolean_pysr import get_boolean_pysr_kwargs
+
+        kwargs = get_boolean_pysr_kwargs(
+            maxsize=60, maxdepth=30, niterations=50,
+        )
+        kwargs["binary_operators"] = kwargs["binary_operators"][:2]
+        kwargs.pop("extra_sympy_mappings", None)
+        return kwargs
+
+    def base_engine_kwargs(self):
+        kwargs = super().base_engine_kwargs()
+        kwargs.update({
+            "binary_operators": ["band", "bor"],
+            "maxsize": 60,
+            "maxdepth": 30,
+        })
+        return kwargs
 
 
 class NeuronBenchDomain(Domain):
@@ -611,6 +682,7 @@ class NeuronBenchDomain(Domain):
 DOMAINS: Dict[str, Domain] = {
     "srbench": SRBenchDomain(),
     "boolean": LogicBenchDomain(),
+    "boolformer": BoolformerDomain(),
     "neuron": NeuronBenchDomain(),
 }
 
@@ -624,12 +696,24 @@ def get_domain(name: str) -> Domain:
 def warn_on_dataset_domain_mismatch(dataset_names, domain_name: str) -> None:
     """Warn (don't error) when dataset names look like they belong to the other
     domain — e.g. ``bool:`` names under --domain srbench."""
-    boolean_like = [n for n in dataset_names
+    names = list(dataset_names)
+    boolean_like = [n for n in names
                     if n.startswith("bool:") or n.startswith("iwls:")]
-    if domain_name == "boolean" and len(boolean_like) < len(list(dataset_names)):
+    boolformer_like = [n for n in names if n.startswith(
+        ("boolformer_noisy:", "pmlb_classification:")
+    )]
+    if domain_name == "boolean" and len(boolean_like) < len(names):
         print(f"WARNING: --domain boolean but "
-              f"{len(list(dataset_names)) - len(boolean_like)} dataset name(s) "
+              f"{len(names) - len(boolean_like)} dataset name(s) "
               "lack a bool:/iwls: prefix", flush=True)
+    elif domain_name == "boolformer" and len(boolformer_like) < len(names):
+        print(f"WARNING: --domain boolformer but "
+              f"{len(names) - len(boolformer_like)} dataset name(s) lack a "
+              "boolformer_noisy:/pmlb_classification: prefix", flush=True)
+    elif domain_name != "boolformer" and boolformer_like:
+        print(f"WARNING: --domain {domain_name} but {len(boolformer_like)} "
+              "dataset name(s) use a Boolformer prefix "
+              "(did you mean --domain boolformer?)", flush=True)
     elif domain_name != "boolean" and boolean_like:
         print(f"WARNING: --domain {domain_name} but {len(boolean_like)} "
               "dataset name(s) have a bool:/iwls: prefix "

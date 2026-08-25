@@ -126,6 +126,9 @@ class PySRCacheEntry(Base):
     # "acc"/"gt-acc" fitness metrics). Nullable: entries written before this
     # column existed lack it and are re-run when one of those metrics is active.
     acc_score = Column(Float, nullable=True)
+    # Binary F1 of the same selected equation. Reporting-only; evolution still
+    # uses acc_score/gt_match_score.
+    f1_score = Column(Float, nullable=True)
     gt_match_score = Column(Float, nullable=True)
     best_equation = Column(Text, nullable=True)
     # Frontier expression that matched GT (only set when gt_match_score == 1.0);
@@ -416,6 +419,12 @@ class PySRCacheDB:
                     "ALTER TABLE pysr_evaluations ADD COLUMN acc_score FLOAT"
                 ))
                 conn.commit()
+        if "f1_score" not in columns:
+            with self.engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE pysr_evaluations ADD COLUMN f1_score FLOAT"
+                ))
+                conn.commit()
         if "num_evaluations" not in columns:
             with self.engine.connect() as conn:
                 conn.execute(text(
@@ -571,6 +580,7 @@ class PySRCacheDB:
             PySRCacheEntry.num_evaluations,
             PySRCacheEntry.pareto_frontier_json,
             PySRCacheEntry.acc_score,
+            PySRCacheEntry.f1_score,
         ).where(PySRCacheEntry.request_hash == request_hash)
 
         with Session(self.engine) as session:
@@ -602,6 +612,7 @@ class PySRCacheDB:
                     "num_evaluations": result[10],
                     "pareto_frontier": frontier,
                     "acc_score": result[12],
+                    "f1_score": result[13],
                 }
         return None
 
@@ -621,6 +632,7 @@ class PySRCacheDB:
         r2_score: float = 0.0,
         r2_frontier_score: Optional[float] = None,
         acc_score: Optional[float] = None,
+        f1_score: Optional[float] = None,
         best_equation: Optional[str] = None,
         best_loss: float = float("inf"),
         error: Optional[str] = None,
@@ -655,6 +667,7 @@ class PySRCacheDB:
             r2_score=r2_score,
             r2_frontier_score=r2_frontier_score,
             acc_score=acc_score,
+            f1_score=f1_score,
             gt_match_score=gt_match_score,
             best_equation=best_equation,
             gt_matched_equation=gt_matched_equation,
@@ -708,6 +721,7 @@ class PySRCacheDB:
                 r2_score=entry["r2_score"],
                 r2_frontier_score=entry.get("r2_frontier_score"),
                 acc_score=entry.get("acc_score"),
+                f1_score=entry.get("f1_score"),
                 gt_match_score=entry.get("gt_match_score"),
                 best_equation=entry.get("best_equation"),
                 gt_matched_equation=entry.get("gt_matched_equation"),

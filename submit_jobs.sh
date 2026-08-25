@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# 8/25 — Evolve PySR on noisy Boolformer targets. Validation is used only for
+# monitoring; both the 100 synthetic test targets and PMLB are final-eval-only.
+# This is intentionally commented: uncomment it, then run `bash submit_jobs.sh`.
+# sbatch -J boolformer-noisy run.sh evolve_pysr.py --domain boolformer --operator-type all --generations 30 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt-acc --reeval population --n-reevals 10 --models best --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --mem-per-cpu 8G --pysr-wall-limit 2400 --job-timeout 14400 --split splits/boolformer_noisy_train.txt --val-split splits/boolformer_noisy_val.txt --val-n-runs 3 --test-split splits/boolformer_noisy_test.txt --extra-test-split splits/pmlb_classification.txt --seed 0
+
 # 8/25 — Full 62-task MIPS raw-checkpoint reproduction.
 # Each processed task gets one CPU and a strict 3600-second child-process cap;
 # five hidden_dim > 10 tasks are recorded as upstream-protocol skips. The

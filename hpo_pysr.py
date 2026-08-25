@@ -1384,7 +1384,7 @@ def main():
                              "equation (Boolean domain only); 'gt-acc' = 1.0 when solved, "
                              "otherwise that accuracy")
     parser.add_argument("--domain", type=str, default="srbench",
-                        choices=["srbench", "boolean"],
+                        choices=["srbench", "boolean", "boolformer"],
                         help="Evaluation domain (see domains.py). The domain owns the "
                              "base PySR config (operators, loss); its fixed params are "
                              "dropped from the HPO search space automatically. 'boolean' "
@@ -1452,20 +1452,23 @@ def main():
 
     # Boolean-domain defaults: applied only where the user left the SRBench
     # defaults in place, so explicit flags still win.
-    if args.domain == "boolean":
+    if args.domain in ("boolean", "boolformer"):
         if args.fitness_metric == "gt":  # the argparse default
             args.fitness_metric = "gt-acc"
         if args.split == "splits/train.txt":
-            args.split = "splits/boolean_train.txt"
+            args.split = ("splits/boolformer_noisy_train.txt"
+                          if args.domain == "boolformer"
+                          else "splits/boolean_train.txt")
         if args.val_split == "splits/val.txt":
-            args.val_split = None
-        print(f"[boolean] domain defaults: fitness_metric={args.fitness_metric}, "
+            args.val_split = ("splits/boolformer_noisy_val.txt"
+                              if args.domain == "boolformer" else None)
+        print(f"[{args.domain}] domain defaults: fitness_metric={args.fitness_metric}, "
               f"split={args.split}, val_split={args.val_split}")
     if (args.fitness_metric in ACCURACY_METRICS
             and not get_domain(args.domain).supports_accuracy):
         parser.error(
             f"--fitness-metric {args.fitness_metric} needs a domain that defines an "
-            f"accuracy; --domain {args.domain} does not (only 'boolean' does)."
+            f"accuracy; --domain {args.domain} does not define one."
         )
 
     if args.n_runs_final < 1:
