@@ -46,6 +46,9 @@ A brief follow-up checks these numerical recoveries against the symbolic ground
 truth: [PDF](neuron_symbolic_recovery_investigation.pdf),
 [LaTeX source](neuron_symbolic_recovery_investigation.tex), and
 [machine-readable analysis](neuron_symbolic_recovery_analysis.json).
+The subsequent [manual whole-frontier comparison](neuron_manual_match_comparison.pdf)
+reports numerical, project-symbolic, and manually adjudicated recovery side by
+side for both reduced-training runs.
 
 ## Planned leave-one-out experiment
 

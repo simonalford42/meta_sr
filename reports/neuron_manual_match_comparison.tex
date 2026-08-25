@@ -1,0 +1,190 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.72in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,microtype}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+
+\definecolor{accent}{HTML}{245A73}
+\definecolor{soft}{HTML}{F2F6F8}
+\definecolor{note}{HTML}{8A3B12}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlist[itemize]{leftmargin=1.3em,itemsep=2pt,topsep=2pt}
+\newcommand{\nrmse}{\mathrm{NRMSE}}
+\newcommand{\yes}{\checkmark}
+\newcommand{\no}{--}
+
+\title{\vspace{-2em}\textcolor{accent}{\bfseries NeuronBench recovery by numerical, symbolic, and manual matching}}
+\author{Top-1 run 313196 and top-2 run 313195}
+\date{25 August 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1.4em}
+
+\colorbox{soft}{\parbox{0.965\linewidth}{
+\textbf{Main result.} Across 45 held-out fits, the strict numerical threshold
+finds 29 recoveries, the existing project symbolic checker finds 33, and manual
+whole-frontier inspection finds 35.  All 29 numerical recoveries are manually
+valid.  The project checker has two manual false positives and four manual false
+negatives.  Manual inspection additionally accepts six scientifically recognizable
+current-balance laws whose NRMSE is just above $10^{-6}$.
+}}
+
+\section*{Runs and three match criteria}
+
+Run \textbf{313196} (``top-1'') evolved on \texttt{z\_rebound} and was evaluated
+on five other worlds with five seeds each.  Run \textbf{313195} (``top-2'')
+evolved on \texttt{z\_rebound} and \texttt{h\_sag} and was evaluated on four
+other worlds with five seeds each.  Every criterion searches the complete saved
+Pareto frontier.
+
+\begin{itemize}
+  \item \textbf{NRMSE match:} some row has held-out $\nrmse\le10^{-6}$.
+  \item \textbf{Project symbolic match:} the current
+  \path{evaluation.check_pysr_symbolic_match} logic, including the $R^2>0.5$
+  guard, three-decimal float rounding, and constant-difference/ratio rules.
+  \item \textbf{Manual match:} after undoing target-RMS scaling and expanding in
+  physical units, some row contains every required current-balance monomial, no
+  material extra monomial, and clearly close fitted coefficients.  Tiny floating
+  artifacts are allowed; missing $I_{\rm ext}$ or leak-$V$ is not.
+\end{itemize}
+
+Two inexpensive GPT-5.6 Luna reviewers each inspected one complete evolution run
+(25 and 20 frontiers).  A third Luna reviewer audited all 45 decisions.  The
+primary and audit decisions agreed on 44/45 cases before adjudication.  Selected
+rows were programmatically checked against the correct source run after an initial
+cross-run cache contamination was detected and corrected.
+
+\section*{Aggregate results}
+
+\begin{center}
+\begin{tabular}{llrrrr}
+\toprule
+Regime & Training worlds & Fits & NRMSE & Project symbolic & Manual\\
+\midrule
+Top-1 (313196) & \texttt{z\_rebound} & 25 & 14 (56\%) & 19 (76\%) & 19 (76\%)\\
+Top-2 (313195) & \texttt{z\_rebound}, \texttt{h\_sag} & 20 & 15 (75\%) & 14 (70\%) & 16 (80\%)\\
+\midrule
+Combined & & 45 & 29 (64\%) & 33 (73\%) & 35 (78\%)\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The identical top-1 totals for symbolic and manual matching hide a case swap:
+manual review adds \texttt{ca\_rebound} seed 10000 but rejects the symbolic-only
+\texttt{d\_type} seed 10003.
+
+\begin{center}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Regime & Held-out world & Fits & NRMSE & Project symbolic & Manual\\
+\midrule
+Top-1 & \texttt{h\_sag} & 5 & 0 & 1 & 1\\
+ & \texttt{na\_fatigue} & 5 & 5 & 5 & 5\\
+ & \texttt{ca\_rebound} & 5 & 2 & 3 & 4\\
+ & \texttt{d\_type} & 5 & 3 & 5 & 4\\
+ & \texttt{textbook\_M} & 5 & 4 & 5 & 5\\
+\midrule
+Top-2 & \texttt{na\_fatigue} & 5 & 5 & 5 & 5\\
+ & \texttt{ca\_rebound} & 5 & 4 & 3 & 4\\
+ & \texttt{d\_type} & 5 & 3 & 4 & 4\\
+ & \texttt{textbook\_M} & 5 & 3 & 2 & 3\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{Agreement and disagreement}
+
+The table below partitions all 45 fits.  A check denotes that the criterion calls
+the frontier a match.
+
+\begin{center}
+\begin{tabular}{ccccl}
+\toprule
+NRMSE & Symbolic & Manual & Count & Interpretation\\
+\midrule
+\yes & \yes & \yes & 26 & unanimous recovery\\
+\yes & \no  & \yes & 3 & symbolic-checker false negatives\\
+\no  & \yes & \yes & 5 & recognizable law just above NRMSE threshold\\
+\no  & \no  & \yes & 1 & manual-only recognizable law\\
+\no  & \yes & \no  & 2 & symbolic-checker false positives\\
+\no  & \no  & \no  & 8 & unanimous non-recovery\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Manual matches above the numerical threshold.}  Six frontiers have
+complete current-balance structure and close coefficients but best NRMSE above
+$10^{-6}$:
+\begin{center}
+\small
+\begin{tabular}{llrrl}
+\toprule
+Run & World & Seed & Best NRMSE & Project symbolic?\\
+\midrule
+313196 & \texttt{h\_sag} & 10004 & $1.856\times10^{-6}$ & yes\\
+313196 & \texttt{ca\_rebound} & 10000 & $7.376\times10^{-6}$ & no\\
+313196 & \texttt{ca\_rebound} & 10001 & $4.282\times10^{-6}$ & yes\\
+313196 & \texttt{d\_type} & 10002 & $7.455\times10^{-6}$ & yes\\
+313196 & \texttt{textbook\_M} & 10002 & $2.112\times10^{-5}$ & yes\\
+313195 & \texttt{d\_type} & 10001 & $5.235\times10^{-5}$ & yes\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Symbolic false positives.}  Both are \texttt{d\_type}, seed 10003:
+run 313196 has NRMSE $7.94\times10^{-4}$ and run 313195 has
+$8.10\times10^{-4}$.  Manual expansion finds a missing or materially inaccurate
+leak/intercept contribution.  Coarse rounding followed by the checker's
+constant-difference rule erases the discrepancy.
+
+\textbf{Symbolic false negatives.}  Four manually valid frontiers fail the
+project checker: run 313196 \texttt{ca\_rebound} seed 10000, plus run 313195
+\texttt{ca\_rebound} seed 10000, \texttt{d\_type} seed 10004, and
+\texttt{textbook\_M} seed 10001.  The latter three have NRMSE between
+$2.5\times10^{-10}$ and $3.1\times10^{-7}$; factorization-sensitive rounding,
+not a scientific mismatch, causes their symbolic failures.
+
+\section*{The one reviewer disagreement}
+
+The top-1 primary reviewer accepted \texttt{ca\_rebound}, seed 10000; the audit
+reviewer rejected it.  Canonical expansion gives complete ground-truth support,
+no extra monomials, and NRMSE $7.376\times10^{-6}$.  Representative physical
+coefficients are
+\[
+I_{\rm ext}:\ 0.999908\ (1),\qquad
+V:\ -0.297741\ (-0.3),\qquad
+V\phi_T:\ -3.200709\ (-3.2),\qquad
+\phi_T:\ 384.027\ (384),
+\]
+where parentheses contain ground truth.  The largest relative discrepancy among
+required coefficients is about $0.8\%$ (the leak-$V$ coefficient), so the final
+manual label is \textbf{accept}.  This medium-confidence adjudication is retained
+explicitly in the machine-readable record.
+
+\section*{Interpretation}
+
+The $10^{-6}$ NRMSE rule is conservative but clean in this sample: every numerical
+recovery survives manual inspection.  The project symbolic checker increases
+coverage, but target scaling and representation-dependent rounding create both
+false positives and false negatives.  Manual inspection yields the broadest count
+(35/45) under the stated physical-law rubric, but it is a judgment-based measure,
+not a replacement for numerical reporting.
+
+The most transparent summary is therefore to retain all three columns.  For an
+automated future substitute for the manual column, compare canonical expanded
+polynomials in physical units using scale-aware coefficient tolerances, while
+requiring every ground-truth variable term to remain present.
+
+\vfill
+\footnotesize\raggedright
+Machine-readable judgments and all 45 combined labels:
+\path{reports/neuron_manual_match_comparison.json}.  Merge and validation script:
+\path{scripts/merge_neuron_manual_matches.py}.  Source frontiers:
+\path{runs/313196/neuron_full_eval/neuron_results.json} and
+\path{runs/313195/neuron_full_eval/neuron_results.json}.
+
+\end{document}

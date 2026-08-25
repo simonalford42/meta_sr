@@ -1,0 +1,1155 @@
+{
+  "format_version": 1,
+  "protocol": {
+    "audit_reviewer": "gpt-5.6-luna audit of all 45 judgments",
+    "manual_match": "LLM manual inspection of the entire frontier after undoing target RMS scaling; require every physical ground-truth monomial, no material extras, and clearly close coefficients; tiny numerical artifacts allowed",
+    "nrmse_match": "any Pareto row has held-out NRMSE <= 1e-6",
+    "primary_reviewers": "two independent gpt-5.6-luna subagents, one per evolution run",
+    "project_symbolic_match": "evaluation.check_pysr_symbolic_match on every frontier row passing the project's R2 > 0.5 gate; three-decimal rounding and constant difference/ratio rules retained",
+    "reviewer_agreement": "44/45 before adjudication",
+    "reviewer_disagreements": [
+      [
+        "313196",
+        "ca_rebound",
+        10000
+      ]
+    ],
+    "run_files": {
+      "313195": "runs/313195/neuron_full_eval/neuron_results.json",
+      "313196": "runs/313196/neuron_full_eval/neuron_results.json"
+    }
+  },
+  "records": [
+    {
+      "adjudication": null,
+      "audit_confidence": "medium",
+      "audit_match": false,
+      "audit_rationale": "best frontier remains materially inaccurate (NRMSE 7.8e-4; no complete close-coefficient support)",
+      "best_nrmse": 0.000949748087719666,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": false,
+      "manual_rationale": "All frontier candidates for this seed omit the standalone leak-V monomial, so none can represent the complete current balance.",
+      "manual_selected_row": null,
+      "nrmse_match": false,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10000,
+      "training_regime": "top-1",
+      "world": "h_sag"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "medium",
+      "audit_match": false,
+      "audit_rationale": "best frontier remains materially inaccurate (NRMSE 7.9e-4)",
+      "best_nrmse": 0.0007862128433890718,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": false,
+      "manual_rationale": "All frontier candidates for this seed omit the standalone leak-V monomial, so none can represent the complete current balance.",
+      "manual_selected_row": null,
+      "nrmse_match": false,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10001,
+      "training_regime": "top-1",
+      "world": "h_sag"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "medium",
+      "audit_match": false,
+      "audit_rationale": "best frontier remains materially inaccurate (NRMSE 7.9e-4)",
+      "best_nrmse": 0.0007858645922764892,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": false,
+      "manual_rationale": "All frontier candidates for this seed omit the standalone leak-V monomial, so none can represent the complete current balance.",
+      "manual_selected_row": null,
+      "nrmse_match": false,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10002,
+      "training_regime": "top-1",
+      "world": "h_sag"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "medium",
+      "audit_match": false,
+      "audit_rationale": "best frontier remains materially inaccurate (NRMSE 7.9e-4)",
+      "best_nrmse": 0.0007862120981146624,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": false,
+      "manual_rationale": "All frontier candidates for this seed omit the standalone leak-V monomial, so none can represent the complete current balance.",
+      "manual_selected_row": null,
+      "nrmse_match": false,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10003,
+      "training_regime": "top-1",
+      "world": "h_sag"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "all 9 GT monomials present; no extras; physical coefficients within ~0.08% (NRMSE 1.86e-6)",
+      "best_nrmse": 1.855812681790278e-06,
+      "evolution_run": "313196",
+      "manual_confidence": "medium",
+      "manual_match": true,
+      "manual_rationale": "The frontier row contains i_ext, leak V, Na, K, and Ih current-balance monomials with close coefficients; only tiny numerical residual terms remain.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(((x0 * 0.00018218069930483167) + ((-0.5050226850491315 - (x1 * 0.0065587368136008385)) * x3)) + ((x1 * -0.00011422418076141828) + ((x2 + -0.0027235599901005566) * ((x1 * -0.021862463933629037) - -1.0931232893709022)))) + ((x4 * -0.02732125219330007) + ((x1 * -0.0009108905723909301) * x4))",
+        "pysr_index": 16,
+        "test_nrmse": 1.855812681790278e-06
+      },
+      "nrmse_match": false,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10004,
+      "training_regime": "top-1",
+      "world": "h_sag"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 9.058708663375211e-11,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains i_ext, leak V, Na(V,phi), and K(V,phi) monomials with coefficients essentially exact after RMS undo; only negligible numerical artifacts.",
+      "manual_selected_row": {
+        "complexity": 25,
+        "equation": "(((x2 * 1.104794915132117) + ((x3 - -0.0058874476268191995) * (-0.5104152480398235 + (-0.006628769436286725 * x1)))) + ((x2 + 0.0007337682900262576) * (x1 * -0.022095898200152377))) + (0.00018413251247425898 * x0)",
+        "pysr_index": 12,
+        "test_nrmse": 1.42723235439149e-09
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 8,
+      "seed": 10000,
+      "training_regime": "top-1",
+      "world": "na_fatigue"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 9.7605707649982e-11,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains i_ext, leak V, Na(V,phi), and K(V,phi) monomials with coefficients essentially exact after RMS undo; only negligible numerical artifacts.",
+      "manual_selected_row": {
+        "complexity": 23,
+        "equation": "(((((x1 * -0.022095898272261976) + 1.1047949125682779) * ((x2 + 0.002499999696092487) + (x3 * 0.300000000035664))) + (x3 * -0.8418537238697162)) + (x0 * 0.00018413248724508962)) + -0.005767028629413035",
+        "pysr_index": 11,
+        "test_nrmse": 1.9708825055423143e-10
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 5,
+      "seed": 10001,
+      "training_regime": "top-1",
+      "world": "na_fatigue"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 4.6313900599656606e-11,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains i_ext, leak V, Na(V,phi), and K(V,phi) monomials with coefficients essentially exact after RMS undo; only negligible numerical artifacts.",
+      "manual_selected_row": {
+        "complexity": 27,
+        "equation": "(((x0 * 0.00018413251757144872) + -0.003267023239908434) + ((x1 * x3) * -0.0066287696695966425)) + (x2 + ((x3 * -0.5104152532848706) + (((x1 * 0.022095898453955674) - 0.10479491050816653) * (-0.002499989015127837 - x2))))",
+        "pysr_index": 13,
+        "test_nrmse": 4.294689253943315e-09
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 4,
+      "seed": 10002,
+      "training_regime": "top-1",
+      "world": "na_fatigue"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 5.038312440852396e-10,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains i_ext, leak V, Na(V,phi), and K(V,phi) monomials with coefficients essentially exact after RMS undo; only negligible numerical artifacts.",
+      "manual_selected_row": {
+        "complexity": 25,
+        "equation": "(((1.104794911138597 + (-0.022095898280756653 * x1)) * (x2 + ((x3 + -0.009066669449440722) * 0.29999999712995734))) + ((x3 * -0.841853717310132) + (0.00018413248089701963 * x0))) + (-0.0001153406313518021 * x1)",
+        "pysr_index": 11,
+        "test_nrmse": 1.1585011181765454e-09
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 5,
+      "seed": 10003,
+      "training_regime": "top-1",
+      "world": "na_fatigue"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 7.015464635714016e-10,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains i_ext, leak V, Na(V,phi), and K(V,phi) monomials with coefficients essentially exact after RMS undo; only negligible numerical artifacts.",
+      "manual_selected_row": {
+        "complexity": 27,
+        "equation": "((x0 * 0.00018413249053937704) + (-0.5418537259320632 * x3)) + ((x2 + (((x2 + (x3 * 0.3000000077570009)) * ((x1 * -0.02209589820481349) + 0.1047949128217352)) + -0.003005040894409567)) + (x1 * -5.523970010040059e-5))",
+        "pysr_index": 12,
+        "test_nrmse": 2.2327969503295622e-09
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 4,
+      "seed": 10004,
+      "training_regime": "top-1",
+      "world": "na_fatigue"
+    },
+    {
+      "adjudication": {
+        "basis": "Canonical physical expansion has complete ground-truth support, no extra monomials, and coefficient deviations below about 0.8%.",
+        "decision": "accept"
+      },
+      "audit_confidence": "medium",
+      "audit_match": false,
+      "audit_rationale": "best frontier NRMSE 7.38e-6 but coefficients/support not sufficiently close; no complete manual match",
+      "best_nrmse": 7.37639133101571e-06,
+      "evolution_run": "313196",
+      "manual_confidence": "medium",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and T-current monomials with close coefficients; only tiny numerical residual terms remain.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(((x0 * 0.00017853303294133375) + ((((x1 * -0.0005714847700616695) + 0.06856783290436048) * x4) + ((((((x3 * -0.39995881989104987) + x2) + x3) + 0.004962319677987413) + x2) * ((x1 * -0.010713024267771912) + 0.5356489957518025)))) + (x3 * -0.8163642587583763)) + -0.0055679912672880515",
+        "pysr_index": 17,
+        "test_nrmse": 7.37639133101571e-06
+      },
+      "nrmse_match": false,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10000,
+      "training_regime": "top-1",
+      "world": "ca_rebound"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "all GT support; no extras; coefficient deviations <=0.02 absolute on major terms and ~0.06% on phi_t terms (NRMSE 4.28e-6)",
+      "best_nrmse": 4.282421230564306e-06,
+      "evolution_run": "313196",
+      "manual_confidence": "medium",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and T-current monomials with close coefficients; only tiny numerical residual terms remain.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "((((((x4 * 0.08893903385555717) + x3) * ((x1 * -0.00599997067705) + -0.4619981170812599)) + (((x2 * -0.020000069519863436) * x1) + (((x1 * -4.986601906608788e-5) + (x4 * 0.1050854859093571)) + x2))) * 1.071294044265231) + -0.0029118940898905502) + (x0 * 0.00017855652078925475)",
+        "pysr_index": 17,
+        "test_nrmse": 4.282421230564306e-06
+      },
+      "nrmse_match": false,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10001,
+      "training_regime": "top-1",
+      "world": "ca_rebound"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 2.8183817330305586e-09,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and T-current monomials with close coefficients; only tiny numerical residual terms remain.",
+      "manual_selected_row": {
+        "complexity": 33,
+        "equation": "((1.4131506610661937 * (-0.003957228835733426 + (((-0.01516181820771162 * x1) + 0.7580909115698408) * ((0.0024999957497020414 + (0.026666673995369452 * x4)) + x2)))) + (0.00017854946924694413 * x0)) + ((x4 * 0.03999505955134525) + (((x1 * -0.00642778003125955) + -0.4949390606395271) * x3))",
+        "pysr_index": 16,
+        "test_nrmse": 2.8183817330305586e-09
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10002,
+      "training_regime": "top-1",
+      "world": "ca_rebound"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "medium",
+      "audit_match": false,
+      "audit_rationale": "best frontier NRMSE 7.71e-4; materially inaccurate",
+      "best_nrmse": 0.0007705978106345502,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": false,
+      "manual_rationale": "No frontier candidate for this seed contains the complete required i_ext, leak, Na, K, and T-current balance; the missing required terms are substantive.",
+      "manual_selected_row": null,
+      "nrmse_match": false,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10003,
+      "training_regime": "top-1",
+      "world": "ca_rebound"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 3.8082046694641104e-08,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and T-current monomials with close coefficients; only tiny numerical residual terms remain.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(x1 * -1.5720702424142125e-5) + ((((1.0712967513189962 * ((x4 * 0.06400006392414209) + x2)) + (((-0.006427779324405605 * x1) + -0.4949389769108335) * (x3 + 0.005887702971721751))) + (-0.02142593315260709 * ((x2 + (0.02666664235987515 * x4)) * x1))) + (0.00017854926992967414 * x0))",
+        "pysr_index": 17,
+        "test_nrmse": 3.8082046694641104e-08
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 2,
+      "seed": 10004,
+      "training_regime": "top-1",
+      "world": "ca_rebound"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 6.193136408039091e-10,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and D-current monomials with close coefficients; only tiny numerical residual terms remain.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(((((x2 * (x1 * -0.020000000062861102)) + x2) + -0.00271999893832104) * 1.1052224493823335) + (x0 * 0.00018420373975406112)) + (((x3 * (-0.5106127727042081 + (x1 * -0.006631334707907481))) + (x1 * -5.526110225428007e-5)) + (((x1 * -0.0016578336906062853) + -0.1276531936315549) * x4))",
+        "pysr_index": 16,
+        "test_nrmse": 6.193136408039091e-10
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 2,
+      "seed": 10000,
+      "training_regime": "top-1",
+      "world": "d_type"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 7.53805835158897e-09,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and D-current monomials with close coefficients; only tiny numerical residual terms remain.",
+      "manual_selected_row": {
+        "complexity": 33,
+        "equation": "(((x3 + (x4 * 0.24999996761014454)) * (-0.5106127600556124 + (x1 * -0.006631334621555483))) + -0.0030062168762386822) + (((((x2 + 0.005000015410173275) + x2) * -0.011052224544181621) * x1) + ((x0 * 0.0001842037274906372) + ((x2 * 0.1052224388366114) + x2)))",
+        "pysr_index": 16,
+        "test_nrmse": 7.53805835158897e-09
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10001,
+      "training_regime": "top-1",
+      "world": "d_type"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "all GT support/no extras; coefficients close (<0.03% major, ~0.01% phi_d), NRMSE 7.46e-6",
+      "best_nrmse": 7.455289917368202e-06,
+      "evolution_run": "313196",
+      "manual_confidence": "medium",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and D-current monomials with close coefficients; only tiny numerical residual terms remain.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(x4 * ((x1 * -0.0016580218307522573) + -0.12766957177770594)) + (((x3 * ((x1 * -0.0066313092575626025) + -0.5106293971839024)) + ((x2 * 1.1052180807401983) + (((x1 * -5.5219580037339036e-5) + (x1 * (x2 * -0.02210436716285411))) + (x0 * 0.00018425499388646314)))) + -0.0029844769304872244)",
+        "pysr_index": 17,
+        "test_nrmse": 7.455289917368202e-06
+      },
+      "nrmse_match": false,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 3,
+      "seed": 10002,
+      "training_regime": "top-1",
+      "world": "d_type"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "medium",
+      "audit_match": false,
+      "audit_rationale": "all support but constant/leak coefficient errors are material (~27% intercept); reject borderline despite NRMSE 7.9e-4",
+      "best_nrmse": 0.0007938571197017091,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": false,
+      "manual_rationale": "No frontier candidate for this seed contains the complete required i_ext, leak, Na, K, and D-current balance; the missing required terms are substantive.",
+      "manual_selected_row": null,
+      "nrmse_match": false,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10003,
+      "training_regime": "top-1",
+      "world": "d_type"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 1.4365498115530034e-09,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and D-current monomials with close coefficients; only tiny numerical residual terms remain.",
+      "manual_selected_row": {
+        "complexity": 29,
+        "equation": "(x0 * 0.0001842037436955799) + (((((x1 * -0.006631334872452125) + -0.5106127893631414) * ((x3 + 0.005887448430915837) + (x4 * 0.2499999204266803))) + (-1.621959731506326e-5 * x1)) + (x2 * ((x1 * -0.022104449114593194) + 1.1052224350269808)))",
+        "pysr_index": 14,
+        "test_nrmse": 1.2032665659541036e-08
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 5,
+      "seed": 10004,
+      "training_regime": "top-1",
+      "world": "d_type"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 7.143448359408252e-07,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and M-current monomials with close coefficients; tiny residual artifacts are immaterial.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(x0 * 0.0001842567728215512) + ((x1 * -5.526440752759991e-5) + ((x2 + (((((x1 * -0.006000017773856189) + -0.4620018596318287) * x3) + -0.0027180251085720435) + (((x2 * -0.020000050505369724) * x1) + ((-0.03208439442098645 - (x1 * 0.0004166742835611022)) * x4)))) * 1.1055307483483752))",
+        "pysr_index": 16,
+        "test_nrmse": 7.143448359408252e-07
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 2,
+      "seed": 10000,
+      "training_regime": "top-1",
+      "world": "textbook_M"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 1.3576540198908842e-08,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and M-current monomials with close coefficients; tiny residual artifacts are immaterial.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "((-0.003007014294923536 + (((x3 * ((x1 * -0.006633197803389432) + -0.5107562123209907)) + ((x2 + 0.002499961806965162) * (x1 * -0.02211065825105872))) + (x2 * 0.10553286248258621))) + ((x0 * 0.0001842555828334862) + x2)) + (((x1 * -0.0004606391708980065) + -0.03546919870274251) * x4)",
+        "pysr_index": 17,
+        "test_nrmse": 1.3576540198908842e-08
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10001,
+      "training_regime": "top-1",
+      "world": "textbook_M"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "all GT support/no extras; coefficients close (<0.1% main terms, ~1.5% intercept), NRMSE 2.11e-5",
+      "best_nrmse": 2.1120499750111944e-05,
+      "evolution_run": "313196",
+      "manual_confidence": "medium",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and M-current monomials with close coefficients; tiny residual artifacts are immaterial.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(x3 * -0.5107367699988823) + ((((x1 * ((x2 + (x3 * 0.29998822171743955)) + 0.002497344467935656)) * -0.022111069339808727) + (x0 * 0.00018421759598843905)) + ((((x2 + x2) * 0.5527632938155623) - 0.0030517243905199935) + (((x1 * -0.0004604028443955405) + -0.03539858287165433) * x4)))",
+        "pysr_index": 17,
+        "test_nrmse": 2.1120499750111944e-05
+      },
+      "nrmse_match": false,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10002,
+      "training_regime": "top-1",
+      "world": "textbook_M"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 3.20159644239933e-09,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and M-current monomials with close coefficients; tiny residual artifacts are immaterial.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(((x4 * -0.03546918246130748) + (x2 * 0.10553288074146457)) + ((x1 * (((x3 * -0.006633197426652059) + ((x2 + 0.0024999900798521307) * -0.02211065786884219)) + (-0.00046063882813130835 * x4))) + (((-0.510756195405732 * x3) + x2) + (x0 * 0.00018425548489319111)))) - 0.003007044471780106",
+        "pysr_index": 17,
+        "test_nrmse": 3.20159644239933e-09
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10003,
+      "training_regime": "top-1",
+      "world": "textbook_M"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 1.2014661571334617e-08,
+      "evolution_run": "313196",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Contains all required i_ext, leak, Na, K, and M-current monomials with close coefficients; tiny residual artifacts are immaterial.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "((((x1 * -0.022110657785004054) + 0.1055328621337398) * x2) + (x2 + ((x1 * -5.5276370877779345e-5) + ((x4 * ((x1 * -0.00046063881703720897) + -0.03546920450666424)) + ((x0 * 0.00018425543302791385) + -0.00300701338893062))))) + (((x1 * -0.006633197705892983) + -0.5107562193552811) * x3)",
+        "pysr_index": 16,
+        "test_nrmse": 1.2014661571334617e-08
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10004,
+      "training_regime": "top-1",
+      "world": "textbook_M"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 6.629026266994195e-11,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded law contains i_ext, leak V, Na V*phi_na and phi_na, and K V*phi_k and phi_k with coefficients matching RMS-scaled ground truth; only numerical artifacts/alternative factorization.",
+      "manual_selected_row": {
+        "complexity": 33,
+        "equation": "(((x1 * -5.523974429256024e-5) + (x2 * 1.1047949129783494)) + -0.003005042073387045) + ((x0 * 0.00018413248530883643) - ((x3 + (((x3 + x3) + ((x1 * x3) * 0.038961038959304715)) + (x1 * (x2 * 0.1298701298985906)))) * 0.17013841661557305))",
+        "pysr_index": 14,
+        "test_nrmse": 6.629029213604407e-11
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 2,
+      "seed": 10000,
+      "training_regime": "top-2",
+      "world": "na_fatigue"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 3.752481962259128e-11,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded law contains i_ext, leak V, Na V*phi_na and phi_na, and K V*phi_k and phi_k with coefficients matching RMS-scaled ground truth; only numerical artifacts/alternative factorization.",
+      "manual_selected_row": {
+        "complexity": 23,
+        "equation": "((x3 * ((x1 * -0.006628769471554637) + -0.5104152461964594)) + -0.0057670296734377196) + (((x2 + 0.0024999991643433967) * ((x1 * -0.022095898296268183) + 1.1047949122501919)) + (x0 * 0.00018413247905595971))",
+        "pysr_index": 11,
+        "test_nrmse": 1.1729047016897974e-09
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 4,
+      "seed": 10001,
+      "training_regime": "top-2",
+      "world": "na_fatigue"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 2.227955116503144e-11,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded law contains i_ext, leak V, Na V*phi_na and phi_na, and K V*phi_k and phi_k with coefficients matching RMS-scaled ground truth; only numerical artifacts/alternative factorization.",
+      "manual_selected_row": {
+        "complexity": 29,
+        "equation": "(((x1 * -5.523975565475012e-5) + (x2 * 0.10479491470795088)) + ((((x1 * -0.022095898251517233) * x2) + (((x1 * -0.0066287694803671944) + -0.5104152496057864) * x3)) + ((x0 * 0.0001841324900108544) + x2))) + -0.0030050430971218928",
+        "pysr_index": 14,
+        "test_nrmse": 4.671027260033182e-10
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 4,
+      "seed": 10002,
+      "training_regime": "top-2",
+      "world": "na_fatigue"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 2.4675356779379005e-11,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded law contains i_ext, leak V, Na V*phi_na and phi_na, and K V*phi_k and phi_k with coefficients matching RMS-scaled ground truth; only numerical artifacts/alternative factorization.",
+      "manual_selected_row": {
+        "complexity": 29,
+        "equation": "((x1 * (((x3 * 0.3000000002169569) + (x2 + 0.0024999998295815277)) * -0.02209589826540513)) + ((x2 + ((x3 * -0.5458188941465555) + ((x2 * 0.1814261775079951) - 0.0032134791840082084))) * 0.9351366461620277)) + (x0 * 0.00018413248502713973)",
+        "pysr_index": 14,
+        "test_nrmse": 9.096533239753405e-11
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 4,
+      "seed": 10003,
+      "training_regime": "top-2",
+      "world": "na_fatigue"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 4.047972083643606e-11,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded law contains i_ext, leak V, Na V*phi_na and phi_na, and K V*phi_k and phi_k with coefficients matching RMS-scaled ground truth; only numerical artifacts/alternative factorization.",
+      "manual_selected_row": {
+        "complexity": 31,
+        "equation": "(((x0 * 0.00018413248715003292) + ((((x2 * 0.10479491328362603) + x2) + ((x2 + (x2 * -1.0220958982630624)) * x1)) + (((x1 * -0.006628769480122141) + -0.5104152499525336) * x3))) + -0.003005042169210278) + (x1 * -5.523974594849824e-5)",
+        "pysr_index": 14,
+        "test_nrmse": 4.286555503982235e-11
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 4,
+      "seed": 10004,
+      "training_regime": "top-2",
+      "world": "na_fatigue"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 3.0919817329231396e-07,
+      "evolution_run": "313195",
+      "manual_confidence": "medium",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all current-balance monomials including T-current V*phi_t and phi_t, plus i_ext/leak/Na/K, with close coefficients; tiny residual numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "((((x0 * -0.00011399883086710759) + x3) * -1.5662355388953197) + ((x4 * -0.02666786058120769) + -0.002913729994453583)) + (((x1 * -0.014998157728570452) * (x2 + 0.0035708433378747895)) + ((((x4 * 0.08889254126020371) + x2) + x3) * ((x1 * -0.006427775213343527) + 1.0712966440399618)))",
+        "pysr_index": 17,
+        "test_nrmse": 3.0919817329231396e-07
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10000,
+      "training_regime": "top-2",
+      "world": "ca_rebound"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 2.2141930228459306e-09,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all current-balance monomials including T-current V*phi_t and phi_t, plus i_ext/leak/Na/K, with close coefficients; tiny residual numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(x0 * 0.00017854945545769919) + (((x3 + (x4 * -0.1385281237284118)) * (-0.494939062995385 + -2.4176632249504414e-10)) + ((((((x3 * -0.3000000031822644) + ((x4 * -0.026666671379861454) - x2)) * 0.021425933390067806) + -5.356476664123205e-5) * x1) + (-0.002913922419356057 + (x2 * 1.0712966706994347))))",
+        "pysr_index": 17,
+        "test_nrmse": 2.2141930228459306e-09
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 2,
+      "seed": 10001,
+      "training_regime": "top-2",
+      "world": "ca_rebound"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 2.0798743385806594e-10,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all current-balance monomials including T-current V*phi_t and phi_t, plus i_ext/leak/Na/K, with close coefficients; tiny residual numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 33,
+        "equation": "((((x1 * -0.02142593342555479) + 0.07129667032254737) * (((x2 - (x3 * -0.29999999990109033)) + (x4 * 0.02666666711258543)) + 0.0024999995364780882)) + (x2 + -0.0030921682737642176)) + (((x3 * -0.5163280628421293) + (x4 * 0.06666174207204986)) + (x0 * 0.00017854944562889494))",
+        "pysr_index": 16,
+        "test_nrmse": 2.0798743385806594e-10
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 2,
+      "seed": 10002,
+      "training_regime": "top-2",
+      "world": "ca_rebound"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "medium",
+      "audit_match": false,
+      "audit_rationale": "best frontier NRMSE 7.4e-3; materially inaccurate",
+      "best_nrmse": 0.007423967039518192,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": false,
+      "manual_rationale": "Reject: frontier never reaches a faithful current-balance law; best equations retain materially wrong coefficients/extra structure (test NRMSE ~7.4e-3).",
+      "manual_selected_row": null,
+      "nrmse_match": false,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10003,
+      "training_regime": "top-2",
+      "world": "ca_rebound"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 8.209574806030117e-10,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all current-balance monomials including T-current V*phi_t and phi_t, plus i_ext/leak/Na/K, with close coefficients; tiny residual numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(x0 * 0.00017854943470925396) + (((((x4 * ((x1 * -0.0005333333165638167) + 0.0640000008172882)) + x2) + ((x2 * (x1 * -0.019999999934869794)) + (((x1 * -0.005999999975889158) + -0.46199999791690133) * x3))) * 1.0712966730564137) + ((x1 * -5.356486522646175e-5) + -0.002913929522273918))",
+        "pysr_index": 16,
+        "test_nrmse": 8.209574806030117e-10
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10004,
+      "training_regime": "top-2",
+      "world": "ca_rebound"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 2.3059233016027473e-09,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all required i_ext, leak, Na, K, and D V*phi_d/phi_d monomials with coefficients matching scaled ground truth; minor numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "((x0 * 0.000184203732289027) + (x3 * -0.5421795060204835)) + ((((x1 * -0.022104449007227932) + 0.10522245350091959) * ((x2 + (x3 * 0.2999999978537968)) + (x4 * 0.07499999979000077))) + ((x1 * -5.526116173088739e-5) + (x2 + ((x4 * -0.1355448700850964) + -0.003006211450863531))))",
+        "pysr_index": 17,
+        "test_nrmse": 2.3059233016027473e-09
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 2,
+      "seed": 10000,
+      "training_regime": "top-2",
+      "world": "d_type"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "all GT support/no extras; mostly close; leak/intercept deviations ~3%, NRMSE 5.24e-5",
+      "best_nrmse": 5.23518492767673e-05,
+      "evolution_run": "313195",
+      "manual_confidence": "medium",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all required i_ext, leak, Na, K, and D V*phi_d/phi_d monomials with coefficients matching scaled ground truth; minor numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "((((((x2 * -0.02210699550455835) + -5.3441060731945045e-5) * (x1 + -4.751928224519288)) + (x0 * 0.00018406378932206413)) + (((x1 * -0.0016583579438659627) + -0.12766751349809174) * x4)) + x2) + (((x3 - ((x3 * x1) * -0.012986665036076971)) * -0.5106154124269446) + -0.0031610278945083427)",
+        "pysr_index": 17,
+        "test_nrmse": 5.23518492767673e-05
+      },
+      "nrmse_match": false,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10001,
+      "training_regime": "top-2",
+      "world": "d_type"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 8.121460081129407e-10,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all required i_ext, leak, Na, K, and D V*phi_d/phi_d monomials with coefficients matching scaled ground truth; minor numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "x2 + ((x2 * 0.10522244966002633) + ((x0 * 0.00018420373601293983) + ((((x4 * -0.12765319276561615) + (x1 * ((((x2 + (x4 * 0.07499999840473168)) - (x3 * -0.2999999994952248)) * -0.022104449057194577) + -5.526112193322083e-5))) + -0.003006203593715759) + (x3 * -0.5106127738408432))))",
+        "pysr_index": 17,
+        "test_nrmse": 8.121460081129407e-10
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10002,
+      "training_regime": "top-2",
+      "world": "d_type"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": false,
+      "audit_rationale": "no manual match: best NRMSE 0.00081 and/or missing/materially inaccurate support",
+      "best_nrmse": 0.0008104625097843173,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": false,
+      "manual_rationale": "Reject: even the full frontier lacks the correct coefficient set and has substantial residual error/structure (best test NRMSE ~8.1e-4).",
+      "manual_selected_row": null,
+      "nrmse_match": false,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10003,
+      "training_regime": "top-2",
+      "world": "d_type"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 4.2977973651612626e-10,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all required i_ext, leak, Na, K, and D V*phi_d/phi_d monomials with coefficients matching scaled ground truth; minor numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(((x1 * 0.01273331136232842) + 0.980464977352685) * ((x4 * -0.13019658552925928) + 7.842820349828904e-11)) + ((x0 * 0.00018420373870495018) + (((((x3 * 0.30000000074166083) + 0.0025000006611692184) + x2) * ((x1 * -0.02210444900522523) + 1.1052224521502245)) + ((x3 * -0.8421795093459303) + -0.005769262687940062)))",
+        "pysr_index": 17,
+        "test_nrmse": 4.298790812651949e-10
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10004,
+      "training_regime": "top-2",
+      "world": "d_type"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "medium",
+      "audit_match": false,
+      "audit_rationale": "best frontier NRMSE 8.0e-4; no complete close-coefficient match",
+      "best_nrmse": 0.0008037476231928368,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": false,
+      "manual_rationale": "Reject: frontier retains materially incorrect M-current and other coefficients; best test NRMSE ~8.0e-4 and no clean canonical expansion.",
+      "manual_selected_row": null,
+      "nrmse_match": false,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10000,
+      "training_regime": "top-2",
+      "world": "textbook_M"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 2.5387801710053754e-10,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all required i_ext, leak, Na, K, and M V*phi_m/phi_m monomials with coefficients matching scaled ground truth; minor numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 31,
+        "equation": "((((x0 * -0.00987982908966977) + (x2 * (x1 * 1.9554362545222796))) * -0.018649663237097734) + 0.0012492529962811942) + ((x2 + ((x4 * -0.03208333283560541) + ((x3 * -0.4619999994346436) + -0.0038500014541078325))) * ((x1 * 0.014357569930222924) + 1.1055328865133502))",
+        "pysr_index": 15,
+        "test_nrmse": 3.6747034257342753e-10
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10001,
+      "training_regime": "top-2",
+      "world": "textbook_M"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 2.2466410058052388e-10,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all required i_ext, leak, Na, K, and M V*phi_m/phi_m monomials with coefficients matching scaled ground truth; minor numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "((x4 * ((x1 * -0.0004606386986201544) + -0.035469179881366344)) + (x3 * -0.510756192702637)) + ((((x1 * -0.022110657705878948) * (x2 + ((x3 * 0.29999999966942) + 0.0025000005241436374))) + (x0 * 0.00018425547964333127)) + ((x2 + -0.003007050056919547) - (x2 * -0.1055328861839647)))",
+        "pysr_index": 16,
+        "test_nrmse": 2.2466410058052388e-10
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 1,
+      "seed": 10002,
+      "training_regime": "top-2",
+      "world": "textbook_M"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "high",
+      "audit_match": true,
+      "audit_rationale": "numerically recovered; expanded best equation contains every GT monomial; any extra terms are tiny floating artifacts",
+      "best_nrmse": 2.0199959219923663e-10,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": true,
+      "manual_rationale": "Expanded candidate contains all required i_ext, leak, Na, K, and M V*phi_m/phi_m monomials with coefficients matching scaled ground truth; minor numerical artifacts only.",
+      "manual_selected_row": {
+        "complexity": 35,
+        "equation": "(((((x1 * -0.022110657718474282) + 0.45752053224471073) * ((x4 * 0.02083333329427343) + ((x3 * 0.30000000026827434) + x2))) + (x4 * -0.04500085822014779)) + (((x3 - x2) * -0.6480123533240693) + ((x1 * -5.52766402464731e-5) + -0.0030070491372780356))) + (x0 * 0.00018425547846814377)",
+        "pysr_index": 17,
+        "test_nrmse": 2.0199959219923663e-10
+      },
+      "nrmse_match": true,
+      "project_symbolic_match": true,
+      "project_symbolic_matching_rows": 2,
+      "seed": 10003,
+      "training_regime": "top-2",
+      "world": "textbook_M"
+    },
+    {
+      "adjudication": null,
+      "audit_confidence": "medium",
+      "audit_match": false,
+      "audit_rationale": "best frontier NRMSE 3.82e-3; materially inaccurate",
+      "best_nrmse": 0.0038208102523779037,
+      "evolution_run": "313195",
+      "manual_confidence": "high",
+      "manual_match": false,
+      "manual_rationale": "Reject: frontier fails to recover the M-current V*phi_m and phi_m coefficients; best test NRMSE ~3.8e-3 with substantive coefficient errors.",
+      "manual_selected_row": null,
+      "nrmse_match": false,
+      "project_symbolic_match": false,
+      "project_symbolic_matching_rows": 0,
+      "seed": 10004,
+      "training_regime": "top-2",
+      "world": "textbook_M"
+    }
+  ],
+  "summary": {
+    "by_run": {
+      "313195": {
+        "manual_matches": 16,
+        "nrmse_matches": 15,
+        "patterns_nrmse_symbolic_manual": {
+          "000": 3,
+          "010": 1,
+          "011": 1,
+          "101": 3,
+          "111": 12
+        },
+        "per_world": {
+          "ca_rebound": {
+            "manual_matches": 4,
+            "nrmse_matches": 4,
+            "patterns_nrmse_symbolic_manual": {
+              "000": 1,
+              "101": 1,
+              "111": 3
+            },
+            "project_symbolic_matches": 3,
+            "total": 5
+          },
+          "d_type": {
+            "manual_matches": 4,
+            "nrmse_matches": 3,
+            "patterns_nrmse_symbolic_manual": {
+              "010": 1,
+              "011": 1,
+              "101": 1,
+              "111": 2
+            },
+            "project_symbolic_matches": 4,
+            "total": 5
+          },
+          "na_fatigue": {
+            "manual_matches": 5,
+            "nrmse_matches": 5,
+            "patterns_nrmse_symbolic_manual": {
+              "111": 5
+            },
+            "project_symbolic_matches": 5,
+            "total": 5
+          },
+          "textbook_M": {
+            "manual_matches": 3,
+            "nrmse_matches": 3,
+            "patterns_nrmse_symbolic_manual": {
+              "000": 2,
+              "101": 1,
+              "111": 2
+            },
+            "project_symbolic_matches": 2,
+            "total": 5
+          }
+        },
+        "project_symbolic_matches": 14,
+        "total": 20
+      },
+      "313196": {
+        "manual_matches": 19,
+        "nrmse_matches": 14,
+        "patterns_nrmse_symbolic_manual": {
+          "000": 5,
+          "001": 1,
+          "010": 1,
+          "011": 4,
+          "111": 14
+        },
+        "per_world": {
+          "ca_rebound": {
+            "manual_matches": 4,
+            "nrmse_matches": 2,
+            "patterns_nrmse_symbolic_manual": {
+              "000": 1,
+              "001": 1,
+              "011": 1,
+              "111": 2
+            },
+            "project_symbolic_matches": 3,
+            "total": 5
+          },
+          "d_type": {
+            "manual_matches": 4,
+            "nrmse_matches": 3,
+            "patterns_nrmse_symbolic_manual": {
+              "010": 1,
+              "011": 1,
+              "111": 3
+            },
+            "project_symbolic_matches": 5,
+            "total": 5
+          },
+          "h_sag": {
+            "manual_matches": 1,
+            "nrmse_matches": 0,
+            "patterns_nrmse_symbolic_manual": {
+              "000": 4,
+              "011": 1
+            },
+            "project_symbolic_matches": 1,
+            "total": 5
+          },
+          "na_fatigue": {
+            "manual_matches": 5,
+            "nrmse_matches": 5,
+            "patterns_nrmse_symbolic_manual": {
+              "111": 5
+            },
+            "project_symbolic_matches": 5,
+            "total": 5
+          },
+          "textbook_M": {
+            "manual_matches": 5,
+            "nrmse_matches": 4,
+            "patterns_nrmse_symbolic_manual": {
+              "011": 1,
+              "111": 4
+            },
+            "project_symbolic_matches": 5,
+            "total": 5
+          }
+        },
+        "project_symbolic_matches": 19,
+        "total": 25
+      }
+    },
+    "overall": {
+      "manual_matches": 35,
+      "nrmse_matches": 29,
+      "patterns_nrmse_symbolic_manual": {
+        "000": 8,
+        "001": 1,
+        "010": 2,
+        "011": 5,
+        "101": 3,
+        "111": 26
+      },
+      "project_symbolic_matches": 33,
+      "total": 45
+    }
+  }
+}
