@@ -27,6 +27,20 @@ def test_boolformer_manifests_have_requested_sizes_and_are_disjoint():
     assert len(_split_lines("pmlb_classification.txt")) == 31
 
 
+def test_boolformer_smoke_manifests_are_tiny_subsets_of_full_splits():
+    pairs = [
+        ("boolformer_noisy_smoke_train.txt", "boolformer_noisy_train.txt"),
+        ("boolformer_noisy_smoke_val.txt", "boolformer_noisy_val.txt"),
+        ("boolformer_noisy_smoke_test.txt", "boolformer_noisy_test.txt"),
+        ("pmlb_classification_smoke.txt", "pmlb_classification.txt"),
+    ]
+    for smoke_name, full_name in pairs:
+        smoke = _split_lines(smoke_name)
+        assert len(smoke) == 2
+        assert len(set(smoke)) == 2
+        assert set(smoke) <= set(_split_lines(full_name))
+
+
 def test_noisy_task_fixes_target_but_redraws_data_and_keeps_test_clean():
     fit_a, test_a = load_boolformer_noisy_task("train_s4_00", data_seed=10)
     fit_b, test_b = load_boolformer_noisy_task("train_s4_00", data_seed=11)

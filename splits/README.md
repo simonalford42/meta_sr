@@ -147,6 +147,10 @@ shuffle, fewer than 120 Boolean features are required, and scoring uses the
 untouched held-out rows. Deprecated PMLB
 names resolve through the repository's existing `_deprecated_*` fallback.
 
+The corresponding `*_smoke_*.txt` manifests contain two tasks per split and
+exercise noisy synthesis, one-hot PMLB preprocessing, validation, and both
+final-test paths without launching the full benchmark.
+
 ## Regenerating
 
 All writes go to `splits/` and each split family is opt-in, so running the

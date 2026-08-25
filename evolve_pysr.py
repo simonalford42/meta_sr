@@ -2624,6 +2624,9 @@ def main():
     parser.add_argument("--extra-test-split", action="append", default=[],
                         help="Additional held-out split for end-of-run final evaluation. "
                              "May be repeated; never used for evolution or selection.")
+    parser.add_argument("--final-eval-runs", type=int, default=10,
+                        help="Seeds per dataset in the automatic end-of-run evaluation. "
+                             "Use 1 for smoke tests; full evaluations default to 10.")
     parser.add_argument("--val-n-runs", type=int, default=10,
                         help="Number of seeds per val-split run (used when --val-split is set)")
     parser.add_argument("--val-pysr-wall-limit", type=int, default=1800,
@@ -2817,6 +2820,8 @@ def main():
             "--simplify-cooldown must be between 0 and --generations "
             f"(got {args.simplify_cooldown} for {args.generations} generations)"
         )
+    if args.final_eval_runs < 1:
+        parser.error("--final-eval-runs must be at least 1")
 
     # Boolean-domain split defaults are applied only where the user left the
     # SRBench defaults in place, so explicit flags still win.
@@ -3125,6 +3130,7 @@ def main():
         "val_split": args.val_split,
         "test_split": args.test_split,
         "extra_test_splits": list(args.extra_test_split),
+        "final_eval_runs": args.final_eval_runs,
         "val_n_runs": args.val_n_runs,
         "identify_topk": args.identify_topk,
         "reeval_budget": args.reeval_budget,
@@ -3256,7 +3262,7 @@ def main():
                     method_path=run_data_path,
                     partition=args.partition,
                     splits=final_splits,
-                    n_runs=10,
+                    n_runs=args.final_eval_runs,
                     seed=final_eval_seed,
                     max_samples=args.max_samples,
                     max_evals=budget["max_evals"],

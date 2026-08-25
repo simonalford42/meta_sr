@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 
-# 8/25 — Evolve PySR on noisy Boolformer targets. Validation is used only for
-# monitoring; both the 100 synthetic test targets and PMLB are final-eval-only.
-# This is intentionally commented: uncomment it, then run `bash submit_jobs.sh`.
-# sbatch -J boolformer-noisy run.sh evolve_pysr.py --domain boolformer --operator-type all --generations 30 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt-acc --reeval population --n-reevals 10 --models best --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --mem-per-cpu 8G --pysr-wall-limit 2400 --job-timeout 14400 --split splits/boolformer_noisy_train.txt --val-split splits/boolformer_noisy_val.txt --val-n-runs 3 --test-split splits/boolformer_noisy_test.txt --extra-test-split splits/pmlb_classification.txt --seed 0
+# 8/25 — Boolformer smoke test (job 610439 completed successfully).
+# sbatch -J boolformer-smoke run.sh evolve_pysr.py --domain boolformer --operator-type all --generations 2 --population 3 --offspring 2 --n-runs 1 --fitness-metric gt-acc --reeval none --models cheap --llm-max-workers 2 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 10 --time-limit 00:10:00 --mem-per-cpu 8G --pysr-wall-limit 300 --job-timeout 1200 --val-pysr-wall-limit 300 --val-pysr-timeout 240 --split splits/boolformer_noisy_smoke_train.txt --val-split splits/boolformer_noisy_smoke_val.txt --val-n-runs 1 --test-split splits/boolformer_noisy_smoke_test.txt --extra-test-split splits/pmlb_classification_smoke.txt --final-eval-runs 1 --seed 0
+
+# Full noisy Boolformer evolution (REVIEW BEFORE SUBMITTING). Validation is
+# monitoring-only; the 100 synthetic targets and PMLB are final-eval-only.
+# sbatch -J boolformer-noisy run.sh evolve_pysr.py --domain boolformer --operator-type all --generations 30 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt-acc --reeval population --n-reevals 10 --models best --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --mem-per-cpu 8G --pysr-wall-limit 2400 --job-timeout 14400 --split splits/boolformer_noisy_train.txt --val-split splits/boolformer_noisy_val.txt --val-n-runs 3 --test-split splits/boolformer_noisy_test.txt --extra-test-split splits/pmlb_classification.txt --final-eval-runs 10 --seed 0
 
 # 8/25 — Full 62-task MIPS raw-checkpoint reproduction.
 # Each processed task gets one CPU and a strict 3600-second child-process cap;
