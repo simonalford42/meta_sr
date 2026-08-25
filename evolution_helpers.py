@@ -863,11 +863,90 @@ def generation_evolution_policy(
     return mutation_mode, population_type, False
 
 
+def code_loc(source: str) -> int:
+    """Non-blank, non-comment lines of Julia source.
+
+    Docstrings and comments don't affect what an operator *does*, but the
+    simplify prompt mandates both (a docstring explaining what was removed,
+    plus inline comments), so counting them makes ~35% of every bundle's LOC
+    prose the LLM is required to write. Skips `#` line comments, `#= =#`
+    block comments (nestable), and `\"\"\"` docstrings. A line with trailing
+    code after a comment still counts.
+    """
+    n = 0
+    in_docstring = False
+    block_depth = 0
+    for raw in source.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+
+        if in_docstring:
+            # Anything after the closing `"""` on the same line is code.
+            _, sep, rest = line.partition('"""')
+            if not sep:
+                continue
+            in_docstring = False
+            line = rest.strip()
+            if not line:
+                continue
+
+        if block_depth:
+            while block_depth and line:
+                open_at = line.find("#=")
+                close_at = line.find("=#")
+                if close_at != -1 and (open_at == -1 or close_at < open_at):
+                    block_depth -= 1
+                    line = line[close_at + 2:].strip()
+                elif open_at != -1:
+                    block_depth += 1
+                    line = line[open_at + 2:].strip()
+                else:
+                    line = ""
+            if block_depth or not line:
+                continue
+
+        if line.startswith("#="):
+            # Opens a block comment; count it only if code follows the close.
+            block_depth = 1
+            rest = line[2:]
+            while block_depth and rest:
+                open_at = rest.find("#=")
+                close_at = rest.find("=#")
+                if close_at != -1 and (open_at == -1 or close_at < open_at):
+                    block_depth -= 1
+                    rest = rest[close_at + 2:]
+                elif open_at != -1:
+                    block_depth += 1
+                    rest = rest[open_at + 2:]
+                else:
+                    rest = ""
+            if block_depth or not rest.strip():
+                continue
+            line = rest.strip()
+
+        if line.startswith("#"):
+            continue
+
+        if line.startswith('"""'):
+            # `"""..."""` closed on the same line is a one-line docstring;
+            # an odd number of delimiters opens a multi-line one.
+            if line.count('"""') % 2 == 1:
+                in_docstring = True
+            continue
+
+        n += 1
+    return n
+
+
 def _bundle_loc(bundle) -> int:
-    """Total non-blank lines across an operator or FullSR policy bundle."""
+    """Total lines of code across an operator or FullSR policy bundle.
+
+    Docstrings, comments, and blank lines are excluded — see `code_loc`.
+    """
     raw_module_body = getattr(bundle, "raw_module_body", None)
     if raw_module_body:
-        return sum(1 for line in raw_module_body.splitlines() if line.strip())
+        return code_loc(raw_module_body)
 
     total = 0
     components = getattr(bundle, "operators", None)
@@ -876,7 +955,7 @@ def _bundle_loc(bundle) -> int:
     for op in (components or {}).values():
         if op is None or not getattr(op, "code", None):
             continue
-        total += sum(1 for line in op.code.splitlines() if line.strip())
+        total += code_loc(op.code)
     return total
 
 

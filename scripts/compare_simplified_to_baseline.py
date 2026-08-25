@@ -28,7 +28,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from operator_types import JuliaOperator, OperatorBundle
 from bundle_loader import load_bundle
-from evolution_helpers import _bundle_loc
+from evolution_helpers import _bundle_loc, code_loc
 
 OPERATOR_ORDER = ["mutation", "survival", "selection", "loss"]
 
@@ -36,7 +36,7 @@ OPERATOR_ORDER = ["mutation", "survival", "selection", "loss"]
 def _op_loc(op: Optional[JuliaOperator]) -> int:
     if op is None or not getattr(op, "code", None):
         return 0
-    return sum(1 for line in op.code.splitlines() if line.strip())
+    return code_loc(op.code)
 
 
 def _load_population_for_gen(run_dir: Path, gen: Optional[int]):
