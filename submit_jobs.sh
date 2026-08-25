@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+# 8/25 — Full 62-task MIPS raw-checkpoint reproduction.
+# Each processed task gets one CPU and a strict 3600-second child-process cap;
+# five hidden_dim > 10 tasks are recorded as upstream-protocol skips. The
+# dependent aggregation job runs even if array elements time out or fail.
+# Uncomment this block together, then run `bash submit_jobs.sh`.
+# MIPS_OUTPUT="outputs/mips_reproduction_all"
+# /home/sca63/.conda/envs/meta_sr/bin/python scripts/reproduce_mips_all.py prepare --output-dir "$MIPS_OUTPUT"
+# mips_array=$(sbatch --parsable --array=0-61%12 --cpus-per-task=1 --mem=8G --time=01:10:00 --partition=default_partition --job-name=mips-all --output="$MIPS_OUTPUT/slurm/%A_%a.out" --error="$MIPS_OUTPUT/slurm/%A_%a.err" run.sh scripts/reproduce_mips_all.py worker --task-index-env --timeout-seconds 3600 --output-dir "$MIPS_OUTPUT")
+# mips_aggregate=$(sbatch --parsable --dependency=afterany:"$mips_array" --cpus-per-task=1 --mem=4G --time=00:15:00 --partition=default_partition --job-name=mips-aggregate --output="$MIPS_OUTPUT/slurm/aggregate_%j.out" --error="$MIPS_OUTPUT/slurm/aggregate_%j.err" run.sh scripts/reproduce_mips_all.py aggregate --output-dir "$MIPS_OUTPUT")
+# echo "Submitted MIPS array $mips_array and aggregate $mips_aggregate"
+
 # 8/25
 # srbench full evaluation for the 300-trial HPO selections
 # chain_a=$(sbatch --parsable -J srb-hpo300-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --ground-truth --black-box --timeout 0)

@@ -169,3 +169,27 @@ The upstream implementation launches this work through SLURM. CPU-only
 end-to-end reproduction is not realistic within one CPU-day; it would require a
 GPU/SLURM campaign and likely many GPU-days, with the exact total depending on
 how many architecture candidates each task needs.
+
+## Full raw-checkpoint run
+
+The full-run harness is
+[`scripts/reproduce_mips_all.py`](../../scripts/reproduce_mips_all.py). It pins
+the benchmark and extraction commits, constructs an isolated node-local
+workspace for each task, applies the authors' linear/Boolean/symbolic fallback
+order, and independently validates any notebook success against the complete
+training and held-out datasets. Isolation is necessary because the notebooks
+otherwise overwrite a shared generated program and compile a shared C++
+executable.
+
+The harness records all 62 benchmark entries. Consistent with the authors'
+driver, the five tasks with hidden dimension above 10 are recorded as protocol
+skips before dataset generation; the remaining 57 receive extraction attempts.
+Each processed task runs with one CPU and a 3,600-second child-process timeout,
+so a nonterminating symbolic search is killed together with its subprocesses
+and recorded as `timeout`.
+
+The ready-to-uncomment submission block is at the top of `submit_jobs.sh`. It
+uses a 62-element array limited to 12 concurrent workers, 8 GB per worker, a
+1:10 scheduler limit, and a dependent aggregation job. Results are written to
+the ignored directory `outputs/mips_reproduction_all/`; `summary.json`,
+`summary.csv`, and `SUMMARY.md` are generated after the array finishes.
