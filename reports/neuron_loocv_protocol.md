@@ -42,6 +42,11 @@ completed every requested fit without worker errors.  Their top-level
 worlds; the actual requested totals are 25 and 20, as confirmed by the
 per-world records.
 
+A brief follow-up checks these numerical recoveries against the symbolic ground
+truth: [PDF](neuron_symbolic_recovery_investigation.pdf),
+[LaTeX source](neuron_symbolic_recovery_investigation.tex), and
+[machine-readable analysis](neuron_symbolic_recovery_analysis.json).
+
 ## Planned leave-one-out experiment
 
 This experiment evolves six PySR algorithm bundles. Fold `i` trains on the five

@@ -1,0 +1,155 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.72in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,microtype}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+
+\definecolor{accent}{HTML}{245A73}
+\definecolor{soft}{HTML}{F2F6F8}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlist[itemize]{leftmargin=1.3em,itemsep=2pt,topsep=2pt}
+\newcommand{\nrmse}{\mathrm{NRMSE}}
+\newcommand{\phina}{\phi_{\mathrm{Na}}}
+\newcommand{\phik}{\phi_{\mathrm{K}}}
+
+\title{\vspace{-2.0em}\textcolor{accent}{\bfseries Symbolic validity of numerical NeuronBench recoveries}}
+\author{Post-hoc analysis of evolution runs 313195 and 313196}
+\date{25 August 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1.5em}
+
+\colorbox{soft}{\parbox{0.965\linewidth}{
+\textbf{Bottom line.} Among 45 held-out fits, 29 attained $\nrmse\le10^{-6}$.
+The project's SRBench-style symbolic checker labels 26 of these 29 as ground-truth
+matches.  None is literally identical when its fitted decimal constants are treated
+as exact numbers, but every recovered frontier contains a polynomial with the correct
+ground-truth monomial support.  Four best equations contain additional, numerically
+negligible monomials.
+}}
+
+\section*{Question and method}
+
+The fully observable target is the current-balance law
+\begin{align*}
+f = I_{\rm ext}
+  &-120\phina(V-50)-36\phik(V+77)-0.3(V+54.4)\\
+  &-g_q\phi_q(V-E_q),
+\end{align*}
+where the final channel depends on the neuron world (and is absent for
+\texttt{na\_fatigue}).  PySR fits $f/s$, where $s$ is the training-target RMS.
+For this analysis each saved equation was remapped from $x_i$ to the corresponding
+physical feature, multiplied by $s$, expanded with SymPy, and compared with the
+manifest ground truth.
+
+Three notions must be kept separate:
+\begin{itemize}
+  \item \textbf{Numerical recovery:} the existing held-out criterion,
+  $\nrmse\le10^{-6}$.
+  \item \textbf{Project symbolic match:} the same
+  \texttt{evaluation.check\_pysr\_symbolic\_match} logic used for SRBench and
+  \texttt{evolve\_pysr.py}.  It rounds floating constants to three decimals and
+  accepts a zero or constant difference, or a constant ratio.  This is deliberately
+  looser than literal algebraic equality.
+  \item \textbf{Strict equality/support:} respectively,
+  $\operatorname{simplify}(\hat f-f)=0$ with the stored decimals, and equality of
+  the monomial sets after polynomial expansion.  An exact target equation must
+  itself pass the numerical threshold, so restricting the symbolic sweep to
+  recovered frontier rows cannot discard an exact match.
+\end{itemize}
+
+\section*{Results}
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Evolution run & Numeric recoveries & Project match & Strict equality & Best support correct\\
+\midrule
+313196 (trained on one world) & 14 & 14 & 0 & 11\\
+313195 (trained on two worlds) & 15 & 12 & 0 & 14\\
+\midrule
+Total & 29 & 26 & 0 & 25\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Of the 26 project matches, 23 have zero rounded symbolic difference and three
+have a constant rounded difference; none relies only on the constant-ratio rule.
+All 29 recovered frontiers contain at least one row with exactly the same monomial
+support as the physical ground truth.  Thus the numerical recovery counts mostly
+represent recovery of the correct current-balance polynomial, with constants fitted
+to finite precision, rather than unrelated interpolating formulas.
+
+\section*{Examples where ``recovered'' does not mean literally identical}
+
+\textbf{1. A tiny extra nonlinear term.}
+Run 313196, \texttt{na\_fatigue}, seed 10000 has
+$\nrmse=9.06\times10^{-11}$.  Its expanded physical equation differs from ground
+truth by
+\begin{align*}
+\hat f-f={}&-5.54\times10^{-7}\phina^2
+ +1.10\times10^{-6}\phina-9.19\times10^{-7}\phik
+ -1.07\times10^{-7}\\
+&\quad+\text{linear and bilinear corrections of magnitude at most }3.3\times10^{-8}.
+\end{align*}
+The $\phina^2$ term makes the equation structurally different.  The project checker
+still calls it a match because these tiny coefficients disappear under its rounding.
+
+\textbf{2. Correct support, approximate constants, and a project-checker miss.}
+Run 313195, \texttt{ca\_rebound}, seed 10000 has
+$\nrmse=3.09\times10^{-7}$.  The relevant physical coefficients are:
+\begin{center}
+\small
+\begin{tabular}{lrr@{\hspace{1.2em}}lrr}
+\toprule
+Term & Ground truth & Found & Term & Ground truth & Found\\
+\midrule
+$I_{\rm ext}$ & 1 & 0.99999762 & $V\phina$ & -120 & -119.99999734\\
+$V\phik$ & -36 & -35.99997305 & $V\phi_T$ & -3.2 & -3.20012909\\
+$V$ & -0.3 & -0.29995093 & $\phina$ & 6000 & 5999.99985004\\
+$\phik$ & -2772 & -2771.99906434 & $\phi_T$ & 384 & 383.99682787\\
+$1$ & -16.32 & -16.31889694 & & &\\
+\bottomrule
+\end{tabular}
+\end{center}
+This is the same polynomial support with very close coefficients, yet the project
+checker returns no match.  Its three-decimal rounding is applied to the normalized,
+factorized PySR expression before expansion, so the decision can depend on how an
+otherwise similar polynomial is factored.
+
+\textbf{3. An even smaller checker false negative.}
+Run 313195, \texttt{d\_type}, seed 10004 has
+$\nrmse=4.30\times10^{-10}$ and the correct support.  For example, the ground-truth
+coefficients of $V\phi_D$, $\phi_D$, and the constant are $-9$, $-693$, and
+$-16.32$; the fitted values are $-8.999999917$, $-692.999995373$, and
+$-16.320003695$.  It also fails the project checker despite being an excellent
+coefficient-level recovery.
+
+\section*{Interpretation}
+
+Yes, there are $\nrmse<10^{-6}$ equations that are different from ground truth.
+In the strict stored-decimal sense this is true for all 29 recoveries, which is
+expected when continuous constants are optimized numerically after target scaling.
+The more substantive structural difference occurs in four best equations, all
+through tiny extra monomials.  Conversely, three numerically recovered equations
+with correct support are missed by the current project checker.
+
+For future NeuronBench summaries, the most informative reporting is therefore a
+three-part label: held-out numerical recovery, the existing SRBench-style match,
+and canonical expanded-polynomial support (optionally with a stated coefficient
+tolerance).  This avoids treating fitted-decimal inequality as a scientific miss
+while making small spurious terms visible.
+
+\vfill
+\footnotesize
+\raggedright
+Reproducibility: \path{scripts/analyze_neuron_symbolic_recovery.py} reads
+\path{runs/313195/neuron_full_eval/neuron_results.json} and
+\path{runs/313196/neuron_full_eval/neuron_results.json}.  Machine-readable
+details, including every recovered equation and expanded residual, are stored in
+\path{reports/neuron_symbolic_recovery_analysis.json}.
+
+\end{document}
