@@ -9,30 +9,30 @@ candidate, population reevaluation to 10 seeds, and 1,000,000 PySR evaluations
 per fit.  Final bundles were evaluated on every non-training world using five
 fresh seeds (`10000` through `10004`).
 
-| evolution run | training worlds | held-out worlds | recovered | near-exact | close | miss |
-|---|---|---:|---:|---:|---:|---:|
-| `313196` | `z_rebound` | 5 (25 fits) | 14 | 11 | 0 | 0 |
-| `313195` | `z_rebound`, `h_sag` | 4 (20 fits) | 15 | 3 | 2 | 0 |
+| evolution run | training worlds | held-out fits | manual matches | match rate |
+|---|---|---:|---:|---:|
+| `313196` (top-1) | `z_rebound` | 25 | 19 | 76% |
+| `313195` (top-2) | `z_rebound`, `h_sag` | 20 | 16 | 80% |
 
-Here, recovered means NRMSE at most `1e-6`, near-exact at most `1e-3`,
-close at most `0.05`, and miss otherwise.  Thus, evolution on one world yielded
-at least near-exact fits in all 25 held-out trials, including exact recovery in
-14/25.  Evolution on two worlds recovered 15/20 held-out trials and reached at
-least near-exact accuracy in 18/20.  These are single evolution runs for each
-training regime, so the difference between them is descriptive rather than an
-estimate of the effect of adding a second training world.
+A manual match means that some equation on the saved Pareto frontier contains
+every required physical current-balance monomial, no material extra monomial,
+and clearly close fitted coefficients after undoing target-RMS scaling. Tiny
+floating-point artifacts are allowed; missing required terms such as
+`I_ext` or the leak-voltage term are not. These are single evolution runs for
+each training regime, so the four-point difference is descriptive rather than
+an estimate of the effect of adding a second training world.
 
-| training worlds | held-out world | recovered | near-exact | close | miss | median best NRMSE |
-|---|---|---:|---:|---:|---:|---:|
-| `z_rebound` | `h_sag` | 0 | 5 | 0 | 0 | 7.862e-4 |
-| `z_rebound` | `na_fatigue` | 5 | 0 | 0 | 0 | 9.761e-11 |
-| `z_rebound` | `ca_rebound` | 2 | 3 | 0 | 0 | 4.282e-6 |
-| `z_rebound` | `d_type` | 3 | 2 | 0 | 0 | 7.538e-9 |
-| `z_rebound` | `textbook_M` | 4 | 1 | 0 | 0 | 1.358e-8 |
-| `z_rebound`, `h_sag` | `na_fatigue` | 5 | 0 | 0 | 0 | 3.752e-11 |
-| `z_rebound`, `h_sag` | `ca_rebound` | 4 | 0 | 1 | 0 | 2.214e-9 |
-| `z_rebound`, `h_sag` | `d_type` | 3 | 2 | 0 | 0 | 2.306e-9 |
-| `z_rebound`, `h_sag` | `textbook_M` | 3 | 1 | 1 | 0 | 2.539e-10 |
+| training worlds | held-out world | manual matches | trials | match rate |
+|---|---|---:|---:|---:|
+| `z_rebound` | `h_sag` | 1 | 5 | 20% |
+| `z_rebound` | `na_fatigue` | 5 | 5 | 100% |
+| `z_rebound` | `ca_rebound` | 4 | 5 | 80% |
+| `z_rebound` | `d_type` | 4 | 5 | 80% |
+| `z_rebound` | `textbook_M` | 5 | 5 | 100% |
+| `z_rebound`, `h_sag` | `na_fatigue` | 5 | 5 | 100% |
+| `z_rebound`, `h_sag` | `ca_rebound` | 4 | 5 | 80% |
+| `z_rebound`, `h_sag` | `d_type` | 4 | 5 | 80% |
+| `z_rebound`, `h_sag` | `textbook_M` | 3 | 5 | 60% |
 
 The complete Pareto frontiers and fitted equations are in the saved evaluation
 files for [run 313196](../runs/313196/neuron_full_eval/neuron_results.json) and
@@ -42,13 +42,9 @@ completed every requested fit without worker errors.  Their top-level
 worlds; the actual requested totals are 25 and 20, as confirmed by the
 per-world records.
 
-A brief follow-up checks these numerical recoveries against the symbolic ground
-truth: [PDF](neuron_symbolic_recovery_investigation.pdf),
-[LaTeX source](neuron_symbolic_recovery_investigation.tex), and
-[machine-readable analysis](neuron_symbolic_recovery_analysis.json).
-The subsequent [manual whole-frontier comparison](neuron_manual_match_comparison.pdf)
-reports numerical, project-symbolic, and manually adjudicated recovery side by
-side for both reduced-training runs.
+The manual review protocol, individual decisions, and adjudication are in the
+[whole-frontier review](neuron_manual_match_comparison.pdf) and its
+[machine-readable record](neuron_manual_match_comparison.json).
 
 ## Planned leave-one-out experiment
 
