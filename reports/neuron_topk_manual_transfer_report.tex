@@ -1,0 +1,249 @@
+\documentclass[10pt]{article}
+\usepackage[left=0.72in,right=0.72in,top=0.55in,bottom=0.55in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{longtable}
+\usepackage[table]{xcolor}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xurl}
+
+\definecolor{navy}{HTML}{17365D}
+\definecolor{lightblue}{HTML}{EAF2F8}
+\definecolor{lightgray}{HTML}{F2F3F4}
+\definecolor{good}{HTML}{E8F5E9}
+\definecolor{warn}{HTML}{FFF4D6}
+\definecolor{bad}{HTML}{FDEDEC}
+
+\newcommand{\nrmse}{\operatorname{NRMSE}}
+\newcommand{\code}[1]{\nolinkurl{#1}}
+\newcommand{\phina}{\phi_{\mathrm{Na}}}
+\newcommand{\phik}{\phi_{\mathrm{K}}}
+\newcommand{\phiih}{\phi_{\mathrm{Ih}}}
+
+\setlist[itemize]{leftmargin=1.4em,itemsep=1pt,topsep=2pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3.5pt}
+\renewcommand{\arraystretch}{1.14}
+
+\begin{document}
+
+{\LARGE\bfseries\color{navy} NeuronBench transfer from top-1, top-2, and ``top5'' evolution}
+
+\vspace{3pt}
+{\large Whole-frontier manual equation recovery on held-out tasks}
+
+\vspace{5pt}
+\textit{Runs 313196, 313195, and 190177; prepared August 26, 2026}
+
+\section*{Result in one table}
+
+A held-out fit is counted as a \emph{manual match} if at least one equation anywhere on its saved
+Pareto frontier expands, in physical units, to all required ground-truth monomials, contains no
+material extra monomial, and has clearly close coefficients.  Tiny numerical artifacts are
+allowed.  This is stricter about physical term support than merely calling a small NRMSE
+``solved,'' but it can accept a structurally complete equation lying just above the fixed
+$10^{-6}$ NRMSE threshold.
+
+\begin{center}
+\begin{tabular}{@{}lllrrr@{}}
+\toprule
+Regime & evolution run & held-out tasks & matches & fits & manual rate \\
+\midrule
+top-1 & \code{313196} & 5 worlds & 19 & 25 & \textbf{76\%} \\
+top-2 & \code{313195} & 4 worlds & 16 & 20 & \textbf{80\%} \\
+``top5'' LOOCV & \code{190177} & \code{z_rebound} & 5 & 5 & \textbf{100\%} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\rowcolors{2}{lightgray}{white}
+\begin{center}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+Training regime & held-out world & matches & fits & rate \\
+\midrule
+top-1 & \code{h_sag}       & 1 & 5 & 20\% \\
+      & \code{na_fatigue}  & 5 & 5 & 100\% \\
+      & \code{ca_rebound}  & 4 & 5 & 80\% \\
+      & \code{d_type}      & 4 & 5 & 80\% \\
+      & \code{textbook_M}  & 5 & 5 & 100\% \\
+\addlinespace
+top-2 & \code{na_fatigue}  & 5 & 5 & 100\% \\
+      & \code{ca_rebound}  & 4 & 5 & 80\% \\
+      & \code{d_type}      & 4 & 5 & 80\% \\
+      & \code{textbook_M}  & 3 & 5 & 60\% \\
+\addlinespace
+``top5'' & \code{z_rebound} & 5 & 5 & 100\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+\rowcolors{2}{}{}
+
+The top5 evaluation artifact is run \code{312780}; it applies the final bundle from evolution
+run \code{190177}.  It evaluated all six worlds, but only \code{z_rebound} was absent during
+evolution, so only those five fits enter the LOOCV number above.  All five best equations have
+the exact ground-truth polynomial support and no extra terms. Their best NRMSE values span
+$1.91\times10^{-10}$ to $1.13\times10^{-8}$; the largest absolute physical coefficient error is
+$1.17\times10^{-4}$ (on a true coefficient of $480$).
+
+\begin{quote}
+\textbf{Interpretation.} These are three individual evolution outcomes with different held-out
+sets and small denominators, not replicated estimates of a learning curve.  In particular,
+``top5 LOOCV'' currently means one completed fold (train on five, hold out \code{z_rebound}),
+not the aggregate of all six possible leave-one-world-out folds.
+\end{quote}
+
+\section*{What NeuronBench asks PySR to recover}
+
+The benchmark converts six conductance-based neuron worlds into scalar symbolic-regression
+problems for the membrane vector field.  Each row supplies the applied current $I_{\rm ext}$,
+voltage $V$, and fully observed composite channel-open fractions $\phi_c$; the target is the
+exact current balance
+\[
+  \dot V = I_{\rm ext}-\sum_c g_c\phi_c(V-E_c)-g_L(V-E_L).
+\]
+Thus the difficult gating dynamics are exposed as inputs: the symbolic task is to reconstruct
+the additive ionic-current law, not to infer hidden gates from voltage alone.
+
+For each world, the data contain 1,024 training and 16,384 test states.  They are independent,
+reproducible scrambled-Sobol collocation states spanning $I_{\rm ext}\in[-40,20]$,
+$V\in[-95,60]$, and each open fraction in $[0,1]$; there is no observation noise.  During a
+fit, $\dot V$ is divided by its training RMS and is unscaled before physical evaluation.  PySR
+uses binary operators $\{+,-,\times\}$, no unary operators, maximum expression size 35, and up
+to $10^6$ evaluations per final fit.  The five final-evaluation seeds are 10000--10004.
+
+Meta-evolution jointly changes four parts of PySR: mutation, population survival (which member
+is replaced), parent selection, and loss. Candidate bundle fitness is the fraction of training
+worlds for which a Pareto-frontier equation reaches $\nrmse\le10^{-6}$.  Candidate bundles begin
+with three PySR seeds and the evolving population is reevaluated to ten seeds.  The top-1 and
+top-2 runs used 15 generations with population 10 and 10 offspring per generation; the earlier
+top5 fold used 10 generations at the same population and offspring sizes.
+
+\section*{Top-1 examples: solved, close, and not solved}
+
+The examples below all use the held-out \code{h_sag} world, so the comparison is like-for-like.
+Its physical ground truth is
+\[
+ f_*(I,V,\boldsymbol\phi)=I_{\rm ext}
+ -120\phina(V-50)-36\phik(V+77)-0.3(V+54.4)-5\phiih(V+30).
+\]
+Every column in Table~\ref{tab:coefficients} is a complete expanded equation
+$f=\sum_m c_m m$. A dash is a coefficient of zero, hence an absent monomial.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Physical coefficients for representative top-1 Pareto equations.}
+\label{tab:coefficients}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Monomial $m$ & ground truth & solved & close & not solved \\
+\midrule
+$I_{\rm ext}$       & $1$       & $0.999964$ & $1.00450$ & --- \\
+$V\phina$            & $-120$    & $-120.000008$ & $-120.25974$ & $-122.87369$ \\
+$\phina$             & $6000$    & $6000.00089$ & $5986.04749$ & $5488.86017$ \\
+$V\phik$             & $-36$     & $-35.999989$ & $-36.14715$ & --- \\
+$\phik$              & $-2772$   & $-2771.99890$ & $-2775.04212$ & $-2442.69484$ \\
+$V\phiih$            & $-5$      & $-4.999751$ & $-5.14255$ & --- \\
+$\phiih$             & $-150$    & $-149.96253$ & $-152.41579$ & --- \\
+$V$                   & $-0.3$    & $-0.300133$ & --- & $-19.87721$ \\
+$1$                   & $-16.32$  & $-16.34136$ & $-6.59853$ & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+  \item \textbf{Solved (seed 10004, complexity 35, NRMSE $1.86\times10^{-6}$).}
+  Every required current-balance monomial is present, there are no material extras, and the
+  coefficients are extremely close. This is a manual match even though it narrowly misses the
+  fixed numerical threshold.
+  \item \textbf{Close but not solved (seed 10000, complexity 33, NRMSE
+  $9.50\times10^{-4}$).} The Na, K, Ih, and applied-current terms are close, but the standalone
+  leak-voltage term $-0.3V$ is absent. A shifted constant partially compensates on the sampled
+  domain; algebraically it is not the full membrane equation.
+  \item \textbf{Not solved (seed 10000, complexity 13 frontier point, NRMSE $9.09\times10^{-2}$).}
+  This smaller expression has only part of the Na/K structure. It omits $I_{\rm ext}$, the K
+  voltage interaction, the entire Ih current, and the correct leak term. Its large standalone
+  $V$ coefficient cannot be interpreted as a small fitted perturbation.
+\end{itemize}
+
+Here ``solved/close/not solved'' describes manual structural inspection of the displayed
+frontier equations. It is intentionally distinct from the evaluation file's exclusive numeric
+bins (recovered $\le10^{-6}$, near-exact $\le10^{-3}$, close $\le0.05$, miss otherwise).
+
+\section*{Evolved operators}
+
+\subsection*{Top-1: run 313196}
+\begin{itemize}
+  \item \textbf{Mutation --- \code{compact_residual_linear_boost_mutation_gen13_0}.}
+  Evaluate the current tree, project its residual onto every raw feature, and add the
+  one-dimensional least-squares correction $\alpha x_j$ with the largest predicted residual
+  variance reduction. This is a direct additive-current ``boosting'' move.
+  \item \textbf{Survival --- \code{age_regularized_survival}.}
+  Replace the oldest eligible member. This is the standard age-regularized baseline rather than
+  a newly specialized neuron operator.
+  \item \textbf{Selection --- \code{membrane_dynamics_selection_gen14_8}.}
+  Tournament cost is adjusted by complexity-frequency parsimony and a small penalty on older
+  candidates, retaining newly discovered structures without allowing age to dominate fit.
+  \item \textbf{Loss --- \code{adaptive_transition_weighted_mse_gen9_1}.}
+  A weighted MSE that emphasizes target extremity and large changes between adjacent rows,
+  intended to highlight rare fast neuronal phases.
+\end{itemize}
+
+\subsection*{Top-2: run 313195}
+\begin{itemize}
+  \item \textbf{Mutation --- \code{mutate_residual_linear_step_gen12_6}.}
+  Randomly add either a residual-mean constant or a residual projection $\alpha x_j$. Compared
+  with top-1's exhaustive feature choice, this makes smaller stochastic correction steps and can
+  explicitly repair offsets.
+  \item \textbf{Survival --- \code{age_regularized_survival}.} Again, replace the oldest member.
+  \item \textbf{Selection --- \code{frequency_robust_tournament_selection_gen4_2}.}
+  Tournament selection in log-cost space with a saturated frequency penalty for common
+  complexities; this stabilizes the adaptive-parsimony calculation against extreme costs.
+  \item \textbf{Loss --- \code{phase_aware_mse_tangent_loss_gen3_4}.}
+  Blends pointwise MSE with a normalized error in adjacent-row target/prediction differences,
+  intended to favor local phase-space tangent agreement.
+\end{itemize}
+
+\subsection*{``Top5'' LOOCV fold: run 190177}
+\begin{itemize}
+  \item \textbf{Mutation --- \code{residual_guided_additive_correction_gen3_2}.}
+  Select the feature most correlated with the residual and add its fitted OLS correction. It is
+  an earlier, Pearson-correlation version of the residual-guided idea retained by top-1.
+  \item \textbf{Survival --- \code{pareto_crowded_reverse_tournament_survival_gen5_4}.}
+  Prefer replacing candidates that are dominated, old, or crowded in complexity/log-loss space,
+  while protecting isolated niche leaders.
+  \item \textbf{Selection --- \code{pareto_rank_crowding_tournament_gen10_gen10_3}.}
+  Parent tournaments combine a non-domination rank, crowding bonus, and complexity-frequency
+  novelty, encouraging coverage of multiple points along the loss--complexity frontier.
+  \item \textbf{Loss --- \code{mse_loss}.} Ordinary unweighted MSE; the five-world bundle kept
+  the baseline loss and placed its specialization in search mechanics.
+\end{itemize}
+
+Across the three runs, the clearest repeated motif is \emph{residual-guided additive mutation},
+which matches the additive current-balance structure of the benchmark. Search diversity is
+handled differently: simple age turnover in top-1/top-2 versus explicit Pareto rank and crowding
+in top5. There is no equally consistent loss motif: top5 retained MSE while the smaller-training
+runs evolved dynamics-themed weighting.
+
+One important caveat is that Sobol collocation rows are not consecutive samples from a neuron
+trajectory. Therefore ``adjacent-row transitions'' in the top-1 loss and ``tangents'' in the
+top-2 loss do not represent physical time derivatives under this dataset ordering. Target
+extremity weighting remains meaningful, but any advantage attributed specifically to temporal
+phase consistency would require a trajectory-ordered benchmark or an order-invariance test.
+
+\section*{Artifacts and audit trail}
+
+The top-1/top-2 whole-frontier decisions come from
+\code{reports/neuron_manual_match_comparison.json}; the source frontiers are
+\code{runs/313196/neuron_full_eval/neuron_results.json} and
+\code{runs/313195/neuron_full_eval/neuron_results.json}. The top5 frontiers are in
+\code{runs/312780/neuron_results.json}, linked to bundle source \code{runs/190177}; their
+physical expansions and support checks are recorded in
+\code{reports/neuron_top5_symbolic_recovery_analysis.json}. Operator implementations and run
+configurations are stored in each evolution run's \code{run_data.json}.
+
+\end{document}
