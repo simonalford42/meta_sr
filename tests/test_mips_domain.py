@@ -9,10 +9,15 @@ import pytest
 from domains import get_domain
 from mips_tasks import (
     MIPSComponent,
+    PILOT_TASKS,
+    UNSOLVED_TASKS,
     analyze_transition_relation,
+    analyze_transition_relations,
     build_task_artifacts,
+    component_artifact_path,
     load_component_artifact,
     parse_dataset_name,
+    relation_artifact_path,
     write_component_artifact,
 )
 
@@ -29,6 +34,12 @@ def test_dataset_name_round_trip_and_validation():
         parse_dataset_name("mips:toy:hidden:-1")
 
 
+def test_pinned_unsolved_manifest_contains_pilot_and_has_expected_size():
+    assert len(UNSOLVED_TASKS) == 32
+    assert len(set(UNSOLVED_TASKS)) == 32
+    assert set(PILOT_TASKS) <= set(UNSOLVED_TASKS)
+
+
 def test_transition_diagnostic_finds_conflicts_and_modal_ceiling():
     X = np.array([[0], [0], [0], [1], [1]])
     y = np.array([2, 2, 3, 4, 4])
@@ -40,6 +51,26 @@ def test_transition_diagnostic_finds_conflicts_and_modal_ceiling():
     assert diagnostic["conflicting_row_count"] == 3
     assert diagnostic["modal_lookup_correct_rows"] == 4
     assert diagnostic["modal_lookup_accuracy"] == 0.8
+
+
+def test_shared_relation_diagnostic_matches_scalar_analysis():
+    X = np.array([[0], [0], [0], [1], [1], [2]])
+    Y = np.array([
+        [2, 0],
+        [2, 1],
+        [3, 1],
+        [4, 2],
+        [4, 2],
+        [9, 3],
+    ])
+    unique_X, modal_Y, diagnostics = analyze_transition_relations(X, Y)
+    for index in range(Y.shape[1]):
+        scalar_X, scalar_y, scalar_diagnostic = analyze_transition_relation(
+            X, Y[:, index]
+        )
+        np.testing.assert_array_equal(unique_X, scalar_X)
+        np.testing.assert_array_equal(modal_Y[:, index], scalar_y)
+        assert diagnostics[index] == scalar_diagnostic
 
 
 def test_build_and_load_task_artifacts(monkeypatch, tmp_path):
@@ -69,6 +100,15 @@ def test_build_and_load_task_artifacts(monkeypatch, tmp_path):
     output = load_component_artifact("mips:toy:output:0")
     assert output["X_full"].shape[1] == 1
     assert output["metadata"]["deterministic"]
+    assert relation_artifact_path("toy", "hidden").is_file()
+    assert relation_artifact_path("toy", "output").is_file()
+    assert not component_artifact_path("mips:toy:hidden:0").exists()
+
+    lightweight = load_component_artifact(
+        "mips:toy:hidden:0", include_full=False
+    )
+    assert "X_full" not in lightweight
+    assert "y_full" not in lightweight
 
 
 def test_mips_domain_uses_strict_integer_accuracy():

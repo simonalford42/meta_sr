@@ -3,11 +3,11 @@
 
 This is the data/diagnostic half of the MIPS meta-evolution pilot.  It runs the
 authors' pinned dataset generator and integer autoencoder, converts their
-``Z2,input -> Z`` and ``Z -> output`` files into compact scalar components, and
+``Z2,input -> Z`` and ``Z -> output`` files into compact shared-X artifacts, and
 checks whether every encoded input has a unique target before symbolic search.
 
 No SLURM jobs are submitted here.  ``build-task`` is array-friendly, while
-``build-pilot`` is a sequential convenience command for a local diagnostic.
+``build-pilot`` and ``build-unsolved`` are resumable sequential conveniences.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -33,6 +34,7 @@ if str(ROOT) not in sys.path:
 
 from mips_tasks import (  # noqa: E402
     PILOT_TASKS,
+    UNSOLVED_TASKS,
     available_components,
     build_task_artifacts,
     load_task_diagnostic,
@@ -58,6 +60,14 @@ PILOT_TASK_SPLITS = {
         "rnn_unique2_numerical",
     ),
 }
+
+TASK_SETS = {
+    "pilot": PILOT_TASKS,
+    "unsolved": UNSOLVED_TASKS,
+}
+DEFAULT_REPRODUCTION_SUMMARY = (
+    ROOT / "outputs" / "mips_reproduction_all" / "summary.json"
+)
 
 
 def utc_now() -> str:
@@ -121,9 +131,26 @@ def resolve_task(args: argparse.Namespace) -> str:
         index = int(raw)
     else:
         raise ValueError("Specify --task, --task-index, or --task-index-env")
-    if index < 0 or index >= len(PILOT_TASKS):
-        raise IndexError(f"Pilot task index {index} is outside 0..{len(PILOT_TASKS)-1}")
-    return PILOT_TASKS[index]
+    tasks = TASK_SETS[args.task_set]
+    if index < 0 or index >= len(tasks):
+        raise IndexError(
+            f"{args.task_set} task index {index} is outside 0..{len(tasks)-1}"
+        )
+    return tasks[index]
+
+
+def validate_unsolved_source(summary_path: Path) -> dict[str, dict[str, Any]]:
+    """Verify the tracked 32-task tuple against the completed reproduction."""
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    records = [record for record in summary["tasks"] if record["status"] != "success"]
+    names = tuple(record["task"] for record in records)
+    if names != UNSOLVED_TASKS:
+        raise ValueError(
+            f"Pinned UNSOLVED_TASKS differs from {summary_path}: "
+            f"tracked={len(UNSOLVED_TASKS)}, summary={len(names)}"
+        )
+    return {record["task"]: record for record in records}
 
 
 def build_one_task(
@@ -245,7 +272,13 @@ def build_one_task(
                 print(f"[workspace] moved to {trashed}", flush=True)
 
 
-def summarize(output_root: Path, tasks: Iterable[str] = PILOT_TASKS) -> dict[str, Any]:
+def summarize(
+    output_root: Path,
+    tasks: Iterable[str] = PILOT_TASKS,
+    *,
+    label: str = "pilot",
+    reproduction_records: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     tasks = tuple(tasks)
     task_records = []
     missing = []
@@ -260,21 +293,61 @@ def summarize(output_root: Path, tasks: Iterable[str] = PILOT_TASKS) -> dict[str
         for task_record in task_records
         for component in task_record["components"]
     ]
+    build_error_path = output_root / f"{label}_build_errors.json"
+    build_errors = (
+        json.loads(build_error_path.read_text(encoding="utf-8"))
+        if build_error_path.is_file()
+        else []
+    )
+    errors_by_task = {error["task"]: error for error in build_errors}
+    unavailable = [task for task in missing if task in errors_by_task]
+    pending = [task for task in missing if task not in errors_by_task]
+    fully_deterministic_count = sum(
+        record["all_components_deterministic"] for record in task_records
+    )
     summary = {
         "created_at": utc_now(),
+        "scope": label,
         "artifact_root": str(output_root),
         "requested_task_count": len(tasks),
         "completed_task_count": len(task_records),
-        "missing_tasks": missing,
+        "missing_tasks": pending,
+        "representation_unavailable_tasks": unavailable,
+        "representation_unavailable_count": len(unavailable),
+        "build_errors": build_errors,
         "component_count": len(components),
         "deterministic_component_count": sum(
             component["deterministic"] for component in components
+        ),
+        "fully_deterministic_task_count": fully_deterministic_count,
+        "sr_candidate_task_count": fully_deterministic_count,
+        "representation_conflict_task_count": (
+            len(task_records) - fully_deterministic_count
+        ),
+        "partially_deterministic_task_count": sum(
+            0 < record["deterministic_component_count"] < record["component_count"]
+            for record in task_records
         ),
         "all_components_deterministic": bool(components)
         and all(component["deterministic"] for component in components),
         "tasks": task_records,
     }
-    write_json(output_root / "summary.json", summary)
+    if reproduction_records is not None:
+        summary["reproduction_status_counts"] = {
+            status: sum(
+                record["status"] == status
+                for record in reproduction_records.values()
+            )
+            for status in sorted({
+                record["status"] for record in reproduction_records.values()
+            })
+        }
+        for record in task_records:
+            record["reproduction_status"] = reproduction_records[
+                record["task"]
+            ]["status"]
+    summary_json_name = "summary.json" if label == "pilot" else f"{label}_summary.json"
+    write_json(output_root / summary_json_name, summary)
 
     all_names = [component["dataset_name"] for component in components]
     deterministic_names = [
@@ -282,19 +355,44 @@ def summarize(output_root: Path, tasks: Iterable[str] = PILOT_TASKS) -> dict[str
         for component in components
         if component["deterministic"]
     ]
-    (output_root / "pilot_all.txt").write_text("\n".join(all_names) + "\n")
-    (output_root / "pilot_deterministic.txt").write_text(
+    (output_root / f"{label}_all.txt").write_text("\n".join(all_names) + "\n")
+    (output_root / f"{label}_deterministic.txt").write_text(
         "\n".join(deterministic_names) + "\n"
     )
-    for split_name, split_tasks in PILOT_TASK_SPLITS.items():
-        available = [task for task in split_tasks if task not in missing]
-        names = available_components(available, output_root)
-        (output_root / f"pilot_{split_name}.txt").write_text(
-            "\n".join(names) + "\n"
-        )
+    fully_deterministic_tasks = [
+        record["task"]
+        for record in task_records
+        if record["all_components_deterministic"]
+    ]
+    candidate_component_names = [
+        component["dataset_name"]
+        for record in task_records
+        if record["all_components_deterministic"]
+        for component in record["components"]
+    ]
+    (output_root / f"{label}_candidate_components.txt").write_text(
+        "\n".join(candidate_component_names)
+        + ("\n" if candidate_component_names else "")
+    )
+    (output_root / f"{label}_fully_deterministic_tasks.txt").write_text(
+        "\n".join(fully_deterministic_tasks)
+        + ("\n" if fully_deterministic_tasks else "")
+    )
+    if label == "pilot":
+        for split_name, split_tasks in PILOT_TASK_SPLITS.items():
+            available = [task for task in split_tasks if task not in missing]
+            names = available_components(available, output_root)
+            (output_root / f"pilot_{split_name}.txt").write_text(
+                "\n".join(names) + "\n"
+            )
 
+    title = (
+        "MIPS transition-table pilot diagnostic"
+        if label == "pilot"
+        else f"MIPS transition-table {label} diagnostic"
+    )
     lines = [
-        "# MIPS transition-table pilot diagnostic",
+        f"# {title}",
         "",
         f"Generated: {summary['created_at']}",
         "",
@@ -302,9 +400,31 @@ def summarize(output_root: Path, tasks: Iterable[str] = PILOT_TASKS) -> dict[str
         f"- Scalar components: {len(components)}",
         "- Deterministic components: "
         f"{summary['deterministic_component_count']}/{len(components)}",
+        "- Fully deterministic tasks: "
+        f"{summary['fully_deterministic_task_count']}/{len(task_records)}",
+        "- Better-SR candidates: "
+        f"{summary['sr_candidate_task_count']}/{summary['requested_task_count']}",
+        "- Ruled out by encoded-state conflicts: "
+        f"{summary['representation_conflict_task_count']}/"
+        f"{summary['requested_task_count']}",
+        "- Integer representation unavailable: "
+        f"{summary['representation_unavailable_count']}/"
+        f"{summary['requested_task_count']}",
+        "- Partially deterministic tasks: "
+        f"{summary['partially_deterministic_task_count']}/{len(task_records)}",
     ]
-    if missing:
-        lines.append(f"- Missing tasks: `{', '.join(missing)}`")
+    if reproduction_records is not None:
+        lines.append(
+            "- Reproduction statuses: `"
+            + json.dumps(summary["reproduction_status_counts"], sort_keys=True)
+            + "`"
+        )
+    if unavailable:
+        lines.append(
+            "- Integer-encoder failures: `" + ", ".join(unavailable) + "`"
+        )
+    if pending:
+        lines.append(f"- Pending tasks: `{', '.join(pending)}`")
     lines.extend([
         "",
         "| Task | Components | Deterministic | Worst modal ceiling |",
@@ -316,35 +436,53 @@ def summarize(output_root: Path, tasks: Iterable[str] = PILOT_TASKS) -> dict[str
             f"| `{record['task']}` | {record['component_count']} | "
             f"{record['deterministic_component_count']} | {worst:.6f} |"
         )
+    for task in unavailable:
+        lines.append(f"| `{task}` | — | — | encoder unavailable |")
     lines.extend([
         "",
         "The modal ceiling is the best row accuracy any deterministic function "
         "can obtain when the encoded relation contains contradictory targets.",
         "",
     ])
-    (output_root / "SUMMARY.md").write_text("\n".join(lines))
+    markdown_name = "SUMMARY.md" if label == "pilot" else f"{label.upper()}_SUMMARY.md"
+    (output_root / markdown_name).write_text("\n".join(lines))
     print("\n".join(lines), flush=True)
     return summary
 
 
-def status(output_root: Path) -> int:
+def status(output_root: Path, tasks: Iterable[str] = PILOT_TASKS) -> int:
+    tasks = tuple(tasks)
     completed = []
     missing = []
-    for task in PILOT_TASKS:
+    for task in tasks:
         if (task_artifact_dir(task, output_root) / "diagnostic.json").is_file():
             completed.append(task)
         else:
             missing.append(task)
-    print(f"completed={len(completed)}/{len(PILOT_TASKS)}")
+    error_path = output_root / "unsolved_build_errors.json"
+    errors = (
+        json.loads(error_path.read_text(encoding="utf-8"))
+        if tasks == UNSOLVED_TASKS and error_path.is_file()
+        else []
+    )
+    unavailable_names = {error["task"] for error in errors}
+    unavailable = [task for task in missing if task in unavailable_names]
+    pending = [task for task in missing if task not in unavailable_names]
+    print(
+        f"completed={len(completed)}/{len(tasks)} "
+        f"unavailable={len(unavailable)} pending={len(pending)}"
+    )
     for task in completed:
         diagnostic = load_task_diagnostic(task, output_root)
         print(
             f"  DONE {task}: {diagnostic['deterministic_component_count']}/"
             f"{diagnostic['component_count']} deterministic"
         )
-    for task in missing:
-        print(f"  MISSING {task}")
-    return 0 if not missing else 1
+    for task in unavailable:
+        print(f"  UNAVAILABLE {task}: integer encoder failed")
+    for task in pending:
+        print(f"  PENDING {task}")
+    return 0 if not pending else 1
 
 
 def add_build_options(parser: argparse.ArgumentParser) -> None:
@@ -371,8 +509,11 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     build_task_parser = subparsers.add_parser("build-task")
+    build_task_parser.add_argument(
+        "--task-set", choices=TASK_SETS, default="pilot"
+    )
     selector = build_task_parser.add_mutually_exclusive_group(required=True)
-    selector.add_argument("--task", choices=PILOT_TASKS)
+    selector.add_argument("--task")
     selector.add_argument("--task-index", type=int)
     selector.add_argument("--task-index-env", action="store_true")
     add_build_options(build_task_parser)
@@ -380,11 +521,30 @@ def main() -> int:
     build_pilot_parser = subparsers.add_parser("build-pilot")
     add_build_options(build_pilot_parser)
 
+    build_unsolved_parser = subparsers.add_parser("build-unsolved")
+    add_build_options(build_unsolved_parser)
+    build_unsolved_parser.add_argument(
+        "--reproduction-summary",
+        type=Path,
+        default=DEFAULT_REPRODUCTION_SUMMARY,
+    )
+
     summarize_parser = subparsers.add_parser("summarize")
     summarize_parser.add_argument("--output-root", type=Path, default=None)
+    summarize_parser.add_argument(
+        "--task-set", choices=TASK_SETS, default="pilot"
+    )
+    summarize_parser.add_argument(
+        "--reproduction-summary",
+        type=Path,
+        default=DEFAULT_REPRODUCTION_SUMMARY,
+    )
 
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("--output-root", type=Path, default=None)
+    status_parser.add_argument(
+        "--task-set", choices=TASK_SETS, default="pilot"
+    )
 
     args = parser.parse_args()
     output_root = resolve_artifact_root(args.output_root)
@@ -402,7 +562,18 @@ def main() -> int:
             force=args.force,
             keep_workspace=args.keep_workspace,
         )
-        summarize(output_root)
+        tasks = TASK_SETS[args.task_set]
+        reproduction_records = (
+            validate_unsolved_source(DEFAULT_REPRODUCTION_SUMMARY)
+            if args.task_set == "unsolved"
+            else None
+        )
+        summarize(
+            output_root,
+            tasks,
+            label=args.task_set,
+            reproduction_records=reproduction_records,
+        )
         return 0
     if args.command == "build-pilot":
         for task in PILOT_TASKS:
@@ -419,11 +590,60 @@ def main() -> int:
             )
         summarize(output_root)
         return 0
+    if args.command == "build-unsolved":
+        reproduction_records = validate_unsolved_source(
+            args.reproduction_summary.expanduser().resolve()
+        )
+        errors = []
+        for task in UNSOLVED_TASKS:
+            try:
+                build_one_task(
+                    task,
+                    upstream_repo=args.upstream_repo.expanduser().resolve(),
+                    output_root=output_root,
+                    workspace_root=args.workspace_root,
+                    timeout=args.timeout,
+                    validation_fraction=args.validation_fraction,
+                    seed=args.seed,
+                    force=args.force,
+                    keep_workspace=args.keep_workspace,
+                )
+            except Exception as exc:
+                error = {
+                    "task": task,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "traceback": traceback.format_exc(),
+                }
+                errors.append(error)
+                print(
+                    f"[error] {task}: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+        write_json(output_root / "unsolved_build_errors.json", errors)
+        summarize(
+            output_root,
+            UNSOLVED_TASKS,
+            label="unsolved",
+            reproduction_records=reproduction_records,
+        )
+        return 1 if errors else 0
     if args.command == "summarize":
-        summarize(output_root)
+        tasks = TASK_SETS[args.task_set]
+        reproduction_records = (
+            validate_unsolved_source(args.reproduction_summary.expanduser().resolve())
+            if args.task_set == "unsolved"
+            else None
+        )
+        summarize(
+            output_root,
+            tasks,
+            label=args.task_set,
+            reproduction_records=reproduction_records,
+        )
         return 0
     if args.command == "status":
-        return status(output_root)
+        return status(output_root, TASK_SETS[args.task_set])
     raise AssertionError(args.command)
 
 

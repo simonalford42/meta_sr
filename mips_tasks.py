@@ -43,6 +43,44 @@ PILOT_TASKS = (
     "rnn_unique2_numerical",
 )
 
+# Every non-success entry from the pinned 62-task raw-checkpoint reproduction
+# in outputs/mips_reproduction_all/summary.json (generated 2026-08-25).  Keep
+# the benchmark-index order so this tuple is also a stable SLURM-array map.
+UNSOLVED_TASKS = (
+    "rnn_add_mod_4_numerical",
+    "rnn_add_mod_5_numerical",
+    "rnn_add_mod_6_numerical",
+    "rnn_add_mod_7_numerical",
+    "rnn_add_mod_8_numerical",
+    "rnn_alternating_last3_numerical",
+    "rnn_alternating_last4_numerical",
+    "rnn_balanced_parenthesis_numerical",
+    "rnn_base_3_addition",
+    "rnn_base_4_addition",
+    "rnn_base_5_addition",
+    "rnn_base_6_addition",
+    "rnn_base_7_addition",
+    "rnn_bit_palindromes_numerical",
+    "rnn_diff_of_abs_value_numerical",
+    "rnn_dithering_numerical",
+    "rnn_div_3_numerical",
+    "rnn_div_5_numerical",
+    "rnn_div_7_numerical",
+    "rnn_evens_counter_numerical",
+    "rnn_evens_detector_numerical",
+    "rnn_majority0_1_numerical",
+    "rnn_majority0_2_numerical",
+    "rnn_majority0_3_numerical",
+    "rnn_max_numerical",
+    "rnn_min_numerical",
+    "rnn_newton_magnetic_numerical",
+    "rnn_parity_last2_numerical",
+    "rnn_parity_last4_numerical",
+    "rnn_parity_of_index_numerical",
+    "rnn_perfect_square_detector_numerical",
+    "rnn_unique2_numerical",
+)
+
 ComponentKind = Literal["hidden", "output"]
 
 
@@ -113,6 +151,18 @@ def component_artifact_path(
 ) -> Path:
     parsed = parse_dataset_name(component) if isinstance(component, str) else component
     return task_artifact_dir(parsed.task, root) / "components" / parsed.filename
+
+
+def relation_artifact_path(
+    task: str,
+    kind: ComponentKind,
+    root: Optional[os.PathLike[str] | str] = None,
+) -> Path:
+    """Path for the shared-X format used by scalable task builds."""
+
+    if kind not in ("hidden", "output"):
+        raise ValueError(f"Invalid MIPS relation kind {kind!r}")
+    return task_artifact_dir(task, root) / "relations" / f"{kind}.npz"
 
 
 def diagnostic_path(
@@ -217,6 +267,87 @@ def analyze_transition_relation(
     return unique_inputs, modal_targets, diagnostics
 
 
+def analyze_transition_relations(
+    X: np.ndarray,
+    Y: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]]]:
+    """Diagnose many targets sharing one input relation with one X sort.
+
+    This is equivalent to calling :func:`analyze_transition_relation` on each
+    target column, but avoids sorting a large hidden-state matrix once per RNN
+    coordinate.  That distinction is essential for the benchmark's 18--81
+    dimensional raw checkpoints.
+    """
+
+    X_int = _as_integer_matrix(X, "X")
+    Y_int = _as_integer_matrix(Y, "Y")
+    if len(X_int) != len(Y_int):
+        raise ValueError(f"X/Y length mismatch: {len(X_int)} != {len(Y_int)}")
+    if len(Y_int) == 0:
+        raise ValueError("Cannot diagnose an empty transition relation")
+
+    unique_inputs, inverse, input_counts = np.unique(
+        X_int,
+        axis=0,
+        return_inverse=True,
+        return_counts=True,
+    )
+    order = np.argsort(inverse, kind="stable")
+    starts = np.concatenate((np.array([0]), np.cumsum(input_counts)[:-1]))
+    Y_sorted = Y_int[order]
+
+    target_min = np.minimum.reduceat(Y_sorted, starts, axis=0)
+    target_max = np.maximum.reduceat(Y_sorted, starts, axis=0)
+    conflict_mask = target_min != target_max
+    modal_targets = target_min.copy()
+
+    target_count = Y_int.shape[1]
+    modal_correct = np.full(target_count, len(Y_int), dtype=np.int64)
+    conflicting_rows = (
+        conflict_mask * input_counts[:, None]
+    ).sum(axis=0, dtype=np.int64)
+    pair_counts = np.full(target_count, len(unique_inputs), dtype=np.int64)
+
+    # Most high-dimensional checkpoints have unique encoded states, while the
+    # small-state machines have only a handful of duplicate groups.  Restrict
+    # modal counting to groups that actually disagree in at least one target.
+    for input_index in np.flatnonzero(conflict_mask.any(axis=1)):
+        start = int(starts[input_index])
+        stop = start + int(input_counts[input_index])
+        block = Y_sorted[start:stop]
+        for target_index in np.flatnonzero(conflict_mask[input_index]):
+            values, counts = np.unique(
+                block[:, target_index], return_counts=True
+            )
+            best_index = int(np.argmax(counts))
+            best_count = int(counts[best_index])
+            modal_targets[input_index, target_index] = values[best_index]
+            modal_correct[target_index] -= len(block) - best_count
+            pair_counts[target_index] += len(values) - 1
+
+    diagnostics = []
+    for target_index in range(target_count):
+        diagnostics.append({
+            "row_count": int(len(Y_int)),
+            "feature_count": int(X_int.shape[1]),
+            "unique_input_count": int(len(unique_inputs)),
+            "unique_input_target_pair_count": int(pair_counts[target_index]),
+            "conflicting_input_count": int(conflict_mask[:, target_index].sum()),
+            "conflicting_row_count": int(conflicting_rows[target_index]),
+            "deterministic": bool(not conflict_mask[:, target_index].any()),
+            "modal_lookup_correct_rows": int(modal_correct[target_index]),
+            "modal_lookup_accuracy": float(
+                modal_correct[target_index] / len(Y_int)
+            ),
+            "target_min": int(Y_int[:, target_index].min()),
+            "target_max": int(Y_int[:, target_index].max()),
+            "distinct_target_count": int(
+                np.unique(Y_int[:, target_index]).size
+            ),
+        })
+    return unique_inputs, modal_targets, diagnostics
+
+
 def _train_validation_split(
     X: np.ndarray,
     y: np.ndarray,
@@ -308,6 +439,85 @@ def write_component_artifact(
     return metadata
 
 
+def write_relation_artifact(
+    task: str,
+    kind: ComponentKind,
+    X: np.ndarray,
+    Y: np.ndarray,
+    *,
+    feature_names: Iterable[str],
+    root: Optional[os.PathLike[str] | str] = None,
+    validation_fraction: float = 0.2,
+    seed: int = 42,
+    extra_metadata: Optional[dict[str, Any]] = None,
+) -> list[dict[str, Any]]:
+    """Save a multi-target relation without duplicating X per component."""
+
+    X_full, Y_full, diagnostics = analyze_transition_relations(X, Y)
+    split_name = f"{DATASET_PREFIX}:{task}:{kind}"
+    X_train, Y_train, X_validation, Y_validation = _train_validation_split(
+        X_full,
+        Y_full,
+        split_name,
+        validation_fraction,
+        seed,
+    )
+    names = list(feature_names)
+    if len(names) != X_full.shape[1]:
+        raise ValueError(
+            f"Expected {X_full.shape[1]} feature names, received {len(names)}"
+        )
+
+    components = []
+    for index, component_diagnostic in enumerate(diagnostics):
+        component = MIPSComponent(task, kind, index)
+        metadata = {
+            "format_version": 2,
+            "dataset_name": component.dataset_name,
+            "task": task,
+            "kind": kind,
+            "component_index": index,
+            "feature_names": names,
+            "validation_fraction": validation_fraction,
+            "split_seed": seed,
+            "artifact_relative_path": str(
+                Path("tasks") / task / "relations" / f"{kind}.npz"
+            ),
+            **component_diagnostic,
+        }
+        if extra_metadata:
+            metadata.update(extra_metadata)
+        components.append(metadata)
+
+    relation_metadata = {
+        "format_version": 2,
+        "task": task,
+        "kind": kind,
+        "feature_names": names,
+        "target_count": Y_full.shape[1],
+        "validation_fraction": validation_fraction,
+        "split_seed": seed,
+        "components": components,
+    }
+    path = relation_artifact_path(task, kind, root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    arrays: dict[str, np.ndarray] = {
+        "X_train": X_train,
+        "X_validation": X_validation,
+        "X_full": X_full,
+        "metadata_json": np.asarray(json.dumps(relation_metadata, sort_keys=True)),
+    }
+    for index in range(Y_full.shape[1]):
+        arrays[f"y_train_{index}"] = Y_train[:, index]
+        arrays[f"y_validation_{index}"] = Y_validation[:, index]
+        arrays[f"y_full_{index}"] = Y_full[:, index]
+    with temporary.open("wb") as handle:
+        np.savez_compressed(handle, **arrays)
+    temporary.replace(path)
+    return components
+
+
 def build_task_artifacts(
     task: str,
     *,
@@ -358,7 +568,6 @@ def build_task_artifacts(
     ]
     output_names = [f"h{i}" for i in range(hidden_dim)]
 
-    component_records: list[dict[str, Any]] = []
     common_metadata = {
         "hidden_dim": hidden_dim,
         "input_dim": input_dim,
@@ -367,32 +576,30 @@ def build_task_artifacts(
     if provenance:
         common_metadata["provenance"] = provenance
 
-    for index in range(hidden_dim):
-        component_records.append(
-            write_component_artifact(
-                MIPSComponent(task, "hidden", index),
-                transition_X,
-                Z_int[:, index],
-                feature_names=transition_names,
-                root=root,
-                validation_fraction=validation_fraction,
-                seed=seed,
-                extra_metadata=common_metadata,
-            )
+    component_records = write_relation_artifact(
+        task,
+        "hidden",
+        transition_X,
+        Z_int,
+        feature_names=transition_names,
+        root=root,
+        validation_fraction=validation_fraction,
+        seed=seed,
+        extra_metadata=common_metadata,
+    )
+    component_records.extend(
+        write_relation_artifact(
+            task,
+            "output",
+            Z_int,
+            outputs_int,
+            feature_names=output_names,
+            root=root,
+            validation_fraction=validation_fraction,
+            seed=seed,
+            extra_metadata=common_metadata,
         )
-    for index in range(output_dim):
-        component_records.append(
-            write_component_artifact(
-                MIPSComponent(task, "output", index),
-                Z_int,
-                outputs_int[:, index],
-                feature_names=output_names,
-                root=root,
-                validation_fraction=validation_fraction,
-                seed=seed,
-                extra_metadata=common_metadata,
-            )
-        )
+    )
 
     deterministic_count = sum(record["deterministic"] for record in component_records)
     task_diagnostic = {
@@ -427,29 +634,72 @@ def build_task_artifacts(
 def load_component_artifact(
     dataset_name: str,
     root: Optional[os.PathLike[str] | str] = None,
+    *,
+    include_full: bool = True,
 ) -> dict[str, Any]:
     """Load one component artifact into ordinary NumPy arrays."""
 
     component = parse_dataset_name(dataset_name)
     path = component_artifact_path(component, root)
+    if path.is_file():
+        with np.load(path, allow_pickle=False) as payload:
+            metadata = json.loads(str(payload["metadata_json"].item()))
+            result = {
+                "component": component,
+                "path": path,
+                "metadata": metadata,
+                "X_train": np.asarray(payload["X_train"], dtype=np.float64),
+                "y_train": np.asarray(payload["y_train"], dtype=np.float64),
+                "X_validation": np.asarray(
+                    payload["X_validation"], dtype=np.float64
+                ),
+                "y_validation": np.asarray(
+                    payload["y_validation"], dtype=np.float64
+                ),
+            }
+            if include_full:
+                result["X_full"] = np.asarray(
+                    payload["X_full"], dtype=np.float64
+                )
+                result["y_full"] = np.asarray(
+                    payload["y_full"], dtype=np.float64
+                )
+            return result
+
+    path = relation_artifact_path(component.task, component.kind, root)
     if not path.is_file():
         raise FileNotFoundError(
-            f"Missing MIPS transition artifact {path}. Build it with "
+            f"Missing MIPS transition artifact for {dataset_name}; checked "
+            f"{component_artifact_path(component, root)} and {path}. Build it with "
             "scripts/mips_transition_pilot.py before evaluation."
         )
     with np.load(path, allow_pickle=False) as payload:
-        metadata = json.loads(str(payload["metadata_json"].item()))
-        return {
+        relation_metadata = json.loads(str(payload["metadata_json"].item()))
+        if component.index >= relation_metadata["target_count"]:
+            raise IndexError(
+                f"Component {dataset_name} is outside relation target count "
+                f"{relation_metadata['target_count']}"
+            )
+        metadata = relation_metadata["components"][component.index]
+        result = {
             "component": component,
             "path": path,
             "metadata": metadata,
             "X_train": np.asarray(payload["X_train"], dtype=np.float64),
-            "y_train": np.asarray(payload["y_train"], dtype=np.float64),
+            "y_train": np.asarray(
+                payload[f"y_train_{component.index}"], dtype=np.float64
+            ),
             "X_validation": np.asarray(payload["X_validation"], dtype=np.float64),
-            "y_validation": np.asarray(payload["y_validation"], dtype=np.float64),
-            "X_full": np.asarray(payload["X_full"], dtype=np.float64),
-            "y_full": np.asarray(payload["y_full"], dtype=np.float64),
+            "y_validation": np.asarray(
+                payload[f"y_validation_{component.index}"], dtype=np.float64
+            ),
         }
+        if include_full:
+            result["X_full"] = np.asarray(payload["X_full"], dtype=np.float64)
+            result["y_full"] = np.asarray(
+                payload[f"y_full_{component.index}"], dtype=np.float64
+            )
+        return result
 
 
 def load_task_diagnostic(

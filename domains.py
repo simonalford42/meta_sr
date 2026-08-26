@@ -560,7 +560,7 @@ class MIPSTransitionDomain(Domain):
     def load_dataset(self, dataset_name, max_samples=None, data_seed=None):
         from mips_tasks import load_component_artifact
 
-        artifact = load_component_artifact(dataset_name)
+        artifact = load_component_artifact(dataset_name, include_full=False)
         X = artifact["X_train"]
         y = artifact["y_train"]
         if max_samples is not None and len(y) > max_samples:
@@ -570,7 +570,7 @@ class MIPSTransitionDomain(Domain):
     def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
         from mips_tasks import load_component_artifact
 
-        artifact = load_component_artifact(dataset_name)
+        artifact = load_component_artifact(dataset_name, include_full=False)
         X_train = artifact["X_train"]
         y_train = artifact["y_train"]
         X_validation = artifact["X_validation"]

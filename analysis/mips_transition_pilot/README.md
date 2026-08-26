@@ -13,11 +13,18 @@ autoencoder.  The diagnostic asks a necessary question before running search:
 If the answer is no, no deterministic symbolic expression can exactly solve
 that component without first improving the representation.
 
+The completed extension to all 32 unsolved reproduction tasks is documented in
+`analysis/mips_transition_unsolved/README.md`. It identifies ten whole-task
+better-SR candidates, seventeen tasks blocked by representation collisions,
+and five tasks blocked in the authors' high-dimensional integer encoder.
+
 ## Implementation
 
 - `mips_tasks.py` defines compact scalar transition artifacts, deterministic
   train/validation splits, collision diagnostics, and exact full-relation
   validation.
+- Larger builds use a shared-X artifact format so the state matrix is sorted
+  and stored once per multi-target relation rather than once per coordinate.
 - `scripts/mips_transition_pilot.py` runs the pinned upstream dataset generator
   and integer autoencoder and builds the artifacts. It never submits SLURM.
 - `domains.py` registers a `mips` PySR/meta-evolution domain with protected
@@ -96,6 +103,13 @@ Build or refresh the diagnostic locally:
 ```bash
 python scripts/mips_transition_pilot.py build-pilot
 python scripts/mips_transition_pilot.py status
+```
+
+Build or resume all unsolved reproduction tasks:
+
+```bash
+python scripts/mips_transition_pilot.py build-unsolved
+python scripts/mips_transition_pilot.py summarize --task-set unsolved
 ```
 
 Individual builds are array-friendly:
