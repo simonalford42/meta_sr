@@ -651,9 +651,16 @@ class MIPSTransitionDomain(Domain):
         }
 
     def predict_namespace(self):
+        def as_float_array(value):
+            # implemented_function can be invoked while SymPy evaluates a
+            # numeric constant subtree such as mips_not(0.004).  Converting
+            # first avoids leaking SymPy BooleanTrue/BooleanFalse scalars into
+            # NumPy operations (those objects do not implement ``astype``).
+            return np.asarray(value, dtype=float)
+
         def protected_mod(x, y):
             x_arr, y_arr = np.broadcast_arrays(
-                np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+                as_float_array(x), as_float_array(y)
             )
             result = np.zeros(x_arr.shape, dtype=float)
             evaluate = ~(np.abs(y_arr) < 1e-12)
@@ -663,7 +670,7 @@ class MIPSTransitionDomain(Domain):
 
         def protected_floordiv(x, y):
             x_arr, y_arr = np.broadcast_arrays(
-                np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+                as_float_array(x), as_float_array(y)
             )
             quotient = np.zeros(x_arr.shape, dtype=float)
             evaluate = ~(np.abs(y_arr) < 1e-12)
@@ -674,14 +681,28 @@ class MIPSTransitionDomain(Domain):
         return {
             "mips_mod": protected_mod,
             "mips_floordiv": protected_floordiv,
-            "mips_eq": lambda x, y: (np.abs(np.asarray(x) - np.asarray(y)) < 0.5).astype(float),
-            "mips_lt": lambda x, y: (np.asarray(x) < np.asarray(y)).astype(float),
-            "mips_min": np.minimum,
-            "mips_max": np.maximum,
-            "mips_xor": lambda x, y: np.mod(np.rint(x) + np.rint(y), 2.0),
-            "mips_abs": np.abs,
-            "mips_zero": lambda x: (np.abs(np.asarray(x)) < 0.5).astype(float),
-            "mips_not": lambda x: (np.abs(np.asarray(x)) < 0.5).astype(float),
+            "mips_eq": lambda x, y: (
+                np.abs(as_float_array(x) - as_float_array(y)) < 0.5
+            ).astype(float),
+            "mips_lt": lambda x, y: (
+                as_float_array(x) < as_float_array(y)
+            ).astype(float),
+            "mips_min": lambda x, y: np.minimum(
+                as_float_array(x), as_float_array(y)
+            ),
+            "mips_max": lambda x, y: np.maximum(
+                as_float_array(x), as_float_array(y)
+            ),
+            "mips_xor": lambda x, y: np.mod(
+                np.rint(as_float_array(x)) + np.rint(as_float_array(y)), 2.0
+            ),
+            "mips_abs": lambda x: np.abs(as_float_array(x)),
+            "mips_zero": lambda x: (
+                np.abs(as_float_array(x)) < 0.5
+            ).astype(float),
+            "mips_not": lambda x: (
+                np.abs(as_float_array(x)) < 0.5
+            ).astype(float),
         }
 
     @classmethod

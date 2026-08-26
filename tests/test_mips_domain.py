@@ -329,3 +329,24 @@ def test_mips_sympy_mappings_are_inert_and_numerically_faithful():
         )
         predicted = sympy2numpy(parsed, symbols)(X)
         np.testing.assert_allclose(predicted, expected, equal_nan=True)
+
+    # Predicate subtrees can be constant.  SymPy may evaluate these during
+    # conversion, so the implementations must accept SymPy numeric scalars.
+    constant_cases = {
+        "mips_not(0.0042925) + x0": X[:, 0] + 1.0,
+        "mips_zero(1) + x0": X[:, 0],
+        "mips_eq(1, 1) + x0": X[:, 0] + 1.0,
+        "mips_lt(1, 2) + x0": X[:, 0] + 1.0,
+        "mips_min(1, 2) + x0": X[:, 0] + 1.0,
+        "mips_max(1, 2) + x0": X[:, 0] + 2.0,
+        "mips_xor(1, 2) + x0": X[:, 0] + 1.0,
+        "mips_abs(-2) + x0": X[:, 0] + 2.0,
+    }
+    for equation, expected in constant_cases.items():
+        parsed = pysr2sympy(
+            equation,
+            feature_names_in=names,
+            extra_sympy_mappings=mappings,
+        )
+        predicted = sympy2numpy(parsed, symbols)(X)
+        np.testing.assert_allclose(predicted, expected, equal_nan=True)
