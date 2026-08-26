@@ -18,6 +18,7 @@ from inspect_srbench_results import (
     format_summary_table,
     summarize_run,
 )
+from srbench_official_results import build_official_columns, format_official_table
 
 
 class BlackBoxSummaryTests(unittest.TestCase):
@@ -116,6 +117,89 @@ class SummaryTableTests(unittest.TestCase):
         cells = [cell.strip() for cell in lines[3].split("│")[1:-1]]
 
         self.assertEqual(cells[headers.index("max-evals")], "-")
+
+
+class OfficialTableTests(unittest.TestCase):
+    @staticmethod
+    def _write_eval(
+        runs_root, run_id, source, max_evals, *, solved, black_box=False
+    ):
+        run_dir = runs_root / run_id
+        run_dir.mkdir()
+        manifest = {
+            "mode": "evolve",
+            "backend": "pysr",
+            "max_evals": max_evals,
+            "datasets": ["task"],
+            "noise_levels": [0.0],
+            "batches": [],
+            "method_meta": {
+                "source": str(source),
+                "train_score": 0.7,
+                "val_score": 0.6,
+            },
+            "evaluation_types": ["ground_truth"],
+        }
+        if black_box:
+            manifest["evaluation_types"].append("black_box")
+            manifest["black_box"] = {"n_datasets": 122, "n_runs": 10}
+            with open(run_dir / "srbench_black_box_results.json", "w") as f:
+                json.dump({
+                    "datasets": {"bb_task": [[{"test_r2": 0.8}]]}
+                }, f)
+        with open(run_dir / "manifest.json", "w") as f:
+            json.dump(manifest, f)
+        with open(run_dir / "srbench_full_results.json", "w") as f:
+            json.dump({
+                "results": {
+                    "task|0|0": {
+                        "present": True,
+                        "error": None,
+                        "solved": solved,
+                    }
+                }
+            }, f)
+
+    def test_joins_training_and_one_and_ten_million_evaluations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp)
+            runs_root = project_root / "runs"
+            source = runs_root / "111"
+            source.mkdir(parents=True)
+            with open(source / "run_data.json", "w") as f:
+                json.dump({
+                    "config": {
+                        "fitness_metric": "r2",
+                        "split": "splits/train.txt",
+                        "val_split": "splits/val.txt",
+                    },
+                    "generations": [{"large_trailing_data": [1, 2, 3]}],
+                }, f)
+
+            self._write_eval(
+                runs_root, "9001", source, 1_000_000,
+                solved=True, black_box=True,
+            )
+            self._write_eval(
+                runs_root, "9002", source, 10_000_000,
+                solved=False,
+            )
+
+            columns = build_official_columns(runs_root, project_root)
+            column = next(c for c in columns if c["key"] == "pysrpp_r2")
+            table = format_official_table(columns)
+
+            self.assertEqual(column["training_id"], "111")
+            self.assertEqual(column["eval_ids"], "9001,9002")
+            self.assertEqual(column["train_set"], "train.txt")
+            self.assertEqual(column["val_set"], "val.txt")
+            self.assertEqual(column["train_perf"], 0.7)
+            self.assertEqual(column["val_perf"], 0.6)
+            self.assertEqual(column["gt_rate"], 1.0)
+            self.assertEqual(column["gt_10m_rate"], 0.0)
+            self.assertEqual(column["bb_r2"], 0.8)
+            self.assertIn("1/5320", table)
+            self.assertIn("1/1220", table)
 
 
 if __name__ == "__main__":

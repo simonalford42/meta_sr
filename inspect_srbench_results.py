@@ -13,6 +13,7 @@ Usage:
     python inspect_srbench_results.py --run-id <run-id> --wandb
     python inspect_srbench_results.py --see-all
     python inspect_srbench_results.py --see-all --since 7
+    python inspect_srbench_results.py --official
 """
 
 import argparse
@@ -332,10 +333,15 @@ def main():
         description="Inspect a full SRBench evaluation run.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--run-id",
-                        help="Run id / directory name under --runs-root.")
-    parser.add_argument("--see-all", action="store_true",
-                        help="Inspect every full-SRBench run under --runs-root.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--run-id",
+                      help="Run id / directory name under --runs-root.")
+    mode.add_argument("--see-all", action="store_true",
+                      help="Inspect every full-SRBench run under --runs-root.")
+    mode.add_argument(
+        "--official", action="store_true",
+        help="Show the official baseline/HPO/PySR++/BasicSR++ comparison table.",
+    )
     parser.add_argument("--since", type=int, metavar="NDAYS",
                         help="With --see-all, only include runs from the past NDAYS days.")
     parser.add_argument("--runs-root", type=str, default="runs")
@@ -351,6 +357,11 @@ def main():
         parser.error("--since must be non-negative")
     if args.since is not None and not args.see_all:
         parser.error("--since requires --see-all")
+
+    if args.official:
+        from srbench_official_results import build_official_table
+        print(build_official_table(args.runs_root))
+        return
 
     if args.see_all:
         run_dirs = find_full_srbench_runs(args.runs_root, since_days=args.since)
@@ -375,7 +386,7 @@ def main():
         return
 
     if not args.run_id:
-        parser.error("one of --run-id or --see-all is required")
+        parser.error("one of --run-id, --see-all, or --official is required")
 
     run_dir = Path(args.runs_root) / args.run_id
     if not run_dir.is_dir():
