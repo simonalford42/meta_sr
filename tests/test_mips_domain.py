@@ -10,6 +10,7 @@ from domains import get_domain
 from mips_tasks import (
     MIPSComponent,
     PILOT_TASKS,
+    REPRESENTATION_CONFLICT_TASKS,
     SR_TARGET_TASKS,
     UNSOLVED_TASKS,
     analyze_transition_relation,
@@ -42,6 +43,13 @@ def test_pinned_unsolved_manifest_contains_pilot_and_has_expected_size():
     assert set(PILOT_TASKS) <= set(UNSOLVED_TASKS)
     assert len(SR_TARGET_TASKS) == 13
     assert len(set(SR_TARGET_TASKS)) == 13
+    assert len(REPRESENTATION_CONFLICT_TASKS) == 17
+    assert len(set(REPRESENTATION_CONFLICT_TASKS)) == 17
+    assert set(REPRESENTATION_CONFLICT_TASKS) <= set(UNSOLVED_TASKS)
+    assert not (
+        set(REPRESENTATION_CONFLICT_TASKS)
+        & set(SR_TARGET_TASKS)
+    )
 
 
 def test_transition_diagnostic_finds_conflicts_and_modal_ceiling():

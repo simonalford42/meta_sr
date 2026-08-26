@@ -104,6 +104,31 @@ SR_UNSOLVED_CANDIDATE_TASKS = (
 )
 SR_TARGET_TASKS = SR_SUCCESS_TASKS + SR_UNSOLVED_CANDIDATE_TASKS
 
+# These are the remaining encoded tasks for which rounding the raw lattice
+# coordinates to the unit lattice makes at least one observed transition or
+# output relation contradictory.  A finer lattice diagnostic tests whether
+# those contradictions are an artifact of the unit-cell resolution rather
+# than inherent non-determinism in the underlying RNN state.
+REPRESENTATION_CONFLICT_TASKS = (
+    "rnn_add_mod_4_numerical",
+    "rnn_add_mod_5_numerical",
+    "rnn_add_mod_6_numerical",
+    "rnn_add_mod_7_numerical",
+    "rnn_alternating_last3_numerical",
+    "rnn_balanced_parenthesis_numerical",
+    "rnn_diff_of_abs_value_numerical",
+    "rnn_div_3_numerical",
+    "rnn_div_5_numerical",
+    "rnn_div_7_numerical",
+    "rnn_evens_counter_numerical",
+    "rnn_evens_detector_numerical",
+    "rnn_majority0_1_numerical",
+    "rnn_majority0_2_numerical",
+    "rnn_newton_magnetic_numerical",
+    "rnn_parity_last4_numerical",
+    "rnn_parity_of_index_numerical",
+)
+
 ComponentKind = Literal["hidden", "output"]
 
 
