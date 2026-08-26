@@ -22,6 +22,13 @@
 # mips_aggregate=$(sbatch --parsable --dependency=afterany:"$mips_array" --cpus-per-task=1 --mem=4G --time=00:15:00 --partition=default_partition --job-name=mips-aggregate --output="$MIPS_OUTPUT/slurm/aggregate_%j.out" --error="$MIPS_OUTPUT/slurm/aggregate_%j.err" run.sh scripts/reproduce_mips_all.py aggregate --output-dir "$MIPS_OUTPUT")
 # echo "Submitted MIPS array $mips_array and aggregate $mips_aggregate"
 
+# 8/26 — Base PySR on the 27 deterministic scalar relations from the 10 MIPS
+# SR-candidate tasks. The driver submits a 27-element one-CPU array; each fit
+# gets up to one hour of PySR search. The strict MIPS check tests every candidate
+# against the complete deduplicated relation before counting it as solved.
+# Results: outputs/mips_pysr_baseline_1h_seed42/eval_summary.json
+# sbatch -J mips-pysr-base run.sh evaluate_new_pysr.py --domain mips --fitness-metric gt-acc --splits splits/mips_unsolved_candidates.txt --n-runs 1 --seed 42 --max-samples 1000 --wall-clock-only --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 27 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir outputs/mips_pysr_baseline_1h_seed42
+
 # 8/25
 # srbench full evaluation for the 300-trial HPO selections
 # chain_a=$(sbatch --parsable -J srb-hpo300-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --ground-truth --black-box --timeout 0)

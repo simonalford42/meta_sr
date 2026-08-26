@@ -224,3 +224,10 @@ def test_mips_operator_grammar_and_split_manifests_are_complete():
     assert not (train & validation or train & test or validation & test)
     assert train | validation | test == all_components
     assert all(name.startswith("mips:") for name in all_components)
+
+    candidates = (
+        split_root / "mips_unsolved_candidates.txt"
+    ).read_text().splitlines()
+    candidate_components = [parse_dataset_name(name) for name in candidates]
+    assert len(candidate_components) == 27
+    assert len({component.task for component in candidate_components}) == 10
