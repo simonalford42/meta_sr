@@ -1,0 +1,314 @@
+\documentclass[10pt]{article}
+
+\usepackage[margin=0.72in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{enumitem}
+
+\definecolor{navy}{HTML}{17365D}
+\definecolor{bluefill}{HTML}{EAF2F8}
+\definecolor{redfill}{HTML}{FDEDEC}
+\definecolor{greenfill}{HTML}{E9F7EF}
+\definecolor{grayfill}{HTML}{F4F6F7}
+\hypersetup{colorlinks=true,linkcolor=navy,urlcolor=navy}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlength{\emergencystretch}{1em}
+\setlist[itemize]{leftmargin=1.35em,itemsep=2pt,topsep=3pt}
+\setlist[enumerate]{leftmargin=1.5em,itemsep=2pt,topsep=3pt}
+\renewcommand{\arraystretch}{1.13}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  columns=fullflexible,
+  breaklines=true,
+  frame=single,
+  framesep=4pt,
+  rulecolor=\color{gray},
+  backgroundcolor=\color{grayfill},
+  showstringspaces=false,
+  keepspaces=true
+}
+
+\newcommand{\answerbox}[1]{%
+  \begin{center}
+  \fcolorbox{navy}{bluefill}{\begin{minipage}{0.94\linewidth}
+  \textbf{Direct answer.} #1
+  \end{minipage}}
+  \end{center}}
+
+\newcommand{\warningbox}[1]{%
+  \begin{center}
+  \fcolorbox{red!70!black}{redfill}{\begin{minipage}{0.94\linewidth}
+  \textbf{Important consequence.} #1
+  \end{minipage}}
+  \end{center}}
+
+\title{Where the MIPS--PySR SymPy Conversion Failures Occur\\
+\large What is searched, what is matched, and why the partial baseline cannot yet be scored cleanly}
+\author{meta\_sr reproduction note}
+\date{26 August 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1.2em}
+
+\answerbox{Yes: the visible failures occurred \emph{after} the Julia symbolic-regression search had finished.  They occurred while PySR was converting or numerically evaluating its returned expression trees through SymPy.  The MIPS ``ground-truth match'' is not an algebraic comparison to a canonical formula; it is exact behavioral agreement on the complete finite, deduplicated integer transition relation.}
+
+\section{The short version}
+
+The run has two distinct computational worlds:
+
+\begin{center}
+\small
+\begin{tabular}{@{}c@{\hspace{4pt}}c@{\hspace{4pt}}c@{\hspace{4pt}}c@{\hspace{4pt}}c@{\hspace{4pt}}c@{\hspace{4pt}}c@{}}
+\fcolorbox{navy}{bluefill}{\parbox{0.16\textwidth}{\centering Julia search\\expression trees\\training loss}}
+& $\longrightarrow$ &
+\fcolorbox{navy}{bluefill}{\parbox{0.16\textwidth}{\centering Hall of fame\\Pareto frontier}}
+& $\longrightarrow$ &
+\fcolorbox{red!70!black}{redfill}{\parbox{0.16\textwidth}{\centering PySR/SymPy\\conversion and\\prediction}}
+& $\longrightarrow$ &
+\fcolorbox{green!50!black}{greenfill}{\parbox{0.16\textwidth}{\centering Validation then\\full-relation\\exact match}}
+\end{tabular}
+\end{center}
+
+The search uses the Julia definitions of operators such as \texttt{mips\_mod},
+\texttt{mips\_floordiv}, and \texttt{mips\_max}.  Once the search returns,
+Python asks PySR to expose and predict with those expressions.  PySR first
+turns the Julia expression into a SymPy expression and a numerical lambda.
+That red stage is where the observed failures arise.
+
+The evidence is direct.  For failed task index 0, the worker log says:
+
+\begin{lstlisting}
+Starting PySR search: 18 train samples, 3 features
+PySR search complete ... in 58.2s
+PySR Worker finished ... R^2=-1.0000, ERROR: Failed to evaluate the expression
+\end{lstlisting}
+
+The same log prints a Pareto frontier containing a complexity-30 expression
+with zero training loss.  Thus the search produced a candidate; the error was
+raised afterward.  A different seed for the same scalar relation completed
+search in 60.9 seconds and passed the exact checker.
+
+\section{What the 27 scalar problems actually are}
+
+For an RNN with hidden state $h_t$, input $u_t$, and output $o_t$, MIPS first
+learns an integer encoding $z_t=E(h_t)\in\mathbb{Z}^d$.  Program extraction is
+then decomposed into ordinary scalar relations:
+
+\begin{align}
+\text{hidden component }j:&&
+  x &= (z_{t-1,1},\ldots,z_{t-1,d},u_t), & y&=z_{t,j},\\
+\text{output component }k:&&
+  x &= (z_{t,1},\ldots,z_{t,d}), & y&=o_{t,k}.
+\end{align}
+
+The raw MIPS traces may contain hundreds of thousands of rows.  We deduplicate
+identical inputs and require a unique target for every input.  Only the 27
+scalar relations from the ten fully deterministic RNN tasks were sent to
+PySR.  Each relation has a fixed 80/20 train/validation split, but the complete
+deduplicated table is retained for the final exact check.
+
+This distinction matters: ``complete'' means every distinct encoded relation
+row observed in the extracted MIPS data, not every point in an infinite real
+domain.
+
+\section{What ``matching'' means}
+
+Let $H$ be PySR's returned Pareto frontier and let $D_{\mathrm{val}}$ and
+$D_{\mathrm{full}}$ be the validation and complete deduplicated relations.  For
+an expression $e$, define
+
+\[
+  A_D(e)=\frac{1}{|D|}\sum_{(x_i,y_i)\in D}
+  \mathbf{1}\!\left[\operatorname{finite}(e(x_i))\ \wedge\
+  |e(x_i)-y_i|\le 10^{-9}\right].
+\]
+
+A scalar component is counted as solved exactly when
+
+\[
+  \exists e\in H:\quad A_{D_{\mathrm{val}}}(e)=1
+  \quad\wedge\quad A_{D_{\mathrm{full}}}(e)=1.
+\]
+
+The representation must also have been diagnosed as deterministic.  The
+checker considers all useful Pareto-front expressions, not only the one PySR's
+``best'' model-selection rule chooses.  There is no symbolic simplification or
+formula-identity requirement in the MIPS domain.
+
+\subsection*{Concrete example: alternating-last4 output coordinate 0}
+
+The original trace contains 900,000 rows, but only 11 distinct encoded states.
+The full exact relation is:
+
+\begin{center}
+\begin{tabular}{ccc@{\qquad}ccc}
+\toprule
+$x_0$ & $x_1$ & $y$ & $x_0$ & $x_1$ & $y$\\
+\midrule
+0  & 0 & 0 & 8  & 0 & 0\\
+0  & 1 & 1 & 31 & 0 & 0\\
+1  & 0 & 0 & 32 & 0 & 0\\
+6  & 0 & 0 & 37 & 0 & 0\\
+7$^{\dagger}$ & 0 & 0 & 37$^{\dagger}$ & 1 & 1\\
+ & & & 38 & 0 & 0\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The daggered rows are the held-out validation rows.  PySR found
+$e(x_0,x_1)=x_1$ in all ten completed seeds for this component.  The check is:
+
+\[
+  e(7,0)=0,\qquad e(37,1)=1
+  \quad\text{(validation)},
+\]
+followed by the same equality check on all 11 rows.  Because every prediction
+equals the integer target, this component receives \texttt{gt\_match\_score=1}.
+
+An original RNN task contains multiple scalar components.  A whole-RNN solve
+requires every hidden and output component to be exact; the current evaluator
+records the components independently, so whole-task results are grouped later.
+
+\section{Precisely where a post-search failure can occur}
+
+After \texttt{model.fit} returns, the worker performs these operations in order:
+
+\begin{enumerate}
+  \item \texttt{model.get\_best()} selects a row and may force PySR to create
+        SymPy/lambda representations of frontier expressions.
+  \item The MIPS checker calls \texttt{model.predict} for each Pareto expression
+        on validation rows; only validation-perfect expressions are evaluated
+        on the full relation.
+  \item Independently of the exact checker, the worker calls
+        \texttt{model.predict(X\_val)} for PySR's selected equation to report
+        $R^2$ and accuracy.
+\end{enumerate}
+
+There are two exception policies:
+
+\begin{itemize}
+  \item Inside the MIPS exact checker, a prediction exception for one frontier
+        equation is caught and the checker moves to the next equation.
+  \item An exception from \texttt{get\_best()} or from the final unconditional
+        selected-equation prediction escapes to the outer worker handler and is
+        recorded as $R^2=-1$ with an error.
+\end{itemize}
+
+Therefore the visible worker errors are definitely post-search, but the current
+logs cannot always distinguish \texttt{get\_best()} from the final prediction.
+The generic error is truncated, and the temporary hall-of-fame directory is
+deleted.  Moreover, a conversion failure \emph{inside} the exact checker can be
+silently converted into a non-match.  This is why merely rerunning the rows
+explicitly labeled ``error'' is not quite enough for a definitive baseline.
+
+\section{Why the current SymPy mappings are fragile}
+
+The Julia search operators are protected numerically.  For example:
+
+\begin{lstlisting}
+mips_mod(x,y) = abs(y) < 1.0e-12 ? 0.0 : mod(x, abs(y))
+\end{lstlisting}
+
+The ternary is lazy: when $y$ is zero, Julia never evaluates the modulo branch.
+The current SymPy adapter instead constructs
+
+\begin{lstlisting}[language=Python]
+Piecewise((0, Eq(y, 0)), (Mod(x, Abs(y)), True))
+\end{lstlisting}
+
+Python evaluates function arguments before calling \texttt{Piecewise}.  Thus
+the supposedly protected second branch can be constructed and simplified even
+when the first branch is true.  Directly exercising the adapter reproduces the
+same error classes seen in the partial run:
+
+\begin{center}
+\begin{tabularx}{0.92\linewidth}{lYl}
+\toprule
+Adapter call & Intended protected behavior & Current SymPy result\\
+\midrule
+\texttt{mips\_mod(x,0)} & return 0 & \texttt{ZeroDivisionError: Modulo by zero}\\
+\texttt{mips\_min(nan,x)} & numerical minimum policy & \texttt{ValueError: nan is not comparable}\\
+\texttt{mips\_max(zoo,x)} & numerical maximum policy & \texttt{ValueError: zoo is not comparable}\\
+\texttt{mips\_lt(nan,x)} & protected numerical predicate & \texttt{TypeError: Invalid NaN comparison}\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Nested expressions make these cases reachable even though the dataset inputs
+are integers: evolved constants and intermediate division, modulo, minimum, or
+maximum nodes can create zero denominators, \texttt{nan}, or complex infinity
+(\texttt{zoo}) while SymPy simplifies a frontier expression.
+
+There are also two semantic discrepancies that should be tested during the fix:
+
+\begin{itemize}
+  \item Julia treats $|y|<10^{-12}$ as a zero denominator, whereas the SymPy
+        adapter protects only exact symbolic equality $y=0$.
+  \item Julia's \texttt{mips\_xor} rounds both operands before reducing modulo
+        two; the SymPy adapter currently uses $\operatorname{Mod}(x+y,2)$ without
+        rounding.  Intermediate expressions need not be integer-valued.
+\end{itemize}
+
+The domain also defines safer NumPy operator functions, but this PySR prediction
+path calls \texttt{model.predict}; it uses PySR's SymPy/lambda representation,
+not that separate NumPy namespace.
+
+\warningbox{A reported exact solve is strong evidence because numerical prediction succeeded on the full relation.  A reported non-solve is less trustworthy in this run: a promising frontier equation may have been skipped after a conversion exception.  The partial solve rate therefore underestimates search performance, and cross-language operator semantics should be checked before treating exact hits as extracted Julia programs.}
+
+\section{Recommended repair and rerun}
+
+The repair should change evaluation, not search:
+
+\begin{enumerate}
+  \item Represent each MIPS operator as an inert custom SymPy function with an
+        explicit numerical implementation, so SymPy does not eagerly rewrite
+        protected branches; or bypass SymPy entirely for MIPS scoring and
+        evaluate expression strings with the existing safe NumPy operator
+        namespace.
+  \item Use the same faithful evaluator for Pareto validation, full-relation
+        matching, and selected-equation accuracy.  Display-oriented symbolic
+        conversion should not be a prerequisite for behavioral scoring.
+  \item Add cross-backend tests comparing Julia and Python/SymPy behavior on
+        zero and near-zero denominators, non-integer intermediates, \texttt{nan},
+        infinities, and nested operators.
+  \item Record the failing stage, complete exception, and offending equation;
+        retain the hall of fame on failures.  Do not silently turn match-check
+        exceptions into ordinary non-matches.
+  \item Rerun all 270 baseline fits after the repair.  Rerunning only the 48
+        explicit errors from the 126-result diagnostic snapshot would miss
+        possible false non-matches that were swallowed inside the checker.
+\end{enumerate}
+
+The diagnostic snapshot before cancellation contained 126 result files: 58
+strict exact hits, 20 valid-looking non-solves, and 48 explicit post-search
+errors.  Those counts are useful for diagnosing the adapter, but they are not a
+clean baseline comparison.
+
+\section*{Local evidence and code locations}
+
+\begin{itemize}
+  \item \textbf{Search and post-processing order:}
+        \path{parallel_eval_pysr.py:1403}, \path{:1420}, \path{:1424},
+        \path{:1441}, and \path{:1469}.
+  \item \textbf{SymPy mappings and exact matcher:}
+        \path{domains.py:637}, \path{:692}, and \path{:726}.
+  \item \textbf{Deterministic split construction:} \path{mips_tasks.py:351}.
+  \item \textbf{Failed seed (search completed, then conversion error):}\\
+        \path{outputs/mips_pysr_baseline_1h_seed42/slurm_pysr/eval_0001/logs/chunk0_slot_0.out}.
+  \item \textbf{Same component, successful exact seed:}\\
+        \path{outputs/mips_pysr_baseline_1h_seed42/slurm_pysr/eval_0001/logs/chunk0_slot_5.out}.
+\end{itemize}
+
+\end{document}
