@@ -1,0 +1,9 @@
+mips:rnn_newton_magnetic_numerical:hidden:0
+mips:rnn_newton_magnetic_numerical:hidden:1
+mips:rnn_newton_magnetic_numerical:hidden:2
+mips:rnn_newton_magnetic_numerical:hidden:3
+mips:rnn_newton_magnetic_numerical:output:0
+mips:rnn_newton_magnetic_numerical:output:1
+mips:rnn_unique2_numerical:hidden:0
+mips:rnn_unique2_numerical:hidden:1
+mips:rnn_unique2_numerical:output:0

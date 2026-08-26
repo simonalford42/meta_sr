@@ -113,6 +113,21 @@ Hand-picked SRBench tasks where PyPySR and PySR disagreed during the
 parity-debugging effort (commit 1989425, see `parity_debug_log.md`).
 Used as a focused split for `scripts/test_pypysr_vs_pysr_srbench*.py`.
 
+### `mips_pilot_train.txt` / `mips_pilot_validation.txt` / `mips_pilot_test.txt` / `mips_pilot_all.txt` (12 / 6 / 9 / 27)
+
+Scalar hidden-transition and output relations from the eight-task MIPS pilot.
+The train/validation/test partitions contain four/two/two whole RNN task
+families, respectively; components from one RNN never cross partitions.
+Dataset names use `mips:<task>:<hidden|output>:<index>` and require artifacts
+built by `scripts/mips_transition_pilot.py`. Use with `--domain mips`.
+
+The static family splits include both deterministic and conflicted encoded
+relations so `gt-acc` can measure approximation quality and expose
+representation failures. An exact solve is possible only for deterministic
+components. The generated artifact manifest
+`outputs/mips_transition_tables/pilot_deterministic.txt` is the focused
+fixed-algorithm baseline split.
+
 ### `neuron_all.txt` / `neuron_loocv1.txt` ... `neuron_loocv6.txt`
 
 The six fully-observable NeuronBench vector-field tasks and their deterministic

@@ -151,7 +151,7 @@ def _resolve_final_eval_context(
     """Resolve domain, metric, and base kwargs for a final evaluation."""
     saved = _saved_evolve_config(method_source, method_path)
     domain_name = domain or saved.get("domain") or "srbench"
-    default_metric = "gt-acc" if domain_name in ("boolean", "boolformer") else (
+    default_metric = "gt-acc" if domain_name in ("boolean", "boolformer", "mips") else (
         "gt" if domain_name == "neuron" else "r2"
     )
     metric_name = fitness_metric or saved.get("fitness_metric") or default_metric
@@ -742,7 +742,7 @@ def main() -> None:
                         help="Output directory (default: outputs/eval_pysr_TIMESTAMP)")
     parser.add_argument("--no-cache", action="store_true",
                         help="Disable evaluation caching")
-    parser.add_argument("--domain", choices=["srbench", "boolean", "boolformer", "neuron"],
+    parser.add_argument("--domain", choices=["srbench", "boolean", "boolformer", "mips", "neuron"],
                         default=None,
                         help="Evaluation domain (inferred from evolve run_data when possible)")
     parser.add_argument("--fitness-metric",

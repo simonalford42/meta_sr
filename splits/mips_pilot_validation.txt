@@ -1,0 +1,6 @@
+mips:rnn_diff_of_abs_value_numerical:hidden:0
+mips:rnn_diff_of_abs_value_numerical:hidden:1
+mips:rnn_diff_of_abs_value_numerical:output:0
+mips:rnn_div_3_numerical:hidden:0
+mips:rnn_div_3_numerical:hidden:1
+mips:rnn_div_3_numerical:output:0

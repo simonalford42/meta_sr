@@ -1,0 +1,12 @@
+mips:rnn_add_mod_4_numerical:hidden:0
+mips:rnn_add_mod_4_numerical:hidden:1
+mips:rnn_add_mod_4_numerical:output:0
+mips:rnn_base_3_addition:hidden:0
+mips:rnn_base_3_addition:hidden:1
+mips:rnn_base_3_addition:output:0
+mips:rnn_majority0_1_numerical:hidden:0
+mips:rnn_majority0_1_numerical:output:0
+mips:rnn_parity_last4_numerical:hidden:0
+mips:rnn_parity_last4_numerical:hidden:1
+mips:rnn_parity_last4_numerical:hidden:2
+mips:rnn_parity_last4_numerical:output:0

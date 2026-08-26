@@ -1,4 +1,4 @@
-"""Domain registry: dataset-specific behavior for SRBench, LogicBench, and NeuronBench.
+"""Domain registry for SRBench, logic, NeuronBench, and MIPS tasks.
 
 A ``Domain`` encapsulates the four things that vary between evaluation domains
 (see plans/logicbench_domain.md):
@@ -526,6 +526,243 @@ class BoolformerDomain(LogicBenchDomain):
         return kwargs
 
 
+class MIPSTransitionDomain(Domain):
+    """Exact integer synthesis for MIPS hidden-state transition tables.
+
+    Dataset names have the form ``mips:<task>:<hidden|output>:<index>`` and
+    resolve to compact artifacts produced by ``scripts/mips_transition_pilot.py``.
+    A task is decomposed into scalar components because PySR is scalar-output;
+    the diagnostic preserves the task grouping and identifies components whose
+    integer encoding is contradictory before search starts.
+    """
+
+    name = "mips"
+    supports_accuracy = True
+    prompt_task_summary = (
+        "exact integer and Boolean state-transition synthesis problems extracted "
+        "from recurrent neural networks by MIPS"
+    )
+    prompt_recovery_criterion = (
+        "recover a compact expression that exactly matches every observed "
+        "discrete state transition"
+    )
+    prompt_quality_criterion = (
+        "discover exact or nearly exact integer transition expressions efficiently"
+    )
+    hpo_excluded_params = frozenset({
+        "binary_operators", "unary_operators", "constraints",
+        "nested_constraints", "elementwise_loss", "early_stop_condition",
+        "precision",
+    })
+    EXACT_ATOL = 1e-9
+    VALIDATION_MAX_ROWS = 10_000
+
+    def load_dataset(self, dataset_name, max_samples=None, data_seed=None):
+        from mips_tasks import load_component_artifact
+
+        artifact = load_component_artifact(dataset_name)
+        X = artifact["X_train"]
+        y = artifact["y_train"]
+        if max_samples is not None and len(y) > max_samples:
+            X, y = X[:max_samples], y[:max_samples]
+        return X, y, f"exact discrete relation {dataset_name}"
+
+    def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
+        from mips_tasks import load_component_artifact
+
+        artifact = load_component_artifact(dataset_name)
+        X_train = artifact["X_train"]
+        y_train = artifact["y_train"]
+        X_validation = artifact["X_validation"]
+        y_validation = artifact["y_validation"]
+        if max_samples is not None and len(y_train) > max_samples:
+            X_train, y_train = X_train[:max_samples], y_train[:max_samples]
+        # Some extracted relations contain almost a million unique rows.  A
+        # fixed held-out subset is enough to rank every Pareto-front equation;
+        # candidates that pass it are still checked against X_full below
+        # before they can be counted as exact recoveries.
+        if len(y_validation) > self.VALIDATION_MAX_ROWS:
+            X_validation = X_validation[:self.VALIDATION_MAX_ROWS]
+            y_validation = y_validation[:self.VALIDATION_MAX_ROWS]
+        return (
+            X_train,
+            y_train,
+            X_validation,
+            y_validation,
+            f"exact discrete relation {dataset_name}",
+        )
+
+    def base_pysr_kwargs(self):
+        from parallel_eval_pysr import get_default_pysr_kwargs
+
+        kwargs = get_default_pysr_kwargs()
+        kwargs.update({
+            # Operators are protected so every random expression remains
+            # evaluable. Equality uses a half-integer gap: on integer-valued
+            # subexpressions abs(x-y)<0.5 is exactly integer equality while
+            # still giving constant optimization a usable basin.
+            "binary_operators": [
+                "+",
+                "-",
+                "*",
+                "mips_mod(x,y) = abs(y) < 1.0e-12 ? 0.0 : mod(x, abs(y))",
+                "mips_floordiv(x,y) = abs(y) < 1.0e-12 ? 0.0 : floor(x/y)",
+                "mips_eq(x,y) = abs(x-y) < 0.5 ? 1.0 : 0.0",
+                "mips_lt(x,y) = x < y ? 1.0 : 0.0",
+                "mips_min(x,y) = min(x,y)",
+                "mips_max(x,y) = max(x,y)",
+                "mips_xor(x,y) = mod(round(x) + round(y), 2.0)",
+            ],
+            "unary_operators": [
+                "mips_abs(x) = abs(x)",
+                "mips_zero(x) = abs(x) < 0.5 ? 1.0 : 0.0",
+                "mips_not(x) = abs(x) < 0.5 ? 1.0 : 0.0",
+            ],
+            "constraints": {},
+            "nested_constraints": {},
+            "elementwise_loss": "L1DistLoss()",
+            "early_stop_condition": (
+                "stop_if(loss, complexity) = loss < 1.0e-15"
+            ),
+            "maxsize": 35,
+            "maxdepth": 16,
+            "precision": 64,
+            "complexity_of_constants": 2,
+        })
+        return kwargs
+
+    def base_engine_kwargs(self):
+        raise NotImplementedError("The MIPS pilot is currently a PySR-only domain")
+
+    def sympy_mappings(self):
+        import sympy
+
+        def protected_mod(x, y):
+            return sympy.Piecewise(
+                (sympy.Integer(0), sympy.Eq(y, 0)),
+                (sympy.Mod(x, sympy.Abs(y)), True),
+            )
+
+        def protected_floordiv(x, y):
+            return sympy.Piecewise(
+                (sympy.Integer(0), sympy.Eq(y, 0)),
+                (sympy.floor(x / y), True),
+            )
+
+        def predicate(condition):
+            return sympy.Piecewise((sympy.Integer(1), condition), (sympy.Integer(0), True))
+
+        return {
+            "mips_mod": protected_mod,
+            "mips_floordiv": protected_floordiv,
+            "mips_eq": lambda x, y: predicate(sympy.Abs(x - y) < sympy.Rational(1, 2)),
+            "mips_lt": lambda x, y: predicate(x < y),
+            "mips_min": sympy.Min,
+            "mips_max": sympy.Max,
+            "mips_xor": lambda x, y: sympy.Mod(x + y, 2),
+            "mips_abs": sympy.Abs,
+            "mips_zero": lambda x: predicate(sympy.Abs(x) < sympy.Rational(1, 2)),
+            "mips_not": lambda x: predicate(sympy.Abs(x) < sympy.Rational(1, 2)),
+        }
+
+    def predict_namespace(self):
+        def protected_mod(x, y):
+            x_arr, y_arr = np.asarray(x), np.asarray(y)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                return np.where(np.abs(y_arr) < 1e-12, 0.0, np.mod(x_arr, np.abs(y_arr)))
+
+        def protected_floordiv(x, y):
+            x_arr, y_arr = np.asarray(x), np.asarray(y)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                return np.where(np.abs(y_arr) < 1e-12, 0.0, np.floor(x_arr / y_arr))
+
+        return {
+            "mips_mod": protected_mod,
+            "mips_floordiv": protected_floordiv,
+            "mips_eq": lambda x, y: (np.abs(np.asarray(x) - np.asarray(y)) < 0.5).astype(float),
+            "mips_lt": lambda x, y: (np.asarray(x) < np.asarray(y)).astype(float),
+            "mips_min": np.minimum,
+            "mips_max": np.maximum,
+            "mips_xor": lambda x, y: np.mod(np.rint(x) + np.rint(y), 2.0),
+            "mips_abs": np.abs,
+            "mips_zero": lambda x: (np.abs(np.asarray(x)) < 0.5).astype(float),
+            "mips_not": lambda x: (np.abs(np.asarray(x)) < 0.5).astype(float),
+        }
+
+    @classmethod
+    def _matches(cls, y_true, y_pred) -> np.ndarray:
+        target = np.asarray(y_true, dtype=float).reshape(-1)
+        prediction = np.asarray(y_pred, dtype=float).reshape(-1)
+        if prediction.shape != target.shape:
+            return np.zeros(target.shape, dtype=bool)
+        return np.isfinite(prediction) & np.isclose(
+            prediction, target, atol=cls.EXACT_ATOL, rtol=0.0
+        )
+
+    def accuracy_score(self, y_true, y_pred) -> Optional[float]:
+        matches = self._matches(y_true, y_pred)
+        return float(matches.mean()) if matches.size else 0.0
+
+    def pareto_metrics(self, *, equations_df, predict_fn, y_val):
+        rows = []
+        for idx, row in equations_df.sort_values("complexity").iterrows():
+            entry = {
+                "pysr_index": int(idx),
+                "complexity": int(row["complexity"]),
+                "equation": str(row["equation"]),
+                "loss": float(row["loss"]),
+            }
+            try:
+                accuracy = self.accuracy_score(y_val, predict_fn(idx))
+                entry["accuracy"] = accuracy
+                entry["solved"] = bool(accuracy == 1.0)
+            except Exception as exc:
+                entry["accuracy"] = 0.0
+                entry["solved"] = False
+                entry["prediction_error"] = str(exc)
+            rows.append(entry)
+        return rows
+
+    def check_solved(self, *, equations_df, best_df_index, target, var_names,
+                     predict_fn, y_val, predict_on=None, dataset_name=None):
+        from evaluation import get_pareto_df_indices_in_best_complexity_order
+        from mips_tasks import load_component_artifact
+
+        artifact = load_component_artifact(dataset_name)
+        metadata = artifact["metadata"]
+        representable = bool(metadata["deterministic"])
+        ordered = get_pareto_df_indices_in_best_complexity_order(
+            equations_df, best_df_index
+        )
+        checked = 0
+        for idx in ordered:
+            try:
+                checked += 1
+                if self.accuracy_score(y_val, predict_fn(idx)) != 1.0:
+                    continue
+                if not representable or predict_on is None:
+                    continue
+                prediction = predict_on(idx, artifact["X_full"])
+                if self.accuracy_score(artifact["y_full"], prediction) == 1.0:
+                    return {
+                        "match": True,
+                        "matched_df_index": idx,
+                        "checked_count": checked,
+                        "full_relation_verified": True,
+                        "representation_deterministic": True,
+                    }
+            except Exception:
+                continue
+        return {
+            "match": False,
+            "matched_df_index": None,
+            "checked_count": checked,
+            "full_relation_verified": False,
+            "representation_deterministic": representable,
+            "conflicting_input_count": metadata["conflicting_input_count"],
+        }
+
+
 class NeuronBenchDomain(Domain):
     """Fully-observable NeuronBench membrane vector fields.
 
@@ -683,6 +920,7 @@ DOMAINS: Dict[str, Domain] = {
     "srbench": SRBenchDomain(),
     "boolean": LogicBenchDomain(),
     "boolformer": BoolformerDomain(),
+    "mips": MIPSTransitionDomain(),
     "neuron": NeuronBenchDomain(),
 }
 
@@ -702,6 +940,7 @@ def warn_on_dataset_domain_mismatch(dataset_names, domain_name: str) -> None:
     boolformer_like = [n for n in names if n.startswith(
         ("boolformer_noisy:", "pmlb_classification:")
     )]
+    mips_like = [n for n in names if n.startswith("mips:")]
     if domain_name == "boolean" and len(boolean_like) < len(names):
         print(f"WARNING: --domain boolean but "
               f"{len(names) - len(boolean_like)} dataset name(s) "
@@ -718,3 +957,11 @@ def warn_on_dataset_domain_mismatch(dataset_names, domain_name: str) -> None:
         print(f"WARNING: --domain {domain_name} but {len(boolean_like)} "
               "dataset name(s) have a bool:/iwls: prefix "
               "(did you mean --domain boolean?)", flush=True)
+    elif domain_name == "mips" and len(mips_like) < len(names):
+        print(f"WARNING: --domain mips but "
+              f"{len(names) - len(mips_like)} dataset name(s) lack a mips: prefix",
+              flush=True)
+    elif domain_name != "mips" and mips_like:
+        print(f"WARNING: --domain {domain_name} but {len(mips_like)} "
+              "dataset name(s) have a mips: prefix (did you mean --domain mips?)",
+              flush=True)

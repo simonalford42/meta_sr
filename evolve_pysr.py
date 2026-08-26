@@ -2596,13 +2596,13 @@ def main():
                              "'gt-r2' = 1.0 if the task is solved (gt match), else "
                              "the frontier-averaged R²; "
                              "'acc' = validation accuracy of the model_selection='best' "
-                             "equation (Boolean domain only: bit-wise accuracy); "
+                             "equation (bit-wise for Boolean domains; exact-integer for MIPS); "
                              "'gt-acc' = 1.0 if solved, else that accuracy. "
-                             "Defaults to gt-acc for Boolean, r2 for canonical SRBench "
+                             "Defaults to gt-acc for Boolean/MIPS, r2 for canonical SRBench "
                              "black-box splits, otherwise gt.")
 
     parser.add_argument("--domain", type=str, default="srbench",
-                        choices=["srbench", "boolean", "boolformer", "neuron"],
+                        choices=["srbench", "boolean", "boolformer", "mips", "neuron"],
                         help="Evaluation domain (see domains.py). 'srbench' (default) = "
                              "symbolic regression on PMLB/Feynman datasets. 'boolean' = "
                              "Boolean-function synthesis over band/bor/bxor/bnot with L2 "
@@ -2610,6 +2610,8 @@ def main():
                              "PMLB classification over band/bor/bnot. 'neuron' = "
                              "fully-observable NeuronBench vector fields "
                              "with numerical ground-truth recovery at NRMSE <= 1e-6. "
+                             "'mips' = exact discrete hidden-state transition synthesis "
+                             "from cached MIPS artifacts. "
                              "All domains run through SLURM.")
 
     parser.add_argument("--split", type=str, default='splits/barely_unsolvable.txt',
@@ -2840,6 +2842,11 @@ def main():
             args.split = "splits/neuron_loocv1.txt"
         if args.val_split == "splits/barely_unsolvable_val2.txt":
             args.val_split = None
+    elif args.domain == "mips":
+        if args.split == "splits/barely_unsolvable.txt":
+            args.split = "splits/mips_pilot_train.txt"
+        if args.val_split == "splits/barely_unsolvable_val2.txt":
+            args.val_split = "splits/mips_pilot_validation.txt"
 
     # Resolve the protocol and metric before warming up Julia. Canonical
     # black-box tasks have no target formula, so symbolic-match metrics are
@@ -2860,7 +2867,7 @@ def main():
         and is_canonical_black_box_split(dataset_names)
     )
     if args.fitness_metric is None:
-        if args.domain in ("boolean", "boolformer"):
+        if args.domain in ("boolean", "boolformer", "mips"):
             args.fitness_metric = "gt-acc"
         else:
             args.fitness_metric = "r2" if args.black_box else "gt"
@@ -2891,7 +2898,7 @@ def main():
     warn_on_dataset_domain_mismatch(dataset_names, args.domain)
     if args.black_box:
         print("[srbench] canonical black-box protocol enabled; fitness_metric=r2")
-    elif args.domain in ("boolean", "boolformer"):
+    elif args.domain in ("boolean", "boolformer", "mips"):
         print(f"[{args.domain}] domain defaults: fitness_metric={args.fitness_metric}, "
               f"split={args.split}, val_split={args.val_split}")
     elif args.domain == "neuron":

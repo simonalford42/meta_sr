@@ -1,0 +1,480 @@
+"""MIPS transition-table artifacts and exact discrete-regression helpers.
+
+The MIPS extraction pipeline first maps an RNN's continuous hidden states to
+integer lattice coordinates.  Once that representation is fixed, program
+extraction decomposes into scalar regression problems of two forms::
+
+    (previous integer state, current input) -> next-state coordinate
+    current integer state                   -> output coordinate
+
+This module defines the on-disk artifact format used by the ``mips`` domain in
+``domains.py``.  It intentionally has no dependency on the upstream MIPS
+repository, PyTorch, or PySR, so SLURM evaluation workers only need the compact
+``.npz`` artifacts produced by ``scripts/mips_transition_pilot.py``.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterable, Literal, Optional
+
+import numpy as np
+
+
+REPO_ROOT = Path(__file__).resolve().parent
+DEFAULT_ARTIFACT_ROOT = REPO_ROOT / "outputs" / "mips_transition_tables"
+ARTIFACT_ROOT_ENV = "MIPS_TRANSITION_ROOT"
+DATASET_PREFIX = "mips"
+
+# A deliberately small first campaign spanning arithmetic, Boolean/state
+# logic, multivariate linear dynamics, and a known raw-checkpoint mismatch.
+PILOT_TASKS = (
+    "rnn_add_mod_4_numerical",
+    "rnn_diff_of_abs_value_numerical",
+    "rnn_div_3_numerical",
+    "rnn_base_3_addition",
+    "rnn_majority0_1_numerical",
+    "rnn_newton_magnetic_numerical",
+    "rnn_parity_last4_numerical",
+    "rnn_unique2_numerical",
+)
+
+ComponentKind = Literal["hidden", "output"]
+
+
+@dataclass(frozen=True)
+class MIPSComponent:
+    """Identity of one scalar transition/output regression problem."""
+
+    task: str
+    kind: ComponentKind
+    index: int
+
+    @property
+    def dataset_name(self) -> str:
+        return f"{DATASET_PREFIX}:{self.task}:{self.kind}:{self.index}"
+
+    @property
+    def filename(self) -> str:
+        return f"{self.kind}_{self.index}.npz"
+
+
+def parse_dataset_name(dataset_name: str) -> MIPSComponent:
+    """Parse ``mips:<task>:<hidden|output>:<index>``."""
+
+    parts = dataset_name.split(":")
+    if len(parts) != 4 or parts[0] != DATASET_PREFIX:
+        raise ValueError(
+            f"Invalid MIPS dataset name {dataset_name!r}; expected "
+            "mips:<task>:<hidden|output>:<index>"
+        )
+    _, task, kind, raw_index = parts
+    if not task:
+        raise ValueError(f"MIPS dataset name has an empty task: {dataset_name!r}")
+    if kind not in ("hidden", "output"):
+        raise ValueError(
+            f"Invalid MIPS component kind {kind!r}; expected 'hidden' or 'output'"
+        )
+    try:
+        index = int(raw_index)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid MIPS component index {raw_index!r} in {dataset_name!r}"
+        ) from exc
+    if index < 0:
+        raise ValueError(f"MIPS component index must be nonnegative: {dataset_name!r}")
+    return MIPSComponent(task=task, kind=kind, index=index)
+
+
+def resolve_artifact_root(root: Optional[os.PathLike[str] | str] = None) -> Path:
+    """Resolve the shared artifact directory used by builders and workers."""
+
+    if root is not None:
+        return Path(root).expanduser().resolve()
+    configured = os.environ.get(ARTIFACT_ROOT_ENV)
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return DEFAULT_ARTIFACT_ROOT.resolve()
+
+
+def task_artifact_dir(
+    task: str, root: Optional[os.PathLike[str] | str] = None
+) -> Path:
+    return resolve_artifact_root(root) / "tasks" / task
+
+
+def component_artifact_path(
+    component: MIPSComponent | str,
+    root: Optional[os.PathLike[str] | str] = None,
+) -> Path:
+    parsed = parse_dataset_name(component) if isinstance(component, str) else component
+    return task_artifact_dir(parsed.task, root) / "components" / parsed.filename
+
+
+def diagnostic_path(
+    task: str, root: Optional[os.PathLike[str] | str] = None
+) -> Path:
+    return task_artifact_dir(task, root) / "diagnostic.json"
+
+
+def _as_integer_matrix(
+    values: np.ndarray,
+    label: str,
+    *,
+    require_close: bool = True,
+) -> np.ndarray:
+    array = np.asarray(values)
+    if array.ndim == 1:
+        array = array.reshape(-1, 1)
+    if array.ndim != 2:
+        raise ValueError(f"{label} must be a 2D array, got shape {array.shape}")
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{label} contains non-finite values")
+    rounded = np.rint(array)
+    if require_close and not np.allclose(array, rounded, atol=1e-6, rtol=0.0):
+        largest = float(np.max(np.abs(array - rounded)))
+        raise ValueError(
+            f"{label} is not integer-valued after MIPS encoding "
+            f"(largest rounding residual {largest:.3g})"
+        )
+    return rounded.astype(np.int64, copy=False)
+
+
+def _as_integer_target(values: np.ndarray, label: str) -> np.ndarray:
+    matrix = _as_integer_matrix(np.asarray(values).reshape(-1, 1), label)
+    return matrix[:, 0]
+
+
+def _split_seed(dataset_name: str, base_seed: int) -> int:
+    digest = hashlib.sha256(dataset_name.encode("utf-8")).digest()
+    return (int.from_bytes(digest[:8], "little") ^ int(base_seed)) % (2**63 - 1)
+
+
+def analyze_transition_relation(
+    X: np.ndarray,
+    y: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    """Deduplicate a relation and quantify contradictions introduced by encoding.
+
+    The returned target is the modal target for each unique input.  It is the
+    Bayes-optimal deterministic lookup table for the observed rows and gives a
+    useful accuracy target even when the encoded relation is contradictory.
+    ``deterministic`` is true only when every unique input has one target.
+    """
+
+    X_int = _as_integer_matrix(X, "X")
+    y_int = _as_integer_target(y, "y")
+    if len(X_int) != len(y_int):
+        raise ValueError(f"X/y length mismatch: {len(X_int)} != {len(y_int)}")
+    if len(y_int) == 0:
+        raise ValueError("Cannot diagnose an empty transition relation")
+
+    pairs = np.concatenate((X_int, y_int[:, None]), axis=1)
+    unique_pairs, pair_counts = np.unique(pairs, axis=0, return_counts=True)
+    unique_inputs, pair_to_input = np.unique(
+        unique_pairs[:, :-1], axis=0, return_inverse=True
+    )
+
+    n_inputs = len(unique_inputs)
+    best_counts = np.zeros(n_inputs, dtype=np.int64)
+    modal_targets = np.zeros(n_inputs, dtype=np.int64)
+    target_counts = np.bincount(pair_to_input, minlength=n_inputs)
+
+    # np.unique sorts lexicographically, including the target column.  Retain
+    # the first (smallest) target on a frequency tie for deterministic output.
+    for pair_index, input_index in enumerate(pair_to_input):
+        count = int(pair_counts[pair_index])
+        if count > best_counts[input_index]:
+            best_counts[input_index] = count
+            modal_targets[input_index] = unique_pairs[pair_index, -1]
+
+    conflicting_mask = target_counts > 1
+    rows_per_input = np.bincount(
+        pair_to_input,
+        weights=pair_counts,
+        minlength=n_inputs,
+    )
+    conflicting_rows = int(rows_per_input[conflicting_mask].sum())
+    modal_correct = int(best_counts.sum())
+    diagnostics = {
+        "row_count": int(len(y_int)),
+        "feature_count": int(X_int.shape[1]),
+        "unique_input_count": int(n_inputs),
+        "unique_input_target_pair_count": int(len(unique_pairs)),
+        "conflicting_input_count": int(conflicting_mask.sum()),
+        "conflicting_row_count": conflicting_rows,
+        "deterministic": bool(not conflicting_mask.any()),
+        "modal_lookup_correct_rows": modal_correct,
+        "modal_lookup_accuracy": float(modal_correct / len(y_int)),
+        "target_min": int(y_int.min()),
+        "target_max": int(y_int.max()),
+        "distinct_target_count": int(np.unique(y_int).size),
+    }
+    return unique_inputs, modal_targets, diagnostics
+
+
+def _train_validation_split(
+    X: np.ndarray,
+    y: np.ndarray,
+    dataset_name: str,
+    validation_fraction: float,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    if not 0.0 < validation_fraction < 1.0:
+        raise ValueError("validation_fraction must be between zero and one")
+    if len(y) == 1:
+        # A one-row relation cannot have disjoint splits.  Reusing it keeps the
+        # worker protocol well-defined and exact full-table verification still
+        # protects the claimed solve.
+        return X.copy(), y.copy(), X.copy(), y.copy()
+
+    rng = np.random.default_rng(_split_seed(dataset_name, seed))
+    order = rng.permutation(len(y))
+    n_validation = max(1, int(round(validation_fraction * len(y))))
+    n_validation = min(n_validation, len(y) - 1)
+    validation_indices = order[:n_validation]
+    train_indices = order[n_validation:]
+    return (
+        X[train_indices],
+        y[train_indices],
+        X[validation_indices],
+        y[validation_indices],
+    )
+
+
+def write_component_artifact(
+    component: MIPSComponent,
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    feature_names: Iterable[str],
+    root: Optional[os.PathLike[str] | str] = None,
+    validation_fraction: float = 0.2,
+    seed: int = 42,
+    extra_metadata: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Analyze and save one compact component artifact."""
+
+    X_full, y_full, diagnostics = analyze_transition_relation(X, y)
+    X_train, y_train, X_validation, y_validation = _train_validation_split(
+        X_full,
+        y_full,
+        component.dataset_name,
+        validation_fraction,
+        seed,
+    )
+    names = list(feature_names)
+    if len(names) != X_full.shape[1]:
+        raise ValueError(
+            f"Expected {X_full.shape[1]} feature names, received {len(names)}"
+        )
+
+    metadata = {
+        "format_version": 1,
+        "dataset_name": component.dataset_name,
+        "task": component.task,
+        "kind": component.kind,
+        "component_index": component.index,
+        "feature_names": names,
+        "validation_fraction": validation_fraction,
+        "split_seed": seed,
+        "artifact_relative_path": str(
+            Path("tasks") / component.task / "components" / component.filename
+        ),
+        **diagnostics,
+    }
+    if extra_metadata:
+        metadata.update(extra_metadata)
+
+    path = component_artifact_path(component, root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("wb") as handle:
+        np.savez_compressed(
+            handle,
+            X_train=X_train,
+            y_train=y_train,
+            X_validation=X_validation,
+            y_validation=y_validation,
+            X_full=X_full,
+            y_full=y_full,
+            metadata_json=np.asarray(json.dumps(metadata, sort_keys=True)),
+        )
+    temporary.replace(path)
+    return metadata
+
+
+def build_task_artifacts(
+    task: str,
+    *,
+    Z: np.ndarray,
+    Z_previous: np.ndarray,
+    inputs_last: np.ndarray,
+    outputs_last: np.ndarray,
+    root: Optional[os.PathLike[str] | str] = None,
+    validation_fraction: float = 0.2,
+    seed: int = 42,
+    provenance: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Build every scalar next-state/output component for one MIPS task."""
+
+    Z_array = np.asarray(Z)
+    Z_previous_array = np.asarray(Z_previous)
+    # Match the authors' get_data() exactly: MIPS treats the integer
+    # autoencoder output as discrete by applying np.round, even when its raw
+    # lattice coordinates have sizeable residuals.  Preserve those residuals
+    # as a representation-quality diagnostic instead of rejecting the task.
+    Z_int = _as_integer_matrix(Z_array, "Z", require_close=False)
+    Z_previous_int = _as_integer_matrix(
+        Z_previous_array, "Z_previous", require_close=False
+    )
+    inputs_int = _as_integer_matrix(inputs_last, "inputs_last")
+    outputs_int = _as_integer_matrix(
+        np.asarray(outputs_last).reshape(len(outputs_last), -1), "outputs_last"
+    )
+    row_counts = {len(Z_int), len(Z_previous_int), len(inputs_int), len(outputs_int)}
+    if len(row_counts) != 1:
+        raise ValueError(
+            "MIPS task arrays have inconsistent row counts: "
+            f"Z={len(Z_int)}, Z_previous={len(Z_previous_int)}, "
+            f"inputs={len(inputs_int)}, outputs={len(outputs_int)}"
+        )
+    if Z_int.shape[1] != Z_previous_int.shape[1]:
+        raise ValueError(
+            f"Current/previous state dimensions differ: {Z_int.shape[1]} != "
+            f"{Z_previous_int.shape[1]}"
+        )
+
+    hidden_dim = Z_int.shape[1]
+    input_dim = inputs_int.shape[1]
+    output_dim = outputs_int.shape[1]
+    transition_X = np.concatenate((Z_previous_int, inputs_int), axis=1)
+    transition_names = [f"h{i}" for i in range(hidden_dim)] + [
+        f"input{i}" for i in range(input_dim)
+    ]
+    output_names = [f"h{i}" for i in range(hidden_dim)]
+
+    component_records: list[dict[str, Any]] = []
+    common_metadata = {
+        "hidden_dim": hidden_dim,
+        "input_dim": input_dim,
+        "output_dim": output_dim,
+    }
+    if provenance:
+        common_metadata["provenance"] = provenance
+
+    for index in range(hidden_dim):
+        component_records.append(
+            write_component_artifact(
+                MIPSComponent(task, "hidden", index),
+                transition_X,
+                Z_int[:, index],
+                feature_names=transition_names,
+                root=root,
+                validation_fraction=validation_fraction,
+                seed=seed,
+                extra_metadata=common_metadata,
+            )
+        )
+    for index in range(output_dim):
+        component_records.append(
+            write_component_artifact(
+                MIPSComponent(task, "output", index),
+                Z_int,
+                outputs_int[:, index],
+                feature_names=output_names,
+                root=root,
+                validation_fraction=validation_fraction,
+                seed=seed,
+                extra_metadata=common_metadata,
+            )
+        )
+
+    deterministic_count = sum(record["deterministic"] for record in component_records)
+    task_diagnostic = {
+        "format_version": 1,
+        "task": task,
+        "hidden_dim": hidden_dim,
+        "input_dim": input_dim,
+        "output_dim": output_dim,
+        "source_row_count": int(len(Z_int)),
+        "max_current_state_rounding_residual": float(
+            np.max(np.abs(Z_array - np.rint(Z_array)))
+        ),
+        "max_previous_state_rounding_residual": float(
+            np.max(np.abs(Z_previous_array - np.rint(Z_previous_array)))
+        ),
+        "component_count": len(component_records),
+        "deterministic_component_count": int(deterministic_count),
+        "all_components_deterministic": deterministic_count == len(component_records),
+        "components": component_records,
+    }
+    if provenance:
+        task_diagnostic["provenance"] = provenance
+
+    path = diagnostic_path(task, root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(task_diagnostic, indent=2) + "\n")
+    temporary.replace(path)
+    return task_diagnostic
+
+
+def load_component_artifact(
+    dataset_name: str,
+    root: Optional[os.PathLike[str] | str] = None,
+) -> dict[str, Any]:
+    """Load one component artifact into ordinary NumPy arrays."""
+
+    component = parse_dataset_name(dataset_name)
+    path = component_artifact_path(component, root)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Missing MIPS transition artifact {path}. Build it with "
+            "scripts/mips_transition_pilot.py before evaluation."
+        )
+    with np.load(path, allow_pickle=False) as payload:
+        metadata = json.loads(str(payload["metadata_json"].item()))
+        return {
+            "component": component,
+            "path": path,
+            "metadata": metadata,
+            "X_train": np.asarray(payload["X_train"], dtype=np.float64),
+            "y_train": np.asarray(payload["y_train"], dtype=np.float64),
+            "X_validation": np.asarray(payload["X_validation"], dtype=np.float64),
+            "y_validation": np.asarray(payload["y_validation"], dtype=np.float64),
+            "X_full": np.asarray(payload["X_full"], dtype=np.float64),
+            "y_full": np.asarray(payload["y_full"], dtype=np.float64),
+        }
+
+
+def load_task_diagnostic(
+    task: str,
+    root: Optional[os.PathLike[str] | str] = None,
+) -> dict[str, Any]:
+    path = diagnostic_path(task, root)
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing MIPS task diagnostic {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def available_components(
+    tasks: Iterable[str],
+    root: Optional[os.PathLike[str] | str] = None,
+    *,
+    deterministic_only: bool = False,
+) -> list[str]:
+    """Return component dataset names from completed task diagnostics."""
+
+    names: list[str] = []
+    for task in tasks:
+        diagnostic = load_task_diagnostic(task, root)
+        for component in diagnostic["components"]:
+            if deterministic_only and not component["deterministic"]:
+                continue
+            names.append(component["dataset_name"])
+    return names
