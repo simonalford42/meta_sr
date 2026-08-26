@@ -81,6 +81,29 @@ UNSOLVED_TASKS = (
     "rnn_unique2_numerical",
 )
 
+# The benchmark-optimization set combines the three tasks whose reproduced
+# programs selected integer symbolic regression with the ten unsolved tasks
+# whose complete rounded relations are deterministic.  Each RNN task expands
+# into one scalar problem per hidden/output coordinate.
+SR_SUCCESS_TASKS = (
+    "rnn_abs_value_numerical",
+    "rnn_abs_value_of_diff_numerical",
+    "rnn_add_mod_3_numerical",
+)
+SR_UNSOLVED_CANDIDATE_TASKS = (
+    "rnn_alternating_last4_numerical",
+    "rnn_base_3_addition",
+    "rnn_base_4_addition",
+    "rnn_base_5_addition",
+    "rnn_base_6_addition",
+    "rnn_base_7_addition",
+    "rnn_max_numerical",
+    "rnn_min_numerical",
+    "rnn_parity_last2_numerical",
+    "rnn_unique2_numerical",
+)
+SR_TARGET_TASKS = SR_SUCCESS_TASKS + SR_UNSOLVED_CANDIDATE_TASKS
+
 ComponentKind = Literal["hidden", "output"]
 
 
@@ -202,6 +225,32 @@ def _as_integer_target(values: np.ndarray, label: str) -> np.ndarray:
 def _split_seed(dataset_name: str, base_seed: int) -> int:
     digest = hashlib.sha256(dataset_name.encode("utf-8")).digest()
     return (int.from_bytes(digest[:8], "little") ^ int(base_seed)) % (2**63 - 1)
+
+
+def select_relation_rows(
+    X: np.ndarray,
+    y: np.ndarray,
+    dataset_name: str,
+    max_samples: Optional[int],
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Select one deterministic MIPS training table without a holdout.
+
+    Deduplication sorts relation rows lexicographically.  When a row cap is
+    requested, a seeded permutation avoids taking a biased prefix of that
+    ordering.  Every selected row is used by both search and scoring; the
+    uncapped relation remains available for the final exact check.
+    """
+
+    X_array = np.asarray(X)
+    y_array = np.asarray(y)
+    if max_samples is None or len(y_array) <= max_samples:
+        return X_array.copy(), y_array.copy()
+    if max_samples <= 0:
+        raise ValueError("max_samples must be positive or None")
+    rng = np.random.default_rng(_split_seed(dataset_name, seed))
+    selected = rng.permutation(len(y_array))[:max_samples]
+    return X_array[selected], y_array[selected]
 
 
 def analyze_transition_relation(
@@ -355,8 +404,15 @@ def _train_validation_split(
     validation_fraction: float,
     seed: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    if validation_fraction == 0.0:
+        # The MIPS extraction search uses every selected relation row.  Reuse
+        # the full relation for the validation-facing fields so artifact files
+        # remain compatible with the shared evaluation interface.
+        return X.copy(), y.copy(), X.copy(), y.copy()
     if not 0.0 < validation_fraction < 1.0:
-        raise ValueError("validation_fraction must be between zero and one")
+        raise ValueError(
+            "validation_fraction must be zero or strictly between zero and one"
+        )
     if len(y) == 1:
         # A one-row relation cannot have disjoint splits.  Reusing it keeps the
         # worker protocol well-defined and exact full-table verification still
@@ -384,7 +440,7 @@ def write_component_artifact(
     *,
     feature_names: Iterable[str],
     root: Optional[os.PathLike[str] | str] = None,
-    validation_fraction: float = 0.2,
+    validation_fraction: float = 0.0,
     seed: int = 42,
     extra_metadata: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
@@ -447,7 +503,7 @@ def write_relation_artifact(
     *,
     feature_names: Iterable[str],
     root: Optional[os.PathLike[str] | str] = None,
-    validation_fraction: float = 0.2,
+    validation_fraction: float = 0.0,
     seed: int = 42,
     extra_metadata: Optional[dict[str, Any]] = None,
 ) -> list[dict[str, Any]]:
@@ -526,7 +582,7 @@ def build_task_artifacts(
     inputs_last: np.ndarray,
     outputs_last: np.ndarray,
     root: Optional[os.PathLike[str] | str] = None,
-    validation_fraction: float = 0.2,
+    validation_fraction: float = 0.0,
     seed: int = 42,
     provenance: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:

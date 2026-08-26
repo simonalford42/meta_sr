@@ -34,6 +34,7 @@ if str(ROOT) not in sys.path:
 
 from mips_tasks import (  # noqa: E402
     PILOT_TASKS,
+    SR_TARGET_TASKS,
     UNSOLVED_TASKS,
     available_components,
     build_task_artifacts,
@@ -64,6 +65,7 @@ PILOT_TASK_SPLITS = {
 TASK_SETS = {
     "pilot": PILOT_TASKS,
     "unsolved": UNSOLVED_TASKS,
+    "sr-targets": SR_TARGET_TASKS,
 }
 DEFAULT_REPRODUCTION_SUMMARY = (
     ROOT / "outputs" / "mips_reproduction_all" / "summary.json"
@@ -494,7 +496,12 @@ def add_build_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--workspace-root", type=Path, default=None)
     parser.add_argument("--timeout", type=float, default=3600.0)
-    parser.add_argument("--validation-fraction", type=float, default=0.2)
+    parser.add_argument(
+        "--validation-fraction",
+        type=float,
+        default=0.0,
+        help="Relation holdout fraction; MIPS-compatible default uses all rows",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--force", action="store_true")
     parser.add_argument(

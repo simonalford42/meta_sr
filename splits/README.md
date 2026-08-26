@@ -128,6 +128,17 @@ components. The generated artifact manifest
 `outputs/mips_transition_tables/pilot_deterministic.txt` is the focused
 fixed-algorithm baseline split.
 
+### `mips_sr_targets.txt` (34)
+
+The benchmark-optimization set for MIPS formula search: seven scalar
+relations from the three reproduced tasks that selected symbolic regression,
+plus all 27 scalar relations from the ten deterministic unsolved candidates.
+This is 13 complete RNN task groups. The MIPS domain uses every selected row
+for both fitting and scoring (up to `--max-samples`) and then checks any
+claimed solve on the uncapped complete relation. Exact witness formulas and
+their complexities are documented in
+`analysis/mips_witness_formulas/README.md`.
+
 ### `neuron_all.txt` / `neuron_loocv1.txt` ... `neuron_loocv6.txt`
 
 The six fully-observable NeuronBench vector-field tasks and their deterministic

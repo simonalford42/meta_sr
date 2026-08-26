@@ -37,10 +37,10 @@ and five tasks blocked in the authors' high-dimensional integer encoder.
 Generated artifacts are ignored under `outputs/mips_transition_tables/`.
 The completed pilot uses 113 MB there.
 
-Search training uses at most `--max-samples` rows per component (1,000 by
-default), and frontier scoring uses at most 10,000 fixed validation rows.
-Any candidate counted as solved is nevertheless evaluated on every unique
-encoded input in the full relation.
+Search uses the same deterministic selection of at most `--max-samples` rows
+per component (1,000 by default) for both fitting and scoring; there is no
+held-out relation split. Any candidate counted as solved is additionally
+evaluated on every unique encoded input in the uncapped complete relation.
 
 ## Diagnostic results
 

@@ -10,6 +10,7 @@ from domains import get_domain
 from mips_tasks import (
     MIPSComponent,
     PILOT_TASKS,
+    SR_TARGET_TASKS,
     UNSOLVED_TASKS,
     analyze_transition_relation,
     analyze_transition_relations,
@@ -18,6 +19,7 @@ from mips_tasks import (
     load_component_artifact,
     parse_dataset_name,
     relation_artifact_path,
+    select_relation_rows,
     write_component_artifact,
 )
 
@@ -38,6 +40,8 @@ def test_pinned_unsolved_manifest_contains_pilot_and_has_expected_size():
     assert len(UNSOLVED_TASKS) == 32
     assert len(set(UNSOLVED_TASKS)) == 32
     assert set(PILOT_TASKS) <= set(UNSOLVED_TASKS)
+    assert len(SR_TARGET_TASKS) == 13
+    assert len(set(SR_TARGET_TASKS)) == 13
 
 
 def test_transition_diagnostic_finds_conflicts_and_modal_ceiling():
@@ -120,7 +124,7 @@ def test_mips_domain_uses_strict_integer_accuracy():
     assert domain.accuracy_score(target, np.array([0.0, np.nan, 2.0])) == 2 / 3
 
 
-def test_mips_validation_is_capped_but_full_relation_is_retained(
+def test_mips_domain_trains_and_scores_on_the_complete_relation(
     monkeypatch, tmp_path
 ):
     monkeypatch.setenv("MIPS_TRANSITION_ROOT", str(tmp_path))
@@ -130,14 +134,56 @@ def test_mips_validation_is_capped_but_full_relation_is_retained(
         component, X, X[:, 0], feature_names=["h0"], validation_fraction=0.5
     )
     domain = get_domain("mips")
-    monkeypatch.setattr(domain, "VALIDATION_MAX_ROWS", 3)
     X_train, y_train, X_validation, y_validation, _ = (
         domain.load_train_validation(component.dataset_name)
     )
     artifact = load_component_artifact(component.dataset_name)
-    assert len(y_train) == 10
-    assert len(y_validation) == len(X_validation) == 3
+    assert len(y_train) == len(X_train) == 20
+    assert len(y_validation) == len(X_validation) == 20
+    np.testing.assert_array_equal(X_train, X_validation)
+    np.testing.assert_array_equal(y_train, y_validation)
     assert len(artifact["y_full"]) == 20
+
+
+def test_mips_row_cap_is_seeded_and_has_no_holdout(monkeypatch, tmp_path):
+    monkeypatch.setenv("MIPS_TRANSITION_ROOT", str(tmp_path))
+    component = MIPSComponent("large", "hidden", 0)
+    X = np.arange(100).reshape(-1, 1)
+    write_component_artifact(component, X, X[:, 0], feature_names=["h0"])
+    domain = get_domain("mips")
+    first = domain.load_train_validation(
+        component.dataset_name, max_samples=20, data_seed=7
+    )
+    second = domain.load_train_validation(
+        component.dataset_name, max_samples=20, data_seed=7
+    )
+    different = domain.load_train_validation(
+        component.dataset_name, max_samples=20, data_seed=8
+    )
+    np.testing.assert_array_equal(first[0], first[2])
+    np.testing.assert_array_equal(first[1], first[3])
+    np.testing.assert_array_equal(first[0], second[0])
+    assert not np.array_equal(first[0], different[0])
+    assert not np.array_equal(first[0], X[:20])
+
+    selected_X, selected_y = select_relation_rows(
+        X, X[:, 0], component.dataset_name, 20, 7
+    )
+    np.testing.assert_array_equal(first[0], selected_X)
+    np.testing.assert_array_equal(first[1], selected_y)
+
+
+def test_mips_artifacts_default_to_full_relation_training(monkeypatch, tmp_path):
+    monkeypatch.setenv("MIPS_TRANSITION_ROOT", str(tmp_path))
+    component = MIPSComponent("full", "output", 0)
+    X = np.arange(5).reshape(-1, 1)
+    write_component_artifact(component, X, X[:, 0], feature_names=["h0"])
+    artifact = load_component_artifact(component.dataset_name)
+    assert artifact["metadata"]["validation_fraction"] == 0.0
+    for key in ("X_train", "X_validation"):
+        np.testing.assert_array_equal(artifact[key], artifact["X_full"])
+    for key in ("y_train", "y_validation"):
+        np.testing.assert_array_equal(artifact[key], artifact["y_full"])
 
 
 def test_mips_exact_check_uses_full_relation(monkeypatch, tmp_path):
@@ -231,3 +277,55 @@ def test_mips_operator_grammar_and_split_manifests_are_complete():
     candidate_components = [parse_dataset_name(name) for name in candidates]
     assert len(candidate_components) == 27
     assert len({component.task for component in candidate_components}) == 10
+
+    sr_targets = (
+        split_root / "mips_sr_targets.txt"
+    ).read_text().splitlines()
+    target_components = [parse_dataset_name(name) for name in sr_targets]
+    assert len(target_components) == 34
+    assert {component.task for component in target_components} == set(
+        SR_TARGET_TASKS
+    )
+
+
+def test_mips_sympy_mappings_are_inert_and_numerically_faithful():
+    import sympy
+    from pysr.export_numpy import sympy2numpy
+    from pysr.export_sympy import create_sympy_symbols, pysr2sympy
+
+    domain = get_domain("mips")
+    mappings = domain.sympy_mappings()
+    x = sympy.Symbol("x")
+    assert str(mappings["mips_mod"](x, 0)) == "mips_mod(x, 0)"
+    assert str(mappings["mips_min"](sympy.nan, x)) == "mips_min(nan, x)"
+    assert str(mappings["mips_max"](sympy.zoo, x)) == "mips_max(zoo, x)"
+    assert str(mappings["mips_lt"](sympy.nan, x)) == "mips_lt(nan, x)"
+
+    names = ["x0", "x1"]
+    symbols = create_sympy_symbols(names)
+    X = np.array([
+        [5.0, 0.0],
+        [5.0, 1e-13],
+        [-5.0, -3.0],
+        [0.6, 1.6],
+        [np.nan, 2.0],
+    ])
+    namespace = domain.predict_namespace()
+    cases = {
+        "mips_mod(x0, x1)": namespace["mips_mod"](X[:, 0], X[:, 1]),
+        "mips_floordiv(x0, x1)": namespace["mips_floordiv"](
+            X[:, 0], X[:, 1]
+        ),
+        "mips_xor(x0, x1)": namespace["mips_xor"](X[:, 0], X[:, 1]),
+        "mips_min(x0, x1)": namespace["mips_min"](X[:, 0], X[:, 1]),
+        "mips_max(x0, x1)": namespace["mips_max"](X[:, 0], X[:, 1]),
+        "mips_lt(x0, x1)": namespace["mips_lt"](X[:, 0], X[:, 1]),
+    }
+    for equation, expected in cases.items():
+        parsed = pysr2sympy(
+            equation,
+            feature_names_in=names,
+            extra_sympy_mappings=mappings,
+        )
+        predicted = sympy2numpy(parsed, symbols)(X)
+        np.testing.assert_allclose(predicted, expected, equal_nan=True)

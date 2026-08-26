@@ -555,35 +555,37 @@ class MIPSTransitionDomain(Domain):
         "precision",
     })
     EXACT_ATOL = 1e-9
-    VALIDATION_MAX_ROWS = 10_000
-
     def load_dataset(self, dataset_name, max_samples=None, data_seed=None):
-        from mips_tasks import load_component_artifact
+        from mips_tasks import load_component_artifact, select_relation_rows
 
-        artifact = load_component_artifact(dataset_name, include_full=False)
-        X = artifact["X_train"]
-        y = artifact["y_train"]
-        if max_samples is not None and len(y) > max_samples:
-            X, y = X[:max_samples], y[:max_samples]
+        artifact = load_component_artifact(dataset_name)
+        X, y = select_relation_rows(
+            artifact["X_full"],
+            artifact["y_full"],
+            dataset_name,
+            max_samples,
+            0 if data_seed is None else data_seed,
+        )
         return X, y, f"exact discrete relation {dataset_name}"
 
     def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
-        from mips_tasks import load_component_artifact
+        from mips_tasks import load_component_artifact, select_relation_rows
 
-        artifact = load_component_artifact(dataset_name, include_full=False)
-        X_train = artifact["X_train"]
-        y_train = artifact["y_train"]
-        X_validation = artifact["X_validation"]
-        y_validation = artifact["y_validation"]
-        if max_samples is not None and len(y_train) > max_samples:
-            X_train, y_train = X_train[:max_samples], y_train[:max_samples]
-        # Some extracted relations contain almost a million unique rows.  A
-        # fixed held-out subset is enough to rank every Pareto-front equation;
-        # candidates that pass it are still checked against X_full below
-        # before they can be counted as exact recoveries.
-        if len(y_validation) > self.VALIDATION_MAX_ROWS:
-            X_validation = X_validation[:self.VALIDATION_MAX_ROWS]
-            y_validation = y_validation[:self.VALIDATION_MAX_ROWS]
+        artifact = load_component_artifact(dataset_name)
+        X_train, y_train = select_relation_rows(
+            artifact["X_full"],
+            artifact["y_full"],
+            dataset_name,
+            max_samples,
+            0 if data_seed is None else data_seed,
+        )
+        # MIPS does not reserve relation rows for held-out validation: its
+        # formula search sees the complete selected table.  Reuse those same
+        # rows for the shared evaluator's validation-facing API.  The exact
+        # checker below still evaluates the complete, uncapped relation before
+        # awarding a solve when max_samples is smaller than the artifact.
+        X_validation = X_train.copy()
+        y_validation = y_train.copy()
         return (
             X_train,
             y_train,
@@ -635,46 +637,39 @@ class MIPSTransitionDomain(Domain):
         raise NotImplementedError("The MIPS pilot is currently a PySR-only domain")
 
     def sympy_mappings(self):
-        import sympy
+        from sympy.utilities.lambdify import implemented_function
 
-        def protected_mod(x, y):
-            return sympy.Piecewise(
-                (sympy.Integer(0), sympy.Eq(y, 0)),
-                (sympy.Mod(x, sympy.Abs(y)), True),
-            )
-
-        def protected_floordiv(x, y):
-            return sympy.Piecewise(
-                (sympy.Integer(0), sympy.Eq(y, 0)),
-                (sympy.floor(x / y), True),
-            )
-
-        def predicate(condition):
-            return sympy.Piecewise((sympy.Integer(1), condition), (sympy.Integer(0), True))
-
+        # Keep every protected MIPS operator inert while SymPy constructs and
+        # simplifies the expression.  Piecewise-based mappings eagerly built
+        # invalid branches such as Mod(x, 0), causing post-search conversion
+        # failures.  implemented_function attaches the faithful NumPy
+        # implementation used by lambdify/model.predict without symbolically
+        # expanding the operator.
         return {
-            "mips_mod": protected_mod,
-            "mips_floordiv": protected_floordiv,
-            "mips_eq": lambda x, y: predicate(sympy.Abs(x - y) < sympy.Rational(1, 2)),
-            "mips_lt": lambda x, y: predicate(x < y),
-            "mips_min": sympy.Min,
-            "mips_max": sympy.Max,
-            "mips_xor": lambda x, y: sympy.Mod(x + y, 2),
-            "mips_abs": sympy.Abs,
-            "mips_zero": lambda x: predicate(sympy.Abs(x) < sympy.Rational(1, 2)),
-            "mips_not": lambda x: predicate(sympy.Abs(x) < sympy.Rational(1, 2)),
+            name: implemented_function(name, implementation)
+            for name, implementation in self.predict_namespace().items()
         }
 
     def predict_namespace(self):
         def protected_mod(x, y):
-            x_arr, y_arr = np.asarray(x), np.asarray(y)
+            x_arr, y_arr = np.broadcast_arrays(
+                np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+            )
+            result = np.zeros(x_arr.shape, dtype=float)
+            evaluate = ~(np.abs(y_arr) < 1e-12)
             with np.errstate(divide="ignore", invalid="ignore"):
-                return np.where(np.abs(y_arr) < 1e-12, 0.0, np.mod(x_arr, np.abs(y_arr)))
+                np.mod(x_arr, np.abs(y_arr), out=result, where=evaluate)
+            return result
 
         def protected_floordiv(x, y):
-            x_arr, y_arr = np.asarray(x), np.asarray(y)
+            x_arr, y_arr = np.broadcast_arrays(
+                np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+            )
+            quotient = np.zeros(x_arr.shape, dtype=float)
+            evaluate = ~(np.abs(y_arr) < 1e-12)
             with np.errstate(divide="ignore", invalid="ignore"):
-                return np.where(np.abs(y_arr) < 1e-12, 0.0, np.floor(x_arr / y_arr))
+                np.divide(x_arr, y_arr, out=quotient, where=evaluate)
+            return np.floor(quotient)
 
         return {
             "mips_mod": protected_mod,
@@ -735,6 +730,7 @@ class MIPSTransitionDomain(Domain):
             equations_df, best_df_index
         )
         checked = 0
+        prediction_errors = []
         for idx in ordered:
             try:
                 checked += 1
@@ -750,8 +746,14 @@ class MIPSTransitionDomain(Domain):
                         "checked_count": checked,
                         "full_relation_verified": True,
                         "representation_deterministic": True,
+                        "prediction_errors": prediction_errors,
                     }
-            except Exception:
+            except Exception as exc:
+                prediction_errors.append({
+                    "pysr_index": int(idx),
+                    "equation": str(equations_df.loc[idx]["equation"]),
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
                 continue
         return {
             "match": False,
@@ -760,6 +762,7 @@ class MIPSTransitionDomain(Domain):
             "full_relation_verified": False,
             "representation_deterministic": representable,
             "conflicting_input_count": metadata["conflicting_input_count"],
+            "prediction_errors": prediction_errors,
         }
 
 
