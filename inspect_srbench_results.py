@@ -167,6 +167,7 @@ def summarize_run(run_dir: Path) -> dict:
     row = {
         "bundle": bundle_id(manifest),
         "mode": manifest.get("mode") or "-",
+        "max_evals": manifest.get("max_evals"),
         "completed": present + bb_present,
         "total": len(expected) + bb_expected,
         "bb_r2": bb_r2,
@@ -224,6 +225,9 @@ def format_summary_table(rows: "list[dict]") -> str:
         ("bundle", lambda r: str(r["bundle"])),
         ("completed", lambda r: f"{r['completed']}/{r['total']}"),
         ("mode", lambda r: str(r["mode"])),
+        ("max-evals", lambda r: (
+            f"{r['max_evals']:,}" if r.get("max_evals") is not None else "-"
+        )),
         ("bb_r2", lambda r: _r2(r.get("bb_r2"))),
         ("all%", lambda r: _pct(r.get("all_pct"))),
         ("all%(n0)", lambda r: _pct(r.get("all0_pct"))),

@@ -12,7 +12,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from inspect_srbench_results import _black_box_summary, find_full_srbench_runs
+from inspect_srbench_results import (
+    _black_box_summary,
+    find_full_srbench_runs,
+    format_summary_table,
+    summarize_run,
+)
 
 
 class BlackBoxSummaryTests(unittest.TestCase):
@@ -79,6 +84,38 @@ class FindRunsTests(unittest.TestCase):
                 find_full_srbench_runs(runs_root),
                 [runs_root / "old", runs_root / "recent"],
             )
+
+
+class SummaryTableTests(unittest.TestCase):
+    def test_displays_manifest_max_evals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "12345"
+            run_dir.mkdir()
+            with open(run_dir / "manifest.json", "w") as f:
+                json.dump({"mode": "baseline", "max_evals": 1_000_000}, f)
+
+            row = summarize_run(run_dir)
+            table = format_summary_table([row])
+
+            self.assertEqual(row["max_evals"], 1_000_000)
+            self.assertIn("max-evals", table)
+            self.assertIn("1,000,000", table)
+
+    def test_missing_max_evals_is_shown_as_dash(self):
+        row = {
+            "slurm": "legacy",
+            "bundle": "-",
+            "mode": "baseline",
+            "completed": 0,
+            "total": 0,
+        }
+
+        table = format_summary_table([row])
+        lines = table.splitlines()
+        headers = [cell.strip() for cell in lines[1].split("│")[1:-1]]
+        cells = [cell.strip() for cell in lines[3].split("│")[1:-1]]
+
+        self.assertEqual(cells[headers.index("max-evals")], "-")
 
 
 if __name__ == "__main__":
