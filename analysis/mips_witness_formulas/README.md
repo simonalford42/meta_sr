@@ -84,11 +84,13 @@ state coordinates.
 These formulas establish that all 34 relations are expressible inside the
 configured grammar and size limit. They do not make search trivial: PySR must
 discover every component independently, constants are optimized numerically,
-and whole-task recovery requires all components. The cancelled 80/20 baseline
-nonetheless found a complete-relation exact expression at least once for 26 of
-the 27 unsolved components; only the Parity-Last2 hidden transition lacked a
-recorded hit before cancellation. Those search results are separate from the
-clean witnesses above.
+and whole-task recovery requires all components.
+
+The repaired 100%-selected-row baseline subsequently solved all 34 components
+and all 13 task groups. Across the ten previously unsolved tasks it produced
+99/100 exact whole-task seed runs; the only miss was seed 5 for base-7
+addition. See `analysis/mips_pysr_baseline_full13/README.md` for the complete
+corrected result table.
 
 Re-run the verification with:
 
