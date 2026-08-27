@@ -29,6 +29,17 @@
 # Results: outputs/mips_pysr_baseline_1h_full13_seed42/eval_summary.json
 # sbatch -J mips-pysr-full13 run.sh evaluate_new_pysr.py --domain mips --fitness-metric gt-acc --splits splits/mips_sr_targets.txt --n-runs 10 --seed 42 --max-samples 1000 --wall-clock-only --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 34 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir outputs/mips_pysr_baseline_1h_full13_seed42
 
+# 8/26 — Diagnose whether finer MIPS integer lattices remove the observed
+# representation conflicts in all 17 affected tasks. The local 800k-row pilot
+# took 52s total (29s upstream data/encoding + 22s for eight scaled lattices).
+# The full sweep tests both scaled and coarse+residual states from unit through
+# float32-mantissa resolution. Each array element has a one-hour hard limit.
+# REFINE_OUTPUT="outputs/mips_lattice_refinement"
+# mkdir -p "$REFINE_OUTPUT/slurm"
+# refine_array=$(sbatch --parsable --array=0-16%17 --cpus-per-task=1 --mem=16G --time=01:00:00 --partition=default_partition --job-name=mips-refine --output="$REFINE_OUTPUT/slurm/%A_%a.out" --error="$REFINE_OUTPUT/slurm/%A_%a.err" run.sh scripts/mips_lattice_refinement.py task --task-index-env --timeout 2700 --output-dir "$REFINE_OUTPUT")
+# refine_aggregate=$(sbatch --parsable --dependency=afterany:"$refine_array" --cpus-per-task=1 --mem=4G --time=00:10:00 --partition=default_partition --job-name=mips-ref-sum --output="$REFINE_OUTPUT/slurm/aggregate_%j.out" --error="$REFINE_OUTPUT/slurm/aggregate_%j.err" run.sh scripts/mips_lattice_refinement.py summarize --output-dir "$REFINE_OUTPUT")
+# echo "Submitted MIPS refinement array $refine_array and aggregate $refine_aggregate"
+
 # 8/25
 # srbench full evaluation for the 300-trial HPO selections
 # chain_a=$(sbatch --parsable -J srb-hpo300-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --ground-truth --black-box --timeout 0)
