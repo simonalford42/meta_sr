@@ -30,6 +30,13 @@ sbatch --dependency=afterany:680849 -J hpo300-gt-1e7-srb run.sh srbench_full_eva
 # Results: outputs/mips_pysr_baseline_1h_full13_seed42/eval_summary.json
 # sbatch -J mips-pysr-full13 run.sh evaluate_new_pysr.py --domain mips --fitness-metric gt-acc --splits splits/mips_sr_targets.txt --n-runs 10 --seed 42 --max-samples 1000 --wall-clock-only --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 34 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir outputs/mips_pysr_baseline_1h_full13_seed42
 
+# 8/27 — Corrected 13-task rerun with 1e6 evaluations per scalar/seed fit.
+# MIPS_13_1M="outputs/mips_pysr_baseline_1e6_full13_seed42"
+# mkdir -p "$MIPS_13_1M/slurm"
+# mips_13_1m=$(sbatch --parsable --cpus-per-task=1 --mem=8G --time=04:30:00 --partition=default_partition --job-name=mips-13-1m --output="$MIPS_13_1M/slurm/driver_%j.out" --error="$MIPS_13_1M/slurm/driver_%j.err" run.sh evaluate_new_pysr.py --domain mips --fitness-metric gt-acc --splits splits/mips_sr_targets.txt --n-runs 10 --seed 42 --max-samples 1000 --max-evals 1000000 --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 34 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir "$MIPS_13_1M")
+# mips_13_1m_analysis=$(sbatch --parsable --dependency=afterany:"$mips_13_1m" --cpus-per-task=1 --mem=4G --time=00:10:00 --partition=default_partition --job-name=mips-13-1m-final --output="$MIPS_13_1M/slurm/final_%j.out" --error="$MIPS_13_1M/slurm/final_%j.err" run.sh scripts/analyze_mips_pysr_baseline.py --eval-dir "$MIPS_13_1M/slurm_pysr/eval_0000" --json-output "$MIPS_13_1M/corrected_summary.json" --markdown-output "$MIPS_13_1M/README.md")
+# echo "Submitted 13-task 1e6-eval driver $mips_13_1m and analysis $mips_13_1m_analysis"
+
 # 8/26 — Diagnose whether finer MIPS integer lattices remove the observed
 # representation conflicts in all 17 affected tasks. The local 800k-row pilot
 # took 52s total (29s upstream data/encoding + 22s for eight scaled lattices).
