@@ -463,10 +463,21 @@ def summarize(output_dir: Path) -> dict[str, Any]:
         for component in result["linear_regression"]["components"]
     ]
     all_names = [component["dataset_name"] for component in components]
+    train_deterministic_tasks = {
+        result["task"]
+        for result in results
+        if result["train_diagnostic"]["all_components_deterministic"]
+    }
+    representation_excluded_tasks = [
+        result["task"]
+        for result in results
+        if not result["train_diagnostic"]["all_components_deterministic"]
+    ]
     pysr_names = [
         component["dataset_name"]
         for component in components
-        if not component["train_exact"]
+        if component["task"] in train_deterministic_tasks
+        and not component["train_exact"]
     ]
     heldout_unresolved = [
         component["dataset_name"]
@@ -493,6 +504,7 @@ def summarize(output_dir: Path) -> dict[str, Any]:
         ),
         "pysr_component_count": len(pysr_names),
         "pysr_components": pysr_names,
+        "representation_excluded_tasks": representation_excluded_tasks,
         "heldout_unresolved_components": heldout_unresolved,
         "all_train_representations_deterministic": bool(results)
         and all(
@@ -533,6 +545,8 @@ def summarize(output_dir: Path) -> dict[str, Any]:
         "- Rounded LR exact on held-out relation: "
         f"{summary['linear_heldout_exact_component_count']}/{len(components)}",
         f"- Components sent to PySR: {len(pysr_names)}",
+        "- Tasks excluded from PySR by train representation conflicts: "
+        f"{len(representation_excluded_tasks)}",
         "- All train/held-out/combined representations deterministic: "
         f"{summary['all_train_representations_deterministic']}/"
         f"{summary['all_heldout_representations_deterministic']}/"
