@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 # 8/26 10m max evals for HPO GT 300 trial job
-# Disable the inherited 300s soft timeout so the 10m evaluation cap is binding.
-# sbatch -J hpo300-gt-1e7-srb run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --ground-truth --black-box --max-evals 10000000 --timeout 0
+# Disable the inherited 300s soft timeout and use 5x the standard hard walls
+# (ground truth: 600s -> 3000s; black box: 1800s -> 9000s).
+sbatch --dependency=afterany:680849 -J hpo300-gt-1e7-srb run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --ground-truth --black-box --max-evals 10000000 --timeout 0 --pysr-wall-limit 3000 --black-box-wall-limit 9000
 
 # 8/25 — Boolformer smoke test (job 610439 completed successfully).
 # sbatch -J boolformer-smoke run.sh evolve_pysr.py --domain boolformer --operator-type all --generations 2 --population 3 --offspring 2 --n-runs 1 --fitness-metric gt-acc --reeval none --models cheap --llm-max-workers 2 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 10 --time-limit 00:10:00 --mem-per-cpu 8G --pysr-wall-limit 300 --job-timeout 1200 --val-pysr-wall-limit 300 --val-pysr-timeout 240 --split splits/boolformer_noisy_smoke_train.txt --val-split splits/boolformer_noisy_smoke_val.txt --val-n-runs 1 --test-split splits/boolformer_noisy_smoke_test.txt --extra-test-split splits/pmlb_classification_smoke.txt --final-eval-runs 1 --seed 0
