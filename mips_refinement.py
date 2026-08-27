@@ -48,6 +48,17 @@ DEFAULT_LATTICE_SCALES = (
     16_777_216,
 )
 
+# Compact-state candidates selected by the complete 17-task refinement sweep.
+# The first conflict-free scaled-lattice setting is retained for each task.
+REFINED_SR_TASK_SCALES = {
+    "rnn_parity_last4_numerical": 4,
+    "rnn_parity_of_index_numerical": 4,
+    "rnn_div_7_numerical": 16,
+    "rnn_div_5_numerical": 256,
+    "rnn_alternating_last3_numerical": 4_194_304,
+    "rnn_balanced_parenthesis_numerical": 16_777_216,
+}
+
 
 def _as_finite_matrix(values: np.ndarray, label: str) -> np.ndarray:
     array = np.asarray(values, dtype=np.float64)
