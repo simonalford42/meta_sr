@@ -54,6 +54,14 @@ sbatch --dependency=afterany:680849 -J hpo300-gt-1e7-srb run.sh srbench_full_eva
 # refined_pysr=$(sbatch --parsable --dependency=afterok:"$refined_summary" --export=ALL,MIPS_TRANSITION_ROOT="$refined_train_root" --cpus-per-task=1 --mem=8G --time=04:30:00 --partition=default_partition --job-name=mips-ref-pysr --output="$REFINED_PYSR/slurm/driver_%j.out" --error="$REFINED_PYSR/slurm/driver_%j.err" run.sh evaluate_new_pysr.py --domain mips --fitness-metric gt-acc --splits "$REFINED_ARTIFACTS/pysr_components.txt" --n-runs 10 --seed 42 --max-samples 1000 --wall-clock-only --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 17 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir "$REFINED_PYSR")
 # echo "Submitted refined build $refined_build, LR summary $refined_summary, PySR driver $refined_pysr"
 
+# 8/27 — Corrected refined-state baseline: 1e6 evaluations per scalar/seed fit.
+# The one-hour PySR timeout remains only as an emergency guard; max_evals is active.
+# REFINED_PYSR_1M="outputs/mips_refined_six_pysr_1e6_seed42"
+# mkdir -p "$REFINED_PYSR_1M/slurm"
+# refined_pysr_1m=$(sbatch --parsable --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_refined_six_artifacts/train" --cpus-per-task=1 --mem=8G --time=04:30:00 --partition=default_partition --job-name=mips-ref-1m --output="$REFINED_PYSR_1M/slurm/driver_%j.out" --error="$REFINED_PYSR_1M/slurm/driver_%j.err" run.sh evaluate_new_pysr.py --domain mips --fitness-metric gt-acc --splits outputs/mips_refined_six_artifacts/pysr_components.txt --n-runs 10 --seed 42 --max-samples 1000 --max-evals 1000000 --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 17 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir "$REFINED_PYSR_1M")
+# refined_pysr_1m_analysis=$(sbatch --parsable --dependency=afterany:"$refined_pysr_1m" --cpus-per-task=1 --mem=4G --time=00:10:00 --partition=default_partition --job-name=mips-ref-1m-final --output="$REFINED_PYSR_1M/slurm/final_%j.out" --error="$REFINED_PYSR_1M/slurm/final_%j.err" run.sh scripts/analyze_mips_refined_pysr.py --pysr-dir "$REFINED_PYSR_1M")
+# echo "Submitted corrected 1e6-eval PySR driver $refined_pysr_1m and analysis $refined_pysr_1m_analysis"
+
 # 8/25
 # srbench full evaluation for the 300-trial HPO selections
 # chain_a=$(sbatch --parsable -J srb-hpo300-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --ground-truth --black-box --timeout 0)
