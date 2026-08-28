@@ -443,6 +443,7 @@ def run_evolution(
     wandb_run: Optional[Any],
     resume_state: Optional[Dict[str, Any]] = None,
     domain: str = "srbench",
+    uninformative_prompts: bool = False,
     execution_feedback_n: int = 3,
     execution_feedback_prob: float = 0.5,
 ) -> Tuple[SkeletonBundle, FullSRSlurmEvaluator, float]:
@@ -516,6 +517,7 @@ def run_evolution(
         "use_cache": use_cache,
         "fitness_metric": fitness_metric,
         "domain": domain,
+        "uninformative_prompts": uninformative_prompts,
         "mutation_mode": mutation_mode,
         "simplify_cooldown": simplify_cooldown,
         "operator_slots": operator_slots,
@@ -896,6 +898,7 @@ def run_evolution(
                     log_generation=0,
                     full_file=full_file_diff,
                     fitness_metric=fitness_metric,
+                    uninformative_prompt=uninformative_prompts,
                 )
                 wave_specs.append(spec)
                 wave_meta.append((bundle_idx, slot_name, attempt, baseline, parent_fn))
@@ -1049,6 +1052,7 @@ def run_evolution(
                     log_generation=gen,
                     full_file=full_file_diff,
                     fitness_metric=fitness_metric,
+                    uninformative_prompt=uninformative_prompts,
                     task_info=task_info,
                 )
                 wave_specs.append(spec)
@@ -1351,6 +1355,12 @@ def main():
                              "Boolean-function synthesis over band/bor/bxor/bnot; "
                              "defaults --fitness-metric to r2 and --split to the "
                              "Boolean train split unless overridden.")
+    parser.add_argument(
+        "--uninformative-prompts",
+        action="store_true",
+        help="Use a domain-neutral objective in LLM prompts while retaining the "
+             "selected domain for data loading, evaluation, and scoring.",
+    )
     parser.add_argument(
         "--mutation-mode",
         type=str,
@@ -1761,6 +1771,7 @@ def main():
         full_file_diff=args.full_file_diff,
         wandb_run=wandb_run,
         domain=args.domain,
+        uninformative_prompts=args.uninformative_prompts,
         resume_state=resume_state,
         execution_feedback_n=args.exec_feedback_n,
         execution_feedback_prob=args.exec_feedback_prob,

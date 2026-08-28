@@ -940,12 +940,32 @@ class NeuronBenchDomain(Domain):
         }
 
 
+class UninformativePromptDomain(Domain):
+    """Domain-neutral objective wording used only for LLM prompts."""
+
+    name = "uninformative"
+    prompt_task_summary = ""
+
+    def objective_text(self, fitness_metric: str) -> str:
+        if fitness_metric not in ("gt", "r2", "gt-r2", "acc", "gt-acc"):
+            raise ValueError(
+                f"Unknown fitness_metric={fitness_metric!r}; expected one of "
+                "('gt', 'r2', 'gt-r2', 'acc', 'gt-acc')"
+            )
+        return (
+            "Our objective is to improve the algorithm's ability to discover "
+            "the expression that generated the task data.\n"
+        )
+
+
 DOMAINS: Dict[str, Domain] = {
     "srbench": SRBenchDomain(),
     "boolean": LogicBenchDomain(),
     "boolformer": BoolformerDomain(),
     "mips": MIPSTransitionDomain(),
     "neuron": NeuronBenchDomain(),
+    # Prompt-only pseudo-domain; evaluation CLI choices intentionally exclude it.
+    "uninformative": UninformativePromptDomain(),
 }
 
 

@@ -758,6 +758,7 @@ def run_bundle_evolution(
     mutation_mode: str = "random",
     simplify_cooldown: int = 0,
     domain: str = "srbench",
+    uninformative_prompts: bool = False,
     black_box: bool = False,
 ) -> Tuple[OperatorBundle, Any, float]:
     """Run bundle evolution across multiple operator types.
@@ -854,6 +855,7 @@ def run_bundle_evolution(
         "eval_all_noise_levels": eval_all_noise_levels,
         "fitness_metric": fitness_metric,
         "domain": domain,
+        "uninformative_prompts": uninformative_prompts,
         "black_box": black_box,
         "split_label": split_label,
         "val_split": val_split,
@@ -1386,7 +1388,7 @@ def run_bundle_evolution(
                     model_ensemble=model_ensemble,
                     mode=init_mode,
                     fitness_metric=fitness_metric,
-                    domain=domain,
+                    domain="uninformative" if uninformative_prompts else domain,
                     variation_seed=cand["bundle_idx"] * 100 + cand["attempt"],
                     temperature=temperature,
                     use_cache=use_cache,
@@ -1959,7 +1961,7 @@ def run_bundle_evolution(
                     model_ensemble=model_ensemble,
                     mode=cand["mode"],
                     fitness_metric=fitness_metric,
-                    domain=domain,
+                    domain="uninformative" if uninformative_prompts else domain,
                     variation_seed=cand["variation_seed"],
                     temperature=temperature,
                     use_cache=use_cache,
@@ -2613,6 +2615,12 @@ def main():
                              "'mips' = exact discrete hidden-state transition synthesis "
                              "from cached MIPS artifacts. "
                              "All domains run through SLURM.")
+    parser.add_argument(
+        "--uninformative-prompts",
+        action="store_true",
+        help="Use a domain-neutral objective in LLM prompts while retaining the "
+             "selected domain for data loading, evaluation, and scoring.",
+    )
 
     parser.add_argument("--split", type=str, default='splits/barely_unsolvable.txt',
                         help="Path to dataset split file")
@@ -3114,6 +3122,7 @@ def main():
         mutation_mode=args.mutation_mode,
         simplify_cooldown=args.simplify_cooldown,
         domain=args.domain,
+        uninformative_prompts=args.uninformative_prompts,
         black_box=args.black_box,
     )
 

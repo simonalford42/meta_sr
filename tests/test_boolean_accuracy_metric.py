@@ -405,6 +405,21 @@ class TestPromptObjectiveText(unittest.TestCase):
         self.assertTrue(text.endswith("membrane dynamics."))
         self.assertNotIn("hold across", text)
 
+    def test_uninformative_objective_hides_domain_and_metric_details(self):
+        from operator_types import OPERATOR_TYPES
+        expected = (
+            "Our objective is to improve the algorithm's ability to discover "
+            "the expression that generated the task data.\n"
+        )
+        for metric in ("gt", "r2", "gt-r2", "acc", "gt-acc"):
+            with self.subTest(metric=metric):
+                text = OPERATOR_TYPES["mutation"]._objective_text(
+                    metric, "uninformative",
+                )
+                self.assertEqual(text, expected)
+                self.assertNotIn("neuron", text.lower())
+                self.assertNotIn("SRBench", text)
+
     def test_spec_carries_domain_into_prompt(self):
         from operator_types import (
             OPERATOR_TYPES, OperatorGenerationSpec, _build_operator_prompt,

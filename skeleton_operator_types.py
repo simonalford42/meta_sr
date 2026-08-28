@@ -583,7 +583,10 @@ _BRAINSTORM_INSTRUCTION = (
 )
 
 
-def _intro(fitness_metric: str) -> str:
+def _intro(fitness_metric: str, uninformative: bool = False) -> str:
+    if uninformative:
+        from domains import get_domain
+        return _DEFAULT_INTRO + get_domain("uninformative").objective_text(fitness_metric)
     try:
         objective = _OBJECTIVE_TEXT[fitness_metric]
     except KeyError as exc:
@@ -699,11 +702,11 @@ def build_full_context(bundle: SkeletonBundle) -> str:
 
 
 def build_explore_prompt(slot: SkeletonSlot, bundle: SkeletonBundle,
-                         fitness_metric: str = "gt") -> str:
+                         fitness_metric: str = "gt", uninformative: bool = False) -> str:
     context = build_full_context(bundle)
     reqs = "\n".join(f"{i+1}. {r}" for i, r in enumerate(_common_requirements(slot)))
     return (
-        f"{_intro(fitness_metric)}\n"
+        f"{_intro(fitness_metric, uninformative)}\n"
         f"{context}\n\n"
         f"{_slot_explanation(slot)}\n"
         "## Task\n"
@@ -716,11 +719,11 @@ def build_explore_prompt(slot: SkeletonSlot, bundle: SkeletonBundle,
 
 
 def build_refine_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_code: str,
-                        fitness_metric: str = "gt") -> str:
+                        fitness_metric: str = "gt", uninformative: bool = False) -> str:
     context = build_full_context(bundle)
     reqs = "\n".join(f"{i+1}. {r}" for i, r in enumerate(_common_requirements(slot)))
     return (
-        f"{_intro(fitness_metric)}\n"
+        f"{_intro(fitness_metric, uninformative)}\n"
         f"{context}\n\n"
         f"{_slot_explanation(slot)}\n"
         "## Parent implementation to refine\n"
@@ -735,11 +738,11 @@ def build_refine_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_code:
 
 
 def build_simplify_prompt(slot: SkeletonSlot, bundle: SkeletonBundle, parent_code: str,
-                          fitness_metric: str = "gt") -> str:
+                          fitness_metric: str = "gt", uninformative: bool = False) -> str:
     context = build_full_context(bundle)
     reqs = "\n".join(f"{i+1}. {r}" for i, r in enumerate(_common_requirements(slot)))
     return (
-        f"{_intro(fitness_metric)}\n"
+        f"{_intro(fitness_metric, uninformative)}\n"
         f"{context}\n\n"
         f"{_slot_explanation(slot)}\n"
         "## Parent implementation to simplify\n"
@@ -764,11 +767,12 @@ def build_crossover_prompt(
     parent1_code: str,
     parent2_code: str,
     fitness_metric: str = "gt",
+    uninformative: bool = False,
 ) -> str:
     context = build_full_context(bundle)
     reqs = "\n".join(f"{i+1}. {r}" for i, r in enumerate(_common_requirements(slot)))
     return (
-        f"{_intro(fitness_metric)}\n"
+        f"{_intro(fitness_metric, uninformative)}\n"
         f"{context}\n\n"
         f"{_slot_explanation(slot)}\n"
         "## Parent 1\n"
@@ -785,7 +789,8 @@ def build_crossover_prompt(
 
 
 def build_full_file_prompt(
-    slot: SkeletonSlot, bundle: SkeletonBundle, mode: str, fitness_metric: str = "gt"
+    slot: SkeletonSlot, bundle: SkeletonBundle, mode: str, fitness_metric: str = "gt",
+    uninformative: bool = False,
 ) -> str:
     """Diff baseline: ask the LLM to return the whole module body.
 
@@ -822,7 +827,7 @@ def build_full_file_prompt(
             "implementation that explores a new promising approach."
         )
     return (
-        f"{_intro(fitness_metric)}\n"
+        f"{_intro(fitness_metric, uninformative)}\n"
         f"{context}\n\n"
         "## Task\n"
         f"{focus}\n\n"
@@ -878,6 +883,7 @@ class SkeletonGenerationSpec:
     # parse_sr_config_module() into per-slot replacements.
     full_file: bool = False
     fitness_metric: str = "gt"
+    uninformative_prompt: bool = False
     task_info: Optional[Dict[str, str]] = None
 
 
@@ -885,27 +891,32 @@ def _build_prompt(spec: SkeletonGenerationSpec) -> str:
     if spec.full_file:
         prompt = build_full_file_prompt(
             spec.slot, spec.bundle, spec.mode, spec.fitness_metric,
+            spec.uninformative_prompt,
         )
     elif spec.mode == "explore":
-        prompt = build_explore_prompt(spec.slot, spec.bundle, spec.fitness_metric)
+        prompt = build_explore_prompt(
+            spec.slot, spec.bundle, spec.fitness_metric, spec.uninformative_prompt,
+        )
     elif spec.mode == "refine":
         if not spec.parent_code:
             raise ValueError("refine mode requires parent_code")
         prompt = build_refine_prompt(
             spec.slot, spec.bundle, spec.parent_code, spec.fitness_metric,
+            spec.uninformative_prompt,
         )
     elif spec.mode == "simplify":
         if not spec.parent_code:
             raise ValueError("simplify mode requires parent_code")
         prompt = build_simplify_prompt(
             spec.slot, spec.bundle, spec.parent_code, spec.fitness_metric,
+            spec.uninformative_prompt,
         )
     elif spec.mode == "crossover":
         if not spec.parent_code or not spec.parent2_code:
             raise ValueError("crossover mode requires parent_code AND parent2_code")
         prompt = build_crossover_prompt(
             spec.slot, spec.bundle, spec.parent_code, spec.parent2_code,
-            spec.fitness_metric,
+            spec.fitness_metric, spec.uninformative_prompt,
         )
     else:
         raise ValueError(f"unknown mode: {spec.mode!r}")
