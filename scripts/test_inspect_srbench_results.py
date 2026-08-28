@@ -217,9 +217,12 @@ class OfficialTableTests(unittest.TestCase):
             self.assertEqual(column["eval_ids"], "9001,9002")
             self.assertEqual(column["train_set"], "barely_unsolvable.txt")
             self.assertEqual(column["val_set"], "barely_unsolvable_val2.txt")
-            self.assertEqual(column["train_perf"], 0.8)
-            self.assertEqual(column["val_perf"], 0.6)
-            self.assertEqual(column["test_perf"], 0.4)
+            self.assertEqual(column["train_gt"], 1.0)
+            self.assertEqual(column["train_r2"], 0.8)
+            self.assertEqual(column["val_gt"], 0.0)
+            self.assertEqual(column["val_r2"], 0.6)
+            self.assertEqual(column["test_gt"], 0.0)
+            self.assertEqual(column["test_r2"], 0.4)
             self.assertEqual(column["gt_rate"], 1 / 3)
             self.assertEqual(column["gt_any_seed_rate"], 1 / 3)
             self.assertEqual(column["gt_10m_rate"], 0.0)
@@ -257,6 +260,30 @@ class OfficialTableTests(unittest.TestCase):
         }
         self.assertEqual(table_rows["train set"], "bu.txt")
         self.assertEqual(table_rows["val set"], "bu_val2.txt")
+
+    def test_official_table_shows_both_split_metrics_before_gt_then_bb(self):
+        column = {
+            "label": "method", "training_id": "1", "eval_ids": "2",
+            "train_set": "barely_unsolvable.txt",
+            "val_set": "barely_unsolvable_val2.txt",
+            "train_gt": 0.1, "train_r2": 0.2,
+            "val_gt": 0.3, "val_r2": 0.4,
+            "test_gt": 0.5, "test_r2": 0.6,
+            "gt_rate": 0.7, "gt_any_seed_rate": 0.8,
+            "gt_10m_rate": 0.9, "bb_r2": 1.0,
+            "gt_completed": 1, "bb_completed": 1,
+        }
+
+        table = format_official_table([column])
+
+        labels = [
+            line.split("│")[1].strip()
+            for line in table.splitlines() if line.startswith("│")
+        ]
+        self.assertLess(labels.index("train GT"), labels.index("train R2"))
+        self.assertLess(labels.index("test R2"), labels.index("SRBench GT solve (all)"))
+        self.assertLess(labels.index("SRBench GT solve (all, 10M)"),
+                        labels.index("SRBench BB R2"))
 
     def test_official_columns_group_methods_by_objective(self):
         self.assertEqual(
