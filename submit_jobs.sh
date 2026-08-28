@@ -69,6 +69,14 @@ sbatch --dependency=afterany:680849 -J hpo300-gt-1e7-srb run.sh srbench_full_eva
 # refined_pysr_1m_analysis=$(sbatch --parsable --dependency=afterany:"$refined_pysr_1m" --cpus-per-task=1 --mem=4G --time=00:10:00 --partition=default_partition --job-name=mips-ref-1m-final --output="$REFINED_PYSR_1M/slurm/final_%j.out" --error="$REFINED_PYSR_1M/slurm/final_%j.err" run.sh scripts/analyze_mips_refined_pysr.py --pysr-dir "$REFINED_PYSR_1M")
 # echo "Submitted corrected 1e6-eval PySR driver $refined_pysr_1m and analysis $refined_pysr_1m_analysis"
 
+# 8/27 — REVIEW ONLY: meta-evolve PySR on the 34 original scalar MIPS
+# relations plus the 17 LR-unsolved, deterministic refined-state relations.
+# This is a 51-relation train-only run; no validation split or reevaluation.
+# MIPS_EVOLVE_SPLIT="splits/mips_sr_targets_plus_refined.txt"
+# MIPS_EVOLVE_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts"
+# python scripts/prepare_mips_evolution_overlay.py --split "$MIPS_EVOLVE_SPLIT" --output-root "$MIPS_EVOLVE_ROOT"
+# sbatch --partition=default_partition --time=2-00:00:00 --cpus-per-task=1 --mem=8G --job-name=mips-evolve-51 --export=ALL,MIPS_TRANSITION_ROOT="$MIPS_EVOLVE_ROOT" run.sh evolve_pysr.py --domain mips --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval none --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best --split "$MIPS_EVOLVE_SPLIT" --val-split "" --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-random-target-noise
+
 # 8/25
 # srbench full evaluation for the 300-trial HPO selections
 # chain_a=$(sbatch --parsable -J srb-hpo300-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --ground-truth --black-box --timeout 0)
