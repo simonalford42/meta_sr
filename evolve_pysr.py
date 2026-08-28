@@ -918,11 +918,6 @@ def run_bundle_evolution(
                 f"--reeval population requires --n-reevals > --n-runs "
                 f"(got n_reevals={n_reevals}, n_runs={n_runs})"
             )
-        if population_type == "task":
-            raise ValueError(
-                f"--population-type={population_type} is incompatible with "
-                f"--reeval population; use 'topk' or 'complexity'."
-            )
     if racing_on and (dynamic_on or fixed_on or pop_reeval_on):
         # The CLI already forbids this pairing; guard library callers too.
         # Both paths compute run_index_start from seeds_evaluated before either
@@ -2183,10 +2178,17 @@ def run_bundle_evolution(
                     population = select_survivors(surv_pool, [], population_size)
             elif pop_reeval_on:
                 # Select over the re-scored current population plus fresh
-                # offspring using the configured fixed-size survivor policy.
+                # offspring using the configured survivor policy. Task-diverse
+                # selection compares solve rates because incumbents have
+                # n_reevals seeds while fresh offspring have n_runs seeds.
                 # Dropped bundles do not re-enter, so their reeval seeds stop
                 # accumulating.
-                if generation_population_type == "complexity":
+                if generation_population_type == "task":
+                    population = select_survivors_diverse(
+                        population, offspring_bundles, population_size,
+                        dataset_names,
+                    )
+                elif generation_population_type == "complexity":
                     population = select_survivors_complexity(
                         population, offspring_bundles, population_size
                     )
@@ -2736,7 +2738,7 @@ def main():
                              "'complexity' = complexity-aware Pareto (bucket by total bundle LOC, "
                              "best per bucket, then drop Pareto-dominated buckets). "
                              "'task' and 'complexity' are incompatible with heuristic/archive "
-                             "racing; 'complexity' is supported with '--reeval population'.")
+                             "racing; both are supported with '--reeval population'.")
     parser.add_argument("--reeval", type=str, default="none",
                         choices=["none", "heuristic", "TTTS", "KG", "uniform",
                                  "TTTS-dynamic", "KG-dynamic", "population"],
@@ -2960,11 +2962,6 @@ def main():
             parser.error(
                 f"--reeval population requires --n-reevals > --n-runs "
                 f"(got --n-reevals {args.n_reevals}, --n-runs {args.n_runs})"
-            )
-        if args.population_type == "task":
-            parser.error(
-                f"--population-type={args.population_type} is incompatible with "
-                "--reeval population; use 'topk' or 'complexity'."
             )
         if args.lambda_target != 1:
             parser.error("--lambda-target only applies to heuristic racing")

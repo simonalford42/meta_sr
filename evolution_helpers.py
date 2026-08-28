@@ -436,16 +436,19 @@ def job_success_stats(
 def _compute_per_task_best(
     bundles: List, n_tasks: int,
 ) -> List[Optional[Tuple[Any, int, int]]]:
-    """For each task, return the bundle with the most solves on that task.
+    """For each task, return the bundle with the highest solve rate.
 
     Entry is (bundle, n_solved, n_total) when at least one run solved the
-    task, else None. Ties break by overall bundle score.
+    task, else None. Ties prefer more evaluated seeds, then higher overall
+    bundle score. Ranking by rate rather than raw solve count matters when
+    population re-evaluation gives incumbents more seeds than fresh offspring.
     """
     best: List[Optional[Tuple[Any, int, int]]] = [None] * n_tasks
     for task_idx in range(n_tasks):
         best_b = None
         best_solved = 0
         best_total = 0
+        best_key: Optional[Tuple[float, int, float]] = None
         for c in bundles:
             rd = getattr(c, "result_details", None)
             if not rd or task_idx >= len(rd):
@@ -457,18 +460,17 @@ def _compute_per_task_best(
             n_solved = sum(1 for g in run_gt if g >= 1.0)
             if n_solved == 0:
                 continue
-            if (
-                n_solved > best_solved
-                or (
-                    n_solved == best_solved
-                    and best_b is not None
-                    and (-1 if c.score is None else c.score)
-                        > (-1 if best_b.score is None else best_b.score)
-                )
-            ):
+            n_total = len(run_gt)
+            key = (
+                n_solved / n_total,
+                n_total,
+                -1.0 if c.score is None else float(c.score),
+            )
+            if best_key is None or key > best_key:
                 best_b = c
                 best_solved = n_solved
-                best_total = len(run_gt)
+                best_total = n_total
+                best_key = key
         if best_b is not None and best_solved > 0:
             best[task_idx] = (best_b, best_solved, best_total)
     return best
@@ -1044,8 +1046,8 @@ def select_survivors_diverse(
 ) -> list:
     """Task-diverse survivor selection.
 
-    For each task, pick the candidate that solves the most runs on that task
-    (count of run_gt_scores >= 1.0), breaking ties by highest overall score.
+    For each task, pick the candidate with the highest solve rate on that task,
+    breaking ties by number of evaluated seeds and then overall score.
     Candidates with zero solved runs on a task are not selected for that task.
     Then backfill with top-scoring candidates until we reach min_population_size.
 
@@ -1056,28 +1058,13 @@ def select_survivors_diverse(
     scored = [m for m in combined if m.score is not None]
     scored.sort(key=lambda m: m.score, reverse=True)
 
-    # Step 1: For each task, find the candidate solving the most runs
-    # (tie-break by overall score, already pre-sorted descending).
+    # Step 1: For each task, find the candidate with the highest solve rate.
+    # _compute_per_task_best handles unequal seed counts from population
+    # re-evaluation and applies the evidence-count / overall-score tie-breaks.
     frontier: Dict[int, Any] = {}  # candidate id -> candidate (use id to dedup)
-    for task_idx in range(len(dataset_names)):
-        best_solver = None
-        best_n_solved = 0
-        for candidate in scored:
-            rd = getattr(candidate, "result_details", None)
-            if not rd or task_idx >= len(rd):
-                continue
-            run_gt = rd[task_idx].get("run_gt_scores", [])
-            n_solved = sum(1 for g in run_gt if g >= 1.0)
-            if n_solved == 0:
-                continue
-            if n_solved > best_n_solved or (
-                n_solved == best_n_solved
-                and best_solver is not None
-                and candidate.score > best_solver.score
-            ):
-                best_solver = candidate
-                best_n_solved = n_solved
-        if best_solver is not None:
+    for rec in _compute_per_task_best(scored, len(dataset_names)):
+        if rec is not None:
+            best_solver, _, _ = rec
             frontier[id(best_solver)] = best_solver
 
     frontier_list = sorted(frontier.values(), key=lambda m: m.score, reverse=True)

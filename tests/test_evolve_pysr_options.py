@@ -2,8 +2,10 @@ from dataclasses import dataclass
 
 from evolution_helpers import (
     _bundle_loc,
+    compute_per_task_best_stats,
     generation_evolution_policy,
     select_survivors_complexity,
+    select_survivors_diverse,
 )
 
 
@@ -17,6 +19,7 @@ class _Bundle:
     display_name: str
     score: float
     loc: int
+    result_details: list | None = None
 
     @property
     def operators(self):
@@ -45,6 +48,53 @@ def test_complexity_selection_uses_updated_population_reeval_scores():
         "large-offspring",
         "small-offspring",
     ]
+
+
+def test_task_selection_compares_solve_rates_with_unequal_seed_counts():
+    incumbent = _Bundle(
+        "incumbent-6-of-10",
+        0.60,
+        1,
+        result_details=[{"run_gt_scores": [1.0] * 6 + [0.0] * 4}],
+    )
+    offspring = _Bundle(
+        "offspring-2-of-3",
+        2 / 3,
+        1,
+        result_details=[{"run_gt_scores": [1.0, 1.0, 0.0]}],
+    )
+
+    selected = select_survivors_diverse(
+        [incumbent], [offspring], min_population_size=1,
+        dataset_names=["task-0"],
+    )
+
+    assert selected == [offspring]
+    assert compute_per_task_best_stats(
+        [incumbent, offspring], ["task-0"]
+    ) == (2 / 3, 1, 1)
+
+
+def test_task_selection_prefers_more_evidence_when_solve_rates_tie():
+    incumbent = _Bundle(
+        "incumbent-10-of-10",
+        1.0,
+        1,
+        result_details=[{"run_gt_scores": [1.0] * 10}],
+    )
+    offspring = _Bundle(
+        "offspring-3-of-3",
+        1.0,
+        1,
+        result_details=[{"run_gt_scores": [1.0] * 3}],
+    )
+
+    selected = select_survivors_diverse(
+        [incumbent], [offspring], min_population_size=1,
+        dataset_names=["task-0"],
+    )
+
+    assert selected == [incumbent]
 
 
 def test_simplify_cooldown_uses_final_n_logged_generations():
