@@ -196,10 +196,47 @@ class OfficialTableTests(unittest.TestCase):
             self.assertEqual(column["train_perf"], 0.7)
             self.assertEqual(column["val_perf"], 0.6)
             self.assertEqual(column["gt_rate"], 1.0)
+            self.assertEqual(column["gt_any_seed_rate"], 1.0)
             self.assertEqual(column["gt_10m_rate"], 0.0)
             self.assertEqual(column["bb_r2"], 0.8)
             self.assertIn("1/5320", table)
             self.assertIn("1/1220", table)
+
+    def test_any_seed_gt_rate_groups_runs_by_dataset_and_noise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp)
+            runs_root = project_root / "runs"
+            source = runs_root / "111"
+            source.mkdir(parents=True)
+            with open(source / "run_data.json", "w") as f:
+                json.dump({"config": {"fitness_metric": "r2"}}, f)
+
+            self._write_eval(runs_root, "9001", source, 1_000_000, solved=False)
+            results_path = runs_root / "9001" / "srbench_full_results.json"
+            with open(results_path) as f:
+                results = json.load(f)
+            results["results"]["task|0|0"].update(
+                {"dataset": "task", "noise": 0.0}
+            )
+            results["results"]["task|1|0"] = {
+                "present": True,
+                "error": None,
+                "solved": True,
+                "dataset": "task",
+                "noise": 0.0,
+            }
+            with open(results_path, "w") as f:
+                json.dump(results, f)
+
+            column = next(
+                c for c in build_official_columns(runs_root, project_root)
+                if c["key"] == "pysrpp_r2"
+            )
+            table = format_official_table([column])
+
+            self.assertEqual(column["gt_rate"], 0.5)
+            self.assertEqual(column["gt_any_seed_rate"], 1.0)
+            self.assertIn("SRBench GT solve (any seed)", table)
 
 
 if __name__ == "__main__":

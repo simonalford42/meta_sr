@@ -222,7 +222,14 @@ def _black_box_stats(run_dir: Path, manifest: dict) -> tuple[int, Optional[float
     return completed, mean_r2
 
 
-def _ground_truth_stats(run_dir: Path, manifest: dict) -> tuple[int, Optional[float]]:
+def _ground_truth_stats(
+    run_dir: Path, manifest: dict
+) -> tuple[int, Optional[float], Optional[float]]:
+    """Return completed runs, per-run solve rate, and any-seed solve rate.
+
+    The any-seed rate treats each (dataset, noise) pair as one task and marks
+    it solved when at least one seed solved it.
+    """
     keyed = srio.load_keyed_results(run_dir)
     if keyed is None and manifest.get("batches"):
         keyed = srio.build_keyed_results(run_dir, manifest)
@@ -231,9 +238,14 @@ def _ground_truth_stats(run_dir: Path, manifest: dict) -> tuple[int, Optional[fl
         if entry.get("present") and entry.get("error") is None
     ]
     if not present:
-        return 0, None
+        return 0, None, None
     solved = sum(bool(entry.get("solved")) for entry in present)
-    return len(present), solved / len(present)
+    tasks = {}
+    for entry in present:
+        task = (entry.get("dataset"), srio.fmt_noise(entry.get("noise", 0)))
+        tasks[task] = tasks.get(task, False) or bool(entry.get("solved"))
+    any_seed_rate = sum(tasks.values()) / len(tasks)
+    return len(present), solved / len(present), any_seed_rate
 
 
 def _pick_evaluation(
@@ -267,17 +279,17 @@ def _column_from_records(records: list[dict], training: dict) -> dict:
     black_box = _pick_evaluation(records, ONE_MILLION, "black_box")
     gt_10m = _pick_evaluation(records, TEN_MILLION, "gt")
 
-    gt_completed, gt_rate = (
+    gt_completed, gt_rate, gt_any_seed_rate = (
         _ground_truth_stats(gt["run_dir"], gt["manifest"])
-        if gt else (0, None)
+        if gt else (0, None, None)
     )
     bb_completed, bb_r2 = (
         _black_box_stats(black_box["run_dir"], black_box["manifest"])
         if black_box else (0, None)
     )
-    _, gt_10m_rate = (
+    _, gt_10m_rate, _ = (
         _ground_truth_stats(gt_10m["run_dir"], gt_10m["manifest"])
-        if gt_10m else (0, None)
+        if gt_10m else (0, None, None)
     )
 
     contributing = []
@@ -304,6 +316,7 @@ def _column_from_records(records: list[dict], training: dict) -> dict:
         "val_perf": val_perf,
         "bb_r2": bb_r2,
         "gt_rate": gt_rate,
+        "gt_any_seed_rate": gt_any_seed_rate,
         "gt_10m_rate": gt_10m_rate,
         "gt_completed": gt_completed,
         "bb_completed": bb_completed,
@@ -357,7 +370,7 @@ def build_official_columns(
     blank = {
         "training_id": "-", "eval_ids": "-", "train_set": "-", "val_set": "-",
         "train_perf": None, "val_perf": None, "bb_r2": None,
-        "gt_rate": None, "gt_10m_rate": None,
+        "gt_rate": None, "gt_any_seed_rate": None, "gt_10m_rate": None,
         "gt_completed": 0, "bb_completed": 0,
     }
     columns = []
@@ -398,6 +411,8 @@ def format_official_table(columns: list[dict]) -> str:
         ("val perf", lambda column: _fmt_score(column["val_perf"])),
         ("SRBench BB R2", lambda column: _fmt_score(column["bb_r2"])),
         ("SRBench GT solve (all)", lambda column: _fmt_rate(column["gt_rate"])),
+        ("SRBench GT solve (any seed)",
+         lambda column: _fmt_rate(column["gt_any_seed_rate"])),
         ("SRBench GT solve (all, 10M)", lambda column: _fmt_rate(column["gt_10m_rate"])),
         ("GT completed", lambda column: f"{column['gt_completed']}/{GT_TOTAL}"),
         ("BB completed", lambda column: f"{column['bb_completed']}/{BLACK_BOX_TOTAL}"),
