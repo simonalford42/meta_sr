@@ -18,7 +18,11 @@ from inspect_srbench_results import (
     format_summary_table,
     summarize_run,
 )
-from srbench_official_results import build_official_columns, format_official_table
+from srbench_official_results import (
+    OFFICIAL_COLUMNS,
+    build_official_columns,
+    format_official_table,
+)
 
 
 class BlackBoxSummaryTests(unittest.TestCase):
@@ -232,6 +236,17 @@ class OfficialTableTests(unittest.TestCase):
         }
         self.assertEqual(table_rows["train set"], "bu.txt")
         self.assertEqual(table_rows["val set"], "bu_val2.txt")
+
+    def test_official_columns_group_methods_by_objective(self):
+        self.assertEqual(
+            [column[0] for column in OFFICIAL_COLUMNS],
+            [
+                "pysr_baseline", "basicsr_baseline",
+                "hpo_gt", "pysrpp_gt", "basicsrpp_gt",
+                "hpo_gt_r2", "pysrpp_gt_r2", "basicsrpp_gt_r2",
+                "hpo_r2", "pysrpp_r2", "basicsrpp_r2",
+            ],
+        )
 
     def test_any_seed_gt_rate_groups_runs_by_dataset_and_noise(self):
         with tempfile.TemporaryDirectory() as tmp:

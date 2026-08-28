@@ -24,15 +24,15 @@ TEN_MILLION = 10_000_000
 OFFICIAL_COLUMNS = (
     ("pysr_baseline", "PySR baseline", "pysr_baseline", None),
     ("basicsr_baseline", "BasicSR baseline", "basicsr_baseline", None),
-    ("hpo_r2", "HPO R2", "hpo", "r2"),
-    ("hpo_gt_r2", "HPO GT-R2", "hpo", "gt-r2"),
     ("hpo_gt", "HPO GT", "hpo", "gt"),
-    ("pysrpp_r2", "PySR++ R2", "pysrpp", "r2"),
-    ("pysrpp_gt_r2", "PySR++ GT-R2", "pysrpp", "gt-r2"),
     ("pysrpp_gt", "PySR++ GT", "pysrpp", "gt"),
-    ("basicsrpp_r2", "BasicSR++ R2", "basicsrpp", "r2"),
-    ("basicsrpp_gt_r2", "BasicSR++ GT-R2", "basicsrpp", "gt-r2"),
     ("basicsrpp_gt", "BasicSR++ GT", "basicsrpp", "gt"),
+    ("hpo_gt_r2", "HPO GT-R2", "hpo", "gt-r2"),
+    ("pysrpp_gt_r2", "PySR++ GT-R2", "pysrpp", "gt-r2"),
+    ("basicsrpp_gt_r2", "BasicSR++ GT-R2", "basicsrpp", "gt-r2"),
+    ("hpo_r2", "HPO R2", "hpo", "r2"),
+    ("pysrpp_r2", "PySR++ R2", "pysrpp", "r2"),
+    ("basicsrpp_r2", "BasicSR++ R2", "basicsrpp", "r2"),
 )
 
 SPLIT_ABBREVIATIONS = {
