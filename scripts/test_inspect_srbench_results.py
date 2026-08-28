@@ -202,6 +202,37 @@ class OfficialTableTests(unittest.TestCase):
             self.assertIn("1/5320", table)
             self.assertIn("1/1220", table)
 
+    def test_official_table_abbreviates_split_names_and_adds_key(self):
+        columns = [{
+            "label": "method",
+            "training_id": "1",
+            "eval_ids": "2",
+            "train_set": "barely_unsolvable.txt",
+            "val_set": "barely_unsolvable_val2.txt",
+            "train_perf": None,
+            "val_perf": None,
+            "bb_r2": None,
+            "gt_rate": None,
+            "gt_any_seed_rate": None,
+            "gt_10m_rate": None,
+            "gt_completed": 0,
+            "bb_completed": 0,
+        }]
+
+        table = format_official_table(columns)
+
+        self.assertTrue(table.startswith("Split key: "))
+        self.assertIn("bu.txt = barely_unsolvable.txt", table.splitlines()[0])
+        self.assertIn("bu_val2.txt = barely_unsolvable_val2.txt", table.splitlines()[0])
+        table_rows = {
+            cells[0]: cells[1]
+            for line in table.splitlines()
+            if line.startswith("│")
+            for cells in [[cell.strip() for cell in line.split("│")[1:-1]]]
+        }
+        self.assertEqual(table_rows["train set"], "bu.txt")
+        self.assertEqual(table_rows["val set"], "bu_val2.txt")
+
     def test_any_seed_gt_rate_groups_runs_by_dataset_and_noise(self):
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp)

@@ -35,6 +35,12 @@ OFFICIAL_COLUMNS = (
     ("basicsrpp_gt", "BasicSR++ GT", "basicsrpp", "gt"),
 )
 
+SPLIT_ABBREVIATIONS = {
+    "barely_unsolvable.txt": "bu.txt",
+    "barely_unsolvable_val.txt": "bu_val.txt",
+    "barely_unsolvable_val2.txt": "bu_val2.txt",
+}
+
 
 def _method_family(manifest: dict) -> Optional[str]:
     mode = manifest.get("mode")
@@ -402,11 +408,14 @@ def _fmt_rate(value: Optional[float]) -> str:
 
 def format_official_table(columns: list[dict]) -> str:
     """Render official columns with requested metadata/results as rows."""
+    def split_name(column: dict, key: str) -> str:
+        return SPLIT_ABBREVIATIONS.get(column[key], column[key])
+
     rows = [
         ("training slurm", lambda column: column["training_id"]),
         ("SRBench eval slurm(s)", lambda column: column["eval_ids"]),
-        ("train set", lambda column: column["train_set"]),
-        ("val set", lambda column: column["val_set"]),
+        ("train set", lambda column: split_name(column, "train_set")),
+        ("val set", lambda column: split_name(column, "val_set")),
         ("train perf", lambda column: _fmt_score(column["train_perf"])),
         ("val perf", lambda column: _fmt_score(column["val_perf"])),
         ("SRBench BB R2", lambda column: _fmt_score(column["bb_r2"])),
@@ -435,7 +444,18 @@ def format_official_table(columns: list[dict]) -> str:
     lines = [rule("┌", "┬", "┐"), render(table[0]), rule("├", "┼", "┤")]
     lines += [render(row) for row in table[1:]]
     lines.append(rule("└", "┴", "┘"))
-    return "\n".join(lines)
+    used_splits = {
+        column[key]
+        for column in columns
+        for key in ("train_set", "val_set")
+        if column[key] in SPLIT_ABBREVIATIONS
+    }
+    legend = "; ".join(
+        f"{SPLIT_ABBREVIATIONS[name]} = {name}" for name in SPLIT_ABBREVIATIONS
+        if name in used_splits
+    )
+    table_text = "\n".join(lines)
+    return f"Split key: {legend}\n{table_text}" if legend else table_text
 
 
 def build_official_table(
