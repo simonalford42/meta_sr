@@ -19,6 +19,8 @@ GT_TOTAL = 5_320
 BLACK_BOX_TOTAL = 1_220
 ONE_MILLION = 1_000_000
 TEN_MILLION = 10_000_000
+OFFICIAL_TRAIN_SPLIT = "splits/barely_unsolvable.txt"
+OFFICIAL_VAL_SPLIT = "splits/barely_unsolvable_val2.txt"
 
 # (internal key, display label, method family, training objective)
 OFFICIAL_COLUMNS = (
@@ -254,6 +256,66 @@ def _ground_truth_stats(
     return len(present), solved / len(present), any_seed_rate
 
 
+def _load_split_names(project_root: Path, split: str) -> set[str]:
+    path = project_root / split
+    if not path.exists():
+        return set()
+    with open(path) as handle:
+        return {
+            line.strip() for line in handle
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+
+
+def _entry_objective_score(entry: dict, metric: str) -> Optional[float]:
+    """Score one full-SRBench result using the method's training objective."""
+    if metric == "gt":
+        return float(bool(entry.get("solved")))
+    r2 = entry.get("test_r2")
+    if r2 is None:
+        return None
+    r2 = max(0.0, float(r2))
+    if metric == "gt-r2":
+        # Full-evaluation artifacts store best-equation R², not frontier-average
+        # R², so use the same documented fallback as select_run_scores().
+        return 1.0 if entry.get("solved") else r2
+    if metric == "r2":
+        return r2
+    raise ValueError(f"Unknown objective: {metric!r}")
+
+
+def _split_performance(
+    run_dir: Path, manifest: dict, metric: str, project_root: Path
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """Return objective scores on the canonical train, val, and test sets."""
+    keyed = srio.load_keyed_results(run_dir)
+    if keyed is None and manifest.get("batches"):
+        keyed = srio.build_keyed_results(run_dir, manifest)
+    train_names = _load_split_names(project_root, OFFICIAL_TRAIN_SPLIT)
+    val_names = _load_split_names(project_root, OFFICIAL_VAL_SPLIT)
+    if not train_names or not val_names:
+        return None, None, None
+
+    scores = {"train": [], "val": [], "test": []}
+    for entry in (keyed or {}).values():
+        if not entry.get("present") or entry.get("error") is not None:
+            continue
+        dataset = entry.get("dataset")
+        partition = (
+            "train" if dataset in train_names
+            else "val" if dataset in val_names
+            else "test"
+        )
+        score = _entry_objective_score(entry, metric)
+        if score is not None:
+            scores[partition].append(score)
+
+    def mean(values: list[float]) -> Optional[float]:
+        return sum(values) / len(values) if values else None
+
+    return mean(scores["train"]), mean(scores["val"]), mean(scores["test"])
+
+
 def _pick_evaluation(
     records: Iterable[dict], budget: int, result_type: str
 ) -> Optional[dict]:
@@ -280,7 +342,10 @@ def _source_recency(records: Iterable[dict]) -> float:
     return max(primary or [record["mtime"] for record in records])
 
 
-def _column_from_records(records: list[dict], training: dict) -> dict:
+def _column_from_records(
+    records: list[dict], training: dict, project_root: Path,
+    objective: Optional[str],
+) -> dict:
     gt = _pick_evaluation(records, ONE_MILLION, "gt")
     black_box = _pick_evaluation(records, ONE_MILLION, "black_box")
     gt_10m = _pick_evaluation(records, TEN_MILLION, "gt")
@@ -303,23 +368,23 @@ def _column_from_records(records: list[dict], training: dict) -> dict:
         if record and record["run_dir"].name not in contributing:
             contributing.append(record["run_dir"].name)
 
-    metadata_record = gt or black_box or gt_10m
-    method_meta = (
-        (metadata_record["manifest"].get("method_meta") or {})
-        if metadata_record else {}
+    # Baselines have no optimization objective; report their canonical GT
+    # solve rate. Trained methods use the objective named by their source run.
+    score_metric = objective or "gt"
+    train_perf, val_perf, test_perf = (
+        _split_performance(
+            gt["run_dir"], gt["manifest"], score_metric, project_root
+        ) if gt else (None, None, None)
     )
-    train_perf = method_meta.get("train_score")
-    val_perf = method_meta.get("val_score")
-    if train_perf is None:
-        train_perf = training.get("train_perf")
-    if val_perf is None:
-        val_perf = training.get("val_perf")
 
     return {
         **training,
+        "train_set": Path(OFFICIAL_TRAIN_SPLIT).name,
+        "val_set": Path(OFFICIAL_VAL_SPLIT).name,
         "eval_ids": ",".join(contributing) or "-",
         "train_perf": train_perf,
         "val_perf": val_perf,
+        "test_perf": test_perf,
         "bb_r2": bb_r2,
         "gt_rate": gt_rate,
         "gt_any_seed_rate": gt_any_seed_rate,
@@ -375,7 +440,7 @@ def build_official_columns(
 
     blank = {
         "training_id": "-", "eval_ids": "-", "train_set": "-", "val_set": "-",
-        "train_perf": None, "val_perf": None, "bb_r2": None,
+        "train_perf": None, "val_perf": None, "test_perf": None, "bb_r2": None,
         "gt_rate": None, "gt_any_seed_rate": None, "gt_10m_rate": None,
         "gt_completed": 0, "bb_completed": 0,
     }
@@ -387,7 +452,9 @@ def build_official_columns(
         ]
         if candidates:
             records = max(candidates, key=_source_recency)
-            values = _column_from_records(records, records[0]["training"])
+            values = _column_from_records(
+                records, records[0]["training"], project_root, metric
+            )
         else:
             values = dict(blank)
         columns.append({"key": key, "label": label, **values})
@@ -418,6 +485,7 @@ def format_official_table(columns: list[dict]) -> str:
         ("val set", lambda column: split_name(column, "val_set")),
         ("train perf", lambda column: _fmt_score(column["train_perf"])),
         ("val perf", lambda column: _fmt_score(column["val_perf"])),
+        ("test perf", lambda column: _fmt_score(column.get("test_perf"))),
         ("SRBench BB R2", lambda column: _fmt_score(column["bb_r2"])),
         ("SRBench GT solve (all)", lambda column: _fmt_rate(column["gt_rate"])),
         ("SRBench GT solve (any seed)",

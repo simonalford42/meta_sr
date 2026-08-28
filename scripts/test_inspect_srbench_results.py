@@ -20,6 +20,7 @@ from inspect_srbench_results import (
 )
 from srbench_official_results import (
     OFFICIAL_COLUMNS,
+    _split_performance,
     build_official_columns,
     format_official_table,
 )
@@ -170,6 +171,10 @@ class OfficialTableTests(unittest.TestCase):
             runs_root = project_root / "runs"
             source = runs_root / "111"
             source.mkdir(parents=True)
+            splits = project_root / "splits"
+            splits.mkdir()
+            (splits / "barely_unsolvable.txt").write_text("train_task\n")
+            (splits / "barely_unsolvable_val2.txt").write_text("val_task\n")
             with open(source / "run_data.json", "w") as f:
                 json.dump({
                     "config": {
@@ -184,6 +189,21 @@ class OfficialTableTests(unittest.TestCase):
                 runs_root, "9001", source, 1_000_000,
                 solved=True, black_box=True,
             )
+            with open(runs_root / "9001" / "srbench_full_results.json", "w") as f:
+                json.dump({"results": {
+                    "train_task|0|0": {
+                        "dataset": "train_task", "present": True,
+                        "error": None, "solved": True, "test_r2": 0.8,
+                    },
+                    "val_task|0|0": {
+                        "dataset": "val_task", "present": True,
+                        "error": None, "solved": False, "test_r2": 0.6,
+                    },
+                    "test_task|0|0": {
+                        "dataset": "test_task", "present": True,
+                        "error": None, "solved": False, "test_r2": 0.4,
+                    },
+                }}, f)
             self._write_eval(
                 runs_root, "9002", source, 10_000_000,
                 solved=False,
@@ -195,15 +215,16 @@ class OfficialTableTests(unittest.TestCase):
 
             self.assertEqual(column["training_id"], "111")
             self.assertEqual(column["eval_ids"], "9001,9002")
-            self.assertEqual(column["train_set"], "train.txt")
-            self.assertEqual(column["val_set"], "val.txt")
-            self.assertEqual(column["train_perf"], 0.7)
+            self.assertEqual(column["train_set"], "barely_unsolvable.txt")
+            self.assertEqual(column["val_set"], "barely_unsolvable_val2.txt")
+            self.assertEqual(column["train_perf"], 0.8)
             self.assertEqual(column["val_perf"], 0.6)
-            self.assertEqual(column["gt_rate"], 1.0)
-            self.assertEqual(column["gt_any_seed_rate"], 1.0)
+            self.assertEqual(column["test_perf"], 0.4)
+            self.assertEqual(column["gt_rate"], 1 / 3)
+            self.assertEqual(column["gt_any_seed_rate"], 1 / 3)
             self.assertEqual(column["gt_10m_rate"], 0.0)
             self.assertEqual(column["bb_r2"], 0.8)
-            self.assertIn("1/5320", table)
+            self.assertIn("3/5320", table)
             self.assertIn("1/1220", table)
 
     def test_official_table_abbreviates_split_names_and_adds_key(self):
@@ -247,6 +268,33 @@ class OfficialTableTests(unittest.TestCase):
                 "hpo_r2", "pysrpp_r2", "basicsrpp_r2",
             ],
         )
+
+    def test_gt_split_performance_comes_from_full_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp)
+            run_dir = project_root / "runs" / "1"
+            run_dir.mkdir(parents=True)
+            splits = project_root / "splits"
+            splits.mkdir()
+            (splits / "barely_unsolvable.txt").write_text("train\n")
+            (splits / "barely_unsolvable_val2.txt").write_text("val\n")
+            with open(run_dir / "srbench_full_results.json", "w") as f:
+                json.dump({"results": {
+                    "train|0|0": {"dataset": "train", "present": True,
+                                    "error": None, "solved": True,
+                                    "test_r2": 0.1},
+                    "val|0|0": {"dataset": "val", "present": True,
+                                  "error": None, "solved": False,
+                                  "test_r2": 1.0},
+                    "held_out|0|0": {"dataset": "held_out", "present": True,
+                                       "error": None, "solved": True,
+                                       "test_r2": 0.2},
+                }}, f)
+
+            self.assertEqual(
+                _split_performance(run_dir, {}, "gt", project_root),
+                (1.0, 0.0, 1.0),
+            )
 
     def test_any_seed_gt_rate_groups_runs_by_dataset_and_noise(self):
         with tempfile.TemporaryDirectory() as tmp:

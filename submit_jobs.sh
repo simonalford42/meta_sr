@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 
+# 8/28 — Finish the three incomplete 1M SRBench black-box columns shown by
+# inspect_srbench_results.py --official. Successful trials are cache hits, so
+# these black-box-only reruns should execute just the missing/failed trials.
+# Give every fit up to 9h soft / 10h hard, each array task 12h, and each driver
+# two days so ten retry rounds have ample time. These are intentionally not
+# submitted automatically; uncomment the three sbatch lines when ready.
+# sbatch --time=2-00:00:00 -J bb-retry-hpo300-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --black-box --black-box-timeout 32400 --black-box-wall-limit 36000 --time-limit 12:00:00 --job-timeout 43200 --max-retries 10
+# sbatch --time=2-00:00:00 -J bb-retry-hpo300-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --black-box --black-box-timeout 32400 --black-box-wall-limit 36000 --time-limit 12:00:00 --job-timeout 43200 --max-retries 10
+# sbatch --time=2-00:00:00 -J bb-retry-pysrpp-r2 run.sh srbench_full_eval.py --evolve-results runs/120458 --black-box --black-box-timeout 32400 --black-box-wall-limit 36000 --time-limit 12:00:00 --job-timeout 43200 --max-retries 10
+
 # 8/26 10m max evals for HPO GT 300 trial job
 # Disable the inherited 300s soft timeout and use 5x the standard hard walls
 # (ground truth: 600s -> 3000s; black box: 1800s -> 9000s).
