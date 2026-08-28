@@ -163,6 +163,23 @@ target: 30..300 random-walk points over up to 126 variables, input/output flip
 probability 0..0.10 on the fit sample, and a clean continuation for scoring.
 Use these with `--domain boolformer`.
 
+### `boolformer_noisy_stratified_train.txt` / `boolformer_noisy_stratified_val.txt` (60 / 60)
+
+Disjoint meta-learning splits with matched nuisance distributions. Each split
+contains ten targets at every requested support size and twelve targets at
+every sample count and label-noise level. A deterministic candidate matcher
+also spreads trajectory-flip rates, inactive-variable counts, and
+within-support target-complexity quantiles. Targets are still ordinary draws
+from the Boolformer-style generator; stratification only chooses which fixed
+draws enter each manifest. Keep `boolformer_noisy_test.txt` as the untouched
+IID final test set.
+
+Regenerate these manifests with:
+
+```
+PYTHONPATH=. python scripts/generate_boolformer_stratified_splits.py
+```
+
 ### `pmlb_classification.txt` (31)
 
 The 31 binary PMLB datasets displayed in Boolformer's classification

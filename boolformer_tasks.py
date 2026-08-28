@@ -29,6 +29,9 @@ PMLB_PREFIX = "pmlb_classification:"
 PMLB_TRAIN_RATIO = 0.75
 PMLB_MAX_TRAIN_POINTS = 600
 PMLB_MAX_FEATURES = 119
+BOOLFORMER_N_POINTS = (30, 97, 165, 232, 300)
+BOOLFORMER_TRAJECTORY_FLIP_PROBS = tuple(float(x) for x in np.linspace(0.0, 0.25, 10)[1:])
+BOOLFORMER_FLIP_PROBS = tuple(float(x) for x in np.linspace(0.0, 0.1, 5))
 
 
 def _stable_seed(text: str) -> int:
@@ -166,22 +169,41 @@ def _target_spec(task_id: str) -> dict:
     }
 
 
+def _boolformer_noisy_spec(task_id: str) -> dict:
+    spec = _target_spec(task_id)
+    nuisance_rng = np.random.default_rng(_stable_seed(f"boolformer-data:{task_id}"))
+    spec.update({
+        "task_id": task_id,
+        "n_points": int(nuisance_rng.choice(BOOLFORMER_N_POINTS)),
+        "trajectory_flip_prob": float(
+            nuisance_rng.choice(BOOLFORMER_TRAJECTORY_FLIP_PROBS)
+        ),
+        "flip_prob": float(nuisance_rng.choice(BOOLFORMER_FLIP_PROBS)),
+        "protocol": "boolformer_noisy_paper_range",
+    })
+    return spec
+
+
+def get_boolformer_noisy_metadata(task_id: str) -> dict:
+    """Return fixed target and nuisance metadata without drawing observations."""
+    return {
+        key: value for key, value in _boolformer_noisy_spec(task_id).items()
+        if key != "expr"
+    }
+
+
 def load_boolformer_noisy_task(
     task_id: str,
     max_samples: Optional[int] = None,
     data_seed: int = 0,
 ) -> tuple[BooleanTask, BooleanTask]:
     """Return ``(corrupted_fit, clean_test)`` for one fixed target function."""
-    spec = _target_spec(task_id)
-    nuisance_rng = np.random.default_rng(_stable_seed(f"boolformer-data:{task_id}"))
-    n_points = int(nuisance_rng.choice([30, 97, 165, 232, 300]))
+    spec = _boolformer_noisy_spec(task_id)
+    n_points = spec["n_points"]
     if max_samples is not None:
         n_points = min(n_points, max(2, int(max_samples)))
-    # The public generator rejects constant-output fit samples before adding
-    # noise. A zero-step random walk is necessarily constant, so that grid
-    # point has zero probability after rejection and can be omitted directly.
-    trajectory_flip_prob = float(nuisance_rng.choice(np.linspace(0.0, 0.25, 10)[1:]))
-    flip_prob = float(nuisance_rng.choice(np.linspace(0.0, 0.1, 5)))
+    trajectory_flip_prob = spec["trajectory_flip_prob"]
+    flip_prob = spec["flip_prob"]
 
     rng = np.random.default_rng(int(data_seed))
     n_inputs = spec["n_inputs"]
@@ -207,16 +229,10 @@ def load_boolformer_noisy_task(
         fit_X = np.logical_xor(fit_X, rng.random(fit_X.shape) < flip_prob)
         fit_y = np.logical_xor(fit_y, rng.random(fit_y.shape) < flip_prob)
 
-    meta = {
-        key: value for key, value in spec.items() if key != "expr"
-    }
+    meta = {key: value for key, value in spec.items() if key != "expr"}
     meta.update({
-        "task_id": task_id,
         "data_seed": int(data_seed),
         "n_points": n_points,
-        "trajectory_flip_prob": trajectory_flip_prob,
-        "flip_prob": flip_prob,
-        "protocol": "boolformer_noisy_paper_range",
     })
     fit = BooleanTask(
         name=f"{BOOLFORMER_PREFIX}{task_id}", n_inputs=n_inputs,

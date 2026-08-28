@@ -5,6 +5,9 @@ from pathlib import Path
 import numpy as np
 
 from boolformer_tasks import (
+    BOOLFORMER_FLIP_PROBS,
+    BOOLFORMER_N_POINTS,
+    get_boolformer_noisy_metadata,
     load_boolformer_noisy_task,
     load_pmlb_classification_task,
 )
@@ -41,6 +44,30 @@ def test_boolformer_smoke_manifests_are_tiny_subsets_of_full_splits():
         assert set(smoke) <= set(_split_lines(full_name))
 
 
+def test_stratified_boolformer_manifests_have_matched_exact_marginals():
+    manifests = [
+        _split_lines("boolformer_noisy_stratified_train.txt"),
+        _split_lines("boolformer_noisy_stratified_val.txt"),
+    ]
+    assert all(len(manifest) == len(set(manifest)) == 60 for manifest in manifests)
+    assert not set(manifests[0]) & set(manifests[1])
+
+    for manifest in manifests:
+        metadata = [
+            get_boolformer_noisy_metadata(name.split(":", 1)[1])
+            for name in manifest
+        ]
+        assert sorted(meta["requested_active_vars"] for meta in metadata) == [
+            support for support in range(1, 7) for _ in range(10)
+        ]
+        assert sorted(meta["n_points"] for meta in metadata) == [
+            n_points for n_points in BOOLFORMER_N_POINTS for _ in range(12)
+        ]
+        assert sorted(meta["flip_prob"] for meta in metadata) == [
+            flip_prob for flip_prob in BOOLFORMER_FLIP_PROBS for _ in range(12)
+        ]
+
+
 def test_noisy_task_fixes_target_but_redraws_data_and_keeps_test_clean():
     fit_a, test_a = load_boolformer_noisy_task("train_s4_00", data_seed=10)
     fit_b, test_b = load_boolformer_noisy_task("train_s4_00", data_seed=11)
@@ -51,6 +78,9 @@ def test_noisy_task_fixes_target_but_redraws_data_and_keeps_test_clean():
     assert test_a.kind == "boolformer_noisy_clean_test"
     assert fit_a.X.shape == test_a.X.shape
     assert fit_b.X.shape == test_b.X.shape
+    fixed_meta = get_boolformer_noisy_metadata("train_s4_00")
+    assert fit_a.meta["n_points"] == fixed_meta["n_points"]
+    assert fit_a.meta["flip_prob"] == fixed_meta["flip_prob"]
 
 
 def test_boolformer_domain_uses_and_or_not_and_fixed_clean_split():
