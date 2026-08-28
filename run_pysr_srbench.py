@@ -175,6 +175,8 @@ def run_pysr_with_hof_checkpoints(
     seed=42,
     hof_path=None,
     milestone_kind="evals",
+    total_timeout_in_seconds=None,
+    timeout_reserve_seconds=0,
 ):
     """
     Run PySR with HOF checkpoint logging at each milestone.
@@ -187,6 +189,11 @@ def run_pysr_with_hof_checkpoints(
       "time"  -> `milestones` are cumulative wall-clock targets (seconds); each
                  chunk fits with warm_start for the time slice since the previous
                  milestone via `timeout_in_seconds` (the time-budget regime).
+    ``total_timeout_in_seconds`` is a shared wall-clock budget across every
+    warm-started fit.  Before each fit, its ``timeout_in_seconds`` is reduced to
+    the remaining budget.  This matters in eval mode because PySR otherwise
+    resets the timeout for every checkpoint fit.
+
     The `milestone_evals` CSV column holds the cumulative eval target (evals mode)
     or the cumulative time budget in seconds (time mode).
     """
@@ -201,20 +208,45 @@ def run_pysr_with_hof_checkpoints(
         if os.path.exists(hof_path):
             os.remove(hof_path)
 
+    deadline = None
+    if total_timeout_in_seconds is not None:
+        usable_timeout = max(
+            0.0,
+            float(total_timeout_in_seconds) - float(timeout_reserve_seconds),
+        )
+        deadline = time.monotonic() + usable_timeout
+
     try:
         if not milestones:
             model.fit(X_train, y_train, variable_names=feature_names)
         else:
             prev_milestone = 0
             for milestone in milestones:
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining < 1.0:
+                    print(
+                        "Shared PySR timeout exhausted before milestone "
+                        f"{milestone}; returning the latest frontier.",
+                        flush=True,
+                    )
+                    break
                 start_chunk = time.time()
 
                 if milestone_kind == "time":
                     # Per-chunk wall-time slice; timeout_in_seconds resets each
                     # warm-started fit, so pass the increment, not the cumulative.
-                    model.timeout_in_seconds = max(1, int(round(milestone - prev_milestone)))
+                    chunk_timeout = max(1, int(round(milestone - prev_milestone)))
+                    if remaining is not None:
+                        chunk_timeout = min(chunk_timeout, max(1, int(remaining)))
+                    model.timeout_in_seconds = chunk_timeout
                 else:
                     model.max_evals = milestone
+                    if remaining is not None:
+                        # PySR checks this soft limit between iterations.  Give
+                        # each warm-started fit only what remains of the one
+                        # shared task budget instead of resetting the full
+                        # timeout at every checkpoint.
+                        model.timeout_in_seconds = max(1, int(remaining))
                 model.fit(X_train, y_train, variable_names=feature_names)
 
                 chunk_time = time.time() - start_chunk

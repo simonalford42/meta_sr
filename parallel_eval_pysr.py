@@ -1399,18 +1399,37 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
                 _prev_handler = _signal.signal(_signal.SIGALRM, _wall_alarm)
                 _signal.alarm(int(spec.pysr_wall_limit))
+                recovered_after_hard_limit = False
                 try:
-                    model = run_pysr_with_hof_checkpoints(
-                        X_train, y_train,
-                        feature_names=variable_names,
-                        dataset_name=spec.dataset_name,
-                        results_dir=hof_results_dir,
-                        milestones=hof_milestones,
-                        model=model,
-                        seed=run_seed,
-                        hof_path=hof_csv_out,
-                        milestone_kind=hof_milestone_kind,
-                    )
+                    try:
+                        model = run_pysr_with_hof_checkpoints(
+                            X_train, y_train,
+                            feature_names=variable_names,
+                            dataset_name=spec.dataset_name,
+                            results_dir=hof_results_dir,
+                            milestones=hof_milestones,
+                            model=model,
+                            seed=run_seed,
+                            hof_path=hof_csv_out,
+                            milestone_kind=hof_milestone_kind,
+                            total_timeout_in_seconds=(
+                                model_kwargs.get("timeout_in_seconds")
+                                if hof_milestones else None
+                            ),
+                        )
+                    except PySRWallLimitExceeded:
+                        # A soft shared deadline should normally return first.
+                        # If Julia delays it and the hard alarm fires, retain a
+                        # frontier completed by an earlier warm-start checkpoint
+                        # instead of converting useful work into score zero.
+                        if getattr(model, "equations_", None) is None:
+                            raise
+                        recovered_after_hard_limit = True
+                        print(
+                            f"[{spec.dataset_name}] WARNING: hard PySR wall limit "
+                            "reached; scoring the latest completed frontier",
+                            flush=True,
+                        )
                 finally:
                     _signal.alarm(0)
                     _signal.signal(_signal.SIGALRM, _prev_handler)
@@ -1564,7 +1583,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     "gt_match_score": gt_match_score,
                     "gt_matched_equation": gt_matched_equation,
                     "error": None,
-                    "timed_out": False,
+                    "timed_out": recovered_after_hard_limit,
                     "runtime_seconds": _time.time() - level_start,
                     "num_evaluations": num_evals_used,
                     "execution_trace": execution_trace,
