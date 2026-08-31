@@ -31,6 +31,9 @@ from utils import load_dataset_names_from_split
 BOOTSTRAP_PACKAGES = (
     "boolformer==0.1.9",
     "gdown==5.2.0",
+    "beautifulsoup4==4.13.5",
+    "soupsieve==2.8",
+    "filelock==3.19.1",
     "boolean.py==4.0",
     "treelib==1.8.0",
     "graphviz==0.21",
