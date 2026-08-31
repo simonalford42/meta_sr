@@ -1,35 +1,89 @@
 #!/usr/bin/env bash
 
+# 8/31 — Full LaSR ground-truth SRBench baseline: 133 equations x 4 noise
+# levels x 1 seed = 532 fits. This command prepares the manifest and submits a
+# capped worker array plus its dependent aggregator. It loads the OpenRouter
+# key from the gitignored .env. Estimated API cost: $218-$871; estimated raw
+# LLM logs: 13-54 GB (see `python scripts/evaluate_lasr_srbench.py plan`).
+# python scripts/evaluate_lasr_srbench.py submit --output-dir runs/lasr_srbench_nemo_1seed --max-concurrent 32
+
+# 8/31
+# Paired comparison on the exact run-709716 synthetic manifests and data seeds:
+# official noisy Boolformer (10 sampled formulas), base PySR, and evolved PySR.
+# The evolved results already exist; the final dependent job only aggregates.
+# Submitted as base=983618, official=984175, report=984176. The first official
+# attempt (983619) failed during dependency bootstrap; report 983620 was canceled.
+BOOLFORMER_COMPARE="runs/709716/method_comparison"
+# mkdir -p "$BOOLFORMER_COMPARE"
+# boolformer_base=983618
+# boolformer_base=$(sbatch --parsable --partition=default_partition --time=08:00:00 --cpus-per-task=1 --mem=8G --job-name=bf-base-pysr run.sh evaluate_new_pysr.py --domain boolformer --fitness-metric gt-acc --splits splits/boolformer_noisy_stratified_train.txt splits/boolformer_noisy_stratified_val.txt splits/boolformer_noisy_test.txt --n-runs 10 --seed 192 --max-samples 1000 --partition default_partition --max-concurrent-jobs 300 --time-limit 01:00:00 --mem-per-cpu 8G --pysr-wall-limit 2400 --job-timeout 14400 --no-cache --output-dir "$BOOLFORMER_COMPARE/base_pysr")
+# boolformer_official=$(sbatch --parsable --partition=default_partition --time=08:00:00 --cpus-per-task=4 --mem=32G --gres=gpu:1 --job-name=bf-official run.sh scripts/evaluate_official_boolformer.py --splits splits/boolformer_noisy_stratified_train.txt splits/boolformer_noisy_stratified_val.txt splits/boolformer_noisy_test.txt --n-runs 10 --seed 192 --beam-size 10 --output-dir "$BOOLFORMER_COMPARE/official_boolformer")
+# boolformer_report=$(sbatch --parsable --dependency=afterok:"$boolformer_base":"$boolformer_official" --partition=default_partition --time=00:15:00 --cpus-per-task=1 --mem=4G --job-name=bf-compare-report run.sh scripts/report_boolformer_comparison.py --official "$BOOLFORMER_COMPARE/official_boolformer/results.json" --base "$BOOLFORMER_COMPARE/base_pysr/eval_summary.json" --evolved runs/709716/final_eval_summary.json --output-json "$BOOLFORMER_COMPARE/comparison.json" --output-md "$BOOLFORMER_COMPARE/README.md")
+# echo "Submitted Boolformer comparison: base=$boolformer_base official=$boolformer_official report=$boolformer_report"
+
+# sbatch -J gt-task-srb run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --black-box --max-evals 1000000 --timeout 0 --pysr-wall-limit 900
+# sbatch --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-base-10 run.sh evaluate_new_pysr.py --domain mips --fitness-metric gt --splits splits/mips_sr_targets_plus_refined.txt --n-runs 10 --seed 192 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-cache --output-dir runs/709714/final_eval_baseline_10seed
+# sbatch --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-709715-10 run.sh evaluate_new_pysr.py --evolve-results runs/709715 --domain mips --fitness-metric gt --splits splits/mips_sr_targets_plus_refined.txt --n-runs 10 --seed 192 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-cache --output-dir runs/709715/final_eval_mips_10seed
+# sbatch --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-709715-native run.sh evaluate_new_pysr.py --evolve-results runs/709715 --domain mips --use-domain-defaults --fitness-metric gt --splits splits/mips_sr_targets_plus_refined.txt --n-runs 10 --seed 192 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-cache --output-dir runs/709715/final_eval_mips_native_10seed
+
+# new mips run
+# MIPS_EVOLVE_SPLIT="splits/mips_sr_targets_plus_refined.txt"
+# MIPS_EVOLVE_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts"
+# python scripts/prepare_mips_evolution_overlay.py --split "$MIPS_EVOLVE_SPLIT" --output-root "$MIPS_EVOLVE_ROOT"
+# chain_b=$(sbatch --parsable --dependency=afterany:950928 --partition=default_partition --time=3-00:00:00 --cpus-per-task=1 --mem=8G --job-name=mips-evolve-51 --export=ALL,MIPS_TRANSITION_ROOT="$MIPS_EVOLVE_ROOT" run.sh evolve_pysr.py --domain mips --operator-type all --baseline runs/709715 --generations 25 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval population --n-reevals 10 --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best2 --split "$MIPS_EVOLVE_SPLIT" --val-split "" --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 14400 --no-random-target-noise)
+
+# Three-seed, one-hour-per-fit MIPS comparison: baseline -> MIPS-evolved -> SRBench-evolved.
+# mips_hourly=$(sbatch --parsable --partition=default_partition --time=05:00:00 --cpus-per-task=1 --mem=8G --job-name=mips-1h-base --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" run.sh evaluate_new_pysr.py --domain mips --fitness-metric gt --splits splits/mips_sr_targets_plus_refined.txt --n-runs 3 --seed 192 --max-samples 1000 --wall-clock-only --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 153 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir runs/709714/final_eval_baseline_3seed_1h)
+# mips_hourly=$(sbatch --parsable --dependency=afterany:"$mips_hourly" --partition=default_partition --time=05:00:00 --cpus-per-task=1 --mem=8G --job-name=mips-1h-709714 --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" run.sh evaluate_new_pysr.py --evolve-results runs/709714 --domain mips --fitness-metric gt --splits splits/mips_sr_targets_plus_refined.txt --n-runs 3 --seed 192 --max-samples 1000 --wall-clock-only --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 153 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir runs/709714/final_eval_mips_3seed_1h)
+# mips_hourly=$(sbatch --parsable --dependency=afterany:"$mips_hourly" --partition=default_partition --time=05:00:00 --cpus-per-task=1 --mem=8G --job-name=mips-1h-709715 --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" run.sh evaluate_new_pysr.py --evolve-results runs/709715 --domain mips --use-domain-defaults --fitness-metric gt --splits splits/mips_sr_targets_plus_refined.txt --n-runs 3 --seed 192 --max-samples 1000 --wall-clock-only --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 153 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir runs/709715/final_eval_mips_native_3seed_1h)
+#
+
 # 8/28 — Finish the three incomplete 1M SRBench black-box columns shown by
 # inspect_srbench_results.py --official. Successful trials are cache hits, so
 # these black-box-only reruns should execute just the missing/failed trials.
 # Give every fit up to 9h soft / 10h hard, each array task 12h, and each driver
 # two days so ten retry rounds have ample time. These are intentionally not
 # submitted automatically; uncomment the three sbatch lines when ready.
-# sbatch --time=2-00:00:00 -J bb-retry-hpo300-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --black-box --black-box-timeout 32400 --black-box-wall-limit 36000 --time-limit 12:00:00 --job-timeout 43200 --max-retries 10
-# sbatch --time=2-00:00:00 -J bb-retry-hpo300-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --black-box --black-box-timeout 32400 --black-box-wall-limit 36000 --time-limit 12:00:00 --job-timeout 43200 --max-retries 10
-# sbatch --time=2-00:00:00 -J bb-retry-pysrpp-r2 run.sh srbench_full_eval.py --evolve-results runs/120458 --black-box --black-box-timeout 32400 --black-box-wall-limit 36000 --time-limit 12:00:00 --job-timeout 43200 --max-retries 10
+# sbatch --time=2-00:00:00 -J bb-retry-hpo300-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --black-box --black-box-timeout 32400 --black-box-wall-limit 36000 --time-limit 12:00:00 --job-timeout 43200 --max-retries 2
+# sbatch --time=2-00:00:00 -J bb-retry-hpo300-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --black-box --black-box-timeout 32400 --black-box-wall-limit 36000 --time-limit 12:00:00 --job-timeout 43200 --max-retries 2
+# sbatch --time=2-00:00:00 -J bb-retry-pysrpp-r2 run.sh srbench_full_eval.py --evolve-results runs/120458 --black-box --black-box-timeout 32400 --black-box-wall-limit 36000 --time-limit 12:00:00 --job-timeout 43200 --max-retries 2
+
+# 8/28
+# sbatch -J hpo300-gt-1e7-srb run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --ground-truth --max-evals 10000000 --timeout 0 --pysr-wall-limit 900
+
+# 8/27
+# chain_a=$(sbatch --parsable -J neuron-top1-uninformative run.sh evolve_pysr.py --domain neuron --uninformative-prompts --operator-type all --generations 15 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models medium2 --max-evals 1000000 --max-samples 1024 --population-type topk --identify-topk 0 --exec-feedback-n 0 --neuron-full-eval --neuron-eval-runs 5 --neuron-eval-seed 10000 --neuron-eval-max-evals 1000000 --split splits/neuron_first1.txt --val-split "" --seed 0)
+# chain_a=$(sbatch --dependency=afterany:$chain_a --parsable -J neuron-top2-uninformative run.sh evolve_pysr.py --domain neuron --uninformative-prompts --operator-type all --generations 15 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models medium2 --max-evals 1000000 --max-samples 1024 --population-type topk --identify-topk 0 --exec-feedback-n 0 --neuron-full-eval --neuron-eval-runs 5 --neuron-eval-seed 10000 --neuron-eval-max-evals 1000000 --split splits/neuron_first2.txt --val-split "" --seed 0)
+# chain_a=$(sbatch --dependency=afterany:$chain_a --parsable -J neuron-top3-uninformative run.sh evolve_pysr.py --domain neuron --uninformative-prompts --operator-type all --generations 15 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models medium2 --max-evals 1000000 --max-samples 1024 --population-type topk --identify-topk 0 --exec-feedback-n 0 --neuron-full-eval --neuron-eval-runs 5 --neuron-eval-seed 10000 --neuron-eval-max-evals 1000000 --split splits/neuron_first3.txt --val-split "" --seed 0)
+
+# 8/27
+# relations plus the 17 LR-unsolved, deterministic refined-state relations.
+# This is a 51-relation train-only run; no validation split or reevaluation.
+# MIPS_EVOLVE_SPLIT="splits/mips_sr_targets_plus_refined.txt"
+# MIPS_EVOLVE_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts"
+# python scripts/prepare_mips_evolution_overlay.py --split "$MIPS_EVOLVE_SPLIT" --output-root "$MIPS_EVOLVE_ROOT"
+# chain_b=$(sbatch --parsable --partition=default_partition --time=2-00:00:00 --cpus-per-task=1 --mem=8G --job-name=mips-evolve-51 --export=ALL,MIPS_TRANSITION_ROOT="$MIPS_EVOLVE_ROOT" run.sh evolve_pysr.py --domain mips --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval none --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best2 --split "$MIPS_EVOLVE_SPLIT" --val-split "" --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-random-target-noise)
+
+# chain_b=$(sbatch --parsable --dependency=afterany:$chain_b -J gt-task run.sh evolve_pysr.py --operator-type all --population-type task --generations 45 --simplify-cooldown 15 --population 10 --offspring 10 --n-runs 3 --reeval population --n-reevals 10 --models best2)
+# chain_b=$(sbatch --parsable --dependency=afterany:$chain_b -J boolformer-stratified run.sh evolve_pysr.py --domain boolformer --operator-type all --generations 10 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt-acc --reeval population --n-reevals 10 --models best2 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 300 --time-limit 01:00:00 --mem-per-cpu 8G --pysr-wall-limit 2400 --job-timeout 14400 --split splits/boolformer_noisy_stratified_train.txt --val-split splits/boolformer_noisy_stratified_val.txt --val-n-runs 3 --test-split splits/boolformer_noisy_test.txt --extra-test-split splits/pmlb_classification.txt --final-eval-runs 10 --seed 0)
+
+
+
 
 # 8/26 10m max evals for HPO GT 300 trial job
 # Disable the inherited 300s soft timeout and use 5x the standard hard walls
 # (ground truth: 600s -> 3000s; black box: 1800s -> 9000s).
-sbatch --dependency=afterany:680849 -J hpo300-gt-1e7-srb run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --ground-truth --black-box --max-evals 10000000 --timeout 0 --pysr-wall-limit 3000 --black-box-wall-limit 9000
+# sbatch --dependency=afterany:680849 -J hpo300-gt-1e7-srb run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --ground-truth --black-box --max-evals 10000000 --timeout 0 --pysr-wall-limit 900 --black-box-wall-limit 9000
 
 # 8/25 — Boolformer smoke test (job 610439 completed successfully).
 # sbatch -J boolformer-smoke run.sh evolve_pysr.py --domain boolformer --operator-type all --generations 2 --population 3 --offspring 2 --n-runs 1 --fitness-metric gt-acc --reeval none --models cheap --llm-max-workers 2 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 10 --time-limit 00:10:00 --mem-per-cpu 8G --pysr-wall-limit 300 --job-timeout 1200 --val-pysr-wall-limit 300 --val-pysr-timeout 240 --split splits/boolformer_noisy_smoke_train.txt --val-split splits/boolformer_noisy_smoke_val.txt --val-n-runs 1 --test-split splits/boolformer_noisy_smoke_test.txt --extra-test-split splits/pmlb_classification_smoke.txt --final-eval-runs 1 --seed 0
 
 # Full noisy Boolformer evolution (REVIEW BEFORE SUBMITTING). Validation is
 # monitoring-only; the 100 synthetic targets and PMLB are final-eval-only.
-# sbatch -J boolformer-noisy run.sh evolve_pysr.py --domain boolformer --operator-type all --generations 30 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt-acc --reeval population --n-reevals 10 --models best --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --mem-per-cpu 8G --pysr-wall-limit 2400 --job-timeout 14400 --split splits/boolformer_noisy_train.txt --val-split splits/boolformer_noisy_val.txt --val-n-runs 3 --test-split splits/boolformer_noisy_test.txt --extra-test-split splits/pmlb_classification.txt --final-eval-runs 10 --seed 0
+# sbatch -J boolformer-noisy run.sh evolve_pysr.py --domain boolformer --operator-type all --generations 30 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt-acc --reeval population --n-reevals 10 --models medium2 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 300 --time-limit 01:00:00 --mem-per-cpu 8G --pysr-wall-limit 2400 --job-timeout 14400 --split splits/boolformer_noisy_train.txt --val-split splits/boolformer_noisy_val.txt --val-n-runs 3 --test-split splits/boolformer_noisy_test.txt --extra-test-split splits/pmlb_classification.txt --final-eval-runs 10 --seed 0
 
-# REVIEW BEFORE SUBMITTING: matched 60/60 stratified Boolformer train/val run.
-# sbatch -J boolformer-stratified run.sh evolve_pysr.py --domain boolformer --operator-type all --generations 30 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt-acc --reeval population --n-reevals 10 --models medium2 --population-type topk --identify-topk 0 --exec-feedback-n 0 --partition default_partition --max-concurrent-jobs 300 --time-limit 01:00:00 --mem-per-cpu 8G --pysr-wall-limit 2400 --job-timeout 14400 --split splits/boolformer_noisy_stratified_train.txt --val-split splits/boolformer_noisy_stratified_val.txt --val-n-runs 3 --test-split splits/boolformer_noisy_test.txt --extra-test-split splits/pmlb_classification.txt --final-eval-runs 10 --seed 0
 
 # 8/25 — Full 62-task MIPS raw-checkpoint reproduction.
-# Each processed task gets one CPU and a strict 3600-second child-process cap;
-# five hidden_dim > 10 tasks are recorded as upstream-protocol skips. The
-# dependent aggregation job runs even if array elements time out or fail.
-# Uncomment this block together, then run `bash submit_jobs.sh`.
 # MIPS_OUTPUT="outputs/mips_reproduction_all"
 # /home/sca63/.conda/envs/meta_sr/bin/python scripts/reproduce_mips_all.py prepare --output-dir "$MIPS_OUTPUT"
 # mips_array=$(sbatch --parsable --array=0-61%12 --cpus-per-task=1 --mem=8G --time=01:10:00 --partition=default_partition --job-name=mips-all --output="$MIPS_OUTPUT/slurm/%A_%a.out" --error="$MIPS_OUTPUT/slurm/%A_%a.err" run.sh scripts/reproduce_mips_all.py worker --task-index-env --timeout-seconds 3600 --output-dir "$MIPS_OUTPUT")
@@ -82,31 +136,33 @@ sbatch --dependency=afterany:680849 -J hpo300-gt-1e7-srb run.sh srbench_full_eva
 # refined_pysr_1m_analysis=$(sbatch --parsable --dependency=afterany:"$refined_pysr_1m" --cpus-per-task=1 --mem=4G --time=00:10:00 --partition=default_partition --job-name=mips-ref-1m-final --output="$REFINED_PYSR_1M/slurm/final_%j.out" --error="$REFINED_PYSR_1M/slurm/final_%j.err" run.sh scripts/analyze_mips_refined_pysr.py --pysr-dir "$REFINED_PYSR_1M")
 # echo "Submitted corrected 1e6-eval PySR driver $refined_pysr_1m and analysis $refined_pysr_1m_analysis"
 
-# 8/27 — REVIEW ONLY: meta-evolve PySR on the 34 original scalar MIPS
-# relations plus the 17 LR-unsolved, deterministic refined-state relations.
-# This is a 51-relation train-only run; no validation split or reevaluation.
-# MIPS_EVOLVE_SPLIT="splits/mips_sr_targets_plus_refined.txt"
-# MIPS_EVOLVE_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts"
-# python scripts/prepare_mips_evolution_overlay.py --split "$MIPS_EVOLVE_SPLIT" --output-root "$MIPS_EVOLVE_ROOT"
-# sbatch --partition=default_partition --time=2-00:00:00 --cpus-per-task=1 --mem=8G --job-name=mips-evolve-51 --export=ALL,MIPS_TRANSITION_ROOT="$MIPS_EVOLVE_ROOT" run.sh evolve_pysr.py --domain mips --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval none --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best --split "$MIPS_EVOLVE_SPLIT" --val-split "" --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-random-target-noise
 
-# 8/25
+# new simplification
+# sbatch --dependency=afterany:593871 -J simp-538-new run.sh evolve_pysr.py --operator-type all --mutation-mode simplify --population-type complexity --generations 20 --population 10 --offspring 10 --n-runs 3 --models medium2 --continue-from runs/538190 --reeval population --n-reevals 10
+
 # srbench full evaluation for the 300-trial HPO selections
 # chain_a=$(sbatch --parsable -J srb-hpo300-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --ground-truth --black-box --timeout 0)
 # chain_a=$(sbatch --parsable --dependency=afterany:"$chain_a" -J srb-hpo300-r2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_183759_524347 --ground-truth --black-box --timeout 0)
 # chain_a=$(sbatch --parsable --dependency=afterany:"$chain_a" -J srb-hpo300-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --ground-truth --black-box --timeout 0)
 
+# python scripts/eval_simplify_candidates.py --run runs/252289
+
 # 8/24
 # Counterfactual 300-trial HPO selections. Each driver reuses trials 0-299 and
 # the baseline from the corresponding 500-trial run, submits only the 10-way ×
 # 10-seed finalist comparison, then automatically runs the standard 10-seed
+
 # final evaluation on barely_unsolvable + val.
-# sbatch -J hpo300-gt run.sh hpo_pysr.py --reselect-from outputs/hpo_pysr_20260727_172105_644009 --n-trials 300 --n-runs 3 --n-runs-final 10 --final-topk 10 --n-parallel 20 --split splits/barely_unsolvable.txt --val-split splits/val.txt --fitness-metric gt --random-target-noise
-# sbatch -J hpo300-r2 run.sh hpo_pysr.py --reselect-from outputs/hpo_pysr_20260727_172105_644046 --n-trials 300 --n-runs 3 --n-runs-final 10 --final-topk 10 --n-parallel 20 --split splits/barely_unsolvable.txt --val-split splits/val.txt --fitness-metric r2 --random-target-noise
-# sbatch -J hpo300-gt-r2 run.sh hpo_pysr.py --reselect-from outputs/hpo_pysr_20260727_172105_644293 --n-trials 300 --n-runs 3 --n-runs-final 10 --final-topk 10 --n-parallel 20 --split splits/barely_unsolvable.txt --val-split splits/val.txt --fitness-metric gt-r2 --random-target-noise
+# chain_a=$(sbatch --parsable -J hpo300-gt run.sh hpo_pysr.py --reselect-from outputs/hpo_pysr_20260727_172105_644009 --n-trials 300 --n-runs 3 --n-runs-final 10 --final-topk 10 --n-parallel 20 --split splits/barely_unsolvable.txt --val-split splits/val.txt --fitness-metric gt --random-target-noise)
+# chain_a=$(sbatch --parsable --dependency=afterany:$chain_a -J hpo300-r2 run.sh hpo_pysr.py --reselect-from outputs/hpo_pysr_20260727_172105_644046 --n-trials 300 --n-runs 3 --n-runs-final 10 --final-topk 10 --n-parallel 20 --split splits/barely_unsolvable.txt --val-split splits/val.txt --fitness-metric r2 --random-target-noise)
+# chain_a=$(sbatch --parsable --dependency=afterany:$chain_a -J hpo300-gt-r2 run.sh hpo_pysr.py --reselect-from outputs/hpo_pysr_20260727_172105_644293 --n-trials 300 --n-runs 3 --n-runs-final 10 --final-topk 10 --n-parallel 20 --split splits/barely_unsolvable.txt --val-split splits/val.txt --fitness-metric gt-r2 --random-target-noise)
 
 # sbatch -J neuron-eval-313196 run.sh neuron_full_eval.py --evolve-results runs/313196 --output-dir runs/313196/neuron_full_eval --n-runs 5 --seed 10000 --max-evals 1000000 --max-samples 1024 --partition default_partition --time-limit 00:15:00 --mem-per-cpu 8G --timeout 500 --pysr-wall-limit 600 --job-timeout 1800 --train-split splits/neuron_first1.txt --held-out-world h_sag --held-out-world na_fatigue --held-out-world ca_rebound --held-out-world d_type --held-out-world textbook_M
-# sbatch -J boolean-eval-313197 run.sh boolean_eval.py --evolve-results runs/313197 --output-dir runs/313197/boolean_eval --n-runs 3 --seed 10000 --max-evals 1000000 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --mem-per-cpu 8G --timeout 1800 --pysr-wall-limit 2400 --job-timeout 14400 --train-split splits/boolean_train.txt
+# sbatch -J boolean-eval-313197 run.sh boolean_eval.py --evolve-results runs/313197 --output-dir runs/313197/boolean_eval --n-runs 10 --seed 10000 --max-evals 1000000 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --mem-per-cpu 8G --timeout 1800 --pysr-wall-limit 2400 --job-timeout 14400 --train-split splits/boolean_train.txt
+
+# chain_a=$(sbatch --parsable -J base-1e7-srb run.sh srbench_full_eval.py --black-box --ground-truth --max-evals 10000000)
+# chain_a=$(sbatch --dependency=afterany:$chain_a --parsable -J gt-1e7-srb run.sh srbench_full_eval.py --black-box --ground-truth --max-evals 10000000 --evolve-results runs/538190)
+# chain_a=$(sbatch --dependency=afterany:$chain_a --parsable -J hpo-gt-1e7-srb run.sh srbench_full_eval.py --black-box --ground-truth --max-evals 10000000 --hpo-results outputs/hpo_pysr_20260727_172105_644009)
 
 # 8/20
 # chain_a=$(sbatch --parsable -J srb-hpo-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260727_172105_644009 --black-box --timeout 0)

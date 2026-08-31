@@ -31,10 +31,10 @@ git -C "$lasr_root" archive HEAD | tar -x -C "$build_dir"
 
 if command -v uv >/dev/null 2>&1; then
     uv pip install --python "$venv_dir/bin/python" "$build_dir"
-    uv pip install --python "$venv_dir/bin/python" 'scikit-learn==1.5.2'
+    uv pip install --python "$venv_dir/bin/python" 'scikit-learn==1.5.2' PyYAML
 else
     "$venv_dir/bin/python" -m pip install "$build_dir"
-    "$venv_dir/bin/python" -m pip install 'scikit-learn==1.5.2'
+    "$venv_dir/bin/python" -m pip install 'scikit-learn==1.5.2' PyYAML
 fi
 
 # The archived paper branch contains the original author's absolute path in
