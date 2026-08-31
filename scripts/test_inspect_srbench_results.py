@@ -19,6 +19,8 @@ from inspect_srbench_results import (
     summarize_run,
 )
 from srbench_official_results import (
+    BLACK_BOX_TOTAL,
+    GT_TOTAL,
     OFFICIAL_COLUMNS,
     _split_performance,
     build_official_columns,
@@ -284,6 +286,23 @@ class OfficialTableTests(unittest.TestCase):
         self.assertLess(labels.index("test R2"), labels.index("SRBench GT solve (all)"))
         self.assertLess(labels.index("SRBench GT solve (all, 10M)"),
                         labels.index("SRBench BB R2"))
+
+    def test_official_table_marks_only_fully_completed_evaluations(self):
+        column = {
+            "label": "method", "training_id": "1",
+            "train_gt": None, "val_gt": None, "test_gt": None,
+            "train_r2": None, "val_r2": None, "test_r2": None,
+            "gt_rate": None, "gt_any_seed_rate": None,
+            "gt_10m_rate": None, "bb_r2": None,
+            "gt_completed": GT_TOTAL,
+            "bb_completed": BLACK_BOX_TOTAL - 1,
+        }
+
+        table = format_official_table([column])
+
+        self.assertIn(f"✓ {GT_TOTAL}/{GT_TOTAL}", table)
+        self.assertIn(f"{BLACK_BOX_TOTAL - 1}/{BLACK_BOX_TOTAL}", table)
+        self.assertNotIn(f"✓ {BLACK_BOX_TOTAL - 1}/{BLACK_BOX_TOTAL}", table)
 
     def test_official_columns_group_methods_by_objective(self):
         self.assertEqual(

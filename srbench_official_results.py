@@ -466,6 +466,11 @@ def _fmt_rate(value: Optional[float]) -> str:
     return f"{value * 100:.1f}%" if value is not None else "-"
 
 
+def _fmt_completed(completed: int, total: int) -> str:
+    prefix = "✓ " if completed == total else ""
+    return f"{prefix}{completed}/{total}"
+
+
 def format_official_table(columns: list[dict]) -> str:
     """Render official columns with requested metadata/results as rows."""
     rows = [
@@ -481,8 +486,10 @@ def format_official_table(columns: list[dict]) -> str:
          lambda column: _fmt_rate(column["gt_any_seed_rate"])),
         ("SRBench GT solve (all, 10M)", lambda column: _fmt_rate(column["gt_10m_rate"])),
         ("SRBench BB R2", lambda column: _fmt_score(column["bb_r2"])),
-        ("GT completed", lambda column: f"{column['gt_completed']}/{GT_TOTAL}"),
-        ("BB completed", lambda column: f"{column['bb_completed']}/{BLACK_BOX_TOTAL}"),
+        ("GT completed", lambda column: _fmt_completed(column["gt_completed"], GT_TOTAL)),
+        ("BB completed", lambda column: _fmt_completed(
+            column["bb_completed"], BLACK_BOX_TOTAL
+        )),
     ]
     table = [["metric"] + [column["label"] for column in columns]]
     table += [
