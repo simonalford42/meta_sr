@@ -230,7 +230,7 @@ class OfficialTableTests(unittest.TestCase):
             self.assertIn("3/5320", table)
             self.assertIn("1/1220", table)
 
-    def test_official_table_abbreviates_split_names_and_adds_key(self):
+    def test_official_table_omits_eval_slurm_and_split_rows(self):
         columns = [{
             "label": "method",
             "training_id": "1",
@@ -249,18 +249,10 @@ class OfficialTableTests(unittest.TestCase):
 
         table = format_official_table(columns)
 
-        self.assertTrue(table.startswith("Split key: "))
         self.assertNotIn("SRBench eval slurm(s)", table)
-        self.assertIn("bu.txt = barely_unsolvable.txt", table.splitlines()[0])
-        self.assertIn("bu_val2.txt = barely_unsolvable_val2.txt", table.splitlines()[0])
-        table_rows = {
-            cells[0]: cells[1]
-            for line in table.splitlines()
-            if line.startswith("│")
-            for cells in [[cell.strip() for cell in line.split("│")[1:-1]]]
-        }
-        self.assertEqual(table_rows["train set"], "bu.txt")
-        self.assertEqual(table_rows["val set"], "bu_val2.txt")
+        self.assertNotIn("train set", table)
+        self.assertNotIn("val set", table)
+        self.assertNotIn("Split key:", table)
 
     def test_official_table_shows_both_split_metrics_before_gt_then_bb(self):
         column = {
