@@ -45,6 +45,43 @@ trigonometric operators are unavailable. It therefore executes 97 equations
 while retaining the paper's 100-equation denominator, with those three treated
 as unsolved.
 
-No GPU or LLM endpoint is visible on the current login host. A full run needs
-either an external endpoint or a GPU-hosted vLLM server. Starting such a server
-through SLURM requires explicit approval before job submission.
+## Full SRBench ground-truth evaluation through OpenRouter
+
+`scripts/evaluate_lasr_srbench.py` adapts the archived LaSR search to the
+canonical `splits/srbench_all.txt` grid. It uses the shared SRBench protocol:
+
+- 133 ground-truth datasets, including the 3 inverse-trig unsolvable cases;
+- one seed per dataset;
+- noise levels `0`, `0.001`, `0.01`, and `0.1`;
+- at most 1,000 rows followed by the seeded 80/20 train/validation split;
+- Gaussian target noise scaled by training-target RMS; and
+- symbolic recovery checked across the full PySR Pareto frontier.
+
+The default model is OpenRouter's `mistralai/mistral-nemo:floor`, which keeps
+the same Mistral NeMo model used by the smoke test while forcing the cheapest
+available provider. The LaSR settings remain the paper configuration: 40
+search iterations, a `0.01` weight for each LLM operation, and a 1,024-token
+completion cap.
+
+Estimate the grid without creating files or submitting jobs:
+
+```bash
+.venv-lasr/bin/python scripts/evaluate_lasr_srbench.py plan
+```
+
+The prepared submission block is in `submit_jobs.sh`. Its `submit` subcommand
+is the only path that invokes `sbatch`; `plan`, `prepare`, `worker`, and
+`aggregate` do not submit jobs. The run uses a resumable 532-element array and
+a dependent aggregation job. Results are compatible with:
+
+```bash
+python inspect_srbench_results.py --run-id lasr_srbench_nemo_1seed
+```
+
+The cost estimate is intentionally a range because LaSR's number and length of
+LLM responses are stochastic. It extrapolates from the checked-in environment's
+one-equation OpenRouter smoke measurement and is recorded in each run's
+`manifest.json`.
+
+A full run needs either this external endpoint or a GPU-hosted vLLM server.
+Starting either evaluation through SLURM still requires explicit approval.

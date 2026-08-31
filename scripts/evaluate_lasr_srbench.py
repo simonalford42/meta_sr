@@ -31,7 +31,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LASR_ROOT = PROJECT_ROOT / "LaSR.jl"
 LASR_PYTHON = PROJECT_ROOT / ".venv-lasr" / "bin" / "python"
 DEFAULT_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
-DEFAULT_MODEL = "mistralai/mistral-nemo"
+# Keep the exact model used by the smoke test while forcing OpenRouter's
+# lowest-priced available provider for that model.
+DEFAULT_MODEL = "mistralai/mistral-nemo:floor"
 DEFAULT_MODEL_URL = "https://openrouter.ai/api/v1"
 
 # Measured from the 2026-08-31 local one-iteration OpenRouter smoke test:
@@ -259,6 +261,7 @@ def _sbatch_commands(args: argparse.Namespace, output_dir: Path,
     run_sh = str(PROJECT_ROOT / "run.sh")
     array = [
         "sbatch", "--parsable",
+        "--export=ALL",
         f"--array=0-{n_tasks - 1}%{args.max_concurrent}",
         f"--partition={args.partition}",
         f"--time={args.time_limit}",
@@ -360,11 +363,23 @@ def _finite_or_none(value: Any) -> Any:
     return value if math.isfinite(value) else None
 
 
+def _json_default(value: Any) -> Any:
+    """Convert scalar values returned by NumPy/Pandas to strict JSON types."""
+    item = getattr(value, "item", None)
+    if callable(item):
+        converted = item()
+        if converted is not value:
+            return converted
+    if isinstance(value, Path):
+        return str(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def _write_json_atomic(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     with tmp.open("w") as handle:
-        json.dump(payload, handle, indent=2, allow_nan=False)
+        json.dump(payload, handle, indent=2, allow_nan=False, default=_json_default)
         handle.write("\n")
     os.replace(tmp, path)
 
