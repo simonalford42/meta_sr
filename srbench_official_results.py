@@ -471,10 +471,10 @@ def format_official_table(columns: list[dict]) -> str:
     rows = [
         ("training slurm", lambda column: column["training_id"]),
         ("train GT", lambda column: _fmt_score(column.get("train_gt"))),
-        ("train R2", lambda column: _fmt_score(column.get("train_r2"))),
         ("val GT", lambda column: _fmt_score(column.get("val_gt"))),
-        ("val R2", lambda column: _fmt_score(column.get("val_r2"))),
         ("test GT", lambda column: _fmt_score(column.get("test_gt"))),
+        ("train R2", lambda column: _fmt_score(column.get("train_r2"))),
+        ("val R2", lambda column: _fmt_score(column.get("val_r2"))),
         ("test R2", lambda column: _fmt_score(column.get("test_r2"))),
         ("SRBench GT solve (all)", lambda column: _fmt_rate(column["gt_rate"])),
         ("SRBench GT solve (any seed)",

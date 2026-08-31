@@ -273,7 +273,14 @@ class OfficialTableTests(unittest.TestCase):
             line.split("│")[1].strip()
             for line in table.splitlines() if line.startswith("│")
         ]
-        self.assertLess(labels.index("train GT"), labels.index("train R2"))
+        metric_rows = [
+            "train GT", "val GT", "test GT",
+            "train R2", "val R2", "test R2",
+        ]
+        self.assertEqual(
+            [label for label in labels if label in metric_rows],
+            metric_rows,
+        )
         self.assertLess(labels.index("test R2"), labels.index("SRBench GT solve (all)"))
         self.assertLess(labels.index("SRBench GT solve (all, 10M)"),
                         labels.index("SRBench BB R2"))
