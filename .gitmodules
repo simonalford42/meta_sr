@@ -10,3 +10,7 @@
 [submodule "openevolve"]
 	path = openevolve
 	url = https://github.com/simonalford42/openevolve.git
+[submodule "LaSR.jl"]
+	path = LaSR.jl
+	url = https://github.com/trishullab/LibraryAugmentedSymbolicRegression.jl.git
+	branch = lasr-experiments
