@@ -34,6 +34,7 @@ BOOTSTRAP_PACKAGES = (
     "beautifulsoup4==4.13.5",
     "soupsieve==2.8",
     "filelock==3.19.1",
+    "pmlb==1.0.1.post3",
     "boolean.py==4.0",
     "treelib==1.8.0",
     "graphviz==0.21",
@@ -49,7 +50,7 @@ def _load_checkpoint(output_dir: Path):
     except ImportError:
         vendor.mkdir(parents=True, exist_ok=True)
         subprocess.check_call([
-            sys.executable, "-m", "pip", "install", "--quiet", "--no-deps",
+            sys.executable, "-m", "pip", "install", "--quiet", "--no-deps", "--upgrade",
             "--target", str(vendor), *BOOTSTRAP_PACKAGES,
         ])
         sys.path.insert(0, str(vendor))
