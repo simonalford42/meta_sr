@@ -52,7 +52,7 @@ canonical `splits/srbench_all.txt` grid. It uses the shared SRBench protocol:
 
 - 133 ground-truth datasets, including the 3 inverse-trig unsolvable cases;
 - one seed per dataset;
-- noise levels `0`, `0.001`, `0.01`, and `0.1`;
+- target noise `0.001` for the prepared submission;
 - at most 1,000 rows followed by the seeded 80/20 train/validation split;
 - Gaussian target noise scaled by training-target RMS; and
 - symbolic recovery checked across the full PySR Pareto frontier.
@@ -66,22 +66,23 @@ completion cap.
 Estimate the grid without creating files or submitting jobs:
 
 ```bash
-.venv-lasr/bin/python scripts/evaluate_lasr_srbench.py plan
+.venv-lasr/bin/python scripts/evaluate_lasr_srbench.py plan --noise-levels 0.001
 ```
 
 The prepared submission block is in `submit_jobs.sh`. Its `submit` subcommand
 is the only path that invokes `sbatch`; `plan`, `prepare`, `worker`, and
-`aggregate` do not submit jobs. The run uses a resumable 532-element array and
+`aggregate` do not submit jobs. The run uses a resumable 133-element array and
 a dependent aggregation job. Results are compatible with:
 
 ```bash
-python inspect_srbench_results.py --run-id lasr_srbench_nemo_1seed
+python inspect_srbench_results.py --run-id lasr_srbench_nemo_noise0p001_1seed
 ```
 
-The cost estimate is intentionally a range because LaSR's number and length of
-LLM responses are stochastic. It extrapolates from the checked-in environment's
-one-equation OpenRouter smoke measurement and is recorded in each run's
-`manifest.json`.
+The estimated API cost for this 133-fit grid is `$55-$218`, with roughly
+`3-14 GB` of raw LLM logs. The range is intentionally broad because LaSR's
+number and length of LLM responses are stochastic. It extrapolates from the
+checked-in environment's one-equation OpenRouter smoke measurement and is
+recorded in each run's `manifest.json`.
 
 A full run needs either this external endpoint or a GPU-hosted vLLM server.
 Starting either evaluation through SLURM still requires explicit approval.

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
-# 8/31 — Full LaSR ground-truth SRBench baseline: 133 equations x 4 noise
-# levels x 1 seed = 532 fits. This command prepares the manifest and submits a
-# capped worker array plus its dependent aggregator. It loads the OpenRouter
-# key from the gitignored .env. Estimated API cost: $218-$871; estimated raw
-# LLM logs: 13-54 GB (see `python scripts/evaluate_lasr_srbench.py plan`).
-# python scripts/evaluate_lasr_srbench.py submit --output-dir runs/lasr_srbench_nemo_1seed --max-concurrent 32
+# 8/31 — Full LaSR ground-truth SRBench baseline: 133 equations x noise 0.001
+# x 1 seed = 133 fits. This command prepares the manifest and submits a capped
+# worker array plus its dependent aggregator. It loads the OpenRouter key from
+# the gitignored .env. Estimated API cost: $55-$218; estimated raw LLM logs:
+# 3-14 GB (see the matching `plan` command below).
+# python scripts/evaluate_lasr_srbench.py plan --noise-levels 0.001
+# python scripts/evaluate_lasr_srbench.py submit --noise-levels 0.001 --output-dir runs/lasr_srbench_nemo_noise0p001_1seed --max-concurrent 32
 
 # 8/31
 # Paired comparison on the exact run-709716 synthetic manifests and data seeds:
@@ -13,7 +14,7 @@
 # The evolved results already exist; the final dependent job only aggregates.
 # Submitted as base=983618, official=984175, report=984176. The first official
 # attempt (983619) failed during dependency bootstrap; report 983620 was canceled.
-BOOLFORMER_COMPARE="runs/709716/method_comparison"
+# BOOLFORMER_COMPARE="runs/709716/method_comparison"
 # mkdir -p "$BOOLFORMER_COMPARE"
 # boolformer_base=983618
 # boolformer_base=$(sbatch --parsable --partition=default_partition --time=08:00:00 --cpus-per-task=1 --mem=8G --job-name=bf-base-pysr run.sh evaluate_new_pysr.py --domain boolformer --fitness-metric gt-acc --splits splits/boolformer_noisy_stratified_train.txt splits/boolformer_noisy_stratified_val.txt splits/boolformer_noisy_test.txt --n-runs 10 --seed 192 --max-samples 1000 --partition default_partition --max-concurrent-jobs 300 --time-limit 01:00:00 --mem-per-cpu 8G --pysr-wall-limit 2400 --job-timeout 14400 --no-cache --output-dir "$BOOLFORMER_COMPARE/base_pysr")
