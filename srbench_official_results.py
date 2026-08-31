@@ -480,7 +480,6 @@ def format_official_table(columns: list[dict]) -> str:
 
     rows = [
         ("training slurm", lambda column: column["training_id"]),
-        ("SRBench eval slurm(s)", lambda column: column["eval_ids"]),
         ("train set", lambda column: split_name(column, "train_set")),
         ("val set", lambda column: split_name(column, "val_set")),
         ("train GT", lambda column: _fmt_score(column.get("train_gt"))),

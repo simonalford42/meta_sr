@@ -250,6 +250,7 @@ class OfficialTableTests(unittest.TestCase):
         table = format_official_table(columns)
 
         self.assertTrue(table.startswith("Split key: "))
+        self.assertNotIn("SRBench eval slurm(s)", table)
         self.assertIn("bu.txt = barely_unsolvable.txt", table.splitlines()[0])
         self.assertIn("bu_val2.txt = barely_unsolvable_val2.txt", table.splitlines()[0])
         table_rows = {
