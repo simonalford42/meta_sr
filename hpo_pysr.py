@@ -39,6 +39,8 @@ from parallel_eval_pysr import (
 )
 from utils import load_dataset_names_from_split, TeeLogger, copy_slurm_log
 from domains import get_domain, warn_on_dataset_domain_mismatch
+from bundle_loader import load_bundle
+from operator_types import OperatorBundle
 from wandb_utils import init_wandb, log_wandb_summary, log_cpu_usage, finish_wandb
 from evolution_helpers import job_success_stats
 
@@ -337,7 +339,13 @@ class HPOLogger:
         with open(self.output_dir / "run_data.json", "w") as f:
             json.dump(self.run_data, f, indent=2)
 
-    def finalize(self, best_params: Dict[str, Any], best_score: float, baseline_score: float):
+    def finalize(
+        self,
+        best_params: Dict[str, Any],
+        best_score: float,
+        baseline_score: float,
+        base_bundle: Optional[OperatorBundle] = None,
+    ):
         """Save final results."""
         self.run_data["end_time"] = datetime.now().isoformat()
 
@@ -361,6 +369,7 @@ class HPOLogger:
                 "avg_score": best_score,
                 "baseline_score": baseline_score,
                 "improvement": improvement,
+                "base_bundle": base_bundle.to_dict() if base_bundle else None,
             }, f, indent=2)
         print(f"\nBest params saved to: {best_params_file}")
 
@@ -818,6 +827,7 @@ def evaluate_param_configs_batch(
     n_runs: int,
     fitness_metric: str,
     target_noise_map: Optional[Dict[str, float]] = None,
+    base_bundle: Optional[OperatorBundle] = None,
 ) -> List[Tuple[float, List[float], List[Dict]]]:
     """
     Evaluate multiple hyperparameter configurations in a single SLURM batch.
@@ -836,15 +846,21 @@ def evaluate_param_configs_batch(
     # Convert HPO param dicts to PySRConfig objects
     configs = []
     for i, params in enumerate(param_configs):
-        mutation_weights = get_default_mutation_weights()
+        base_config = (base_bundle or OperatorBundle.create_default()).to_pysr_config(
+            base_pysr_kwargs
+        )
+        mutation_weights = dict(base_config.mutation_weights)
         hpo_mutation_weights, hpo_pysr_kwargs = _split_hpo_params(params)
         mutation_weights.update(hpo_mutation_weights)
 
         config = PySRConfig(
             mutation_weights=mutation_weights,
-            pysr_kwargs={**base_pysr_kwargs, **hpo_pysr_kwargs},
-            custom_mutation_code=None,
-            allow_custom_mutations=False,
+            pysr_kwargs={**base_config.pysr_kwargs, **hpo_pysr_kwargs},
+            custom_mutation_code=base_config.custom_mutation_code,
+            allow_custom_mutations=base_config.allow_custom_mutations,
+            custom_selection_code=base_config.custom_selection_code,
+            custom_survival_code=base_config.custom_survival_code,
+            custom_loss_code=base_config.custom_loss_code,
             name=f"hpo_trial_{trial_numbers[i]}",
         )
         configs.append(config)
@@ -868,6 +884,7 @@ def evaluate_baseline(
     n_runs: int,
     fitness_metric: str,
     target_noise_map: Optional[Dict[str, float]] = None,
+    base_bundle: Optional[OperatorBundle] = None,
 ) -> Tuple[float, List[float], List[Dict], Dict[str, float]]:
     """
     Evaluate PySR with default mutation weights (baseline).
@@ -875,16 +892,10 @@ def evaluate_baseline(
     Returns:
         (avg_r2, r2_vector, result_details, explicit_weights_passed)
     """
-    # Use PySR's built-in defaults by not overriding weights
-    mutation_weights = get_default_mutation_weights()
-
-    config = PySRConfig(
-        mutation_weights=mutation_weights,
-        pysr_kwargs=base_pysr_kwargs,
-        custom_mutation_code=None,
-        allow_custom_mutations=False,
-        name="baseline",
+    config = (base_bundle or OperatorBundle.create_default()).to_pysr_config(
+        base_pysr_kwargs
     )
+    config.name = "baseline"
 
     results = evaluator.evaluate_configs(
         [config],
@@ -895,7 +906,7 @@ def evaluate_baseline(
         fitness_metric=fitness_metric,
     )
     avg_r2, r2_vector, result_details = results[0]
-    return avg_r2, r2_vector, result_details, mutation_weights.copy()
+    return avg_r2, r2_vector, result_details, config.mutation_weights.copy()
 
 
 # =============================================================================
@@ -928,6 +939,7 @@ def run_hpo(
     wandb_run: Any = None,
     target_noise_map: Optional[Dict[str, float]] = None,
     domain: str = "srbench",
+    base_bundle: Optional[OperatorBundle] = None,
 ) -> Tuple[Dict[str, Any], float]:
     """
     Run hyperparameter optimization for generic PySR hyperparameters.
@@ -1000,6 +1012,7 @@ def run_hpo(
             "fitness_metric": fitness_metric,
             "reselect_from": reselect_from,
             "selection_only": bool(reselect_from),
+            "baseline_bundle": base_bundle.to_dict() if base_bundle else None,
             "search_space": {
                 name: {
                     "kind": spec.kind,
@@ -1049,6 +1062,7 @@ def run_hpo(
             baseline_r2, baseline_vector, baseline_details, baseline_weights = evaluate_baseline(
                 evaluator, dataset_names, base_pysr_kwargs, seed, n_runs, fitness_metric,
                 target_noise_map=target_noise_map,
+                base_bundle=base_bundle,
             )
         if n_runs > 1 and baseline_details:
             per_run_avgs = []
@@ -1164,6 +1178,7 @@ def run_hpo(
                     n_runs,
                     fitness_metric,
                     target_noise_map=target_noise_map,
+                    base_bundle=base_bundle,
                 )
 
                 for trial, params, (avg_score, score_vector, result_details) in zip(trials, param_configs, results):
@@ -1288,6 +1303,7 @@ def run_hpo(
             n_runs_final,
             fitness_metric,
             target_noise_map=target_noise_map,
+            base_bundle=base_bundle,
         )
 
         final_candidates = []
@@ -1334,7 +1350,7 @@ def run_hpo(
             else:
                 print(f"  {name}: {value!r} (default: {default!r})")
 
-        logger.finalize(best_params, best_score, baseline_r2)
+        logger.finalize(best_params, best_score, baseline_r2, base_bundle=base_bundle)
 
         log_wandb_summary(
             wandb_run,
@@ -1431,6 +1447,13 @@ def main():
                         help="Output directory (default: outputs/hpo_pysr_TIMESTAMP_MICROSECONDS)")
     parser.add_argument("--no-cache", action="store_true",
                         help="Disable evaluation caching")
+    parser.add_argument(
+        "--baseline",
+        type=str,
+        default=None,
+        help="Evolved operator bundle to use as the fixed base for every HPO trial "
+             "(e.g. runs/709715 or a run_data.json/bundle file)",
+    )
 
     parser.add_argument("--continue-from", type=str, default=None,
                         help="Continue a previous HPO run. Pass the output directory of a prior run "
@@ -1505,6 +1528,14 @@ def main():
     if domain_obj.uses_run_budget:
         pysr_kwargs["max_evals"] = args.max_evals
         pysr_kwargs["timeout_in_seconds"] = args.timeout
+
+    base_bundle = None
+    if args.baseline:
+        try:
+            base_bundle = load_bundle(args.baseline)
+        except (FileNotFoundError, ValueError) as exc:
+            parser.error(f"Could not load --baseline {args.baseline!r}: {exc}")
+        print(f"Loaded HPO baseline bundle from {args.baseline}: {base_bundle.display_name}")
 
     # Uncomment entries in this list to include them in HPO.
     # The order follows the estimated importance ranking in PYSR_HPARAM_IMPORTANCE_ORDER.
@@ -1644,6 +1675,7 @@ def main():
         "random_target_noise": args.random_target_noise,
         "continue_from": args.continue_from,
         "reselect_from": args.reselect_from,
+        "baseline": args.baseline,
         "no_cache": args.no_cache,
         "domain": args.domain,
         "active_hpo_params": active_hpo_params,
@@ -1681,6 +1713,7 @@ def main():
         wandb_run=wandb_run,
         target_noise_map=target_noise_map,
         domain=args.domain,
+        base_bundle=base_bundle,
     )
 
     # Final evaluation on --split and --val-split (10 seeds).

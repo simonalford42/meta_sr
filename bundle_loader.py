@@ -208,7 +208,13 @@ def _load_from_run_data(
         params = best_trial.get("params", {})
         if not params:
             raise ValueError(f"Best trial has no params in {path}")
-        bundle = OperatorBundle(best_hparams=params)
+        base_bundle_data = (data.get("config") or {}).get("baseline_bundle")
+        bundle = (
+            OperatorBundle.from_dict(base_bundle_data)
+            if base_bundle_data
+            else OperatorBundle()
+        )
+        bundle.best_hparams = params
         bundle.score = best_trial.get("avg_r2")
         return bundle
 
@@ -410,8 +416,7 @@ def load_skeleton_bundle(path: str, select_by: str = "val"):
 def _load_from_hpo(path: Path) -> OperatorBundle:
     """Load best hyperparameters from an hpo_pysr best_params.json.
 
-    HPO results contain tuned PySR hyperparameters (no operator code),
-    so this returns a bundle with only best_hparams set.
+    Newer HPO results may also embed the evolved base operator bundle.
     """
     with open(path) as f:
         data = json.load(f)
@@ -429,7 +434,13 @@ def _load_from_hpo(path: Path) -> OperatorBundle:
     if not params:
         raise ValueError(f"No HPO params found in {path}")
 
-    bundle = OperatorBundle(best_hparams=params)
+    base_bundle_data = data.get("base_bundle") if isinstance(data, dict) else None
+    bundle = (
+        OperatorBundle.from_dict(base_bundle_data)
+        if base_bundle_data
+        else OperatorBundle()
+    )
+    bundle.best_hparams = params
     bundle.score = data.get("avg_r2") if isinstance(data, dict) else None
     return bundle
 
