@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# evolve_after_hpo=$(sbatch --parsable --dependency=afterok:"$HPO_JOB_ID" -J evolve-after-hpo run.sh evolve_pysr.py --operator-type all --baseline "$HPO_RESULTS" --generations 30 --population 10 --offspring 10 --n-runs 3 --reeval population --n-reevals 10 --models best2)
-# hpo_evolved_base=$(sbatch --parsable --dependency=afterok:"$evolve_after_hpo" -J hpo-evolved-base run.sh hpo_pysr.py --baseline "$EVOLVE_RESULTS" --n-trials 500 --n-runs 3 --n-parallel 20 --fitness-metric gt)
+evolve_after_hpo=$(sbatch --parsable -J evolve-after-hpo run.sh evolve_pysr.py --operator-type all --baseline outputs/hpo_pysr_20260727_172105_644009 --generations 30 --population 10 --offspring 10 --n-runs 3 --reeval population --n-reevals 10 --models best2)
+hpo_evolved_base=$(sbatch --parsable -J hpo-evolved-base run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt)
 
 # 8/31 — Full LaSR ground-truth SRBench baseline: 133 equations x noise 0.001
 # x 1 seed = 133 fits. This command prepares the manifest and submits a capped
