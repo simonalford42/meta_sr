@@ -93,7 +93,7 @@ ALIASES = {
         "first_principles_bode",
         "loga = log(0.4 + 0.3*exp(0.6931471805599453*n))",
     ),
-    "empirical_leavitt": ("first_principles_leavitt", "M = logP"),
+    "empirical_leavitt": ("first_principles_leavitt", "M = log(P)"),
     "empirical_schechter": (
         "first_principles_schechter", "logn = -1.2*log(L) - L/2.5e8"
     ),
@@ -115,6 +115,15 @@ def gen_alias(name):
         # Bode's plot has a logarithmic y-axis, so the publication benchmark's
         # scale_dataset=True protocol searches against log(semi-major axis).
         y = np.log(y)
+        # The publication uses the conventional Bode indices -inf, 0, ..., 6.
+        # The vendored PMLB copy labels the finite rows 1, ..., 7.
+        finite = X.iloc[:, 0] != -1000
+        X.loc[finite, X.columns[0]] -= 1
+    elif name == "empirical_leavitt":
+        # The source stores log10(period), while the paper explicitly converts
+        # back to period so symbolic regression must rediscover the logarithm.
+        X.iloc[:, 0] = 10.0 ** X.iloc[:, 0]
+        X = X.rename(columns={X.columns[0]: "P"})
     desc = (
         f"EmpiricalBench: {name.removeprefix('empirical_').replace('_', ' ')}.\n"
         "Canonical alias of the publication dataset with a reduced recovery target.\n\n"

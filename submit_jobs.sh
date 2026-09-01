@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+# Paper-protocol EmpiricalBench rerun: all rows, paper search space, float64,
+# eight processes, five seeds, and 60 minutes of search per fit. Baseline uses
+# L1; evolved 709715 keeps its custom loss. Prepared only, not submitted.
+# sbatch -J emp-paper-base run.sh empbench_full_eval.py --output-dir runs/709715/empiricalbench_paper/baseline --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 2G --max-concurrent-jobs 45 --no-cache
+# sbatch -J emp-paper-709715 run.sh empbench_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/empiricalbench_paper/evolved --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 2G --max-concurrent-jobs 45 --no-cache
+
 # 9/1/26 — All nine EmpiricalBench tasks, five paired seeds. Each driver creates
 # and collects its own 45-task array; each fit searches for 1h with no eval cap.
 sbatch -J emp-base run.sh empbench_full_eval.py --output-dir runs/709715/empiricalbench_comparison/baseline --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 8G --max-concurrent-jobs 45 --no-cache

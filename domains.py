@@ -256,6 +256,43 @@ class SRBenchDomain(Domain):
             total_timeout_seconds=GT_MATCH_TOTAL_TIMEOUT_S,
         )
 
+    def pareto_metrics(self, *, equations_df, predict_fn, y_val):
+        """Serialize every PySR Hall-of-Fame row for manual inspection."""
+        target = np.asarray(y_val, dtype=float).reshape(-1)
+        denom = np.sum((target - np.mean(target)) ** 2)
+        rows = []
+        for idx, row in equations_df.sort_values("complexity").iterrows():
+            entry = {
+                "pysr_index": int(idx),
+                "complexity": int(row["complexity"]),
+                "equation": str(row["equation"]),
+                "loss": float(row["loss"]),
+            }
+            try:
+                pred = np.asarray(predict_fn(idx), dtype=float).reshape(-1)
+                if pred.shape != target.shape or not np.all(np.isfinite(pred)):
+                    raise ValueError("non-finite or wrong-shape prediction")
+                entry["r2"] = float(
+                    1.0 - np.sum((target - pred) ** 2) / (denom + 1e-10)
+                )
+            except Exception as exc:
+                entry["r2"] = None
+                entry["prediction_error"] = str(exc)
+            rows.append(entry)
+        return rows
+
+
+class EmpiricalBenchDomain(SRBenchDomain):
+    """Paper protocol: fit and assess each expression on the entire dataset."""
+
+    name = "empiricalbench"
+
+    def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
+        X, y, target = self.load_dataset(
+            dataset_name, max_samples=max_samples, data_seed=data_seed
+        )
+        return X, y, X, y, target
+
 
 class LogicBenchDomain(Domain):
     """Boolean-function synthesis over band/bor/bxor/bnot with L2 loss.
@@ -960,6 +997,7 @@ class UninformativePromptDomain(Domain):
 
 DOMAINS: Dict[str, Domain] = {
     "srbench": SRBenchDomain(),
+    "empiricalbench": EmpiricalBenchDomain(),
     "boolean": LogicBenchDomain(),
     "boolformer": BoolformerDomain(),
     "mips": MIPSTransitionDomain(),

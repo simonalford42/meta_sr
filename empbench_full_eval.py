@@ -42,12 +42,56 @@ DATASETS = (
 )
 RESULTS_FILENAME = "empbench_results.json"
 
+PAPER_PYSR_KWARGS = {
+    "model_selection": "best",
+    "precision": 64,
+    "binary_operators": ["+", "-", "*", "/"],
+    "unary_operators": ["square", "cube", "exp", "log", "sqrt"],
+    "maxsize": 30,
+    "maxdepth": 20,
+    "niterations": 1_000_000,
+    # PySR 0.8.4 defaults used implicitly by the paper.
+    "populations": 15,
+    "population_size": 33,
+    "batching": False,
+    "warmup_maxsize_by": 0.002,
+    "constraints": {
+        "square": 13, "cube": 13, "exp": 13, "log": 13, "sqrt": 13,
+        "/": (-1, 13), "*": (-1, -1), "+": (-1, -1), "-": (-1, -1),
+    },
+    "nested_constraints": {
+        "/": {"/": 2},
+        "exp": {"exp": 0, "log": 1, "sqrt": 0},
+        "square": {"square": 1, "cube": 1, "log": 0, "sqrt": 0},
+        "cube": {"cube": 1, "square": 1},
+        "log": {"log": 0, "exp": 1},
+        "sqrt": {"sqrt": 1, "exp": 1, "square": 0},
+    },
+    "procs": 8,
+    "parallelism": "multiprocessing",
+    "progress": False,
+    "update": False,
+}
+
 
 def ensure_datasets() -> None:
     missing = [
         name for name in DATASETS
         if not (PMLB_PATH / name / f"{name}.tsv.gz").exists()
     ]
+    # Older local aliases used logP directly for Leavitt and numbered Bode's
+    # finite rows 1..7. Detect those stale generated files so a checkout with
+    # an existing (gitignored) PMLB tree is upgraded to the paper protocol.
+    leavitt_meta = PMLB_PATH / "empirical_leavitt" / "metadata.yaml"
+    if leavitt_meta.exists() and "- name: P\n" not in leavitt_meta.read_text():
+        missing.append("empirical_leavitt")
+    bode_path = PMLB_PATH / "empirical_bode" / "empirical_bode.tsv.gz"
+    if bode_path.exists():
+        import pandas as pd
+        bode_n = pd.read_csv(bode_path, sep="\t", compression="gzip").iloc[:, 0]
+        if list(bode_n.iloc[1:]) != list(range(7)):
+            missing.append("empirical_bode")
+    missing = list(dict.fromkeys(missing))
     if not missing:
         return
     from scripts import gen_empirical_bench
@@ -115,6 +159,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--partition", default="default_partition")
     parser.add_argument("--time-limit", default="01:15:00")
     parser.add_argument("--mem-per-cpu", default="8G")
+    parser.add_argument("--cpus-per-task", type=int, default=8)
     parser.add_argument("--job-timeout", type=float, default=7200)
     parser.add_argument("--max-concurrent-jobs", type=int, default=None)
     parser.add_argument("--max-retries", type=int, default=2)
@@ -145,7 +190,18 @@ def main() -> None:
     if source.backend != "pysr":
         raise SystemExit("EmpiricalBench full evaluation currently supports PySR bundles only")
     pysr_kwargs = dict(source.config.pysr_kwargs)
-    pysr_kwargs.pop("max_evals", None)
+    # Replace search-space/execution settings with the paper configuration.
+    # Preserve method-specific evolved machinery and only assign L1 to the
+    # baseline; evolved configurations continue to dispatch their custom loss.
+    for key in (
+        "early_stop_condition", "max_evals", "deterministic", "verbosity", "temp_equation_file",
+        "delete_tempfiles", "output_directory", "elementwise_loss",
+    ):
+        pysr_kwargs.pop(key, None)
+    pysr_kwargs.update(PAPER_PYSR_KWARGS)
+    pysr_kwargs["timeout_in_seconds"] = args.timeout
+    if source.config.custom_loss_code is None:
+        pysr_kwargs["elementwise_loss"] = "L1DistLoss()"
     source.config = replace(source.config, pysr_kwargs=pysr_kwargs)
 
     label = "empbench_evolved" if args.evolve_results else "empbench_baseline"
@@ -172,6 +228,8 @@ def main() -> None:
         cache_namespace=source.cache_namespace,
         pysr_wall_limit=args.pysr_wall_limit,
         retain_pareto_frontier=True,
+        domain="empiricalbench",
+        cpus_per_task=args.cpus_per_task,
     )
     print(
         f"EmpiricalBench full evaluation: {source.mode}; "
@@ -253,6 +311,9 @@ def main() -> None:
             "timeout_seconds": args.timeout,
             "pysr_wall_limit_seconds": args.pysr_wall_limit,
             "max_samples": args.max_samples,
+            "cpus_per_task": args.cpus_per_task,
+            "train_rows": "all",
+            "pysr_kwargs": pysr_kwargs,
             "target_noise_added": 0.0,
             "stopping_rule": "wall-clock-only timeout_seconds",
         },

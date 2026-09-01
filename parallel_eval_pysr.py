@@ -2038,6 +2038,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         black_box: bool = False,
         retain_pareto_frontier: bool = False,
         cache_namespace: Optional[str] = None,
+        cpus_per_task: int = 1,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -2068,6 +2069,9 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # builds (one evolution/HPO run is one domain). See domains.py.
         self.domain = domain
         self.retain_pareto_frontier = retain_pareto_frontier
+        if cpus_per_task <= 0:
+            raise ValueError("cpus_per_task must be positive")
+        self.cpus_per_task = int(cpus_per_task)
         self.cache_namespace = cache_namespace
         # Run-level data protocol. Evolution creates many batches through
         # helper layers that do not pass per-call protocol flags, so retain a
@@ -3138,7 +3142,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
 #SBATCH --error={logs_dir}/task_%a.err
 #SBATCH --array={array_spec}
 #SBATCH --time={self.time_limit}
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task={self.cpus_per_task}
 #SBATCH --mem-per-cpu={self.mem_per_cpu}
 #SBATCH --partition={self.partition}
 {optional_directives}
@@ -3150,7 +3154,7 @@ conda activate {self.conda_env_name}
 export PYTHONUNBUFFERED=1
 
 # Avoid thread oversubscription
-export OMP_NUM_THREADS=1
+export OMP_NUM_THREADS={self.cpus_per_task}
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
@@ -3195,7 +3199,7 @@ python -u -m parallel_eval_pysr --worker \\
 #SBATCH --error={logs_dir}/retry{retry_num}_task_%a.err
 #SBATCH --array={array_spec}
 #SBATCH --time={self.time_limit}
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task={self.cpus_per_task}
 #SBATCH --mem-per-cpu={self.mem_per_cpu}
 #SBATCH --partition={self.partition}
 {optional_directives}
@@ -3207,7 +3211,7 @@ conda activate {self.conda_env_name}
 export PYTHONUNBUFFERED=1
 
 # Avoid thread oversubscription
-export OMP_NUM_THREADS=1
+export OMP_NUM_THREADS={self.cpus_per_task}
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
@@ -3273,7 +3277,7 @@ python -u -m parallel_eval_pysr --worker \\
 #SBATCH --error={logs_dir}/chunk{chunk_num}_slot_%a.err
 #SBATCH --array={array_spec}
 #SBATCH --time={slurm_time}
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task={self.cpus_per_task}
 #SBATCH --mem-per-cpu={self.mem_per_cpu}
 #SBATCH --partition={self.partition}
 {optional_directives}
@@ -3285,7 +3289,7 @@ conda activate {self.conda_env_name}
 export PYTHONUNBUFFERED=1
 
 # Avoid thread oversubscription
-export OMP_NUM_THREADS=1
+export OMP_NUM_THREADS={self.cpus_per_task}
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
