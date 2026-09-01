@@ -1,2 +1,9 @@
+empirical_hubble
+empirical_kepler
+empirical_newton
+empirical_tully_fisher
+empirical_leavitt
+empirical_schechter
+empirical_ideal_gas
 empirical_planck
 empirical_rydberg

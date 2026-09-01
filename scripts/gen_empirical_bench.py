@@ -1,30 +1,27 @@
 #!/usr/bin/env python3
-"""Materialize the two *unsolved* EmpiricalBench problems as PMLB-style datasets.
+"""Materialize all nine EmpiricalBench problems as PMLB-style datasets.
 
 EmpiricalBench (Cranmer 2023, "Interpretable Machine Learning for Science with
 PySR and SymbolicRegression.jl", arXiv:2305.01582) is a benchmark of 9 historical
-empirical equations.  In the paper's Table 3, two of them scored 0/5 for *every*
-method tested (PySR, Operon, DSR, EQL, QLattice, SR-Transformer):
+empirical equations. In the paper's Table 3, Planck and Rydberg scored 0/5 for
+every method tested (PySR, Operon, DSR, EQL, QLattice, SR-Transformer).
 
-    - Planck's law:    B = 2 h nu^3 / c^2 * 1/(exp(h nu / (k_B T)) - 1)
-    - Rydberg formula: 1/lambda = R_H (1/n_1^2 - 1/n_2^2)
+    The full nine-task EmpiricalBench: Hubble, Kepler, Newton, Tully-Fisher,
+    Leavitt, Schechter, ideal gas, Planck, and Rydberg.
 
-This script reproduces those two datasets *exactly* as the paper generates them,
-so our evolved algorithms can be evaluated on the hard tail of EmpiricalBench.
-
-It is a faithful port of ``src/scripts/benchmark.py`` + the planck/rydberg entries
-of ``src/data/empirical_bench/equations.yml`` from github.com/MilesCranmer/pysr_paper
-(branch master).  Fidelity points that matter:
+Planck and Rydberg are faithful ports of the publication generator. The other
+seven reuse the publication data vendored under PMLB ``first_principles_*``
+names and add machine-readable reduced recovery formulas. Fidelity points:
 
   * Deterministic seeding: ``seed = sha256(key).digest()`` viewed as uint32s, fed
     to ``np.random.RandomState`` -> identical sampled points and noise draws.
-  * Variable sampling: log-uniform for planck (nu, T); custom integer draws for
-    rydberg (n_1 in [1,6], n_2 in [n_1+1,7]) in the paper's RNG order.
+  * The seven existing PMLB ``first_principles_*`` datasets are copied into
+    canonical ``empirical_*`` aliases with usable reduced ground-truth formulas.
+  * Planck and Rydberg are reproduced directly from the publication generator.
   * Noise: relative Gaussian applied to the target, *before* any log scaling
     (planck 10%, rydberg 1%).
-  * ``scale_dataset=True`` (as the paper's ``evaluate_method.py`` passes): both
-    problems have ``yscale: log``, so the regression *target is log(y)*.  Inputs
-    are NOT scaled -- the algorithm must cope with their raw ranges.
+  * The vendored targets retain the publication's target transforms. Inputs are
+    not scaled, so the algorithm must cope with their raw ranges.
   * Computation is done in mpmath: Planck's ``exp(h nu/(k_B T))`` argument reaches
     ~4800, which overflows float64; mpmath keeps B representable so that the final
     ``log(B)`` is a sane float.
@@ -81,6 +78,44 @@ H = mp.mpf("6.62607004e-34")     # Planck constant, J s
 K_B = mp.mpf("1.38064852e-23")   # Boltzmann constant, J/K
 C = mp.mpf("299792458")          # speed of light, m/s
 R_H = mp.mpf("1.097e7")          # Rydberg constant, m^-1
+
+
+# These datasets already contain the publication data, but their PMLB metadata
+# has missing/non-machine-readable equations.  EmpiricalBench judges recovery
+# up to fitted constants, so use the paper's reduced functional forms.
+ALIASES = {
+    "empirical_hubble": ("first_principles_hubble", "v = D"),
+    "empirical_kepler": ("first_principles_kepler", "P = sqrt(a**3)"),
+    "empirical_newton": (
+        "first_principles_newton", "logF = log(m1*m2) - 2*log(r)"
+    ),
+    "empirical_tully_fisher": (
+        "first_principles_tully_fisher", "M = log(DV)"
+    ),
+    "empirical_leavitt": ("first_principles_leavitt", "M = logP"),
+    "empirical_schechter": (
+        "first_principles_schechter", "logn = -1.2*log(L) - L/2.5e8"
+    ),
+    "empirical_ideal_gas": (
+        "first_principles_ideal_gas", "logP = log(n*T/V)"
+    ),
+}
+
+
+def gen_alias(name):
+    source, formula = ALIASES[name]
+    source_path = PMLB / source / f"{source}.tsv.gz"
+    if not source_path.exists():
+        raise FileNotFoundError(f"Missing source EmpiricalBench dataset: {source_path}")
+    frame = pd.read_csv(source_path, sep="\t", compression="gzip")
+    X = frame.drop(columns=["target"])
+    y = frame["target"].to_numpy()
+    desc = (
+        f"EmpiricalBench: {name.removeprefix('empirical_').replace('_', ' ')}.\n"
+        "Canonical alias of the publication dataset with a reduced recovery target.\n\n"
+        f"    {formula}\n"
+    )
+    return X, y, desc, list(X.columns)
 
 
 def gen_planck():
@@ -203,6 +238,7 @@ def main():
     args = parser.parse_args()
 
     generators = {
+        **{name: (lambda name=name: gen_alias(name)) for name in ALIASES},
         "empirical_planck": gen_planck,
         "empirical_rydberg": gen_rydberg,
     }

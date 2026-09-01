@@ -6,10 +6,10 @@ loads one method, submits one SLURM array with a task per dataset/seed fit,
 waits for the array, and writes a self-contained JSON result.  EmpiricalBench's
 built-in target noise is preserved; no additional noise is added.
 
-By default each fit stops at 1e6 evaluations or one hour, whichever comes
-first.  Both the production symbolic matcher and the EmpiricalBench-specific
-clean-grid matcher are reported because tiny physical constants make the
-production matcher unreliable on Planck's law.
+By default each fit searches for one hour with no evaluation cap. Both the
+production symbolic matcher and the EmpiricalBench-specific clean-grid matcher
+are reported because tiny physical constants make the production matcher
+unreliable on Planck's law.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,17 @@ from utils import PMLB_PATH, copy_slurm_log, resolve_run_dir
 
 
 ROOT = Path(__file__).resolve().parent
-DATASETS = ("empirical_planck", "empirical_rydberg")
+DATASETS = (
+    "empirical_hubble",
+    "empirical_kepler",
+    "empirical_newton",
+    "empirical_tully_fisher",
+    "empirical_leavitt",
+    "empirical_schechter",
+    "empirical_ideal_gas",
+    "empirical_planck",
+    "empirical_rydberg",
+)
 RESULTS_FILENAME = "empbench_results.json"
 
 
@@ -41,12 +52,14 @@ def ensure_datasets() -> None:
         return
     from scripts import gen_empirical_bench
 
-    generators = {
-        "empirical_planck": gen_empirical_bench.gen_planck,
-        "empirical_rydberg": gen_empirical_bench.gen_rydberg,
-    }
     for name in missing:
-        X, y, description, variable_names = generators[name]()
+        if name == "empirical_planck":
+            generated = gen_empirical_bench.gen_planck()
+        elif name == "empirical_rydberg":
+            generated = gen_empirical_bench.gen_rydberg()
+        else:
+            generated = gen_empirical_bench.gen_alias(name)
+        X, y, description, variable_names = generated
         gen_empirical_bench.write_dataset(
             name, X, y, description, variable_names
         )
@@ -96,7 +109,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--n-runs", type=int, default=5)
     parser.add_argument("--seed", type=int, default=10_000)
     parser.add_argument("--data-seed", type=int, default=42)
-    parser.add_argument("--max-evals", type=int, default=1_000_000)
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--timeout", type=int, default=3600)
     parser.add_argument("--pysr-wall-limit", type=int, default=3900)
@@ -112,8 +124,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    if args.n_runs <= 0 or args.max_evals <= 0:
-        raise SystemExit("--n-runs and --max-evals must be positive")
+    if args.n_runs <= 0:
+        raise SystemExit("--n-runs must be positive")
     if args.timeout <= 0:
         raise SystemExit("--timeout must be positive")
     if args.timeout >= args.pysr_wall_limit:
@@ -125,9 +137,16 @@ def main() -> None:
         raise SystemExit(f"Unknown EmpiricalBench datasets: {unknown}")
     ensure_datasets()
 
+    # srbench_eval_source constructs a config with an evaluation cap. Set a
+    # harmless placeholder for loading, then remove it: this protocol is truly
+    # wall-clock-only, matching the paper's one-hour-per-fit evaluation.
+    args.max_evals = 1
     source = load_evaluation_source(args)
     if source.backend != "pysr":
         raise SystemExit("EmpiricalBench full evaluation currently supports PySR bundles only")
+    pysr_kwargs = dict(source.config.pysr_kwargs)
+    pysr_kwargs.pop("max_evals", None)
+    source.config = replace(source.config, pysr_kwargs=pysr_kwargs)
 
     label = "empbench_evolved" if args.evolve_results else "empbench_baseline"
     output_dir = Path(resolve_run_dir(args.output_dir, label=label))
@@ -157,7 +176,7 @@ def main() -> None:
     print(
         f"EmpiricalBench full evaluation: {source.mode}; "
         f"{len(datasets)} tasks x {args.n_runs} seeds; "
-        f"max_evals={args.max_evals:,}, timeout={args.timeout}s"
+        f"wall-clock-only timeout={args.timeout}s"
     )
     handle = evaluator.submit_configs(
         configs=[source.config],
@@ -174,9 +193,15 @@ def main() -> None:
     for result in sorted(raw, key=lambda r: (datasets.index(r.dataset_name), r.run_index)):
         frontier = result.pareto_frontier or []
         robust_equation = None
+        robust_dataset = (
+            result.dataset_name
+            if result.dataset_name in ("empirical_planck", "empirical_rydberg")
+            else None
+        )
         for row in frontier:
             equation = row.get("equation")
-            if equation and numeric_recovery(equation, result.dataset_name)["match"]:
+            if (robust_dataset and equation
+                    and numeric_recovery(equation, robust_dataset)["match"]):
                 robust_equation = equation
                 break
         records.append({
@@ -190,7 +215,9 @@ def main() -> None:
             "num_evaluations": result.num_evaluations,
             "official_recovered": bool(result.gt_match_score),
             "official_matched_equation": result.gt_matched_equation,
-            "robust_recovered": robust_equation is not None,
+            "robust_recovered": (
+                robust_equation is not None if robust_dataset else None
+            ),
             "robust_matched_equation": robust_equation,
             "best_equation": result.best_equation,
             "frontier": frontier,
@@ -203,7 +230,10 @@ def main() -> None:
             "expected": args.n_runs,
             "completed": sum(record["status"] == "complete" for record in selected),
             "official_recovered": sum(record["official_recovered"] for record in selected),
-            "robust_recovered": sum(record["robust_recovered"] for record in selected),
+            "robust_recovered": (
+                sum(bool(record["robust_recovered"]) for record in selected)
+                if dataset in ("empirical_planck", "empirical_rydberg") else None
+            ),
         }
 
     payload = {
@@ -219,17 +249,19 @@ def main() -> None:
             "base_seed": args.seed,
             "seeds": [args.seed + index for index in range(args.n_runs)],
             "data_seed": args.data_seed,
-            "max_evals": args.max_evals,
+            "max_evals": None,
             "timeout_seconds": args.timeout,
             "pysr_wall_limit_seconds": args.pysr_wall_limit,
             "max_samples": args.max_samples,
             "target_noise_added": 0.0,
-            "stopping_rule": "first of max_evals or timeout_seconds",
+            "stopping_rule": "wall-clock-only timeout_seconds",
         },
         "expected": len(datasets) * args.n_runs,
         "completed": sum(record["status"] == "complete" for record in records),
         "official_recovered": sum(record["official_recovered"] for record in records),
-        "robust_recovered": sum(record["robust_recovered"] for record in records),
+        "robust_recovered": sum(
+            bool(record["robust_recovered"]) for record in records
+        ),
         "per_dataset": per_dataset,
         "runs": records,
         "slurm_batch_dir": str(handle.batch_dir),
