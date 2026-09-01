@@ -4,6 +4,7 @@ from evolution_helpers import (
     _bundle_loc,
     compute_per_task_best_stats,
     generation_evolution_policy,
+    initialize_complexity_population,
     select_survivors_complexity,
     select_survivors_diverse,
 )
@@ -48,6 +49,47 @@ def test_complexity_selection_uses_updated_population_reeval_scores():
         "large-offspring",
         "small-offspring",
     ]
+
+
+def test_complexity_phase_initialization_uses_exact_archive_pareto_front():
+    archive = [
+        _Bundle("small", 0.70, 2),
+        _Bundle("compact-knee", 0.85, 4),
+        _Bundle("dominated", 0.80, 6),
+        _Bundle("best", 0.90, 10),
+    ]
+
+    selected = initialize_complexity_population(archive, population_size=3)
+
+    names = {bundle.display_name for bundle in selected}
+    assert {"small", "compact-knee", "best"}.issubset(names)
+    assert "dominated" not in names
+
+
+def test_complexity_phase_initialization_backfills_short_frontier():
+    archive = [
+        _Bundle("small-best", 0.90, 2),
+        _Bundle("middle", 0.80, 5),
+        _Bundle("large", 0.70, 9),
+    ]
+
+    selected = initialize_complexity_population(archive, population_size=3)
+
+    assert selected[0].display_name == "small-best"
+    assert {bundle.display_name for bundle in selected} == {
+        "small-best", "middle", "large",
+    }
+
+
+def test_complexity_phase_initialization_spreads_oversized_frontier():
+    archive = [
+        _Bundle(f"point-{i}", 0.5 + i / 100, i)
+        for i in range(1, 8)
+    ]
+
+    selected = initialize_complexity_population(archive, population_size=3)
+
+    assert {bundle.loc for bundle in selected} == {1, 4, 7}
 
 
 def test_task_selection_compares_solve_rates_with_unequal_seed_counts():

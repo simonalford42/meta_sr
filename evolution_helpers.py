@@ -1040,6 +1040,59 @@ def select_survivors_complexity(
     return pareto
 
 
+def initialize_complexity_population(
+    archive: list, population_size: int,
+) -> list:
+    """Seed a complexity phase from the archive's exact score--LOC frontier.
+
+    Unlike :func:`select_survivors_complexity`, this first computes the exact
+    nondominated frontier without LOC bucketing.  If the frontier is smaller
+    than the requested population, complexity-aware survivor selection over
+    the remaining archive entries supplies the backfill.  If it is larger,
+    retain evenly spaced points in LOC order, including both endpoints.
+
+    Callers should code-deduplicate ``archive`` before passing it here.
+    """
+    if population_size <= 0:
+        return []
+
+    scored = [bundle for bundle in archive if bundle.score is not None]
+    if not scored:
+        return []
+
+    ordered = sorted(scored, key=lambda b: (_bundle_loc(b), -b.score))
+    frontier = []
+    frontier_ids = set()
+    best_score = float("-inf")
+    for bundle in ordered:
+        if bundle.score > best_score:
+            frontier.append(bundle)
+            frontier_ids.add(id(bundle))
+            best_score = bundle.score
+
+    if len(frontier) > population_size:
+        if population_size == 1:
+            selected = [max(frontier, key=lambda b: b.score)]
+        else:
+            # Cover the full tradeoff range rather than keeping only one end.
+            last = len(frontier) - 1
+            indices = [round(i * last / (population_size - 1))
+                       for i in range(population_size)]
+            selected = [frontier[i] for i in indices]
+    else:
+        selected = list(frontier)
+        remaining = [b for b in scored if id(b) not in frontier_ids]
+        n_backfill = population_size - len(selected)
+        if n_backfill > 0 and remaining:
+            selected.extend(select_survivors_complexity(
+                remaining, [], min(n_backfill, len(remaining))
+            ))
+
+    # Parent selection expects the best-scoring member first.
+    selected.sort(key=lambda b: (-b.score, _bundle_loc(b)))
+    return selected
+
+
 def select_survivors_diverse(
     population: list, offspring: list, min_population_size: int,
     dataset_names: List[str],

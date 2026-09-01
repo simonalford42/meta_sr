@@ -155,6 +155,7 @@ from evolution_helpers import (
     select_survivors,
     select_survivors_diverse,
     select_survivors_complexity,
+    initialize_complexity_population,
     generation_evolution_policy,
     _bundle_loc,
 )
@@ -1587,6 +1588,25 @@ def run_bundle_evolution(
                 population_type,
             )
         )
+
+        # The performance phase keeps only its live top-scoring population.
+        # At the simplify-phase boundary, recover compact high-performing
+        # candidates that were previously dropped by rebuilding from the
+        # exact score-vs-LOC Pareto frontier of the full archive.
+        if cooldown_active and gen == cooldown_start:
+            transition_pool = dedup_archive_by_code(archive)
+            population = initialize_complexity_population(
+                transition_pool, population_size
+            )
+            print(
+                f"  Initialized simplify population from archive Pareto front "
+                f"({len(population)}/{len(transition_pool)} code-distinct bundles)."
+            )
+            for candidate in population:
+                print(
+                    f"    loc={_bundle_loc(candidate):>3}  "
+                    f"score={candidate.score:.4f}  {candidate.display_name}"
+                )
 
         print("\n" + "=" * 60)
         print(f"Generation {gen}/{start_gen + n_generations - 1}")
