@@ -114,7 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="evolve_pysr.py run directory/run_data.json; omit for base PySR",
     )
     parser.add_argument("--output-dir", default=None)
-    parser.add_argument("--n-runs", type=int, default=3,
+    parser.add_argument("--n-runs", type=int, default=10,
                         help="seeds per problem")
     parser.add_argument(
         "--seed",

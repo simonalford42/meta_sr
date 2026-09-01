@@ -3,18 +3,22 @@
 # Paper-protocol EmpiricalBench rerun: all rows, paper search space, float64,
 # eight processes, five seeds, and 60 minutes of search per fit. Baseline uses
 # L1; evolved 709715 keeps its custom loss. Prepared only, not submitted.
-# sbatch -J emp-paper-base run.sh empbench_full_eval.py --output-dir runs/709715/empiricalbench_paper/baseline --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 2G --max-concurrent-jobs 45 --no-cache
-# sbatch -J emp-paper-709715 run.sh empbench_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/empiricalbench_paper/evolved --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 2G --max-concurrent-jobs 45 --no-cache
+sbatch -J emp-paper-base run.sh empbench_full_eval.py --output-dir runs/709715/empiricalbench_paper/baseline --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 2G --max-concurrent-jobs 45 --no-cache
+sbatch -J emp-paper-709715 run.sh empbench_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/empiricalbench_paper/evolved --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 2G --max-concurrent-jobs 45 --no-cache
 
-# 9/1/26 — All nine EmpiricalBench tasks, five paired seeds. Each driver creates
-# and collects its own 45-task array; each fit searches for 1h with no eval cap.
-sbatch -J emp-base run.sh empbench_full_eval.py --output-dir runs/709715/empiricalbench_comparison/baseline --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 8G --max-concurrent-jobs 45 --no-cache
-sbatch -J emp-709715 run.sh empbench_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/empiricalbench_comparison/evolved --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 8G --max-concurrent-jobs 45 --no-cache
+# 9/1/26
 
 sbatch -J ablate-709715 run.sh scripts/evaluate_operator_ablation.py --bundle-jl runs/709715/best_bundles/best_gen43.jl --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir runs/709715/operator_ablation_gen43
 
-evolve_after_hpo=$(sbatch --parsable -J evolve-after-hpo run.sh evolve_pysr.py --operator-type all --baseline outputs/hpo_pysr_20260727_172105_644009 --generations 30 --population 10 --offspring 10 --n-runs 3 --reeval population --n-reevals 10 --models best2)
-hpo_evolved_base=$(sbatch --parsable -J hpo-evolved-base run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt)
+# All nine EmpiricalBench tasks, five paired seeds. Each driver creates and
+# collects its own 45-task array; each fit searches for one hour with no eval cap.
+# sbatch -J emp-base run.sh empbench_full_eval.py --output-dir runs/709715/empiricalbench_comparison/baseline --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 8G --max-concurrent-jobs 45 --no-cache
+# sbatch -J emp-709715 run.sh empbench_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/empiricalbench_comparison/evolved --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 8G --max-concurrent-jobs 45 --no-cache
+
+# sbatch -J r2-bb-train run.sh evolve_pysr.py --operator-type all --generations 30 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 3 --fitness-metric r2 --population-type task --reeval population --n-reevals 10 --models best2 --split splits/bb_train.txt --val-split splits/bb_val.txt --test-split splits/bb_test.txt
+
+# evolve_after_hpo=$(sbatch --parsable -J evolve-after-hpo run.sh evolve_pysr.py --operator-type all --baseline outputs/hpo_pysr_20260727_172105_644009 --generations 30 --population 10 --offspring 10 --n-runs 3 --reeval population --n-reevals 10 --models best2)
+# hpo_evolved_base=$(sbatch --parsable -J hpo-709715 run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt)
 
 # 8/31 — Full LaSR ground-truth SRBench baseline: 133 equations x noise 0.001
 # x 1 seed = 133 fits. This command prepares the manifest and submits a capped
@@ -37,6 +41,20 @@ hpo_evolved_base=$(sbatch --parsable -J hpo-evolved-base run.sh hpo_pysr.py --ba
 # boolformer_official=$(sbatch --parsable --partition=default_partition --time=08:00:00 --cpus-per-task=4 --mem=32G --gres=gpu:1 --job-name=bf-official run.sh scripts/evaluate_official_boolformer.py --splits splits/boolformer_noisy_stratified_train.txt splits/boolformer_noisy_stratified_val.txt splits/boolformer_noisy_test.txt --n-runs 10 --seed 192 --beam-size 10 --output-dir "$BOOLFORMER_COMPARE/official_boolformer")
 # boolformer_report=$(sbatch --parsable --dependency=afterok:"$boolformer_base":"$boolformer_official" --partition=default_partition --time=00:15:00 --cpus-per-task=1 --mem=4G --job-name=bf-compare-report run.sh scripts/report_boolformer_comparison.py --official "$BOOLFORMER_COMPARE/official_boolformer/results.json" --base "$BOOLFORMER_COMPARE/base_pysr/eval_summary.json" --evolved runs/709716/final_eval_summary.json --output-json "$BOOLFORMER_COMPARE/comparison.json" --output-md "$BOOLFORMER_COMPARE/README.md")
 # echo "Submitted Boolformer comparison: base=$boolformer_base official=$boolformer_official report=$boolformer_report"
+
+# Retry after pinning the old PMLB API imported by Boolformer 0.1.9.
+# Submitted as official=16323 and report=16326; base=983618 was already complete.
+# boolformer_base=983618
+# boolformer_official=$(sbatch --parsable --partition=default_partition --time=08:00:00 --cpus-per-task=4 --mem=32G --gres=gpu:1 --job-name=bf-official run.sh scripts/evaluate_official_boolformer.py --splits splits/boolformer_noisy_stratified_train.txt splits/boolformer_noisy_stratified_val.txt splits/boolformer_noisy_test.txt --n-runs 10 --seed 192 --beam-size 10 --output-dir "$BOOLFORMER_COMPARE/official_boolformer")
+# boolformer_official=16323
+# boolformer_report=$(sbatch --parsable --dependency=afterok:"$boolformer_official" --partition=default_partition --time=00:15:00 --cpus-per-task=1 --mem=4G --job-name=bf-compare-report run.sh scripts/report_boolformer_comparison.py --official "$BOOLFORMER_COMPARE/official_boolformer/results.json" --base "$BOOLFORMER_COMPARE/base_pysr/eval_summary.json" --evolved runs/709716/final_eval_summary.json --output-json "$BOOLFORMER_COMPARE/comparison.json" --output-md "$BOOLFORMER_COMPARE/README.md")
+# echo "Retried Boolformer comparison: base=$boolformer_base official=$boolformer_official report=$boolformer_report"
+
+# Retry with explicit paths after the prior shell variable was commented out.
+# Submitted as official=17562 and report=17563.
+# boolformer_official=$(sbatch --parsable --partition=default_partition --time=08:00:00 --cpus-per-task=4 --mem=32G --gres=gpu:1 --job-name=bf-official run.sh scripts/evaluate_official_boolformer.py --splits splits/boolformer_noisy_stratified_train.txt splits/boolformer_noisy_stratified_val.txt splits/boolformer_noisy_test.txt --n-runs 10 --seed 192 --beam-size 10 --output-dir /home/sca63/meta_sr/runs/709716/method_comparison/official_boolformer)
+# boolformer_report=$(sbatch --parsable --dependency=afterok:"$boolformer_official" --partition=default_partition --time=00:15:00 --cpus-per-task=1 --mem=4G --job-name=bf-compare-report run.sh scripts/report_boolformer_comparison.py --official /home/sca63/meta_sr/runs/709716/method_comparison/official_boolformer/results.json --base /home/sca63/meta_sr/runs/709716/method_comparison/base_pysr/eval_summary.json --evolved /home/sca63/meta_sr/runs/709716/final_eval_summary.json --output-json /home/sca63/meta_sr/runs/709716/method_comparison/comparison.json --output-md /home/sca63/meta_sr/runs/709716/method_comparison/README.md)
+# echo "Retried Boolformer comparison: official=$boolformer_official report=$boolformer_report"
 
 # sbatch -J gt-task-srb run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --black-box --max-evals 1000000 --timeout 0 --pysr-wall-limit 900
 # sbatch --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-base-10 run.sh evaluate_new_pysr.py --domain mips --fitness-metric gt --splits splits/mips_sr_targets_plus_refined.txt --n-runs 10 --seed 192 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-cache --output-dir runs/709714/final_eval_baseline_10seed

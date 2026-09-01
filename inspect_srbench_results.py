@@ -39,9 +39,9 @@ def _load_split_set(split_file: str) -> "set[str] | None":
         return None
 
 
-# Computed once; labels are the split-file stems (the "real names").
-TRAIN_LABEL = Path(TRAIN_SPLIT).stem
-VAL_LABEL = Path(VAL_SPLIT).stem
+# Computed once; short column labels for the barely-unsolvable splits.
+TRAIN_LABEL = "bu"
+VAL_LABEL = "bu_val2"
 TRAIN_SET = _load_split_set(TRAIN_SPLIT)
 VAL_SET = _load_split_set(VAL_SPLIT)
 CLEAN_TRAIN_SET = _load_split_set(CLEAN_TRAIN_SPLIT)
@@ -166,6 +166,7 @@ def summarize_run(run_dir: Path) -> dict:
     bb_present, bb_expected, bb_r2 = _black_box_summary(run_dir, manifest)
 
     row = {
+        "slurm": run_dir.name,
         "bundle": bundle_id(manifest),
         "mode": manifest.get("mode") or "-",
         "max_evals": manifest.get("max_evals"),
@@ -178,12 +179,11 @@ def summarize_run(run_dir: Path) -> dict:
         return row
 
     metrics = srio.aggregate_metrics(keyed, noise_levels)
-    # solve%/run and mean solve time for all / feynman / strogatz.
-    for fam in ("all", "feynman", "strogatz"):
-        m = metrics[fam]["all"]
-        row[f"{fam}_pct"] = m["solve_rate_per_run"]
-        row[f"{fam}_t"] = m["solve_time_mean_all"]
-        row[f"{fam}_r2"] = m["test_r2_mean"]
+    # solve%/run and mean solve time over all tasks.
+    m = metrics["all"]["all"]
+    row["all_pct"] = m["solve_rate_per_run"]
+    row["all_t"] = m["solve_time_mean_all"]
+    row["all_r2"] = m["test_r2_mean"]
     # solve%/run over all tasks at the noise=0 (clean) bucket only.
     m0 = metrics["all"].get(srio.fmt_noise(0))
     row["all0_pct"] = m0["solve_rate_per_run"] if m0 else None
@@ -223,6 +223,10 @@ def format_summary_table(rows: "list[dict]") -> str:
 
     # (header, key-fn) for each column.
     cols = [
+        # Run dirs are named runs/<SLURM_JOB_ID> (utils.resolve_run_dir), so the
+        # directory name is the job id of the srbench_full_eval.py driver job
+        # (or a local_* name when the eval was not run under SLURM).
+        ("slurm", lambda r: str(r.get("slurm", "-"))),
         ("bundle", lambda r: str(r["bundle"])),
         ("completed", lambda r: f"{r['completed']}/{r['total']}"),
         ("mode", lambda r: str(r["mode"])),
@@ -234,17 +238,12 @@ def format_summary_table(rows: "list[dict]") -> str:
         ("all%(n0)", lambda r: _pct(r.get("all0_pct"))),
         ("all_r2", lambda r: _r2(r.get("all_r2"))),
         ("all_t", lambda r: _time(r.get("all_t"))),
-        ("feyn%", lambda r: _pct(r.get("feynman_pct"))),
-        ("feyn_t", lambda r: _time(r.get("feynman_t"))),
-        ("strog%", lambda r: _pct(r.get("strogatz_pct"))),
-        ("strog_t", lambda r: _time(r.get("strogatz_t"))),
     ]
     if has_subset:
         cols += [
             (TRAIN_LABEL, lambda r: _pct(r.get("train_pct"))),
             ("bu(n0)", lambda r: _pct(r.get("train0_pct"))),
             (VAL_LABEL, lambda r: _pct(r.get("val_pct"))),
-            ("bu2(n0)", lambda r: _pct(r.get("val0_pct"))),
             ("train(n0)", lambda r: _pct(r.get("clean_train0_pct"))),
             ("val(n0)", lambda r: _pct(r.get("clean_val0_pct"))),
             ("rest", lambda r: _pct(r.get("rest_pct"))),
@@ -255,8 +254,8 @@ def format_summary_table(rows: "list[dict]") -> str:
     widths = [max(len(row[i]) for row in table) for i in range(len(headers))]
 
     def _fmt_row(cells):
-        # First two columns left-aligned (text), the rest right-aligned (numbers).
-        parts = [cells[i].ljust(widths[i]) if i in (0, 2) else cells[i].rjust(widths[i])
+        # Text columns left-aligned, the rest right-aligned (numbers).
+        parts = [cells[i].ljust(widths[i]) if i in (0, 1, 3) else cells[i].rjust(widths[i])
                  for i in range(len(cells))]
         return "│ " + " │ ".join(parts) + " │"
 

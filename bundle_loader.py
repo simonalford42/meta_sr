@@ -199,12 +199,31 @@ def _load_from_run_data(
         )
 
     # Detect HPO run_data.json (has 'trials' key, no 'generations'). HPO has no
-    # val concept, so select_by doesn't apply — always best trial by avg_r2.
+    # val concept, so select_by doesn't apply — always the run's own best trial.
     if "trials" in data and "generations" not in data:
         trials = data["trials"]
         if not trials:
             raise ValueError(f"No trials found in HPO run_data: {path}")
-        best_trial = max(trials, key=lambda t: t.get("avg_r2", -1))
+
+        def _trial_score(trial):
+            # Trial scores are "avg_score" (any fitness metric); "avg_r2" is
+            # the legacy key from when HPO only optimized R².
+            score = trial.get("avg_score", trial.get("avg_r2"))
+            return float("-inf") if score is None else score
+
+        # hpo_pysr.py records the winner in "best_trial" — it is chosen from a
+        # fresh-seed re-eval of the finalists, so it beats taking the argmax
+        # over the (single-seed, selection-biased) trial scores. Fall back to
+        # the argmax only for runs that predate that field.
+        best_trial = None
+        best_number = (data.get("best_trial") or {}).get("trial_number")
+        if best_number is not None:
+            best_trial = next(
+                (t for t in trials if t.get("trial_number") == best_number), None
+            )
+        if best_trial is None:
+            best_trial = max(trials, key=_trial_score)
+
         params = best_trial.get("params", {})
         if not params:
             raise ValueError(f"Best trial has no params in {path}")
@@ -215,7 +234,8 @@ def _load_from_run_data(
             else OperatorBundle()
         )
         bundle.best_hparams = params
-        bundle.score = best_trial.get("avg_r2")
+        score = _trial_score(best_trial)
+        bundle.score = None if score == float("-inf") else score
         return bundle
 
     if select_by == "val":
@@ -441,7 +461,8 @@ def _load_from_hpo(path: Path) -> OperatorBundle:
         else OperatorBundle()
     )
     bundle.best_hparams = params
-    bundle.score = data.get("avg_r2") if isinstance(data, dict) else None
+    bundle.score = (data.get("avg_score", data.get("avg_r2"))
+                    if isinstance(data, dict) else None)
     return bundle
 
 def _load_from_julia(path: Path, operator_type: str = "mutation") -> OperatorBundle:
