@@ -2,7 +2,7 @@
 
 This directory contains the fixed inner-loop harness for improving PySR's
 `SymbolicRegression.jl` backend using a train-only SRBench protocol. Validation
-and test tasks are not evaluated during autoresearch. Read `program.md` before
+and test tasks are not evaluated during autoresearch. Read `program-codex.md` before
 starting a run.
 
 ```bash
@@ -29,9 +29,9 @@ does not spend another 260 train fits recreating it. To use a different agent co
 start it from `autoresearch_sr/` with this prompt:
 
 ```text
-Read program.md and results.tsv, then commence autonomous PySR autoresearch from
+Read program-codex.md and results.tsv, then commence autonomous PySR autoresearch from
 the recorded baseline. You have permission to submit the SLURM evaluation jobs
-required by program.md for this run. Do not stop.
+required by program-codex.md for this run. Do not stop.
 ```
 
 Candidates run from persistent, commit-specific sandboxes under

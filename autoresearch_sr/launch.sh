@@ -17,6 +17,6 @@ cd "$(dirname "$0")"
 mkdir -p out
 
 claude --dangerously-skip-permissions \
-    -p "Read program.md and results.tsv, then commence autonomous PySR autoresearch from the recorded baseline. You have permission to submit the SLURM evaluation jobs required by program.md for this run. Do not stop." \
+    -p "Read program-codex.md and results.tsv, then commence autonomous PySR autoresearch from the recorded baseline. You have permission to submit the SLURM evaluation jobs required by program-codex.md for this run. Do not stop." \
     --model sonnet-4-6 \
     2>&1 | tee "out/run_$(date +%Y%m%d_%H%M%S).log"
