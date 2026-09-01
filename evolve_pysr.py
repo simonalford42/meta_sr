@@ -153,6 +153,7 @@ from evolution_helpers import (
     select_unsolved_task_with_trace,
     format_pareto_trace_for_task,
     select_survivors,
+    select_population_reeval_members,
     select_survivors_diverse,
     select_survivors_complexity,
     initialize_complexity_population,
@@ -742,6 +743,7 @@ def run_bundle_evolution(
     lambda_target: int = 1,
     reeval_budget: int = 20,
     n_reevals: int = 0,
+    reeval_topk: int = 2,
     smart_sigma: Optional[float] = DEFAULT_SMART_SIGMA,
     max_concurrent_jobs: Optional[int] = None,
     llm_max_workers: int = 16,
@@ -869,6 +871,7 @@ def run_bundle_evolution(
         "lambda_target": lambda_target,
         "reeval_budget": reeval_budget,
         "n_reevals": n_reevals,
+        "reeval_topk": reeval_topk,
         "smart_sigma": smart_sigma,
         "identify_topk": identify_topk,
         "llm_max_workers": llm_max_workers,
@@ -897,13 +900,16 @@ def run_bundle_evolution(
     #   population          — every offspring gets n_runs initial seeds; each
     #                         generation the current population (= last gen's
     #                         survivors) is topped up to n_reevals total seeds.
+    #   topk                — as population, but only the reeval_topk highest-
+    #                         scoring current population members are topped up.
     VALID_REEVAL = ("none", "heuristic", "TTTS", "KG", "uniform",
-                    "TTTS-dynamic", "KG-dynamic", "population")
+                    "TTTS-dynamic", "KG-dynamic", "population", "topk")
     if reeval not in VALID_REEVAL:
         raise ValueError(f"unknown reeval={reeval!r} (want one of {VALID_REEVAL})")
     dynamic_on = reeval in ("TTTS-dynamic", "KG-dynamic")
     fixed_on = reeval in ("TTTS", "KG", "uniform")
-    pop_reeval_on = reeval == "population"
+    pop_reeval_on = reeval in ("population", "topk")
+    topk_pop_reeval_on = reeval == "topk"
     smart_policy = "kg" if reeval == "KG-dynamic" else "ttts"
     fixed_alloc = {"TTTS": "ttts", "KG": "kg", "uniform": "uniform"}.get(reeval)
     if (dynamic_on or fixed_on) and reeval_budget <= 0:
@@ -916,9 +922,11 @@ def run_bundle_evolution(
     if pop_reeval_on:
         if n_reevals <= n_runs:
             raise ValueError(
-                f"--reeval population requires --n-reevals > --n-runs "
+                f"--reeval {reeval} requires --n-reevals > --n-runs "
                 f"(got n_reevals={n_reevals}, n_runs={n_runs})"
             )
+        if topk_pop_reeval_on and reeval_topk <= 0:
+            raise ValueError("--reeval topk requires --reeval-topk > 0")
     if racing_on and (dynamic_on or fixed_on or pop_reeval_on):
         # The CLI already forbids this pairing; guard library callers too.
         # Both paths compute run_index_start from seeds_evaluated before either
@@ -1563,8 +1571,10 @@ def run_bundle_evolution(
         print(f"Reeval enabled [{reeval}]: B={reeval_budget} seeds/gen over the "
               f"archive, allocation={fixed_alloc}.")
     elif pop_reeval_on:
-        print(f"Population reeval enabled: offspring get {n_runs} initial seeds; "
-              f"each generation's survivors are topped up to {n_reevals} seeds.")
+        scope = (f"the top {reeval_topk} survivors" if topk_pop_reeval_on
+                 else "each generation's survivors")
+        print(f"Population reeval enabled [{reeval}]: offspring get {n_runs} initial "
+              f"seeds; {scope} are topped up to {n_reevals} seeds.")
 
     if simplify_cooldown:
         cooldown_start = start_gen + n_generations - simplify_cooldown
@@ -1831,20 +1841,23 @@ def run_bundle_evolution(
                 pop_futs.append((member, fut))
                 pop_extras_per_member.append(extra)
         elif pop_reeval_on:
-            # Population reeval: top up every current population member (= the
-            # survivors selected at the end of the previous generation) to
-            # n_reevals total seeds. Submitted up-front so the reevals run on
-            # SLURM while the LLM generates this generation's offspring; the
-            # merged scores land before this generation's survivor selection.
-            # Members already at n_reevals seeds (long-time survivors) cost 0.
+            # Population reeval: top up either every current population member
+            # or only its highest-scoring reeval_topk members. These are the
+            # survivors selected at the end of the previous generation.
+            # Submitted up-front so reevaluation overlaps LLM generation and
+            # offspring evaluation, with merged scores available for selection.
+            reeval_members = (
+                select_population_reeval_members(population, reeval_topk)
+                if topk_pop_reeval_on else population
+            )
             to_top_up = [
                 (member, n_reevals - int(getattr(member, "seeds_evaluated", 0) or 0))
-                for member in population
+                for member in reeval_members
             ]
             to_top_up = [(m, extra) for m, extra in to_top_up if extra > 0]
             print(
-                f"\nPopulation reeval gen {gen}: topping up "
-                f"{len(to_top_up)}/{len(population)} members to {n_reevals} seeds "
+                f"\nPopulation reeval gen {gen} [{reeval}]: topping up "
+                f"{len(to_top_up)}/{len(reeval_members)} selected members to {n_reevals} seeds "
                 f"({sum(e for _, e in to_top_up)} extra seeds)."
             )
             for member, extra in to_top_up:
@@ -2199,8 +2212,8 @@ def run_bundle_evolution(
             elif pop_reeval_on:
                 # Select over the re-scored current population plus fresh
                 # offspring using the configured survivor policy. Task-diverse
-                # selection compares solve rates because incumbents have
-                # n_reevals seeds while fresh offspring have n_runs seeds.
+                # selection compares solve rates even when incumbents and
+                # offspring have unequal seed counts.
                 # Dropped bundles do not re-enter, so their reeval seeds stop
                 # accumulating.
                 if generation_population_type == "task":
@@ -2443,21 +2456,23 @@ def run_bundle_evolution(
     _check_train_reeval_future(wait=True)
     train_reeval_state["executor"].shutdown(wait=True)
 
-    # Population reeval: the loop tops up the *previous* generation's survivors
-    # at the start of each generation, so the final population's newest
-    # entrants still sit at n_runs seeds. Top them up here so the end-of-run
-    # scores (and the identification pass's shrunk ranking) use the full
-    # n_reevals seed count.
+    # Population reeval tops up the previous generation's survivors at the
+    # start of each generation. Apply the same full-population or limited-top-k
+    # policy once more to the final population's newest entrants.
     if pop_reeval_on:
+        final_reeval_members = (
+            select_population_reeval_members(population, reeval_topk)
+            if topk_pop_reeval_on else population
+        )
         to_top_up = [
             (b, n_reevals - int(getattr(b, "seeds_evaluated", 0) or 0))
-            for b in population
+            for b in final_reeval_members
         ]
         to_top_up = [(b, extra) for b, extra in to_top_up if extra > 0]
         if to_top_up:
             print("\n" + "=" * 60)
-            print(f"Final population reeval: topping up {len(to_top_up)}/"
-                  f"{len(population)} members to {n_reevals} seeds")
+            print(f"Final population reeval [{reeval}]: topping up {len(to_top_up)}/"
+                  f"{len(final_reeval_members)} selected members to {n_reevals} seeds")
             print("=" * 60)
             final_executor = ThreadPoolExecutor(
                 max_workers=min(32, len(to_top_up)),
@@ -2758,10 +2773,11 @@ def main():
                              "'complexity' = complexity-aware Pareto (bucket by total bundle LOC, "
                              "best per bucket, then drop Pareto-dominated buckets). "
                              "'task' and 'complexity' are incompatible with heuristic/archive "
-                             "racing; both are supported with '--reeval population'.")
+                             "racing; both are supported with '--reeval population' and "
+                             "'--reeval topk'.")
     parser.add_argument("--reeval", type=str, default="none",
                         choices=["none", "heuristic", "TTTS", "KG", "uniform",
-                                 "TTTS-dynamic", "KG-dynamic", "population"],
+                                 "TTTS-dynamic", "KG-dynamic", "population", "topk"],
                         help="Reevaluation strategy. 'none' (default): each offspring is "
                              "evaluated once on n_runs seeds, no reevaluation. "
                              "'heuristic': qualifier-based racing reeval driven by "
@@ -2775,15 +2791,20 @@ def main():
                              "(leftover is unspent); allocation via TTTS / KG. "
                              "'population': offspring get n_runs initial seeds; anything in "
                              "the population at the end of a generation is topped up to "
-                             "--n-reevals total seeds.")
+                             "--n-reevals total seeds. 'topk': the same asynchronous "
+                             "population top-up, limited to the --reeval-topk highest-scoring "
+                             "current population members.")
     parser.add_argument("--reeval-budget", type=int, default=20,
                         help="Per-generation archive reeval budget (seeds). Spent verbatim "
                              "by TTTS/KG/uniform; caps the B* plan for *-dynamic modes.")
     parser.add_argument("--n-reevals", type=int, default=0,
                         help="Total seed count each population member is topped up to under "
-                             "--reeval population (must be > --n-runs). E.g. --n-runs 3 "
+                             "--reeval population/topk (must be > --n-runs). E.g. --n-runs 3 "
                              "--n-reevals 10 --reeval population: every offspring gets 3 "
                              "seeds; survivors accumulate up to 10.")
+    parser.add_argument("--reeval-topk", type=int, default=2,
+                        help="Number of highest-scoring current population members to top up "
+                             "per generation under --reeval topk (default: 2).")
     parser.add_argument("--smart-sigma", type=float, default=DEFAULT_SMART_SIGMA,
                         help="Per-seed noise σ used in reeval planning (both --reeval smart "
                              "B*/TTTS and --reeval heuristic qualifier racing). By default a fixed "
@@ -2977,19 +2998,21 @@ def main():
             parser.error("--lambda-target only applies to heuristic racing")
         if args.reeval_budget <= 0:
             parser.error(f"--reeval {args.reeval} requires --reeval-budget > 0")
-    elif args.reeval == "population":
+    elif args.reeval in ("population", "topk"):
         if args.n_reevals <= args.n_runs:
             parser.error(
-                f"--reeval population requires --n-reevals > --n-runs "
+                f"--reeval {args.reeval} requires --n-reevals > --n-runs "
                 f"(got --n-reevals {args.n_reevals}, --n-runs {args.n_runs})"
             )
+        if args.reeval == "topk" and args.reeval_topk <= 0:
+            parser.error("--reeval topk requires --reeval-topk > 0")
         if args.lambda_target != 1:
             parser.error("--lambda-target only applies to heuristic racing")
     else:  # none
         if args.n_runs_max != 0 or args.lambda_target != 1:
             parser.error("--n-runs-max / --lambda-target only apply with --reeval heuristic")
-    if args.n_reevals != 0 and args.reeval != "population":
-        parser.error("--n-reevals only applies with --reeval population")
+    if args.n_reevals != 0 and args.reeval not in ("population", "topk"):
+        parser.error("--n-reevals only applies with --reeval population/topk")
 
     # Parse operator type(s)
     if args.operator_type == "all":
@@ -3134,6 +3157,7 @@ def main():
         identify_topk=args.identify_topk,
         reeval_budget=args.reeval_budget,
         n_reevals=args.n_reevals,
+        reeval_topk=args.reeval_topk,
         val_pysr_wall_limit=args.val_pysr_wall_limit,
         val_pysr_timeout=args.val_pysr_timeout,
         mutation_mode=args.mutation_mode,
@@ -3168,6 +3192,7 @@ def main():
         "identify_topk": args.identify_topk,
         "reeval_budget": args.reeval_budget,
         "n_reevals": args.n_reevals,
+        "reeval_topk": args.reeval_topk,
         "max_samples": args.max_samples,
         "target_noise": args.target_noise,
         "random_target_noise": args.random_target_noise,

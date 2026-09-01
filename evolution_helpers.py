@@ -831,6 +831,19 @@ def select_survivors(population: list, offspring: list, population_size: int) ->
     return scored[:population_size]
 
 
+def select_population_reeval_members(population: list, topk: int) -> list:
+    """Return the top-scoring population members to top up with fresh seeds.
+
+    Sorting is stable, so equal-scoring members retain population order. Members
+    without a score are omitted.
+    """
+    if topk <= 0:
+        return []
+    scored = [member for member in population if member.score is not None]
+    scored.sort(key=lambda member: member.score, reverse=True)
+    return scored[:topk]
+
+
 def simplify_cooldown_active(
     generation: int,
     start_generation: int,

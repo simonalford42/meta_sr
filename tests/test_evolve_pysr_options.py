@@ -5,6 +5,7 @@ from evolution_helpers import (
     compute_per_task_best_stats,
     generation_evolution_policy,
     initialize_complexity_population,
+    select_population_reeval_members,
     select_survivors_complexity,
     select_survivors_diverse,
 )
@@ -49,6 +50,19 @@ def test_complexity_selection_uses_updated_population_reeval_scores():
         "large-offspring",
         "small-offspring",
     ]
+
+
+def test_population_topk_reeval_selects_only_best_scored_members():
+    population = [
+        _Bundle("middle", 0.70, 1),
+        _Bundle("best", 0.90, 1),
+        _Bundle("unscored", None, 1),
+        _Bundle("second", 0.80, 1),
+    ]
+
+    selected = select_population_reeval_members(population, topk=2)
+
+    assert [bundle.display_name for bundle in selected] == ["best", "second"]
 
 
 def test_complexity_phase_initialization_uses_exact_archive_pareto_front():
