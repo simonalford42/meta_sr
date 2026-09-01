@@ -11,6 +11,8 @@
 sbatch -J emp-base run.sh empbench_full_eval.py --output-dir runs/709715/empiricalbench_comparison/baseline --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 8G --max-concurrent-jobs 45 --no-cache
 sbatch -J emp-709715 run.sh empbench_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/empiricalbench_comparison/evolved --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 8G --max-concurrent-jobs 45 --no-cache
 
+sbatch -J ablate-709715 run.sh scripts/evaluate_operator_ablation.py --bundle-jl runs/709715/best_bundles/best_gen43.jl --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir runs/709715/operator_ablation_gen43
+
 evolve_after_hpo=$(sbatch --parsable -J evolve-after-hpo run.sh evolve_pysr.py --operator-type all --baseline outputs/hpo_pysr_20260727_172105_644009 --generations 30 --population 10 --offspring 10 --n-runs 3 --reeval population --n-reevals 10 --models best2)
 hpo_evolved_base=$(sbatch --parsable -J hpo-evolved-base run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt)
 
