@@ -19,7 +19,8 @@ Once you get confirmation, kick off the experimentation.
 
 ## Experimentation
 
-Each experiment evaluates symbolic regression performance on SRBench benchmarks via SLURM. The evaluation takes ~5 minutes to complete, but this can vary depending on the SLURM cluster state (usually finishes within 8-10 minutes).
+Each experiment evaluates symbolic regression performance on SRBench benchmarks via SLURM. The evaluation takes ~5 minutes to complete, but this can vary depending on the SLURM cluster state. Each dataset gets a deterministic assignment of target noise from levels `0`, `0.001`, `0.01`, and `0.1`, and is evaluated for 1e6 max evals, with a 500 second soft timeout and 600 second hard timeout.
+
 
 **What you CAN do:**
 - Edit the following Julia source files in `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src`:
@@ -34,6 +35,10 @@ Each experiment evaluates symbolic regression performance on SRBench benchmarks 
 These files cover mutation weights, parsimony, complexity, constant optimization,
 mutation mechanics, and the evolution loop. Everything is fair game within these files.
 
+The harness and files outside `SymbolicRegression.jl` are read-only during an
+autoresearch run. Candidate source must be committed before evaluation because
+the harness evaluates a detached worktree at that commit.
+
 - You may **read** (but not edit) any other files in `SymbolicRegression.jl/src/` to understand how the algorithm works. For example, `SingleIteration.jl`, `Mutate.jl`, and `SearchUtils.jl` provide useful context for the overall search loop and mutation dispatch.
 
 **What you CANNOT do:**
@@ -41,6 +46,7 @@ mutation mechanics, and the evolution loop. Everything is fair game within these
 - Modify `program.md`. These instructions are fixed.
 - Do not edit any files outside the allowed list above.
 - Do not modify files in `src/` that are not listed (e.g., `SymbolicRegression.jl`, `Options.jl`).
+- Do not inspect, evaluate, or optimize against any validation, test, or remaining official SRBench tasks.
 
 **The goal is simple: get the highest score.** The metric is `gt` (ground-truth match rate — fraction of datasets where the discovered equation matches the true formula). Higher is better. Current baseline (unmodified PySR): 0.40.
 
@@ -56,7 +62,7 @@ Once the evaluation finishes it prints a summary like this:
 
 ```
 ---
-score:         0.423000
+barely_unsolvable score:         0.423000
 datasets:      12
 datasets_ok:   12
 datasets_fail: 0
@@ -67,7 +73,7 @@ n_runs:        3
 
 You can extract the key metric from the log file:
 ```
-grep "^score:" run.log
+grep "^barely_unsolvable score:" run.log
 ```
 
 ## Dataset health check
@@ -122,6 +128,6 @@ The idea is that you are a completely autonomous researcher trying things out. I
 
 **Crashes**: If a run crashes (Julia error, SLURM failure, syntax error), use your judgment: If it's something dumb and easy to fix (e.g. a typo, wrong function signature), fix it and re-run. If the idea itself is fundamentally broken, just skip it, log "crash" as the status in the tsv, and move on.
 
-**NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder — re-read the reference docs, re-read the inscope fils for new angles, try combining previous near-misses, try more radical changes. The loop runs until the human interrupts you, period.
+**NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder — re-read the reference docs, re-read the in scope fils for new angles, try combining previous near-misses, try more radical changes. The loop runs until the human interrupts you, period.
 
 As an example use case, a user might leave you running while they sleep. If each experiment takes ~5 minutes then you can run approx 12/hour. The user then wakes up to experimental results, all completed by you while they slept!
