@@ -2,7 +2,8 @@
 """Fixed PySR autoresearch evaluation harness.
 
 Quick evaluation uses three paired seeds on the official training split.
-Confirmation uses ten fresh seeds on both official train and validation.
+Confirmation uses ten fresh seeds on the same training split. Validation data
+is never evaluated by this harness, so it cannot influence model selection.
 The selected SymbolicRegression.jl commit is run in an isolated sandbox.
 """
 
@@ -24,7 +25,6 @@ SUBMODULE = ROOT / "SymbolicRegression.jl"
 RESULTS_TSV = ROOT / "autoresearch_sr" / "results.tsv"
 SANDBOXES = ROOT / "outputs" / "autoresearch_pysr_sandboxes"
 TRAIN = "splits/barely_unsolvable.txt"
-VAL = "splits/barely_unsolvable_val2.txt"
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target", default="latest",
                         help="Commit/branch, latest, best, or expN")
     parser.add_argument("--confirm", action="store_true",
-                        help="Use 10 fresh seeds and include held-out validation")
+                        help="Use 10 fresh seeds on the training split")
     parser.add_argument("--seed", type=int, default=None,
                         help="Override the protocol seed")
     parser.add_argument("--n-runs", type=int, default=None,
@@ -51,7 +51,7 @@ def main() -> None:
     commit = resolve_commit(args.target, SUBMODULE, RESULTS_TSV)
     seed = args.seed if args.seed is not None else (192 if args.confirm else 42)
     n_runs = args.n_runs if args.n_runs is not None else (10 if args.confirm else 3)
-    splits = [TRAIN, VAL] if args.confirm else [TRAIN]
+    splits = [TRAIN]
     phase = "confirm" if args.confirm else "quick"
     output_dir = Path(args.output_dir) if args.output_dir else (
         ROOT / "autoresearch_sr" / "eval_results" / commit[:12]

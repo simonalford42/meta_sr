@@ -1,14 +1,15 @@
 # Autoresearch PySR
 
 This directory contains the fixed inner-loop harness for improving PySR's
-`SymbolicRegression.jl` backend against the canonical SRBench train/validation
-protocol. Read `program.md` before starting a run.
+`SymbolicRegression.jl` backend using a train-only SRBench protocol. Validation
+and test tasks are not evaluated during autoresearch. Read `program.md` before
+starting a run.
 
 ```bash
 # Unmodified/current-commit quick baseline
 python autoresearch_sr/evaluate.py
 
-# Fresh-seed train + held-out validation confirmation
+# Fresh-seed confirmation on the training split only
 python autoresearch_sr/evaluate.py --confirm
 
 # Evaluate a recorded candidate
@@ -24,7 +25,7 @@ bash autoresearch_sr/launch.sh --allow-slurm
 
 The required flag records explicit permission for the launched agent to submit
 the evaluation arrays. The launcher continues from the recorded baseline; it
-does not spend another 460 fits recreating it. To use a different agent command,
+does not spend another 260 train fits recreating it. To use a different agent command,
 start it from `autoresearch_sr/` with this prompt:
 
 ```text
@@ -38,5 +39,5 @@ Candidates run from persistent, commit-specific sandboxes under
 are isolated from baseline PySR and from every other candidate.
 
 The initial unmodified baseline at `e425e7ed` is recorded in `results.tsv`:
-quick train GT `0.433333`, fresh-seed train GT `0.430000`, and held-out
-validation GT `0.525000` (460/460 fits successful).
+quick train GT `0.433333` and fresh-seed train GT `0.430000` (260/260 train
+fits successful).

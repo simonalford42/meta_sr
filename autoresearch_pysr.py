@@ -25,8 +25,8 @@ def read_results_tsv(path: Path) -> List[Dict[str, str]]:
 
 
 def _score(row: Dict[str, str]) -> float:
-    """Use the strongest available confirmed score, then the quick score."""
-    for key in ("val_score", "score2", "train_confirm", "score"):
+    """Use confirmed train score when available, then the quick train score."""
+    for key in ("train_confirm", "score2", "train_quick", "score"):
         value = row.get(key)
         if value not in (None, ""):
             return float(value)
@@ -43,9 +43,8 @@ def resolve_commit(
     target = target or "best"
     if target == "best":
         all_rows = read_results_tsv(results_tsv)
-        # A discarded candidate must never become the final winner merely
-        # because its noisy validation score was high. Legacy tables without
-        # keep/discard labels fall back to every non-crash row.
+        # A discarded candidate must never become the final winner. Legacy
+        # tables without keep/discard labels fall back to every non-crash row.
         rows = [r for r in all_rows if r.get("status") == "keep"]
         if not rows:
             rows = [r for r in all_rows if r.get("status") != "crash"]
