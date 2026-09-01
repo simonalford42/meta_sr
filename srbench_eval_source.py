@@ -20,6 +20,8 @@ class EvaluationSource:
     method_meta: Dict[str, Any]
     soft_timeout: Optional[int] = None
     soft_timeout_source: str = "default"
+    repo_root: Optional[str] = None
+    cache_namespace: Optional[str] = None
 
 
 def _run_data_path(path: str) -> Path:
@@ -203,7 +205,15 @@ def _load_evaluation_source(args) -> EvaluationSource:
 
     config, mode, method_meta = load_pysr_evaluation_config(args)
     return EvaluationSource(
-        backend="pysr", mode=mode, config=config, method_meta=method_meta
+        backend="pysr",
+        mode=mode,
+        config=config,
+        method_meta=method_meta,
+        repo_root=method_meta.get("sandbox"),
+        cache_namespace=(
+            f"autoresearch-srjl:{method_meta['commit']}"
+            if mode == "autoresearch" else None
+        ),
     )
 
 
@@ -215,7 +225,18 @@ def load_pysr_evaluation_config(args):
 
     pysr_kwargs = get_default_pysr_kwargs()
     pysr_kwargs["max_evals"] = args.max_evals
-    if args.evolve_results:
+    if getattr(args, "autoresearch", None):
+        from autoresearch_pysr import resolve_and_build
+
+        commit, sandbox = resolve_and_build(
+            args.autoresearch,
+            Path(args.autoresearch_submodule),
+            Path(args.autoresearch_results),
+            Path(args.autoresearch_sandboxes),
+        )
+        bundle = OperatorBundle.create_default()
+        mode, source = "autoresearch", args.autoresearch_results
+    elif args.evolve_results:
         bundle = load_bundle(args.evolve_results, select_by=args.select_by)
         mode, source = "evolve", args.evolve_results
     elif args.hpo_results:
@@ -228,7 +249,15 @@ def load_pysr_evaluation_config(args):
     config = bundle.to_pysr_config(pysr_kwargs)
     config.name = mode
     method_meta = {}
-    if mode != "baseline":
+    if mode == "autoresearch":
+        method_meta = {
+            "source": str(Path(source).resolve()),
+            "commit": commit,
+            "sandbox": str(sandbox),
+            "submodule": str(Path(args.autoresearch_submodule).resolve()),
+            "fitness_metric": "gt",
+        }
+    elif mode != "baseline":
         method_meta = {
             "source": source,
             "select_by": args.select_by,

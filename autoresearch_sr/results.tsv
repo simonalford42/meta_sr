@@ -1,0 +1,2 @@
+exp	commit	train_quick	train_confirm	val_score	status	description
+1	e425e7ed5894b0ebd7718fed0d77a252df2fa443	0.433333	0.430000	0.525000	keep	Unmodified PySR/SymbolicRegression.jl baseline under the canonical autoresearch protocol; all 460 quick and confirmation fits completed successfully.

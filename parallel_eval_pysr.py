@@ -389,6 +389,8 @@ def _build_cache_identity(
     # into the identity so every historical SRBench hash stays byte-identical.
     if getattr(spec, "domain", "srbench") != "srbench":
         model_kwargs["_domain"] = spec.domain
+    if getattr(spec, "cache_namespace", None):
+        model_kwargs["_cache_namespace"] = spec.cache_namespace
     return pysr_mutation_kwargs, model_kwargs, spec.hof_n_steps
 
 
@@ -691,9 +693,22 @@ def _combine_noise_level_results(
     )
 
 
-def _import_pysr_regressor():
+def _effective_repo_root(repo_root: Optional[Path] = None) -> Path:
+    """Return the repository overlay selected by the driver or worker."""
+    if repo_root is not None:
+        return Path(repo_root).resolve()
+    override = os.environ.get("META_SR_EVAL_REPO_ROOT")
+    if override:
+        return Path(override).resolve()
+    return Path(__file__).resolve().parent
+
+
+def _import_pysr_regressor(repo_root: Optional[Path] = None):
     """Import PySR from the repo checkout when available."""
-    repo_root = Path(__file__).resolve().parent
+    strict_root = repo_root is not None or bool(os.environ.get("META_SR_EVAL_REPO_ROOT"))
+    repo_root = _effective_repo_root(repo_root)
+    if strict_root:
+        os.environ["PYTHON_JULIAPKG_PROJECT"] = str(repo_root / ".juliapkg_env")
     configure_juliapkg_project(repo_root)
 
     pysr_repo = repo_root / "PySR"
@@ -1047,6 +1062,8 @@ class PySRTaskSpec:
     # Retain domain-specific metrics for every Pareto row. Evolution normally
     # needs only aggregate fitness; dedicated full-eval drivers opt in.
     retain_pareto_frontier: bool = False
+    # Source revision/protocol identifier used only to isolate cache requests.
+    cache_namespace: Optional[str] = None
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -1167,6 +1184,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
     _, model_kwargs, _ = _build_cache_identity(spec)
     model_kwargs.pop("_srbench_black_box_protocol", None)
     model_kwargs.pop("_domain", None)  # cache-identity marker, not a PySR kwarg
+    model_kwargs.pop("_cache_namespace", None)  # cache marker, not a PySR kwarg
 
     # Resolve the evaluation domain (dataset loading, sympy mappings, "solved"
     # check — see domains.py). Pre-domain-field boolean task JSONs carried a
@@ -2019,6 +2037,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         domain: str = "srbench",
         black_box: bool = False,
         retain_pareto_frontier: bool = False,
+        cache_namespace: Optional[str] = None,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -2049,6 +2068,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # builds (one evolution/HPO run is one domain). See domains.py.
         self.domain = domain
         self.retain_pareto_frontier = retain_pareto_frontier
+        self.cache_namespace = cache_namespace
         # Run-level data protocol. Evolution creates many batches through
         # helper layers that do not pass per-call protocol flags, so retain a
         # default here; one-off callers can still override it in
@@ -2093,7 +2113,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         t0 = time.time()
         try:
             with _redirect_fds_to_file(warmup_log):
-                _import_pysr_regressor()
+                _import_pysr_regressor(self.repo_root)
         except Exception as e:
             # A genuine import failure means workers would fail identically; surface
             # it now (before submitting a huge array) rather than after.
@@ -2109,6 +2129,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             "# Ensure Python can import project modules",
             f'cd "{self.repo_root}"',
             f'export PYTHONPATH="{self.repo_root}:$PYTHONPATH"',
+            f'export META_SR_EVAL_REPO_ROOT="{self.repo_root}"',
             "",
             "# Point juliacall/juliapkg at this checkout's Julia project.",
             "# Do not set JULIA_PROJECT to SymbolicRegression.jl; that prevents",
@@ -2256,6 +2277,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         black_box=effective_black_box,
                         domain=self.domain,
                         retain_pareto_frontier=self.retain_pareto_frontier,
+                        cache_namespace=self.cache_namespace,
                     ))
 
         n_tasks = len(tasks)
@@ -3507,7 +3529,7 @@ def run_pysr_worker(tasks_file: str, task_index: int, output_dir: str, use_cache
 
     init_worker(extra_env={'JULIA_NUM_THREADS': '1'})
 
-    repo_root = Path(__file__).resolve().parent
+    repo_root = _effective_repo_root()
     clear_stale_juliapkg_lock(repo_root / ".juliapkg_env")
     clear_future_mtime_pidfiles()
 

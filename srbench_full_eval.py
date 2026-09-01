@@ -294,6 +294,8 @@ def run_black_box(args, output_dir, source, manifest, run):
             job_timeout=args.job_timeout,
             pysr_wall_limit=wall_limit,
             max_retries=args.max_retries,
+            repo_root=source.repo_root,
+            cache_namespace=source.cache_namespace,
         )
         handle = evaluator.submit_configs(
             configs=[config],
@@ -436,6 +438,15 @@ def main():
                       help="Path / run-id of an HPO run (best_params.json).")
     mode.add_argument("--fullsr-baseline", action="store_true",
                       help="Evaluate evolve_fullsr's BasicSRConfig.jl baseline.")
+    mode.add_argument("--autoresearch", type=str, nargs="?", const="best",
+                      default=None, metavar="TARGET",
+                      help="Evaluate baseline PySR against an autoresearch SR.jl commit")
+    parser.add_argument("--autoresearch-submodule", type=str,
+                        default="SymbolicRegression.jl")
+    parser.add_argument("--autoresearch-results", type=str,
+                        default="autoresearch_sr/results.tsv")
+    parser.add_argument("--autoresearch-sandboxes", type=str,
+                        default="outputs/autoresearch_pysr_sandboxes")
     parser.add_argument("--select-by", choices=["val", "train"], default="val",
                         help="For evolve runs, select the bundle by validation "
                              "score (default) or training score. Val falls back "
@@ -469,6 +480,8 @@ def main():
     parser.add_argument("--noise-levels", type=float, nargs="+", default=DEFAULT_NOISE_LEVELS)
 
     parser.add_argument("--partition", type=str, default="default_partition")
+    parser.add_argument("--max-concurrent-jobs", type=int, default=None,
+                        help="Maximum simultaneously running tasks in each array.")
     parser.add_argument("--time-limit", type=str, default="02:00:00")
     parser.add_argument("--mem-per-cpu", type=str, default="8G")
     parser.add_argument("--job-timeout", type=float, default=None)
@@ -611,6 +624,9 @@ def main():
             job_timeout=args.job_timeout,
             pysr_wall_limit=args.pysr_wall_limit,
             max_retries=args.max_retries,
+            max_concurrent_jobs=getattr(args, "max_concurrent_jobs", None),
+            repo_root=source.repo_root,
+            cache_namespace=source.cache_namespace,
         )
 
     run = None

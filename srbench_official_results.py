@@ -25,6 +25,7 @@ OFFICIAL_VAL_SPLIT = "splits/barely_unsolvable_val2.txt"
 # (internal key, display label, method family, training objective)
 OFFICIAL_COLUMNS = (
     ("pysr_baseline", "PySR baseline", "pysr_baseline", None),
+    ("autoresearch_gt", "Autoresearch PySR", "autoresearch", "gt"),
     ("basicsr_baseline", "BasicSR baseline", "basicsr_baseline", None),
     ("hpo_gt", "HPO GT", "hpo", "gt"),
     ("pysrpp_gt", "PySR++ GT", "pysrpp", "gt"),
@@ -44,6 +45,8 @@ def _method_family(manifest: dict) -> Optional[str]:
         return "basicsr_baseline"
     if mode == "baseline":
         return "pysr_baseline"
+    if mode == "autoresearch":
+        return "autoresearch"
     if mode == "hpo":
         return "hpo"
     if mode == "evolve_fullsr":
@@ -388,7 +391,7 @@ def _column_from_records(
 def build_official_columns(
     runs_root: "str | Path", project_root: "str | Path | None" = None
 ) -> list[dict]:
-    """Discover and summarize the eleven official comparison columns."""
+    """Discover and summarize the official comparison columns."""
     runs_root = Path(runs_root)
     project_root = Path(project_root) if project_root else Path(__file__).resolve().parent
     grouped: Dict[tuple, list[dict]] = {}
@@ -407,10 +410,24 @@ def build_official_columns(
         if not (_has_ground_truth(run_dir, manifest) or _has_black_box(run_dir, manifest)):
             continue
 
-        source = (manifest.get("method_meta") or {}).get("source")
+        method_meta = manifest.get("method_meta") or {}
+        source = method_meta.get("source")
         if family.endswith("baseline"):
             source_key = family
             training = _training_metadata(None, runs_root, project_root)
+        elif family == "autoresearch":
+            commit = method_meta.get("commit")
+            if not commit:
+                continue
+            source_key = commit
+            training = {
+                "training_id": commit[:8],
+                "metric": method_meta.get("fitness_metric", "gt"),
+                "train_set": Path(OFFICIAL_TRAIN_SPLIT).name,
+                "val_set": Path(OFFICIAL_VAL_SPLIT).name,
+                "train_perf": None,
+                "val_perf": None,
+            }
         else:
             if not source:
                 continue

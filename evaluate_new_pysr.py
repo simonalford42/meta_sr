@@ -38,15 +38,12 @@ Usage:
 """
 
 import argparse
-import atexit
 import copy
 import importlib.util
 import json
 import os
 import re
-import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
@@ -60,6 +57,7 @@ from parallel_eval_pysr import (
 )
 from utils import load_dataset_names_from_split, copy_slurm_log, resolve_run_dir
 from wandb_utils import init_wandb, log_wandb_summary, finish_wandb
+from autoresearch_pysr import resolve_and_build
 
 
 # =============================================================================
@@ -147,6 +145,7 @@ def _resolve_final_eval_context(
     method_path: Optional[str],
     domain: Optional[str],
     fitness_metric: Optional[str],
+    use_domain_defaults: bool = False,
 ) -> Tuple[str, str, Dict[str, Any]]:
     """Resolve domain, metric, and base kwargs for a final evaluation."""
     saved = _saved_evolve_config(method_source, method_path)
@@ -158,7 +157,7 @@ def _resolve_final_eval_context(
 
     from domains import get_domain
     domain_obj = get_domain(domain_name)
-    saved_kwargs = saved.get("pysr_kwargs")
+    saved_kwargs = None if use_domain_defaults else saved.get("pysr_kwargs")
     if isinstance(saved_kwargs, dict) and saved_kwargs:
         pysr_kwargs = copy.deepcopy(saved_kwargs)
     else:
@@ -183,97 +182,6 @@ def _bundle_summary_fields(bundle) -> Dict[str, Any]:
         ]
     fields["evolve_train_score"] = bundle.score
     return fields
-
-
-def _read_autoresearch_results_tsv() -> List[Dict[str, str]]:
-    tsv_path = Path("autoresearch_sr/results.tsv")
-    if not tsv_path.exists():
-        raise FileNotFoundError(f"{tsv_path} missing")
-    rows: List[Dict[str, str]] = []
-    with open(tsv_path) as f:
-        lines = f.read().splitlines()
-    if not lines:
-        return rows
-    header = lines[0].split("\t")
-    for line in lines[1:]:
-        if not line.strip():
-            continue
-        parts = line.split("\t")
-        rows.append(dict(zip(header, parts)))
-    return rows
-
-
-def _best_autoresearch_row() -> Dict[str, str]:
-    """Return the results.tsv row with the highest score (skipping crashes).
-
-    Ties broken by highest experiment number (most recent).
-    """
-    rows = _read_autoresearch_results_tsv()
-    candidates = [r for r in rows if r.get("status") != "crash"]
-    if not candidates:
-        raise ValueError("No non-crash rows in autoresearch_sr/results.tsv")
-    best = max(candidates, key=lambda r: (float(r["score"]), int(r["exp"])))
-    return best
-
-
-def resolve_autoresearch_commit(target: str, submodule_path: Path) -> str:
-    """Resolve an autoresearch target to a full commit hash in the SR.jl submodule.
-
-    target can be 'best' (highest score in results.tsv), 'latest'/'HEAD',
-    a commit hash, a branch, or an 'expN' row from autoresearch_sr/results.tsv.
-    """
-    if target == "best":
-        best = _best_autoresearch_row()
-        print(f"[autoresearch] best row: exp{best['exp']} "
-              f"score={best['score']} status={best.get('status', '?')}")
-        revspec = best["commit"]
-    elif target in ("latest", "HEAD", None):
-        revspec = "HEAD"
-    elif target.lower().startswith("exp"):
-        exp_num = target[3:]
-        tsv_path = Path("autoresearch_sr/results.tsv")
-        if not tsv_path.exists():
-            raise FileNotFoundError(f"Cannot resolve {target!r}: {tsv_path} missing")
-        revspec = None
-        with open(tsv_path) as f:
-            lines = f.read().splitlines()
-        for line in lines[1:]:
-            if not line.strip():
-                continue
-            parts = line.split("\t")
-            if parts[0] == exp_num:
-                revspec = parts[1]
-                break
-        if revspec is None:
-            raise ValueError(f"Experiment {target!r} not found in {tsv_path}")
-    else:
-        revspec = target
-
-    result = subprocess.run(
-        ["git", "-C", str(submodule_path), "rev-parse", revspec],
-        capture_output=True, text=True, check=True,
-    )
-    return result.stdout.strip()
-
-
-def create_sr_worktree(submodule_path: Path, commit: str) -> Path:
-    """Create a detached git worktree of the SR.jl submodule at `commit`."""
-    wt_dir = Path(tempfile.mkdtemp(prefix=f"srjl_{commit[:8]}_"))
-    # `worktree add` insists the target directory not already exist.
-    wt_dir.rmdir()
-    subprocess.run(
-        ["git", "-C", str(submodule_path), "worktree", "add", "--detach",
-         str(wt_dir), commit],
-        check=True,
-    )
-    return wt_dir
-
-
-def cleanup_sr_worktree(submodule_path: Path, wt_dir: Path) -> None:
-    subprocess.run(
-        ["git", "-C", str(submodule_path), "worktree", "remove", "--force", str(wt_dir)],
-        check=False,
-    )
 
 
 # =============================================================================
@@ -706,11 +614,17 @@ def main() -> None:
                                    "(default when flag used without value).")
     parser.add_argument("--autoresearch-submodule", type=str,
                         default="SymbolicRegression.jl",
-                        help="Path to the SR.jl submodule used for --autoresearch worktree")
+                        help="Git checkout containing autoresearch SR.jl commits")
+    parser.add_argument("--autoresearch-results", type=str,
+                        default="autoresearch_sr/results.tsv",
+                        help="TSV used to resolve --autoresearch best/expN")
+    parser.add_argument("--autoresearch-sandboxes", type=str,
+                        default="outputs/autoresearch_pysr_sandboxes",
+                        help="Persistent per-commit PySR sandbox root")
 
     parser.add_argument("--splits", type=str, nargs="+",
-                        default=["splits/train.txt", "splits/val.txt"],
-                        help="Split files to evaluate on")
+                        default=None,
+                        help="Split files (autoresearch defaults to the official train/val splits)")
     parser.add_argument("--n-runs", type=int, default=10,
                         help="Number of seeds/runs per config per dataset")
     parser.add_argument("--seed", type=int, default=42,
@@ -725,6 +639,8 @@ def main() -> None:
                         help="Stop PySR on wall-clock timeout only (drop max_evals)")
     parser.add_argument("--noise", type=float, default=0.0,
                         help="Per-target Gaussian noise level applied uniformly to all datasets")
+    parser.add_argument("--random-target-noise", action="store_true",
+                        help="Deterministically assign each dataset one of the official noise levels")
     parser.add_argument("--pysr-wall-limit", type=int, default=600,
                         help="Hard wall-clock guard inside the SLURM task (seconds); "
                              "must exceed --timeout with a buffer")
@@ -749,28 +665,32 @@ def main() -> None:
                         choices=["r2", "gt", "gt-r2", "acc", "gt-acc"],
                         default=None,
                         help="Task aggregation metric (inferred from evolve run_data when possible)")
+    parser.add_argument("--use-domain-defaults", action="store_true",
+                        help="Use the selected domain's base PySR settings instead of replaying "
+                             "pysr_kwargs saved by an evolve run (useful for cross-domain evals)")
 
     args = parser.parse_args()
 
-    # Autoresearch: resolve commit and create a worktree of SR.jl at that commit.
+    if args.splits is None:
+        args.splits = (
+            ["splits/barely_unsolvable.txt", "splits/barely_unsolvable_val2.txt"]
+            if args.autoresearch else ["splits/train.txt", "splits/val.txt"]
+        )
+    if args.random_target_noise and args.noise != 0.0:
+        parser.error("--random-target-noise and nonzero --noise are mutually exclusive")
+
+    # Autoresearch: resolve the commit and build an isolated PySR/Julia overlay.
     autoresearch_commit: Optional[str] = None
-    autoresearch_worktree: Optional[Path] = None
-    autoresearch_submodule: Optional[Path] = None
+    autoresearch_sandbox: Optional[Path] = None
     if args.autoresearch:
-        autoresearch_submodule = Path(args.autoresearch_submodule).resolve()
-        autoresearch_commit = resolve_autoresearch_commit(
-            args.autoresearch, autoresearch_submodule
+        autoresearch_commit, autoresearch_sandbox = resolve_and_build(
+            args.autoresearch,
+            Path(args.autoresearch_submodule),
+            Path(args.autoresearch_results),
+            Path(args.autoresearch_sandboxes),
         )
-        autoresearch_worktree = create_sr_worktree(
-            autoresearch_submodule, autoresearch_commit
-        )
-        atexit.register(cleanup_sr_worktree, autoresearch_submodule, autoresearch_worktree)
-        print(f"[autoresearch] submodule: {autoresearch_submodule}")
         print(f"[autoresearch] commit:    {autoresearch_commit}")
-        print(f"[autoresearch] worktree:  {autoresearch_worktree}")
-        # The evaluation cache key does not include the Julia source hash, so a
-        # modified SR.jl source would otherwise collide with baseline cache entries.
-        args.no_cache = True
+        print(f"[autoresearch] sandbox:   {autoresearch_sandbox}")
 
     # Determine method (as an OperatorBundle) and label via the single loader.
     if args.evolve_results:
@@ -790,6 +710,7 @@ def main() -> None:
 
     domain, fitness_metric, pysr_kwargs = _resolve_final_eval_context(
         method_source, method_path, args.domain, args.fitness_metric,
+        args.use_domain_defaults,
     )
     from domains import get_domain
     domain_obj = get_domain(domain)
@@ -810,6 +731,7 @@ def main() -> None:
         "timeout": args.timeout,
         "wall_clock_only": args.wall_clock_only,
         "noise": args.noise,
+        "random_target_noise": args.random_target_noise,
         "pysr_wall_limit": args.pysr_wall_limit,
         "partition": args.partition,
         "no_cache": args.no_cache,
@@ -852,8 +774,11 @@ def main() -> None:
         pysr_kwargs.pop("timeout_in_seconds", None)
 
     evaluator_kwargs: Dict[str, Any] = {}
-    if autoresearch_worktree is not None:
-        evaluator_kwargs["julia_project"] = str(autoresearch_worktree)
+    if autoresearch_sandbox is not None:
+        evaluator_kwargs.update({
+            "repo_root": str(autoresearch_sandbox),
+            "cache_namespace": f"autoresearch-srjl:{autoresearch_commit}",
+        })
 
     evaluator = PySRSlurmEvaluator(
         results_dir=str(output_dir),
@@ -895,9 +820,15 @@ def main() -> None:
         print(f"Evaluating {method_label} on {split_name} split ({len(datasets)} datasets)...")
         print(f"{'=' * 60}")
 
-        target_noise_map = (
-            {d: args.noise for d in datasets} if args.noise > 0 else None
-        )
+        if args.random_target_noise:
+            from evolution_helpers import TARGET_NOISE_LEVELS, _build_target_noise_map
+            target_noise_map = _build_target_noise_map(
+                datasets, args.seed, TARGET_NOISE_LEVELS
+            )
+        else:
+            target_noise_map = (
+                {d: args.noise for d in datasets} if args.noise > 0 else None
+            )
 
         summary = evaluate_config(
             evaluator, datasets, config,
@@ -959,6 +890,14 @@ def main() -> None:
         "domain": domain,
         "fitness_metric": fitness_metric,
     }
+    if autoresearch_commit is not None:
+        summary_data["autoresearch"] = {
+            "commit": autoresearch_commit,
+            "submodule": str(Path(args.autoresearch_submodule).resolve()),
+            "sandbox": str(autoresearch_sandbox),
+            "results_tsv": str(Path(args.autoresearch_results).resolve()),
+            "random_target_noise": args.random_target_noise,
+        }
     summary_data.update(_bundle_summary_fields(bundle))
     for split_name, s in split_summaries.items():
         summary_data[split_name] = asdict(s)

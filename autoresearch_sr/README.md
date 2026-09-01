@@ -1,57 +1,42 @@
-# autoresearch_sr
+# Autoresearch PySR
 
-Autonomous symbolic regression research, inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch).
-
-## How it works
-
-An AI agent (Claude Code) autonomously iterates on symbolic regression, following the autoresearch hill-climbing pattern: modify code, evaluate, keep if improved, discard otherwise, repeat.
-
-Three files that matter:
-
-- **`prepare.py`** — fixed evaluation harness. Wraps PySR SLURM evaluation from the parent `meta_sr` repo. Not modified by the agent.
-- **`operators/`** or **SR.jl source files** — the mutable code the agent edits. In operator mode, the agent writes Julia operator functions. In codebase mode, it edits SymbolicRegression.jl internals directly.
-- **`program.md`** — instructions for the agent (generated from `program_template.md` by `launch.sh`).
-
-## Modes
-
-### Operator mode
-The agent creates/edits Julia operator files (`operators/mutation.jl`, `operators/survival.jl`, `operators/selection.jl`) that are dynamically loaded into PySR at evaluation time.
+This directory contains the fixed inner-loop harness for improving PySR's
+`SymbolicRegression.jl` backend against the canonical SRBench train/validation
+protocol. Read `program.md` before starting a run.
 
 ```bash
-bash launch.sh --mode operator --model sonnet --split ../splits/train_hard.txt
+# Unmodified/current-commit quick baseline
+python autoresearch_sr/evaluate.py
+
+# Fresh-seed train + held-out validation confirmation
+python autoresearch_sr/evaluate.py --confirm
+
+# Evaluate a recorded candidate
+python autoresearch_sr/evaluate.py --target exp12 --confirm
 ```
 
-### Codebase mode
-The agent edits SymbolicRegression.jl source files directly in a sandbox clone.
+After obtaining an interactive allocation (`ijob`) and returning to the outer
+repository root, start the autonomous loop with:
 
 ```bash
-bash launch.sh --mode codebase --model sonnet --sandbox-root /path/to/meta_sr_sandbox
+bash autoresearch_sr/launch.sh --allow-slurm
 ```
 
-## Usage
+The required flag records explicit permission for the launched agent to submit
+the evaluation arrays. The launcher continues from the recorded baseline; it
+does not spend another 460 fits recreating it. To use a different agent command,
+start it from `autoresearch_sr/` with this prompt:
 
-```bash
-bash launch.sh --mode operator [options]
-
-Options:
-  --mode              operator|codebase (required)
-  --model             Claude model to use (default: sonnet)
-  --split             Dataset split file (default: ../splits/train_hard.txt)
-  --n-runs            Eval runs per dataset (default: 3)
-  --seed              Random seed (default: 42)
-  --fitness-metric    gt|r2 (default: gt)
-  --max-evals         Max PySR evaluations per run
-  --timeout           PySR timeout in seconds
-  --partition         SLURM partition
-  --max-turns         Max Claude Code turns (default: 200)
-  --sandbox-root      Path to sandbox meta_sr clone (codebase mode)
+```text
+Read program.md and results.tsv, then commence autonomous PySR autoresearch from
+the recorded baseline. You have permission to submit the SLURM evaluation jobs
+required by program.md for this run. Do not stop.
 ```
 
-## Results
+Candidates run from persistent, commit-specific sandboxes under
+`outputs/autoresearch_pysr_sandboxes/`. Their Julia environments and cache keys
+are isolated from baseline PySR and from every other candidate.
 
-All experiments are logged to `results.tsv` with columns:
-```
-commit  score  status  description
-```
-
-Git history on the experiment branch shows the full trajectory of kept changes.
+The initial unmodified baseline at `e425e7ed` is recorded in `results.tsv`:
+quick train GT `0.433333`, fresh-seed train GT `0.430000`, and held-out
+validation GT `0.525000` (460/460 fits successful).
