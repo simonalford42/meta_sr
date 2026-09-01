@@ -33,7 +33,7 @@ DATASETS = (
     "empirical_hubble",
     "empirical_kepler",
     "empirical_newton",
-    "empirical_tully_fisher",
+    "empirical_bode",
     "empirical_leavitt",
     "empirical_schechter",
     "empirical_ideal_gas",

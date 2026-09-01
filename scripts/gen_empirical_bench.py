@@ -6,8 +6,8 @@ PySR and SymbolicRegression.jl", arXiv:2305.01582) is a benchmark of 9 historica
 empirical equations. In the paper's Table 3, Planck and Rydberg scored 0/5 for
 every method tested (PySR, Operon, DSR, EQL, QLattice, SR-Transformer).
 
-    The full nine-task EmpiricalBench: Hubble, Kepler, Newton, Tully-Fisher,
-    Leavitt, Schechter, ideal gas, Planck, and Rydberg.
+    The full nine-task EmpiricalBench: Hubble, Kepler, Newton, Bode, Leavitt,
+    Schechter, ideal gas, Planck, and Rydberg.
 
 Planck and Rydberg are faithful ports of the publication generator. The other
 seven reuse the publication data vendored under PMLB ``first_principles_*``
@@ -89,8 +89,9 @@ ALIASES = {
     "empirical_newton": (
         "first_principles_newton", "logF = log(m1*m2) - 2*log(r)"
     ),
-    "empirical_tully_fisher": (
-        "first_principles_tully_fisher", "M = log(DV)"
+    "empirical_bode": (
+        "first_principles_bode",
+        "loga = log(0.4 + 0.3*exp(0.6931471805599453*n))",
     ),
     "empirical_leavitt": ("first_principles_leavitt", "M = logP"),
     "empirical_schechter": (
@@ -110,6 +111,10 @@ def gen_alias(name):
     frame = pd.read_csv(source_path, sep="\t", compression="gzip")
     X = frame.drop(columns=["target"])
     y = frame["target"].to_numpy()
+    if name == "empirical_bode":
+        # Bode's plot has a logarithmic y-axis, so the publication benchmark's
+        # scale_dataset=True protocol searches against log(semi-major axis).
+        y = np.log(y)
     desc = (
         f"EmpiricalBench: {name.removeprefix('empirical_').replace('_', ' ')}.\n"
         "Canonical alias of the publication dataset with a reduced recovery target.\n\n"
