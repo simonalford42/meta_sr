@@ -49,9 +49,9 @@ def main() -> None:
     from autoresearch_pysr import resolve_commit
 
     commit = resolve_commit(args.target, SUBMODULE, RESULTS_TSV)
-    seed = args.seed if args.seed is not None else (192 if args.confirm else 42)
+    seed = args.seed if args.seed is not None else (43 if args.confirm else 42)
     n_runs = args.n_runs if args.n_runs is not None else (10 if args.confirm else 3)
-    splits = [TRAIN]
+    split = TRAIN
     phase = "confirm" if args.confirm else "quick"
     output_dir = Path(args.output_dir) if args.output_dir else (
         ROOT / "autoresearch_sr" / "eval_results" / commit[:12]
@@ -65,7 +65,7 @@ def main() -> None:
         "--autoresearch-submodule", str(SUBMODULE),
         "--autoresearch-results", str(RESULTS_TSV),
         "--autoresearch-sandboxes", str(SANDBOXES),
-        "--splits", *splits,
+        "--splits", split,
         "--n-runs", str(n_runs),
         "--seed", str(seed),
         "--max-evals", "1000000",
@@ -89,11 +89,20 @@ def main() -> None:
     print("\n--- autoresearch result ---")
     print(f"commit:        {commit}")
     print(f"phase:         {phase}")
-    for split in splits:
-        name = Path(split).stem
-        values = summary[name].get("per_run_gt_avgs") or []
-        score = float(np.mean(values)) if values else 0.0
-        print(f"{name}: {score:.6f}")
+    name = Path(split).stem
+    values = summary[name].get("per_run_gt_avgs") or []
+    details = summary[name].get("result_details") or []
+    score = float(np.mean(values)) if values else 0.0
+    datasets = len(details)
+    datasets_fail = sum(
+        detail.get("n_successful_runs", 0) < n_runs for detail in details
+    )
+    print(f"score:         {score:.6f}")
+    print(f"datasets:      {datasets}")
+    print(f"datasets_ok:   {datasets - datasets_fail}")
+    print(f"datasets_fail: {datasets_fail}")
+    print("metric:        gt")
+    print(f"n_runs:        {n_runs}")
     print(f"summary:       {summary_path}")
 
 

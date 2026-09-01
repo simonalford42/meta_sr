@@ -6,8 +6,8 @@ This is an experiment to have the LLM autonomously improve symbolic regression.
 
 To set up a new experiment, work with the user to:
 
-1. **Agree on a run tag**: propose a tag based on today's date (e.g. `apr7`). The branch `autoresearch_sr/<tag>` must not already exist — this is a fresh run.
-2. **Create the branch**: `git checkout -b autoresearch_sr/<tag>` from current main.
+1. **Agree on a run tag**: propose a tag based on today's date (e.g. `apr7`). The branch `autoresearch_sr/<tag>` must not already exist in the nested `SymbolicRegression.jl` repository — this is a fresh run.
+2. **Create the branch**: `git -C /home/sca63/meta_sr_agent_loop/SymbolicRegression.jl checkout -b autoresearch_sr/<tag> origin/master`.
 3. **Read the in-scope files**: Read these files for full context:
    - `program.md` — these instructions.
    - `evaluate.py` — fixed evaluation harness. Do not modify.
@@ -19,8 +19,7 @@ Once you get confirmation, kick off the experimentation.
 
 ## Experimentation
 
-Each experiment evaluates symbolic regression performance on SRBench benchmarks via SLURM. The evaluation takes ~5 minutes to complete, but this can vary depending on the SLURM cluster state. Each dataset gets a deterministic assignment of target noise from levels `0`, `0.001`, `0.01`, and `0.1`, and is evaluated for 1e6 max evals, with a 500 second soft timeout and 600 second hard timeout.
-
+Each experiment evaluates symbolic regression performance on SRBench benchmarks via SLURM. The evaluation takes ~5 minutes to complete, but this can vary depending on the SLURM cluster state. Each dataset gets a deterministic assignment of target noise from levels `0`, `0.001`, `0.01`, and `0.1`, and is evaluated for a maximum of 1e6 evaluations, with a 500-second soft timeout and 600-second hard timeout.
 
 **What you CAN do:**
 - Edit the following Julia source files in `/home/sca63/meta_sr_agent_loop/SymbolicRegression.jl/src`:
@@ -48,11 +47,11 @@ the harness evaluates a detached worktree at that commit.
 - Do not modify files in `src/` that are not listed (e.g., `SymbolicRegression.jl`, `Options.jl`).
 - Do not inspect, evaluate, or optimize against any validation, test, or remaining official SRBench tasks.
 
-**The goal is simple: get the highest score.** The metric is `gt` (ground-truth match rate — fraction of datasets where the discovered equation matches the true formula). Higher is better. Current baseline (unmodified PySR): 0.40.
+**The goal is simple: get the highest score.** The metric is `gt` (ground-truth match rate — fraction of datasets where the discovered equation matches the true formula). Higher is better.
 
 **Evaluation is noisy.** To guard against noise, `evaluate.py` already runs multiple seeds internally (see `n_runs` in the output) and reports the averaged score. On top of that, every apparent improvement is re-evaluated with a different seed before being accepted (see the loop below).
 
-**Experiment with both ambitious algorithmic changes and smaller tweaks** Think on a scale from 1 to 4: 1 = tweak a hyperparameter, 2 = tweak an approach, 3 = experiment with a new approach, 4 = large change to part of the algorithm. Your experiments should be roughly equally distributed across this scale.
+**Experiment with both ambitious algorithmic changes and smaller tweaks:** Think on a scale from 1 to 4: 1 = tweak a hyperparameter, 2 = tweak an approach, 3 = experiment with a new approach, 4 = large change to part of the algorithm. Your experiments should be roughly equally distributed across this scale.
 
 **The first run**: Your very first run should always be to establish the baseline.
 
@@ -61,19 +60,21 @@ the harness evaluates a detached worktree at that commit.
 Once the evaluation finishes it prints a summary like this:
 
 ```
----
-barely_unsolvable score:         0.423000
+--- autoresearch result ---
+commit:        a1b2c3d4e5f6
+phase:         quick
+score:         0.423000
 datasets:      12
 datasets_ok:   12
 datasets_fail: 0
 metric:        gt
 n_runs:        3
----
+summary:       /path/to/eval_summary.json
 ```
 
 You can extract the key metric from the log file:
 ```
-grep "^barely_unsolvable score:" run.log
+grep "^score:" run.log
 ```
 
 ## Dataset health check
@@ -109,7 +110,7 @@ exp	commit	score	score2	status	description
 
 ## The experiment loop
 
-The experiment runs on a dedicated branch (e.g. `autoresearch/apr7`).
+The experiment runs on a dedicated branch in the nested `SymbolicRegression.jl` repository (e.g. `autoresearch_sr/apr7`).
 
 LOOP FOREVER:
 
@@ -119,15 +120,15 @@ LOOP FOREVER:
 4. Run the experiment: `python evaluate.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
 5. Read out the result: `grep "^score:" run.log`
 6. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` or similar to read the error and attempt a fix. If you can't get things to work after more than a few attempts, give up on this direction. If the log shows `datasets_fail > 0`, treat it as a partial crash — debug or discard (see "Dataset health check" above).
-7. Evaluation is noisy, so if the score improved (higher), rerun evaluation with seed 43 and 10 runs per dataset to confirm the improvement is not just noise: `python evaluate.py --seed 43 --n-runs 10 > run2.log 2>&1`. Read out the score the same way. (Do this step for the baseline too.)
-8. Record the results in the tsv (NOTE: do not commit the results.tsv file, leave it untracked by git)
+7. Evaluation is noisy, so if the score improved (higher), rerun evaluation with seed 43 and 10 runs per dataset to confirm the improvement is not just noise: `python evaluate.py --confirm > run2.log 2>&1`. Read out the score the same way. (Do this step for the baseline too.)
+8. Record the results in the TSV (NOTE: do not commit the results.tsv file, leave it untracked by git)
 9. If the second evaluation also improves over the previous best, you "advance" the branch, keeping the git commit
 10. If either evaluation is equal or worse than the previous best, git reset back to where you started
 
 The idea is that you are a completely autonomous researcher trying things out. If they work, keep. If they don't, discard. And you're advancing the branch so that you can iterate.
 
-**Crashes**: If a run crashes (Julia error, SLURM failure, syntax error), use your judgment: If it's something dumb and easy to fix (e.g. a typo, wrong function signature), fix it and re-run. If the idea itself is fundamentally broken, just skip it, log "crash" as the status in the tsv, and move on.
+**Crashes**: If a run crashes (Julia error, SLURM failure, syntax error), use your judgment: If it's something dumb and easy to fix (e.g. a typo, wrong function signature), fix it and re-run. If the idea itself is fundamentally broken, just skip it, log "crash" as the status in the TSV, and move on.
 
-**NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder — re-read the reference docs, re-read the in scope fils for new angles, try combining previous near-misses, try more radical changes. The loop runs until the human interrupts you, period.
+**NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder — re-read the reference docs, re-read the in-scope files for new angles, try combining previous near-misses, try more radical changes. The loop runs until the human interrupts you, period.
 
 As an example use case, a user might leave you running while they sleep. If each experiment takes ~5 minutes then you can run approx 12/hour. The user then wakes up to experimental results, all completed by you while they slept!
