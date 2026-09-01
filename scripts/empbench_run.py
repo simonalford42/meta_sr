@@ -107,7 +107,8 @@ def build_pysr_kwargs_and_code(args):
                               for k, v in base[ckey].items()}
 
     # Parallelism / wall-clock overrides (PySR-paper protocol: multi-core,
-    # time-boxed). Default path is unchanged (serial, max_evals milestones).
+    # time-boxed). Keep max_evals active as a second stopping condition: when
+    # both limits are supplied, PySR stops at whichever is reached first.
     if args.parallelism is not None or args.procs is not None or args.timeout_seconds is not None:
         par = args.parallelism or "serial"
         base["parallelism"] = par
@@ -119,7 +120,6 @@ def build_pysr_kwargs_and_code(args):
         if args.timeout_seconds is not None:
             base["timeout_in_seconds"] = float(args.timeout_seconds)
             base["niterations"] = 10_000_000  # let the wall clock govern
-            base.pop("max_evals", None)
 
     method_meta["binary_operators"] = base.get("binary_operators")
     method_meta["unary_operators"] = base.get("unary_operators")
@@ -244,9 +244,9 @@ def main():
                     help="fraction of data used for training; 1.0 = PySR-paper "
                          "protocol (train on the full dataset, val=train)")
     ap.add_argument("--timeout-seconds", type=float, default=None,
-                    help="WALL-CLOCK mode: run a single fit time-boxed to this "
-                         "many seconds (PySR timeout_in_seconds), then score the "
-                         "final Pareto front once. Replaces the eval-milestone loop.")
+                    help="Run a single fit with this PySR wall-clock limit and "
+                         "--max-evals both active, then score the final Pareto "
+                         "front once (whichever budget is reached first).")
     ap.add_argument("--parallelism", default=None,
                     choices=[None, "serial", "multithreading", "multiprocessing"],
                     help="PySR parallelism. Use 'multithreading' for multi-core "
@@ -322,7 +322,8 @@ def main():
         "n_train": int(ntr), "n_val": int(n - ntr), "gt": gt_x,
         "pysr_kwargs": {k: v for k, v in pysr_kwargs.items()
                         if k in ("binary_operators", "unary_operators", "maxsize",
-                                 "populations", "population_size", "max_evals")},
+                                 "populations", "population_size", "max_evals",
+                                 "timeout_in_seconds")},
     }
 
     import signal

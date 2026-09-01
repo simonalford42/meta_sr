@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+# 9/1/26 — EmpiricalBench's two historically unsolved tasks (Planck and
+# Rydberg): base PySR versus evolved run 709715, five paired seeds per task.
+# Each fit stops at 1e6 evaluations or one hour, whichever comes first. The
+# array has 20 single-core tasks and writes corrected + legacy recovery scores.
+EMPBENCH_COMPARE="runs/709715/empiricalbench_comparison"
+python scripts/empbench_make_jobs.py --out-jobs "$EMPBENCH_COMPARE/jobs.json" --out-dir "$EMPBENCH_COMPARE/results" --evolve-results runs/709715 --n-seeds 5 --max-evals 1000000 --timeout-seconds 3600 --wall-limit 3900
+python scripts/empbench_slurm_submit.py --jobs "$EMPBENCH_COMPARE/jobs.json" --jobname emp-709715 --time 01:15:00 --mem 8G --cpus 1 --julia-threads 1 --partition default_partition --throttle 20
+
 evolve_after_hpo=$(sbatch --parsable -J evolve-after-hpo run.sh evolve_pysr.py --operator-type all --baseline outputs/hpo_pysr_20260727_172105_644009 --generations 30 --population 10 --offspring 10 --n-runs 3 --reeval population --n-reevals 10 --models best2)
 hpo_evolved_base=$(sbatch --parsable -J hpo-evolved-base run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt)
 

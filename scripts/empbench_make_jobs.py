@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the JSON job list for the EmpiricalBench local study (Phase A: the
-baseline-vs-evolved comparison at 1e7 evals on both problems)."""
+"""Generate baseline-vs-evolved EmpiricalBench jobs for local or SLURM use."""
 import argparse
 import json
 from pathlib import Path
@@ -13,11 +12,17 @@ def main():
     ap.add_argument("--out-jobs", default="runs_local/main/jobs.json")
     ap.add_argument("--out-dir", default="runs_local/main")
     ap.add_argument("--n-seeds", type=int, default=5)
-    ap.add_argument("--max-evals", type=float, default=1e7)
+    ap.add_argument("--max-evals", type=float, default=1e6)
+    ap.add_argument("--timeout-seconds", type=float, default=3600,
+                    help="PySR soft wall-clock limit; max-evals remains active")
     ap.add_argument("--n-milestones", type=int, default=12)
-    ap.add_argument("--wall-limit", type=float, default=21600)
-    ap.add_argument("--evolve-results", default="runs/666285")
+    ap.add_argument("--wall-limit", type=float, default=3900,
+                    help="hard worker guard; must exceed --timeout-seconds")
+    ap.add_argument("--evolve-results", default="runs/709715")
     args = ap.parse_args()
+
+    if args.wall_limit <= args.timeout_seconds:
+        ap.error("--wall-limit must exceed --timeout-seconds so PySR can save its frontier")
 
     jobs = []
     out_dir = Path(args.out_dir)
@@ -28,6 +33,7 @@ def main():
             jobs.append({
                 "method": "baseline", "dataset": ds, "run_index": ri,
                 "max_evals": int(args.max_evals), "n_milestones": args.n_milestones,
+                "timeout_seconds": int(args.timeout_seconds),
                 "wall_limit": int(args.wall_limit),
                 "out": str(out_dir / f"{short}_baseline_r{ri}.json"),
             })
@@ -36,6 +42,7 @@ def main():
                 "method": "evolve", "evolve_results": args.evolve_results,
                 "dataset": ds, "run_index": ri,
                 "max_evals": int(args.max_evals), "n_milestones": args.n_milestones,
+                "timeout_seconds": int(args.timeout_seconds),
                 "wall_limit": int(args.wall_limit),
                 "out": str(out_dir / f"{short}_evolve_r{ri}.json"),
             })
