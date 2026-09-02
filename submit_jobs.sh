@@ -2,11 +2,10 @@
 
 # 9/2/26
 
-# Full LaSR ground-truth SRBench baseline: 133 equations x noise 0.001
-# x 1 seed = 133 fits. Estimated API cost: $55-$218; estimated raw LLM logs:
-# 3-14 GB (see the matching `plan` command below).
-python evaluate_lasr_srbench.py plan --noise-levels 0.001
-python evaluate_lasr_srbench.py submit --noise-levels 0.001 --output-dir runs/lasr_srbench_nemo_noise0p001_1seed_v2 --max-concurrent 32
+# LaSR ground-truth SRBench subset: 20 equations x noise 0.001 x 1 seed.
+# Estimated API cost: $8-$33; estimated raw LLM logs: 1-2 GB.
+python evaluate_lasr_srbench.py plan --split-file splits/lasr_20.txt --noise-levels 0.001
+python evaluate_lasr_srbench.py submit --split-file splits/lasr_20.txt --noise-levels 0.001 --output-dir runs/lasr_srbench_nemo_noise0p001_20tasks --max-concurrent 20
 
 # sbatch -J hpo-709715-barely run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
 
