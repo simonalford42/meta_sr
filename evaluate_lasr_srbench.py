@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ DEFAULT_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
 # lowest-priced available provider for that model.
 DEFAULT_MODEL = "mistralai/mistral-nemo:floor"
 DEFAULT_MODEL_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key"
 
 # Measured from the 2026-08-31 local one-iteration OpenRouter smoke test:
 # 3 completed responses plus one failed request at weights 0.0001, using a
@@ -66,6 +68,64 @@ def _load_project_env() -> None:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _get_openrouter_key_usage() -> dict[str, Any]:
+    """Return non-secret cumulative billing counters for the active API key."""
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY is not set")
+    request = urllib.request.Request(
+        OPENROUTER_KEY_URL,
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                data = json.load(response)["data"]
+            return {
+                "captured_at": _utc_now(),
+                "usage_usd": float(data["usage"]),
+                "usage_daily_usd": float(data["usage_daily"]),
+                "usage_weekly_usd": float(data["usage_weekly"]),
+                "usage_monthly_usd": float(data["usage_monthly"]),
+                "limit_usd": (
+                    float(data["limit"]) if data.get("limit") is not None else None
+                ),
+                "limit_remaining_usd": (
+                    float(data["limit_remaining"])
+                    if data.get("limit_remaining") is not None else None
+                ),
+            }
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+    raise RuntimeError(f"Could not read OpenRouter key usage: {last_error}")
+
+
+def _capture_openrouter_usage(output_dir: Path, phase: str) -> dict[str, Any]:
+    """Persist a start/end API-key usage snapshot and its billed USD delta."""
+    if phase not in {"start", "end"}:
+        raise ValueError(f"Unknown OpenRouter usage phase: {phase}")
+    path = output_dir / "openrouter_usage.json"
+    payload = json.loads(path.read_text()) if path.exists() else {
+        "scope": "api_key",
+        "note": (
+            "Cost is the API key's cumulative usage delta. Unrelated requests "
+            "made with the same key between these snapshots are included."
+        ),
+    }
+    if phase == "start" and "start" in payload:
+        return payload
+    payload[phase] = _get_openrouter_key_usage()
+    if "start" in payload and "end" in payload:
+        payload["cost_usd"] = (
+            payload["end"]["usage_usd"] - payload["start"]["usage_usd"]
+        )
+    _write_json_atomic(path, payload)
+    return payload
 
 
 def _read_datasets(split_file: str | Path) -> list[str]:
@@ -295,6 +355,19 @@ def _submit(args: argparse.Namespace) -> None:
     if not LASR_PYTHON.exists():
         raise SystemExit("LaSR environment missing; run scripts/setup_lasr.sh first")
     output_dir = _prepare(args)
+    usage = _capture_openrouter_usage(output_dir, "start")
+    print(f"OpenRouter usage at submission: ${usage['start']['usage_usd']:.6f}")
+    remaining = usage["start"].get("limit_remaining_usd")
+    if remaining is not None:
+        print(f"OpenRouter key limit remaining: ${remaining:.2f}")
+        manifest = json.loads((output_dir / "manifest.json").read_text())
+        ceiling = manifest["cost_estimate"]["estimated_cost_usd_conservative_ceiling"]
+        if ceiling > remaining:
+            print(
+                f"Warning: estimated cost ceiling ${ceiling:.2f} exceeds the "
+                f"key's remaining limit ${remaining:.2f}.",
+                file=sys.stderr,
+            )
     tasks = json.loads((output_dir / "lasr_batch" / "tasks.json").read_text())
     array_cmd, _ = _sbatch_commands(args, output_dir, len(tasks))
     array_job_id = subprocess.check_output(array_cmd, text=True).strip().split(";")[0]
@@ -616,6 +689,12 @@ def _run_worker(args: argparse.Namespace) -> None:
 def _aggregate(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir).resolve()
     manifest = json.loads((output_dir / "manifest.json").read_text())
+    _load_project_env()
+    try:
+        openrouter_usage = _capture_openrouter_usage(output_dir, "end")
+    except Exception as exc:
+        openrouter_usage = {"error": f"{type(exc).__name__}: {exc}"}
+        print(f"Warning: OpenRouter cost capture failed: {exc}", file=sys.stderr)
     sys.path.insert(0, str(PROJECT_ROOT))
     import srbench_results_io as srio
 
@@ -648,6 +727,7 @@ def _aggregate(args: argparse.Namespace) -> None:
         "llm_attempted_calls": attempted,
         "llm_completed_calls": completed,
         "llm_failed_records": failed_records,
+        "openrouter_usage": openrouter_usage,
         "metrics": metrics,
     }
     _write_json_atomic(output_dir / "summary.json", summary)
@@ -659,6 +739,8 @@ def _aggregate(args: argparse.Namespace) -> None:
         f"LLM: {completed:,} completed responses / {attempted:,} attempts; "
         f"{failed_records:,} failure records"
     )
+    if "cost_usd" in openrouter_usage:
+        print(f"OpenRouter key usage delta: ${openrouter_usage['cost_usd']:.6f}")
     print(srio.format_metrics_console(metrics, manifest["noise_levels"]))
     print(f"\nInspect with: python inspect_srbench_results.py --run-id {output_dir.name}")
 

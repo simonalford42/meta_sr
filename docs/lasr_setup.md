@@ -84,5 +84,11 @@ number and length of LLM responses are stochastic. It extrapolates from the
 checked-in environment's one-equation OpenRouter smoke measurement and is
 recorded in each run's `manifest.json`.
 
+At submission and aggregation, the evaluator also snapshots the OpenRouter
+API key's cumulative billed usage. The difference is recorded as `cost_usd` in
+`openrouter_usage.json` and copied into `summary.json`. This is an exact
+key-level delta; unrelated requests made with the same key while the run is in
+progress would be included.
+
 A full run needs either this external endpoint or a GPU-hosted vLLM server.
 Starting either evaluation through SLURM still requires explicit approval.
