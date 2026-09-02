@@ -2,6 +2,12 @@
 
 # 9/2/26
 
+# Full LaSR ground-truth SRBench baseline: 133 equations x noise 0.001
+# x 1 seed = 133 fits. Estimated API cost: $55-$218; estimated raw LLM logs:
+# 3-14 GB (see the matching `plan` command below).
+python evaluate_lasr_srbench.py plan --noise-levels 0.001
+python evaluate_lasr_srbench.py submit --noise-levels 0.001 --output-dir runs/lasr_srbench_nemo_noise0p001_1seed_v2 --max-concurrent 32
+
 # sbatch -J hpo-709715-barely run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
 
 sbatch -J 20m-ft-709715-tophalf run.sh evolve_pysr.py --operator-type all --baseline runs/709715 --generations 10 --population 10 --offspring 10 --n-runs 1 --fitness-metric gt --population-type task --reeval topk --reeval-topk 2 --n-reevals 3 --models best2 --split splits/srbench_top_half_20min.txt --val-split splits/barely_unsolvable_val2.txt --val-n-runs 1 --identify-topk 2 --max-time-in-seconds 1200 --pysr-wall-limit 1800 --val-pysr-timeout 1200 --val-pysr-wall-limit 1800 --time-limit 00:35:00 --job-timeout 3600 --random-target-noise
@@ -28,13 +34,6 @@ sbatch -J 20m-ft-709715-tophalf run.sh evolve_pysr.py --operator-type all --base
 # evolve_after_hpo=$(sbatch --parsable -J evolve-after-hpo run.sh evolve_pysr.py --operator-type all --baseline outputs/hpo_pysr_20260727_172105_644009 --generations 30 --population 10 --offspring 10 --n-runs 3 --reeval population --n-reevals 10 --models best2)
 # hpo_evolved_base=$(sbatch --parsable -J hpo-709715 run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt)
 
-# 8/31 — Full LaSR ground-truth SRBench baseline: 133 equations x noise 0.001
-# x 1 seed = 133 fits. This command prepares the manifest and submits a capped
-# worker array plus its dependent aggregator. It loads the OpenRouter key from
-# the gitignored .env. Estimated API cost: $55-$218; estimated raw LLM logs:
-# 3-14 GB (see the matching `plan` command below).
-# python scripts/evaluate_lasr_srbench.py plan --noise-levels 0.001
-# python scripts/evaluate_lasr_srbench.py submit --noise-levels 0.001 --output-dir runs/lasr_srbench_nemo_noise0p001_1seed --max-concurrent 32
 
 # 8/31
 # Paired comparison on the exact run-709716 synthetic manifests and data seeds:

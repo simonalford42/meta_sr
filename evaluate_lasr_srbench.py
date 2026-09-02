@@ -8,8 +8,8 @@ ground-truth check used by ``srbench_full_eval.py``.
 
 Typical workflow (``submit`` is the only subcommand that calls ``sbatch``)::
 
-    python scripts/evaluate_lasr_srbench.py plan
-    python scripts/evaluate_lasr_srbench.py submit --output-dir runs/lasr_srbench_nemo_1seed
+    python evaluate_lasr_srbench.py plan
+    python evaluate_lasr_srbench.py submit --output-dir runs/lasr_srbench_nemo_1seed
     python inspect_srbench_results.py --run-id lasr_srbench_nemo_1seed
 """
 
@@ -19,6 +19,7 @@ import argparse
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -27,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parent
 LASR_ROOT = PROJECT_ROOT / "LaSR.jl"
 LASR_PYTHON = PROJECT_ROOT / ".venv-lasr" / "bin" / "python"
 DEFAULT_NOISE_LEVELS = [0.0, 0.001, 0.01, 0.1]
@@ -308,10 +309,16 @@ def _submit(args: argparse.Namespace) -> None:
 def _ensure_lasr_python() -> None:
     if not LASR_PYTHON.exists():
         raise SystemExit("LaSR environment missing; run scripts/setup_lasr.sh first")
-    if Path(sys.executable).resolve() != LASR_PYTHON.resolve():
+    # The venv and Conda launchers can resolve to the same underlying CPython
+    # executable, so comparing sys.executable symlinks does not identify the
+    # active environment. sys.prefix is the environment root.
+    lasr_prefix = LASR_PYTHON.parent.parent.resolve()
+    if Path(sys.prefix).resolve() != lasr_prefix:
         env = os.environ.copy()
         env.setdefault("JULIA_DEPOT_PATH", str(PROJECT_ROOT / ".julia_depot"))
-        julia = subprocess.check_output(["bash", "-lc", "command -v julia"], text=True).strip()
+        julia = shutil.which("julia")
+        if julia is None:
+            raise SystemExit("Julia is not available on PATH")
         env.setdefault("PYTHON_JULIACALL_EXE", julia)
         os.execve(
             str(LASR_PYTHON),
@@ -386,6 +393,7 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
 
 def _run_worker(args: argparse.Namespace) -> None:
     _ensure_lasr_python()
+    _load_project_env()
     if not os.environ.get("OPENROUTER_API_KEY"):
         raise SystemExit("OPENROUTER_API_KEY was not exported to the worker")
 
@@ -394,6 +402,10 @@ def _run_worker(args: argparse.Namespace) -> None:
     import numpy as np
     from pysr import PySRRegressor
 
+    # Make both the repository modules and the archived LaSR artifact explicit.
+    # This is also robust to launchers that replace Python's script-directory
+    # entry in sys.path.
+    sys.path.insert(0, str(PROJECT_ROOT))
     sys.path.append(str(LASR_ROOT))
     from experiments.model import custom_loss
     from evaluation import get_dataset_var_names

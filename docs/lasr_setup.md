@@ -47,7 +47,7 @@ as unsolved.
 
 ## Full SRBench ground-truth evaluation through OpenRouter
 
-`scripts/evaluate_lasr_srbench.py` adapts the archived LaSR search to the
+`evaluate_lasr_srbench.py` adapts the archived LaSR search to the
 canonical `splits/srbench_all.txt` grid. It uses the shared SRBench protocol:
 
 - 133 ground-truth datasets, including the 3 inverse-trig unsolvable cases;
@@ -66,7 +66,7 @@ completion cap.
 Estimate the grid without creating files or submitting jobs:
 
 ```bash
-.venv-lasr/bin/python scripts/evaluate_lasr_srbench.py plan --noise-levels 0.001
+.venv-lasr/bin/python evaluate_lasr_srbench.py plan --noise-levels 0.001
 ```
 
 The prepared submission block is in `submit_jobs.sh`. Its `submit` subcommand
