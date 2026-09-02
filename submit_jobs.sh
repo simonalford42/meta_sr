@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# 9/2/26
+
+sbatch -J hpo-709715-barely run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
+
 # Paper-protocol EmpiricalBench rerun: all rows, paper search space, float64,
 # eight processes, five seeds, and 60 minutes of search per fit. Baseline uses
 # L1; evolved 709715 keeps its custom loss. Prepared only, not submitted.
