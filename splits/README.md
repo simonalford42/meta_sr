@@ -108,6 +108,19 @@ tasks sampled uniformly at random from `srbench_all.txt` minus
 `barely_unsolvable.txt` (no difficulty stratification). Disjoint from
 `barely_unsolvable.txt`; may overlap with `barely_unsolvable_val.txt`.
 
+### `srbench_top_half_20min.txt` (20)
+
+Training split calibrated for 20-minute continuation runs from bundle 709715.
+The 130 reachable SRBench tasks were sorted by the canonical SRBench difficulty
+metric, the hardest half (ranks 2..66; rank 1 is an excluded inverse-trig task)
+was divided into 20 consecutive rank strata, and one non-validation task was
+selected from every stratum. Selection also balances the deterministic
+seed-42 random-target-noise assignment at five tasks per noise level (0,
+0.001, 0.01, 0.1). Among choices satisfying those constraints, the selected
+tasks have a 10-seed, 1M-evaluation 709715 solve rate of 10%, versus 19.5% for
+`medium_unsolvable.txt`; the longer budget is expected to move the initial
+solve rate toward 40%. The split is disjoint from `barely_unsolvable_val2.txt`.
+
 ### `parity_outliers.txt` (5)
 Hand-picked SRBench tasks where PyPySR and PySR disagreed during the
 parity-debugging effort (commit 1989425, see `parity_debug_log.md`).

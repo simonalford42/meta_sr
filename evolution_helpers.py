@@ -831,15 +831,26 @@ def select_survivors(population: list, offspring: list, population_size: int) ->
     return scored[:population_size]
 
 
-def select_population_reeval_members(population: list, topk: int) -> list:
+def select_population_reeval_members(
+    population: list,
+    topk: int,
+    target_seeds: Optional[int] = None,
+) -> list:
     """Return the top-scoring population members to top up with fresh seeds.
 
     Sorting is stable, so equal-scoring members retain population order. Members
-    without a score are omitted.
+    without a score are omitted. When ``target_seeds`` is provided, members
+    already evaluated on that many seeds are omitted before ranking, so they do
+    not consume one of the limited top-k slots.
     """
     if topk <= 0:
         return []
     scored = [member for member in population if member.score is not None]
+    if target_seeds is not None:
+        scored = [
+            member for member in scored
+            if int(getattr(member, "seeds_evaluated", 0) or 0) < target_seeds
+        ]
     scored.sort(key=lambda member: member.score, reverse=True)
     return scored[:topk]
 

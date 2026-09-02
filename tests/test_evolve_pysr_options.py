@@ -9,6 +9,7 @@ from evolution_helpers import (
     select_survivors_complexity,
     select_survivors_diverse,
 )
+from parallel_eval_pysr import get_default_pysr_kwargs
 
 
 @dataclass
@@ -26,6 +27,10 @@ class _Bundle:
     @property
     def operators(self):
         return {"mutation": _Operator("\n".join("x" for _ in range(self.loc)))}
+
+
+def test_slurm_pysr_defaults_disable_interactive_progress_output():
+    assert get_default_pysr_kwargs()["progress"] is False
 
 
 def test_complexity_selection_uses_updated_population_reeval_scores():
@@ -63,6 +68,27 @@ def test_population_topk_reeval_selects_only_best_scored_members():
     selected = select_population_reeval_members(population, topk=2)
 
     assert [bundle.display_name for bundle in selected] == ["best", "second"]
+
+
+def test_population_topk_reeval_ranks_only_members_needing_more_seeds():
+    population = [
+        _Bundle("complete-best", 0.95, 1),
+        _Bundle("eligible-best", 0.90, 1),
+        _Bundle("complete-second", 0.85, 1),
+        _Bundle("eligible-second", 0.80, 1),
+        _Bundle("eligible-third", 0.70, 1),
+    ]
+    for bundle, seeds in zip(population, [3, 1, 3, 2, 1]):
+        bundle.seeds_evaluated = seeds
+
+    selected = select_population_reeval_members(
+        population, topk=2, target_seeds=3
+    )
+
+    assert [bundle.display_name for bundle in selected] == [
+        "eligible-best",
+        "eligible-second",
+    ]
 
 
 def test_complexity_phase_initialization_uses_exact_archive_pareto_front():

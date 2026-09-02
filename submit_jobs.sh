@@ -2,7 +2,9 @@
 
 # 9/2/26
 
-sbatch -J hpo-709715-barely run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
+# sbatch -J hpo-709715-barely run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
+
+sbatch -J 20m-ft-709715-tophalf run.sh evolve_pysr.py --operator-type all --baseline runs/709715 --generations 10 --population 10 --offspring 10 --n-runs 1 --fitness-metric gt --population-type task --reeval topk --reeval-topk 2 --n-reevals 3 --models best2 --split splits/srbench_top_half_20min.txt --val-split splits/barely_unsolvable_val2.txt --val-n-runs 1 --identify-topk 2 --max-time-in-seconds 1200 --pysr-wall-limit 1800 --val-pysr-timeout 1200 --val-pysr-wall-limit 1800 --time-limit 00:35:00 --job-timeout 3600 --random-target-noise
 
 # Paper-protocol EmpiricalBench rerun: all rows, paper search space, float64,
 # eight processes, five seeds, and 60 minutes of search per fit. Baseline uses
@@ -12,7 +14,7 @@ sbatch -J emp-paper-709715 run.sh empbench_full_eval.py --evolve-results runs/70
 
 # 9/1/26
 
-# sbatch -J ft-709715-medium run.sh evolve_pysr.py --operator-type all --baseline runs/709715 --generations 10 --population 10 --offspring 10 --n-runs 1 --fitness-metric gt --population-type task --reeval topk --reeval-topk 2 --n-reevals 3 --models best2 --split splits/medium_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --val-n-runs 1 --identify-topk 2 --max-time-in-seconds 1200 --pysr-wall-limit 1800 --val-pysr-timeout 1200 --val-pysr-wall-limit 1800 --time-limit 00:35:00 --job-timeout 3600 --no-random-target-noise
+# sbatch --dependency=afterany:107098 -J 20m-ft-709715-medium run.sh evolve_pysr.py --operator-type all --baseline runs/709715 --generations 10 --population 10 --offspring 10 --n-runs 1 --fitness-metric gt --population-type task --reeval topk --reeval-topk 2 --n-reevals 3 --models best2 --split splits/medium_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --val-n-runs 1 --identify-topk 2 --max-time-in-seconds 1200 --pysr-wall-limit 1800 --val-pysr-timeout 1200 --val-pysr-wall-limit 1800 --time-limit 00:35:00 --job-timeout 3600
 
 sbatch -J ablate-709715 run.sh scripts/evaluate_operator_ablation.py --bundle-jl runs/709715/best_bundles/best_gen43.jl --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir runs/709715/operator_ablation_gen43
 

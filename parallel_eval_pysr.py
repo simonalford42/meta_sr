@@ -3642,7 +3642,9 @@ def get_default_pysr_kwargs() -> Dict[str, Any]:
         "batching": False,
         # Output settings
         "verbosity": 1,
-        "progress": True,
+        # Interactive redraws generate tens of MB per long-running SLURM task
+        # without providing useful information in captured logs.
+        "progress": False,
         "temp_equation_file": False,
         "delete_tempfiles": True,
         "output_directory": "pysr_outputs"

@@ -1012,17 +1012,16 @@ def run_bundle_evolution(
             f"training run_index range (up to {_max_train_run_index})"
         )
 
-    # Periodic background validation on a held-out split.
-    # Submits a single-bundle SLURM eval on `val_split` each generation
-    # whenever the current best bundle has changed. Runs on a background
-    # thread so the evolution loop isn't blocked.
+    # Periodic background validation on a held-out split. Each completed
+    # generation gets a generation-specific seed band, even when the same best
+    # bundle survives, so repeated diagnostics cannot become cache hits.
+    VAL_REEVAL_SEED_OFFSET = 200_000
     val_state: Dict[str, Any] = {
         "enabled": False,
         "dataset_names": None,
         "noise_map": None,
         "executor": None,
         "pending_future": None,
-        "last_bundle_name": None,
     }
     if val_split:
         val_dataset_names = load_dataset_names_from_split(val_split)
@@ -1051,6 +1050,9 @@ def run_bundle_evolution(
             target_noise_map=val_state["noise_map"],
             fitness_metric=fitness_metric,
             pysr_wall_limit=val_pysr_wall_limit,
+            run_index_start_per_config=[
+                VAL_REEVAL_SEED_OFFSET + gen_submitted * val_n_runs
+            ],
         )
         batch_results = evaluator.collect_batches([handle])
         avg, vec, details = batch_results[0][0] if batch_results and batch_results[0] else (-1.0, [], [])
@@ -1095,9 +1097,6 @@ def run_bundle_evolution(
             return
         if val_state["pending_future"] is not None and not val_state["pending_future"].done():
             return
-        if bundle.display_name == val_state["last_bundle_name"]:
-            return
-        val_state["last_bundle_name"] = bundle.display_name
         val_state["pending_future"] = val_state["executor"].submit(
             _run_val_eval, bundle, gen,
         )
@@ -1110,7 +1109,6 @@ def run_bundle_evolution(
     train_reeval_state: Dict[str, Any] = {
         "executor": ThreadPoolExecutor(max_workers=1, thread_name_prefix="train-reeval"),
         "pending_future": None,
-        "last_bundle_name": None,
     }
     print(
         f"Train reeval: enabled ({val_n_runs} runs/bundle, "
@@ -1125,7 +1123,9 @@ def run_bundle_evolution(
             seed=seed, n_runs=val_n_runs,
             target_noise_map=target_noise_map,
             fitness_metric=fitness_metric,
-            run_index_start_per_config=[TRAIN_REEVAL_SEED_OFFSET],
+            run_index_start_per_config=[
+                TRAIN_REEVAL_SEED_OFFSET + gen_submitted * val_n_runs
+            ],
         )
         batch_results = evaluator.collect_batches([handle])
         avg, vec, details = batch_results[0][0] if batch_results and batch_results[0] else (-1.0, [], [])
@@ -1177,9 +1177,6 @@ def run_bundle_evolution(
     def _maybe_submit_train_reeval(bundle: OperatorBundle, gen: int) -> None:
         if train_reeval_state["pending_future"] is not None and not train_reeval_state["pending_future"].done():
             return
-        if bundle.display_name == train_reeval_state["last_bundle_name"]:
-            return
-        train_reeval_state["last_bundle_name"] = bundle.display_name
         # Snapshot the live train score now — racing may overwrite bundle.score
         # before the future resolves.
         train_score_at_submit = bundle.score
@@ -1847,7 +1844,9 @@ def run_bundle_evolution(
             # Submitted up-front so reevaluation overlaps LLM generation and
             # offspring evaluation, with merged scores available for selection.
             reeval_members = (
-                select_population_reeval_members(population, reeval_topk)
+                select_population_reeval_members(
+                    population, reeval_topk, target_seeds=n_reevals
+                )
                 if topk_pop_reeval_on else population
             )
             to_top_up = [
@@ -2461,7 +2460,9 @@ def run_bundle_evolution(
     # policy once more to the final population's newest entrants.
     if pop_reeval_on:
         final_reeval_members = (
-            select_population_reeval_members(population, reeval_topk)
+            select_population_reeval_members(
+                population, reeval_topk, target_seeds=n_reevals
+            )
             if topk_pop_reeval_on else population
         )
         to_top_up = [
