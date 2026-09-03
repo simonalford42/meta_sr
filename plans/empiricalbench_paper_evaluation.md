@@ -1,6 +1,6 @@
 # EmpiricalBench paper-protocol evaluation
 
-Last updated: 2026-09-03
+Last updated: 2026-09-03 (added evolved run 147300)
 
 ## Outcome
 
@@ -10,18 +10,18 @@ budget per fit. The Pareto frontiers were inspected manually using the paper's
 criterion: the correct functional form may contain fitted or slightly imperfect
 constants, but a numerical approximation to the function is not a recovery.
 
-| Task | PySR paper baseline | Evolved 709715 |
-|---|---:|---:|
-| Hubble | 5/5 exact | 5/5 exact |
-| Kepler | 5/5 exact | 5/5 exact |
-| Newton | 5/5 exact | 5/5 exact |
-| Bode | 5/5 exact | 5/5 exact |
-| Leavitt | 5/5 exact | 5/5 exact |
-| Schechter | 5/5 exact | 5/5 exact |
-| Ideal gas | 5/5 exact | 3/3 completed exact; 2 errors |
-| Planck | 0/5 exact; 5/5 near/Wien | 0/5 exact; 5/5 near/Wien |
-| Rydberg | 0/5 exact | 0/5 exact; 4 near, 1 miss |
-| **Total exact** | **35/45** | **33/43 completed** |
+| Task | PySR paper baseline | Evolved 709715 | Evolved 147300 |
+|---|---:|---:|---:|
+| Hubble | 5/5 exact | 5/5 exact | 5/5 exact |
+| Kepler | 5/5 exact | 5/5 exact | 4/5 exact; 1 near |
+| Newton | 5/5 exact | 5/5 exact | 5/5 exact |
+| Bode | 5/5 exact | 5/5 exact | 5/5 exact |
+| Leavitt | 5/5 exact | 5/5 exact | 5/5 exact |
+| Schechter | 5/5 exact | 5/5 exact | 5/5 exact |
+| Ideal gas | 5/5 exact | 3/3 completed exact; 2 errors | 5/5 exact |
+| Planck | 0/5 exact; 5/5 near/Wien | 0/5 exact; 5/5 near/Wien | 0/5 exact; 5/5 near/Wien |
+| Rydberg | 0/5 exact | 0/5 exact; 4 near, 1 miss | 0/2 completed exact; 3 errors |
+| **Total exact** | **35/45** | **33/43 completed** | **34/42 completed** |
 
 Evolved ideal-gas seed 10004 found an exact expression before its initial job
 was preempted, but its retry failed and its final JSON is an error. Counting
@@ -32,12 +32,21 @@ The baseline result exactly reproduces the paper's qualitative result: PySR
 recovers the first seven tasks in all five trials and does not recover Planck or
 Rydberg.
 
+Run 147300 completed 42/45 trials. Its persisted results contain 34 exact, 8
+near, and 3 error classifications. The failed Rydberg jobs produced partial
+Hall-of-Fame tables before preemption: incorporating those logs yields 34 exact,
+10 near, and 1 miss across all 45 attempted trials. Kepler seed 10001 is
+strictly near rather than exact: its best structural candidate is
+`365.09*x^(3/2) + 0.002067*x^(9/2)`, which has the correct leading term but a
+nonconstant correction.
+
 ## Saved results
 
 Paper-protocol aggregate results:
 
 - Baseline: [`runs/709715/empiricalbench_paper/baseline/empbench_results.json`](../runs/709715/empiricalbench_paper/baseline/empbench_results.json)
 - Evolved: [`runs/709715/empiricalbench_paper/evolved/empbench_results.json`](../runs/709715/empiricalbench_paper/evolved/empbench_results.json)
+- Evolved 147300: [`runs/147300/empiricalbench_paper/evolved/empbench_results.json`](../runs/147300/empiricalbench_paper/evolved/empbench_results.json)
 
 Each aggregate JSON contains the protocol, method metadata, per-dataset counts,
 and each completed run's full Pareto frontier. Worker-level artifacts are under:
@@ -55,6 +64,10 @@ Within those directories:
 The driver logs are `baseline/slurm.out` and `evolved/slurm.out`. The outer
 driver jobs were 103976 (baseline) and 103977 (evolved); their worker arrays
 recorded in the result files were 104061 and 104063 respectively.
+
+For run 147300, worker-level artifacts are under
+`runs/147300/empiricalbench_paper/evolved/slurm_pysr/eval_0000/`. Its outer
+driver job was 217926 and its recorded worker array was 217933.
 
 The earlier, non-paper-protocol evolved result remains at
 `runs/709715/empiricalbench_comparison/evolved/empbench_results.json`. Its
@@ -96,20 +109,24 @@ a bit-for-bit software reproduction.
 `E` means exact functional form, `N` means a close/asymptotic approximation,
 `M` means miss, and `X` means an incomplete trial.
 
-| Task | Baseline 10000--10004 | Evolved 10000--10004 |
-|---|---|---|
-| Hubble | E E E E E | E E E E E |
-| Kepler | E E E E E | E E E E E |
-| Newton | E E E E E | E E E E E |
-| Bode | E E E E E | E E E E E |
-| Leavitt | E E E E E | E E E E E |
-| Schechter | E E E E E | E E E E E |
-| Ideal gas | E E E E E | E E E X X* |
-| Planck | N N N N N | N N N N N |
-| Rydberg | M M M M M | N N M N N |
+| Task | Baseline 10000--10004 | 709715 10000--10004 | 147300 10000--10004 |
+|---|---|---|---|
+| Hubble | E E E E E | E E E E E | E E E E E |
+| Kepler | E E E E E | E E E E E | E N E E E |
+| Newton | E E E E E | E E E E E | E E E E E |
+| Bode | E E E E E | E E E E E | E E E E E |
+| Leavitt | E E E E E | E E E E E | E E E E E |
+| Schechter | E E E E E | E E E E E | E E E E E |
+| Ideal gas | E E E E E | E E E X X* | E E E E E |
+| Planck | N N N N N | N N N N N | N N N N N |
+| Rydberg | M M M M M | N N M N N | N X X N X |
 
 `X*` is evolved ideal-gas seed 10004: exact recovery is visible in its original
 preemption log, but the final retry failed.
+
+For 147300's failed Rydberg trials, the preemption logs classify seed 10001 as
+near, seed 10002 as a miss, and seed 10004 as near. Their final JSON records
+remain errors because each retry failed with `TaskFailedException`.
 
 Representative recovered families are:
 
@@ -133,11 +150,11 @@ incorrectly accepting Planck's asymptotic approximations.
 
 ## Where to continue
 
-1. **Finish the two evolved ideal-gas trials.** Rerun only run indices 3 and 4
-   under the same manifest. Seed 10003 has no usable recovery evidence; seed
-   10004 should also be rerun so its exact discovery becomes a completed result.
-   Both initial jobs were preempted, and their retries ended after about 111 and
-   97 seconds with an opaque `TaskFailedException`.
+1. **Finish the incomplete trials.** For 709715, rerun only ideal-gas run indices
+   3 and 4 under the same manifest. Seed 10003 has no usable recovery evidence;
+   seed 10004 should also be rerun so its exact discovery becomes a completed
+   result. For 147300, rerun Rydberg indices 1, 2, and 4. All five initial jobs
+   were preempted and their retries ended with an opaque `TaskFailedException`.
 
 2. **Persist manual judgments as structured data.** The classifications above
    currently live only in this report. Add a reviewed-label JSON or CSV keyed by
