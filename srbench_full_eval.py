@@ -431,7 +431,7 @@ def cache_report(args) -> None:
                 bb_wall, args.black_box_max_samples, None, True, "r2")
 
 
-def main():
+def main(argv=None, *, force_srbench_2025=False):
     parser = argparse.ArgumentParser(
         description="Submit a full SRBench evaluation.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -528,7 +528,9 @@ def main():
     parser.add_argument("--results-dir", type=str, default=None,
                         help="Run directory (default: runs/<SLURM_JOB_ID> or local_*).")
     parser.add_argument("--no-wandb", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if force_srbench_2025:
+        args.srbench_2025 = True
 
     print("Executing command: " + " ".join(sys.argv))
 
@@ -637,6 +639,9 @@ def main():
             max_concurrent_jobs=getattr(args, "max_concurrent_jobs", None),
             repo_root=source.repo_root,
             cache_namespace=source.cache_namespace,
+            # SRBench 2.0 ground-truth results are reviewed from the complete
+            # Pareto frontier, not only the equation selected by PySR.
+            retain_pareto_frontier=args.srbench_2025,
         )
 
     run = None

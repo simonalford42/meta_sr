@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 
+# 9/3/26
+
+# SRBench 2.0 phenomenological/first-principles track: 12 datasets x 5 seeds,
+# intrinsic noise only, one-hour search, and one CPU as in the 2025 benchmark.
+# sbatch -J srb2-gt-base run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_gt_baseline --n-runs 5 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb
+# sbatch -J srb2-gt-709715 run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_ground_truth --n-runs 5 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb
+
 # 9/2/26
 
 # LaSR ground-truth SRBench subset: 20 equations x noise 0.001 x 1 seed.
