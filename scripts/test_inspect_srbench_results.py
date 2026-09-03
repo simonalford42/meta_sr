@@ -16,6 +16,8 @@ from inspect_srbench_results import (
     _black_box_summary,
     find_full_srbench_runs,
     format_summary_table,
+    format_srbench2_runs,
+    find_srbench2_runs,
     summarize_run,
 )
 from srbench_official_results import (
@@ -92,6 +94,60 @@ class FindRunsTests(unittest.TestCase):
                 find_full_srbench_runs(runs_root),
                 [runs_root / "old", runs_root / "recent"],
             )
+
+    def test_v2_finds_nested_runs_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs_root = Path(tmp)
+            v2 = runs_root / "709715" / "srbench2_ground_truth"
+            v2.mkdir(parents=True)
+            (runs_root / "old").mkdir()
+            for path, edition in ((v2, 2025), (runs_root / "old", 2021)):
+                with open(path / "manifest.json", "w") as f:
+                    json.dump({"srbench_edition": edition}, f)
+            self.assertEqual(find_srbench2_runs(runs_root), [v2])
+
+
+class SRBench2TableTests(unittest.TestCase):
+    def test_completion_and_manual_seed_codes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "v2"
+            run_dir.mkdir()
+            manifest = {
+                "srbench_edition": 2025,
+                "mode": "baseline",
+                "datasets": ["first_principles_hubble"],
+                "seeds": [10000, 10001, 10002, 10003, 10004],
+                "noise_levels": [0.0],
+                "batches": [],
+                "evaluation_types": ["ground_truth"],
+            }
+            with open(run_dir / "manifest.json", "w") as f:
+                json.dump(manifest, f)
+            results = {}
+            for seed in manifest["seeds"]:
+                results[f"first_principles_hubble|{seed}|0"] = {
+                    "dataset": "first_principles_hubble", "seed": seed,
+                    "present": True, "error": None,
+                }
+            with open(run_dir / "srbench_full_results.json", "w") as f:
+                json.dump({"results": results}, f)
+            with open(run_dir / "codex_frontier_review.json", "w") as f:
+                json.dump({"datasets": [{
+                    "dataset": "first_principles_hubble",
+                    "reviews": [
+                        {"seed": seed, "classification": classification}
+                        for seed, classification in zip(
+                            manifest["seeds"],
+                            ["exact", "exact", "exact", "near", "miss"],
+                        )
+                    ],
+                }]}, f)
+
+            table = format_srbench2_runs([run_dir])
+            self.assertIn("Completed: GT 5/5  |  BB 0/0", table)
+            line = next(line for line in table.splitlines()
+                        if "first_principles_hubble" in line)
+            self.assertEqual(line.split()[-1], "EEENM")
 
 
 class SummaryTableTests(unittest.TestCase):

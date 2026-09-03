@@ -14,6 +14,7 @@ Usage:
     python inspect_srbench_results.py --see-all
     python inspect_srbench_results.py --see-all --since 7
     python inspect_srbench_results.py --official
+    python inspect_srbench_results.py --v2
 """
 
 import argparse
@@ -30,6 +31,15 @@ TRAIN_SPLIT = "splits/barely_unsolvable.txt"
 VAL_SPLIT = "splits/barely_unsolvable_val2.txt"
 CLEAN_TRAIN_SPLIT = "splits/train.txt"
 CLEAN_VAL_SPLIT = "splits/val.txt"
+
+V2_REVIEW_CODES = {
+    "exact": "E",
+    "near": "N",
+    "miss": "M",
+    "phenomenological_match": "P",
+    "not_applicable": "-",
+    "error": "!",
+}
 
 
 def _load_split_set(split_file: str) -> "set[str] | None":
@@ -98,6 +108,19 @@ def find_full_srbench_runs(
     return found
 
 
+def find_srbench2_runs(runs_root: "str | Path") -> "list[Path]":
+    """Find SRBench 2.0 runs, including runs nested under evolved bundles."""
+    found = []
+    for manifest_path in sorted(Path(runs_root).glob("**/manifest.json")):
+        try:
+            manifest = srio.load_manifest(manifest_path.parent)
+        except Exception:
+            continue
+        if manifest.get("srbench_edition") == 2025:
+            found.append(manifest_path.parent)
+    return found
+
+
 def bundle_id(manifest: dict) -> str:
     """Run-id of the bundle being evaluated (the ``method_meta.source`` run).
 
@@ -148,6 +171,80 @@ def _black_box_summary(run_dir: Path, manifest: dict) -> tuple[int, int, float |
                 best_r2.append(max(values))
     mean_r2 = sum(best_r2) / len(best_r2) if best_r2 else None
     return completed, expected, mean_r2
+
+
+def _v2_review_strings(run_dir: Path, manifest: dict, keyed: dict) -> dict[str, str]:
+    """Return compact per-seed manual-review codes for each GT dataset."""
+    review_path = run_dir / "codex_frontier_review.json"
+    reviewed = {}
+    if review_path.exists():
+        with open(review_path) as f:
+            payload = json.load(f)
+        for dataset in payload.get("datasets") or []:
+            reviewed[dataset["dataset"]] = {
+                int(item["seed"]): V2_REVIEW_CODES.get(item["classification"], "?")
+                for item in dataset.get("reviews") or []
+            }
+
+    strings = {}
+    seeds = [int(seed) for seed in manifest.get("seeds") or []]
+    for dataset in manifest.get("datasets") or []:
+        codes = []
+        for seed in seeds:
+            if seed in reviewed.get(dataset, {}):
+                codes.append(reviewed[dataset][seed])
+                continue
+            entries = [entry for entry in keyed.values()
+                       if entry.get("dataset") == dataset
+                       and int(entry.get("seed", -1)) == seed]
+            if any(entry.get("present") and entry.get("error") for entry in entries):
+                codes.append("!")
+            elif any(entry.get("present") for entry in entries):
+                codes.append("?")
+            else:
+                codes.append(".")
+        strings[dataset] = "".join(codes)
+    return strings
+
+
+def format_srbench2_runs(run_dirs: "list[Path]") -> str:
+    """Render SRBench 2.0 completion and ground-truth manual-review status."""
+    sections = []
+    for run_dir in run_dirs:
+        manifest = srio.load_manifest(run_dir)
+        keyed = srio.load_keyed_results(run_dir)
+        if keyed is None and manifest.get("batches"):
+            keyed = srio.build_keyed_results(run_dir, manifest)
+        keyed = keyed or {}
+        expected = (srio.expected_keys(manifest)
+                    if manifest.get("datasets") and manifest.get("seeds") else [])
+        gt_completed = sum(
+            1 for key in expected
+            if keyed.get(key, {}).get("present") and keyed[key].get("error") is None
+        )
+        bb_completed, bb_expected, _ = _black_box_summary(run_dir, manifest)
+        reviewed = _v2_review_strings(run_dir, manifest, keyed)
+
+        sections.append(
+            f"Run: {run_dir}  (bundle={bundle_id(manifest)}, "
+            f"mode={manifest.get('mode') or '-'})"
+        )
+        sections.append(
+            f"Completed: GT {gt_completed}/{len(expected)}  |  "
+            f"BB {bb_completed}/{bb_expected}"
+        )
+        if reviewed:
+            sections.extend(["Ground truth:", *(
+                f"  {dataset:<36} {codes}" for dataset, codes in reviewed.items()
+            )])
+        else:
+            sections.append("Ground truth: not requested")
+        sections.append("")
+    sections.extend([
+        "Legend: E exact, N near, M miss, P phenomenological match,",
+        "        - not applicable, ? completed but not Codex-reviewed, ! error, . missing",
+    ])
+    return "\n".join(sections)
 
 
 def summarize_run(run_dir: Path) -> dict:
@@ -341,6 +438,10 @@ def main():
         "--official", action="store_true",
         help="Show the official baseline/HPO/PySR++/BasicSR++ comparison table.",
     )
+    mode.add_argument(
+        "--v2", action="store_true",
+        help="Show SRBench 2.0 completion and per-problem frontier reviews.",
+    )
     parser.add_argument("--since", type=int, metavar="NDAYS",
                         help="With --see-all, only include runs from the past NDAYS days.")
     parser.add_argument("--runs-root", type=str, default="runs")
@@ -360,6 +461,14 @@ def main():
     if args.official:
         from srbench_official_results import build_official_table
         print(build_official_table(args.runs_root))
+        return
+
+    if args.v2:
+        run_dirs = find_srbench2_runs(args.runs_root)
+        if not run_dirs:
+            print(f"No SRBench 2.0 runs found under {args.runs_root}")
+            sys.exit(1)
+        print(format_srbench2_runs(run_dirs))
         return
 
     if args.see_all:
@@ -385,7 +494,7 @@ def main():
         return
 
     if not args.run_id:
-        parser.error("one of --run-id, --see-all, or --official is required")
+        parser.error("one of --run-id, --see-all, --official, or --v2 is required")
 
     run_dir = Path(args.runs_root) / args.run_id
     if not run_dir.is_dir():
