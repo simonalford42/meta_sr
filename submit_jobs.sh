@@ -4,8 +4,13 @@
 
 # LaSR ground-truth SRBench subset: 20 equations x noise 0.001 x 1 seed.
 # Estimated API cost: $8-$33; estimated raw LLM logs: 1-2 GB.
-python evaluate_lasr_srbench.py plan --split-file splits/lasr_20.txt --noise-levels 0.001
-python evaluate_lasr_srbench.py submit --split-file splits/lasr_20.txt --noise-levels 0.001 --output-dir runs/lasr_srbench_nemo_noise0p001_20tasks --max-concurrent 20
+# python evaluate_lasr_srbench.py plan --split-file splits/lasr_20.txt --noise-levels 0.001
+# python evaluate_lasr_srbench.py submit --split-file splits/lasr_20.txt --noise-levels 0.001 --output-dir runs/lasr_srbench_nemo_noise0p001_20tasks --max-concurrent 20
+
+# LaSR ground-truth SRBench remainder: 113 equations x noise 0.001 x 1 seed.
+# Estimated API cost: $46-$185; estimated raw LLM logs: 3-11 GB.
+# python evaluate_lasr_srbench.py plan --split-file splits/lasr_remaining_113.txt --noise-levels 0.001
+# python evaluate_lasr_srbench.py submit --split-file splits/lasr_remaining_113.txt --noise-levels 0.001 --output-dir runs/lasr_srbench_nemo_noise0p001_remaining113 --max-concurrent 32
 
 # sbatch -J hpo-709715-barely run.sh hpo_pysr.py --baseline runs/709715 --n-trials 300 --n-runs 3 --n-parallel 20 --fitness-metric gt --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt
 
