@@ -91,15 +91,21 @@ Outputs default to:
 - `RUN_DIR/codex_frontier_review.json`
 - `RUN_DIR/codex_frontier_review.md`
 
+The default reviewer is `gpt-5.6-terra` with `high` reasoning. This is a good
+quality/cost balance for checking algebraic equivalence across short frontiers;
+use Sol when maximizing confidence matters more than usage, or Luna for a cheap
+first-pass screen.
+
 The JSON schema limits judgments to `exact`, `near`, `miss`,
 `phenomenological_match`, `not_applicable`, or `error`. Each judgment must
-include the matching equation and an explanation. In particular, nonconstant
-extra terms do not qualify as exact, and a Wien approximation does not qualify
-as exact Planck recovery.
+include the best zero-based frontier index or indices, matching equation, and a
+short audit explanation. In particular, nonconstant extra terms do not qualify
+as exact, and a Wien approximation does not qualify as exact Planck recovery.
 
 These labels are advisory model judgments. The saved frontier and cited
 equation remain the auditable evidence; ambiguous cases should still receive a
 human pass before publication.
 
-Use `--model MODEL` to pin a Codex model, `--datasets a,b` to review a subset,
-and `--output`/`--markdown` to change output paths.
+Use `--model MODEL --reasoning-effort LEVEL` to change the reviewer,
+`--datasets a,b` to review a subset, and `--output`/`--markdown` to change
+output paths.

@@ -57,10 +57,15 @@ SCHEMA = {
                         "type": "string",
                         "enum": ["exact", "near", "miss", "phenomenological_match", "not_applicable", "error"],
                     },
+                    "best_frontier_indices": {
+                        "type": "array",
+                        "items": {"type": "integer", "minimum": 0},
+                    },
                     "matching_equation": {"type": ["string", "null"]},
-                    "reason": {"type": "string"},
+                    "explanation": {"type": "string"},
                 },
-                "required": ["seed", "classification", "matching_equation", "reason"],
+                "required": ["seed", "classification", "best_frontier_indices",
+                             "matching_equation", "explanation"],
                 "additionalProperties": False,
             },
         },
@@ -87,15 +92,18 @@ def load_frontiers(run_dir: Path) -> dict[str, list[dict[str, Any]]]:
                 "seed": seed,
                 "noise": float(task.get("target_noise", 0.0)),
                 "error": result.get("error") or (None if result_path.exists() else "missing result"),
-                "frontier": result.get("pareto_frontier") or [],
+                "frontier": [
+                    {"frontier_index": frontier_index, "candidate": candidate}
+                    for frontier_index, candidate in enumerate(result.get("pareto_frontier") or [])
+                ],
             })
     for rows in grouped.values():
         rows.sort(key=lambda row: (row["seed"], row["noise"]))
     return dict(grouped)
 
 
-def review_dataset(dataset: str, runs: list[dict[str, Any]], *, model: str | None,
-                   codex_bin: str) -> dict[str, Any]:
+def review_dataset(dataset: str, runs: list[dict[str, Any]], *, model: str,
+                   reasoning_effort: str, codex_bin: str) -> dict[str, Any]:
     target = TARGETS.get(dataset, {"kind": "unknown", "target": "No reference supplied."})
     prompt = f"""You are reviewing symbolic-regression Pareto frontiers for SRBench 2.0.
 Dataset: {dataset}
@@ -112,6 +120,10 @@ Classification rules:
 - error: no usable frontier because the run failed.
 Never turn a small coefficient on a nonconstant extra term into an exact match. In particular,
 Wien-law approximations are not exact Planck recovery. Return one review per supplied seed.
+Set best_frontier_indices to the zero-based frontier_index value(s) of the strongest
+candidate(s) supporting the classification. Return [] for an error or when no candidate
+supports a phenomenological/ground-truth match. Keep explanation concise but specific enough
+for a later human audit, including the key algebraic match or mismatch.
 
 Runs and complete saved frontiers:
 {json.dumps(runs, separators=(',', ':'))}
@@ -126,8 +138,10 @@ Runs and complete saved frontiers:
             "--sandbox", "read-only", "--output-schema", str(schema_path),
             "--output-last-message", str(output_path),
         ]
-        if model:
-            command.extend(["--model", model])
+        command.extend([
+            "--model", model,
+            "--config", f'model_reasoning_effort="{reasoning_effort}"',
+        ])
         command.append(prompt)
         subprocess.run(command, check=True)
         result = json.loads(output_path.read_text())
@@ -157,9 +171,11 @@ def write_markdown(path: Path, payload: dict[str, Any]) -> None:
         lines.extend([f"### {item['dataset']}", ""])
         for review in item["reviews"]:
             equation = review["matching_equation"] or "—"
+            indices = ", ".join(str(index) for index in review["best_frontier_indices"]) or "—"
             lines.append(
                 f"- Seed {review['seed']}: **{review['classification']}** — "
-                f"`{equation}` — {review['reason']}"
+                f"frontier index/indices: `{indices}` — `{equation}` — "
+                f"{review['explanation']}"
             )
         lines.append("")
     path.write_text("\n".join(lines) + "\n")
@@ -172,7 +188,11 @@ def main() -> None:
                         help="JSON output (default: RUN_DIR/codex_frontier_review.json)")
     parser.add_argument("--markdown", type=Path, default=None,
                         help="Markdown output (default: RUN_DIR/codex_frontier_review.md)")
-    parser.add_argument("--model", default=None, help="Optional Codex model override")
+    parser.add_argument("--model", default="gpt-5.6-terra",
+                        help="Codex model used for frontier review")
+    parser.add_argument("--reasoning-effort", default="high",
+                        choices=["low", "medium", "high", "xhigh", "max", "ultra"],
+                        help="Codex reasoning effort")
     parser.add_argument("--codex-bin", default="codex")
     parser.add_argument("--datasets", default=None,
                         help="Optional comma-separated subset, useful for review/testing")
@@ -190,11 +210,13 @@ def main() -> None:
     for index, dataset in enumerate(selected, start=1):
         print(f"[{index}/{len(selected)}] Reviewing {dataset}", flush=True)
         reviews.append(review_dataset(dataset, grouped[dataset], model=args.model,
+                                      reasoning_effort=args.reasoning_effort,
                                       codex_bin=args.codex_bin))
     payload = {
         "format_version": 1,
         "reviewer": "codex-cli",
-        "model": args.model or "codex-cli default",
+        "model": args.model,
+        "reasoning_effort": args.reasoning_effort,
         "run_dir": str(run_dir),
         "datasets": reviews,
     }
