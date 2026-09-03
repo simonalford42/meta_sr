@@ -520,6 +520,11 @@ def main(argv=None, *, force_srbench_2025=False):
     parser.add_argument("--max-retries", type=int, default=5,
                         help="Retry rounds for transient/missing tasks per batch.")
     parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument(
+        "--pysr-progress", action="store_true",
+        help="Enable PySR's progress display. This is also useful when topping "
+             "off historical runs whose cache identity recorded progress=True.",
+    )
     parser.add_argument("--cache-report", action="store_true",
                         help="Print how many of this command's runs are already "
                              "in the FullSR cache (i.e. how much work a rerun "
@@ -557,6 +562,14 @@ def main(argv=None, *, force_srbench_2025=False):
 
     source = load_evaluation_source(args)
     config, mode_name, method_meta = source.config, source.mode, source.method_meta
+    if args.pysr_progress:
+        if source.backend != "pysr":
+            parser.error("--pysr-progress is only valid for the PySR backend")
+        from dataclasses import replace
+        pysr_kwargs = dict(config.pysr_kwargs)
+        pysr_kwargs["progress"] = True
+        config = replace(config, pysr_kwargs=pysr_kwargs)
+        source.config = config
     print(f"Mode: {mode_name}  |  backend: {source.backend}")
 
     gt_wall = (args.fullsr_wall_limit if source.backend == "fullsr"

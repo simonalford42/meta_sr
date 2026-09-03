@@ -2,6 +2,9 @@
 
 # 9/3/26
 
+sbatch -J srb-retry-basicpp-gt run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --max-evals 1000000 --timeout 500 --seed 42 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --fullsr-wall-limit 600 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
+sbatch -J srb-retry-base-10m run.sh srbench_full_eval.py --ground-truth --max-evals 10000000 --timeout 500 --seed 42 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --pysr-progress --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
+
 # SRBench 2.0 phenomenological/first-principles track: 12 datasets x 5 seeds,
 # intrinsic noise only, one-hour search, and one CPU as in the 2025 benchmark.
 # sbatch -J srb2-gt-base run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_gt_baseline --n-runs 5 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb
