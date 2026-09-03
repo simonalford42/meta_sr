@@ -131,6 +131,8 @@ class FullSRTaskSpec:
     # Evaluation domain (see domains.py): dataset loading, the predictor's
     # operator namespace, and the "solved" check dispatch through it.
     domain: str = "srbench"
+    retain_pareto_frontier: bool = False
+    data_split_seed: Optional[int] = None
 
     def to_json_dict(self) -> Dict:
         return asdict(self)
@@ -250,6 +252,7 @@ def _build_fullsr_cache_identity(
         "target_noise": spec.target_noise,
         "black_box": spec.black_box,
         "domain": getattr(spec, "domain", "srbench"),
+        "data_split_seed": getattr(spec, "data_split_seed", None),
     }
     return config_identity, request_identity
 
@@ -277,8 +280,12 @@ def _cached_fullsr_result(
         and payload.get("acc_score") is None
     ):
         return None
-    if spec.black_box:
+    if spec.black_box or getattr(spec, "retain_pareto_frontier", False):
         if not payload.get("pareto_frontier"):
+            return None
+        if spec.data_split_seed is not None and any(
+            row.get("train_mse") is None for row in payload["pareto_frontier"]
+        ):
             return None
     elif payload.get("gt_match_score") is None:
         return None
@@ -527,6 +534,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
         )
 
     run_seed = spec.seed + spec.run_index
+    split_seed = run_seed if spec.data_split_seed is None else spec.data_split_seed
 
     # Resolve the evaluation domain (dataset loading, predictor namespace,
     # "solved" check — see domains.py).
@@ -557,8 +565,8 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                 )
         _log(f"Dataset loaded: X={X.shape}, y={y.shape}")
 
-        np.random.seed(run_seed)
-        _rnd.seed(run_seed)
+        np.random.seed(split_seed)
+        _rnd.seed(split_seed)
         y_scaler = None
         if spec.black_box:
             from sklearn.model_selection import train_test_split
@@ -569,7 +577,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                 y,
                 train_size=0.75,
                 test_size=0.25,
-                random_state=run_seed,
+                random_state=split_seed,
             )
             if spec.max_samples and len(y_train) > spec.max_samples:
                 keep = np.random.choice(len(y_train), spec.max_samples)
@@ -591,7 +599,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             X_val, y_val = X[val_idx], y[val_idx]
 
         if spec.target_noise > 0:
-            noise_seed = run_seed + 1000
+            noise_seed = split_seed + 1000
             y_train = add_noise(y_train, spec.target_noise, seed=noise_seed)
             _log(f"Applied target noise={spec.target_noise}")
 
@@ -741,6 +749,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
         best_df_index = int(equations_df["loss"].idxmin())
 
         gt_match_score = None
+        matched_idx = None
         if not spec.black_box:
             # Backstop around the whole GT check. The check has its own
             # per-expression and per-task budgets (evaluation.py), but the
@@ -769,6 +778,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                     dataset_name=spec.dataset_name,
                 )
                 gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
+                matched_idx = gt_match_result.get("matched_df_index")
                 if gt_match_result.get("budget_exhausted"):
                     _log(f"GT match check hit its {_GT_CHECK_WALL_LIMIT_S}s-capped "
                          f"budget after {_time.time() - t_gt:.1f}s -> non-match")
@@ -815,10 +825,29 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                 r2_frontier = float(r2)
 
         pareto_frontier = None
-        if spec.black_box:
+        if spec.black_box or spec.retain_pareto_frontier:
+            train_target_metric = y_train
+            if spec.black_box and y_scaler is not None:
+                train_target_metric = y_scaler.inverse_transform(
+                    np.asarray(y_train).reshape(-1, 1)
+                ).ravel()
             pareto_frontier = []
             for idx, row in equations_df.iterrows():
                 try:
+                    train_pred = np.asarray(_predict_row(int(idx), X_train), dtype=float)
+                    train_mse = float(np.mean((train_pred - train_target_metric) ** 2))
+                    if not spec.black_box:
+                        entries = domain.pareto_metrics(
+                            equations_df=equations_df.iloc[[int(idx)]],
+                            predict_fn=lambda _ignored, i=int(idx): _predict_row(i),
+                            y_val=y_val,
+                        ) or []
+                        if entries:
+                            entry = dict(entries[0])
+                            entry["train_mse"] = train_mse
+                            entry["solved"] = bool(int(idx) == matched_idx)
+                            pareto_frontier.append(entry)
+                        continue
                     pred = np.asarray(_predict_row(int(idx)), dtype=float)
                     if pred.shape != y_val.shape:
                         continue
@@ -826,9 +855,13 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                     test_r2 = 1.0 - np.sum((y_val - pred) ** 2) / (ss_tot + 1e-10)
                     if np.isfinite(test_r2):
                         pareto_frontier.append({
+                            "pysr_index": int(idx),
                             "complexity": int(row["complexity"]),
+                            "loss": float(row["loss"]),
+                            "train_mse": train_mse,
                             "test_r2": float(test_r2),
                             "equation": str(row["equation"]),
+                            "solved": bool(int(idx) == matched_idx),
                         })
                 except Exception:
                     continue
@@ -1029,6 +1062,8 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         eval_noise_levels: Optional[List[float]] = None,
         repo_root: Optional[str] = None,
         domain: str = "srbench",
+        retain_pareto_frontier: bool = False,
+        fixed_data_split_across_runs: bool = False,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -1059,6 +1094,8 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
         )
         # Run-level evaluation domain, stamped onto every spec (see domains.py).
         self.domain = domain
+        self.retain_pareto_frontier = retain_pareto_frontier
+        self.fixed_data_split_across_runs = fixed_data_split_across_runs
         self.split_label: Optional[str] = None
 
     def build_task_specs(
@@ -1119,6 +1156,8 @@ class FullSRSlurmEvaluator(BaseSlurmEvaluator):
                                 ),
                                 black_box=black_box,
                                 domain=self.domain,
+                                retain_pareto_frontier=self.retain_pareto_frontier,
+                                data_split_seed=(seed if self.fixed_data_split_across_runs else None),
                             )
                         )
 

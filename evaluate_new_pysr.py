@@ -220,24 +220,82 @@ def _classification_avgs(summary: EvalSummary, n_runs: int) -> Tuple[float, floa
 def evaluate_config(
     evaluator: PySRSlurmEvaluator,
     dataset_names: List[str],
-    config: PySRConfig,
+    config: Any,
     seed: int,
     n_runs: int,
     name: str,
     target_noise_map: Optional[Dict[str, float]] = None,
     fitness_metric: str = "r2",
+    merge_run_frontiers: bool = False,
 ) -> EvalSummary:
     """Evaluate a PySRConfig and return summary. Cache stats tracked on evaluator."""
-    config.name = name
-    results = evaluator.evaluate_configs(
-        [config], dataset_names, seed=seed, n_runs=n_runs,
-        target_noise_map=target_noise_map,
-        fitness_metric=fitness_metric,
-    )
-
+    configs = config if isinstance(config, list) else [config]
+    for item in configs:
+        item.name = name
+    portfolio = len(configs) > 1
+    evaluate_kwargs = {
+        "seed": seed,
+        "n_runs": 1 if portfolio else n_runs,
+        "target_noise_map": target_noise_map,
+        "fitness_metric": fitness_metric,
+    }
+    if portfolio:
+        evaluate_kwargs["run_index_start_per_config"] = list(range(len(configs)))
+    results = evaluator.evaluate_configs(configs, dataset_names, **evaluate_kwargs)
     avg_r2, r2_vector, result_details = results[0]
-    per_run_r2_avgs = compute_per_run_avgs(result_details, n_runs, "run_r2_scores")
-    per_run_gt_avgs = compute_per_run_avgs(result_details, n_runs, "run_gt_scores")
+    if portfolio:
+        combined = []
+        for dataset_index, dataset_name in enumerate(dataset_names):
+            details = [entry[2][dataset_index] for entry in results]
+            combined.append({
+                "dataset": dataset_name,
+                "run_pareto_frontiers": [
+                    (detail.get("run_pareto_frontiers") or [None])[0]
+                    for detail in details
+                ],
+                "execution_traces": sum(
+                    (detail.get("execution_traces") or [] for detail in details), []
+                ),
+                "errors": [error for detail in details for error in (detail.get("errors") or [])],
+            })
+        result_details = combined
+        merge_run_frontiers = True
+    if merge_run_frontiers:
+        from frontier_aggregation import merge_frontiers
+        merged_details = []
+        merged_vector = []
+        for detail in result_details:
+            frontiers = detail.get("run_pareto_frontiers") or []
+            frontier = merge_frontiers(frontiers, sources=[{
+                "source_run_index": i, "source_seed": seed + i,
+            } for i in range(len(frontiers))])
+            best = frontier[-1] if frontier else None
+            gt = 1.0 if any(row.get("solved") for row in frontier) else 0.0
+            r2 = float(best.get("r2", 0.0)) if best else -1.0
+            acc = best.get("accuracy") if best else None
+            if fitness_metric == "gt":
+                score = gt
+            elif fitness_metric in ("acc", "gt-acc"):
+                score = 1.0 if fitness_metric == "gt-acc" and gt else float(acc or 0.0)
+            else:
+                score = 1.0 if fitness_metric == "gt-r2" and gt else r2
+            merged = dict(detail)
+            merged.update({
+                "avg_r2": r2, "avg_r2c": r2, "avg_gt": gt,
+                "avg_acc": acc, "run_r2_scores": [r2],
+                "run_r2c_scores": [r2], "run_gt_scores": [gt],
+                "run_acc_scores": ([] if acc is None else [float(acc)]),
+                "merged_pareto_frontier": frontier,
+                "n_constituent_searches": len(frontiers),
+            })
+            merged_details.append(merged)
+            merged_vector.append(score)
+        result_details = merged_details
+        r2_vector = merged_vector
+        avg_r2 = float(np.mean(merged_vector)) if merged_vector else -1.0
+    output_runs = 1 if merge_run_frontiers else n_runs
+    per_run_r2_avgs = compute_per_run_avgs(result_details, output_runs, "run_r2_scores")
+    per_run_gt_avgs = compute_per_run_avgs(result_details, output_runs, "run_gt_scores")
     return EvalSummary(
         split_name=name,
         avg_r2=avg_r2,
@@ -627,6 +685,10 @@ def main() -> None:
                         help="Split files (autoresearch defaults to the official train/val splits)")
     parser.add_argument("--n-runs", type=int, default=10,
                         help="Number of seeds/runs per config per dataset")
+    parser.add_argument("--merge-run-frontiers", action="store_true",
+                        help="Collapse the N fresh searches into one final frontier")
+    parser.add_argument("--task-population-bundles", type=int, default=None, metavar="N",
+                        help="Run N cyclic slots from an evolve_pysr task population once each")
     parser.add_argument("--seed", type=int, default=42,
                         help="Base seed for evaluation")
     parser.add_argument("--max-samples", type=int, default=1000,
@@ -715,6 +777,19 @@ def main() -> None:
     from domains import get_domain
     domain_obj = get_domain(domain)
 
+    portfolio_configs = None
+    portfolio_bundles = None
+    if args.task_population_bundles:
+        if not args.evolve_results:
+            parser.error("--task-population-bundles requires --evolve-results")
+        from bundle_loader import load_task_population_bundles
+        portfolio_bundles = load_task_population_bundles(
+            args.evolve_results, args.task_population_bundles
+        )
+        args.n_runs = len(portfolio_bundles)
+        args.merge_run_frontiers = True
+        method_label += f"_task_portfolio{args.n_runs}"
+
     args.output_dir = resolve_run_dir(args.output_dir, label="eval_pysr")
 
     output_dir = Path(args.output_dir)
@@ -725,6 +800,7 @@ def main() -> None:
         "method": method_label,
         "splits": args.splits,
         "n_runs": args.n_runs,
+        "merge_run_frontiers": args.merge_run_frontiers,
         "seed": args.seed,
         "max_samples": args.max_samples,
         "max_evals": args.max_evals,
@@ -773,6 +849,11 @@ def main() -> None:
         pysr_kwargs.pop("max_evals", None)
         pysr_kwargs.pop("timeout_in_seconds", None)
 
+    if portfolio_bundles is not None:
+        portfolio_configs = [
+            item.to_pysr_config(pysr_kwargs) for item in portfolio_bundles
+        ]
+
     evaluator_kwargs: Dict[str, Any] = {}
     if autoresearch_sandbox is not None:
         evaluator_kwargs.update({
@@ -792,11 +873,13 @@ def main() -> None:
         use_cache=not args.no_cache,
         pysr_wall_limit=args.pysr_wall_limit,
         domain=domain,
+        retain_pareto_frontier=args.merge_run_frontiers,
+        fixed_data_split_across_runs=args.merge_run_frontiers,
         **evaluator_kwargs,
     )
 
     # Single converter: bundle -> PySRConfig (merges custom code + HPO hparams).
-    config = bundle.to_pysr_config(pysr_kwargs)
+    config = portfolio_configs or bundle.to_pysr_config(pysr_kwargs)
     if bundle.best_hparams:
         print(f"Applied {len(bundle.best_hparams)} HPO-tuned hparam(s) from bundle: "
               f"{sorted(bundle.best_hparams.keys())}")
@@ -835,6 +918,7 @@ def main() -> None:
             args.seed, args.n_runs, f"{split_name}_{method_label}",
             target_noise_map=target_noise_map,
             fitness_metric=fitness_metric,
+            merge_run_frontiers=args.merge_run_frontiers,
         )
         split_summaries[split_name] = summary
 
@@ -848,7 +932,7 @@ def main() -> None:
                 f"{split_name}/avg_gt": avg_gt,
                 f"{split_name}/n_datasets": len(datasets),
             })
-            for seed_idx in range(args.n_runs):
+            for seed_idx in range(1 if args.merge_run_frontiers else args.n_runs):
                 if seed_idx < len(summary.per_run_r2_avgs):
                     wandb.log({
                         f"{split_name}/seed_{seed_idx}_r2": summary.per_run_r2_avgs[seed_idx],
@@ -864,7 +948,8 @@ def main() -> None:
         extra_summary[f"{split_name}_avg_gt"] = avg_gt
 
     # Print results
-    print_results(split_summaries, args.n_runs, method_label)
+    print_results(split_summaries, 1 if args.merge_run_frontiers else args.n_runs,
+                  method_label)
 
     # Log final summary to wandb (includes SR eval cache stats from evaluator)
     log_wandb_summary(wandb_run, evaluator=evaluator, extra_summary=extra_summary)

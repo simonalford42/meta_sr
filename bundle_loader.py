@@ -132,6 +132,67 @@ def load_resume_state(path: str) -> Dict[str, Any]:
         "source_path": str(run_data_path),
     }
 
+
+def load_task_population_bundles(path: str, n_bundles: int) -> List[OperatorBundle]:
+    """Load a cyclic N-slot portfolio from the latest task-diverse generation.
+
+    Only unique candidates that actually win at least one evolution task are
+    eligible; task-population backfill members are excluded. Winners are ranked
+    by overall evolution score, then repeated cyclically when fewer than N are
+    available (ABCABC... for three winners).
+    """
+    if n_bundles <= 0:
+        raise ValueError("n_bundles must be positive")
+    p = _resolve_bundle_path(path)
+    run_data_path = p / "run_data.json" if p.is_dir() else p
+    if not run_data_path.exists():
+        raise FileNotFoundError(f"No run_data.json found at: {run_data_path}")
+    with open(run_data_path) as stream:
+        data = json.load(stream)
+    if (data.get("config") or {}).get("population_type") != "task":
+        raise ValueError(
+            "--task-population-bundles requires an evolve_pysr run created "
+            "with --population-type task"
+        )
+    generations = [
+        generation for generation in data.get("generations", [])
+        if generation.get("population_type") == "task"
+    ]
+    if not generations:
+        raise ValueError("run contains no completed task-population generation")
+    population = [
+        OperatorBundle.from_dict(entry)
+        for entry in generations[-1].get("population", [])
+    ]
+    dataset_names = list((data.get("config") or {}).get("dataset_names") or [])
+    winners: Dict[str, OperatorBundle] = {}
+    for task_index in range(len(dataset_names)):
+        best = None
+        best_key = None
+        for bundle in population:
+            details = bundle.result_details or []
+            if task_index >= len(details):
+                continue
+            scores = (details[task_index] or {}).get("run_gt_scores") or []
+            solved = sum(float(value) >= 1.0 for value in scores)
+            if not scores or solved == 0:
+                continue
+            key = (
+                solved / len(scores), len(scores),
+                float(bundle.score if bundle.score is not None else -1.0),
+            )
+            if best_key is None or key > best_key:
+                best, best_key = bundle, key
+        if best is not None:
+            winners[best.display_name] = best
+    ordered = sorted(
+        winners.values(),
+        key=lambda bundle: (-float(bundle.score or 0.0), bundle.display_name),
+    )
+    if not ordered:
+        raise ValueError("latest task population contains no task-winning bundles")
+    return [ordered[index % len(ordered)] for index in range(n_bundles)]
+
 def _select_best_by_val(data: Dict[str, Any]) -> Optional[OperatorBundle]:
     """Return the bundle with the highest persisted validation score, or None.
 

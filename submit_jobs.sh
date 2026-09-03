@@ -2,6 +2,9 @@
 
 # 9/3/26
 
+sbatch -J srb-merge-base run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
+sbatch -J srb-merge-709715 run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
+
 sbatch -J srb-retry-basicpp-gt run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --max-evals 1000000 --timeout 500 --seed 42 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --fullsr-wall-limit 600 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
 sbatch -J srb-retry-base-10m run.sh srbench_full_eval.py --ground-truth --max-evals 10000000 --timeout 500 --seed 42 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --pysr-progress --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
 

@@ -391,6 +391,8 @@ def _build_cache_identity(
         model_kwargs["_domain"] = spec.domain
     if getattr(spec, "cache_namespace", None):
         model_kwargs["_cache_namespace"] = spec.cache_namespace
+    if getattr(spec, "data_split_seed", None) is not None:
+        model_kwargs["_data_split_seed"] = int(spec.data_split_seed)
     return pysr_mutation_kwargs, model_kwargs, spec.hof_n_steps
 
 
@@ -1062,6 +1064,10 @@ class PySRTaskSpec:
     # Retain domain-specific metrics for every Pareto row. Evolution normally
     # needs only aggregate fitness; dedicated full-eval drivers opt in.
     retain_pareto_frontier: bool = False
+    # Evaluation-time restart portfolios need every search to see the same
+    # split while retaining an independent PySR seed. None preserves the
+    # historical behavior where run_index changes both.
+    data_split_seed: Optional[int] = None
     # Source revision/protocol identifier used only to isolate cache requests.
     cache_namespace: Optional[str] = None
 
@@ -1179,12 +1185,14 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
     # Seed for train/val split and PySR (base seed + run_index)
     run_seed = spec.seed + spec.run_index
+    split_seed = run_seed if spec.data_split_seed is None else spec.data_split_seed
 
     # Build model kwargs once so execution and parent-side cache compaction share identity logic.
     _, model_kwargs, _ = _build_cache_identity(spec)
     model_kwargs.pop("_srbench_black_box_protocol", None)
     model_kwargs.pop("_domain", None)  # cache-identity marker, not a PySR kwarg
     model_kwargs.pop("_cache_namespace", None)  # cache marker, not a PySR kwarg
+    model_kwargs.pop("_data_split_seed", None)  # cache marker, not a PySR kwarg
 
     # Resolve the evaluation domain (dataset loading, sympy mappings, "solved"
     # check — see domains.py). Pre-domain-field boolean task JSONs carried a
@@ -1242,8 +1250,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         t_load_data = _time.time() - t0
         print(f"[{spec.dataset_name}] Dataset loaded in {t_load_data:.1f}s", flush=True)
 
-        np.random.seed(run_seed)
-        _rnd.seed(run_seed)
+        np.random.seed(split_seed)
+        _rnd.seed(split_seed)
 
         if fixed_split is not None:
             # The domain already supplied train/validation arrays.
@@ -1254,7 +1262,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             from sklearn.model_selection import train_test_split
             X_train, X_val, y_train_base, y_val = train_test_split(
                 X, y, train_size=0.75, test_size=0.25,
-                random_state=run_seed,
+                random_state=split_seed,
             )
             # Match SRBench's max_train_samples=10000 and train-fitted
             # StandardScaler transforms. The held-out y remains in original
@@ -1389,7 +1397,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 # approach); the un-noised base is reused across levels.
                 y_train = np.array(y_train_base, copy=True)
                 if noise_level > 0:
-                    noise_seed = run_seed + 1000  # Derived seed for reproducibility
+                    noise_seed = split_seed + 1000  # Fixed across portfolio members
                     y_train = add_noise(y_train, noise_level, seed=noise_seed)
                     print(f"[{spec.dataset_name}] Applied target noise: {noise_level}", flush=True)
 
@@ -1463,6 +1471,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 best_loss = float(best["loss"]) if best is not None else float("inf")
                 gt_match_score = None
                 gt_matched_equation = None
+                matched_idx = None
                 # Backstop around the GT check: the fit's wall alarm is already
                 # disarmed, and the check's own per-expression/per-task budgets
                 # (evaluation.py) cannot interrupt a hang outside sympy. Inner
@@ -1535,6 +1544,10 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     pareto_frontier = []
                     for idx, row in model.equations_.sort_values("complexity").iterrows():
                         try:
+                            train_pred = np.asarray(
+                                model.predict(X_train, index=int(idx)), dtype=float
+                            ).reshape(-1)
+                            train_mse = float(np.mean((train_pred - y_train) ** 2))
                             pred = model.predict(X_val, index=int(idx))
                             pred = y_scaler.inverse_transform(
                                 np.asarray(pred).reshape(-1, 1)
@@ -1544,9 +1557,13 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                             test_r2 = 1.0 - np.sum((y_val - pred) ** 2) / (denom + 1e-10)
                             if np.isfinite(test_r2):
                                 pareto_frontier.append({
+                                    "pysr_index": int(idx),
                                     "complexity": int(row["complexity"]),
+                                    "loss": float(row["loss"]),
+                                    "train_mse": train_mse,
                                     "test_r2": float(test_r2),
                                     "equation": str(row["equation"]),
+                                    "solved": bool(idx == matched_idx),
                                 })
                         except Exception:
                             continue
@@ -1559,6 +1576,19 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                             ),
                             y_val=y_val,
                         )
+                        for entry in pareto_frontier or []:
+                            idx = int(entry["pysr_index"])
+                            try:
+                                train_pred = np.asarray(
+                                    model.predict(X_train, index=idx), dtype=float
+                                ).reshape(-1)
+                                entry["train_mse"] = float(
+                                    np.mean((train_pred - y_train) ** 2)
+                                )
+                            except Exception as exc:
+                                entry["train_mse"] = None
+                                entry.setdefault("prediction_error", str(exc))
+                            entry["solved"] = bool(idx == matched_idx)
                     except Exception as _e:
                         print(
                             f"[{spec.dataset_name}] domain Pareto metrics failed: {_e}",
@@ -1745,7 +1775,9 @@ def _aggregate_pysr_results(
                 any_f1 = False
                 run_best_equations: List[Optional[str]] = []
                 run_gt_matched_equations: List[Optional[str]] = []
+                run_pareto_frontiers: List[Optional[List[Dict]]] = []
                 for r in all_run_results:
+                    run_pareto_frontiers.append(r.pareto_frontier)
                     if r.error is not None:
                         run_r2_scores.append(-1.0)
                         run_r2c_scores.append(-1.0)
@@ -1827,6 +1859,7 @@ def _aggregate_pysr_results(
                     "n_successful_runs": len(good_runs),
                     "n_total_runs": len(all_run_results),
                     "execution_traces": all_traces,
+                    "run_pareto_frontiers": run_pareto_frontiers,
                 })
             else:
                 # No results for this (config, dataset) at all (not even errors).
@@ -1851,6 +1884,7 @@ def _aggregate_pysr_results(
                     "n_successful_runs": 0,
                     "n_total_runs": 0,
                     "execution_traces": [],
+                    "run_pareto_frontiers": [],
                 })
 
         # Overall average is the mean of per-dataset averages over datasets
@@ -2037,6 +2071,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         domain: str = "srbench",
         black_box: bool = False,
         retain_pareto_frontier: bool = False,
+        fixed_data_split_across_runs: bool = False,
         cache_namespace: Optional[str] = None,
         cpus_per_task: int = 1,
     ):
@@ -2069,6 +2104,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # builds (one evolution/HPO run is one domain). See domains.py.
         self.domain = domain
         self.retain_pareto_frontier = retain_pareto_frontier
+        self.fixed_data_split_across_runs = fixed_data_split_across_runs
         if cpus_per_task <= 0:
             raise ValueError("cpus_per_task must be positive")
         self.cpus_per_task = int(cpus_per_task)
@@ -2281,6 +2317,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         black_box=effective_black_box,
                         domain=self.domain,
                         retain_pareto_frontier=self.retain_pareto_frontier,
+                        data_split_seed=(seed if self.fixed_data_split_across_runs else None),
                         cache_namespace=self.cache_namespace,
                     ))
 
@@ -2355,7 +2392,16 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         cached_has_required_frontier = (
                             not (task.black_box or task.retain_pareto_frontier)
                             or cached is None
-                            or bool(cached.get("pareto_frontier"))
+                            or (
+                                bool(cached.get("pareto_frontier"))
+                                and (
+                                    task.data_split_seed is None
+                                    or all(
+                                        row.get("train_mse") is not None
+                                        for row in cached.get("pareto_frontier", [])
+                                    )
+                                )
+                            )
                         )
                         # Domain accuracy is only present in entries written
                         # after that column was added, and cannot be recovered

@@ -91,6 +91,9 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                 "solve_time": None,
                 "solve_time_source": None,
                 "best_equation": None,
+                "best_loss": None,
+                "pareto_frontier": None,
+                "config_id": int(spec.get("config_id", 0)),
                 "error": None,
             }
             if res_path.exists():
@@ -108,12 +111,70 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                         solve_time=solve_time,
                         solve_time_source=solve_time_source,
                         best_equation=res.get("best_equation"),
+                        best_loss=res.get("best_loss"),
+                        pareto_frontier=res.get("pareto_frontier"),
                         error=res.get("error"),
                     )
                 except Exception as e:  # corrupt/partial file
                     entry["error"] = f"unreadable result file: {e}"
             results[key] = entry
     return results
+
+
+def merge_keyed_results(
+    keyed: Dict[str, Dict[str, Any]],
+    *,
+    base_seed: int,
+    bundle_names: Optional[Dict[int, str]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Collapse constituent searches into one result per dataset/noise."""
+    from frontier_aggregation import merge_frontiers
+
+    grouped: Dict[Tuple[str, float], List[Dict[str, Any]]] = {}
+    for entry in keyed.values():
+        grouped.setdefault((entry["dataset"], float(entry["noise"])), []).append(entry)
+
+    merged: Dict[str, Dict[str, Any]] = {}
+    for (dataset, noise), entries in grouped.items():
+        entries.sort(key=lambda e: (e["run_index"], e.get("config_id", 0)))
+        successful = [e for e in entries if e["present"] and e["error"] is None]
+        sources = [{
+            "source_run_index": e["run_index"],
+            "source_seed": e["seed"],
+            "source_config_id": e.get("config_id", 0),
+            **({"source_bundle": bundle_names[e.get("config_id", 0)]}
+               if bundle_names and e.get("config_id", 0) in bundle_names else {}),
+        } for e in successful]
+        frontier = merge_frontiers(
+            [e.get("pareto_frontier") for e in successful], sources=sources,
+        )
+        best = frontier[-1] if frontier else None
+        solved_rows = [row for row in frontier if row.get("solved")]
+        solve_times = [_entry_solve_time(e) for e in successful]
+        solve_times = [value for value in solve_times if value is not None]
+        result = {
+            "dataset": dataset,
+            "family": family_of(dataset),
+            "seed": int(base_seed),
+            "run_index": 0,
+            "noise": noise,
+            "present": bool(successful),
+            "solved": bool(solved_rows),
+            "gt_match_score": 1.0 if solved_rows else 0.0,
+            "test_r2": best.get("r2", best.get("test_r2")) if best else None,
+            "runtime_seconds": sum(float(e.get("runtime_seconds") or 0.0) for e in entries),
+            "solve_time": sum(solve_times) if solve_times else None,
+            "solve_time_source": "sum_of_constituent_searches",
+            "best_equation": best.get("equation") if best else None,
+            "best_loss": best.get("train_mse") if best else None,
+            "pareto_frontier": frontier,
+            "error": None if successful else "No successful constituent searches",
+            "n_searches": len(entries),
+            "n_successful_searches": len(successful),
+            "constituent_seeds": [e["seed"] for e in entries],
+        }
+        merged[result_key(dataset, base_seed, noise)] = result
+    return merged
 
 
 def _solve_time_from_result(res: Dict[str, Any]) -> Tuple[Optional[float], Optional[str]]:
@@ -159,8 +220,9 @@ def expected_keys(manifest: Dict[str, Any]) -> List[str]:
 # Persisting / loading the aggregated big JSON
 # ---------------------------------------------------------------------------
 
-def save_keyed_results(run_dir: "str | Path", keyed: Dict[str, Dict[str, Any]], meta: Dict[str, Any]) -> Path:
-    out = Path(run_dir) / "srbench_full_results.json"
+def save_keyed_results(run_dir: "str | Path", keyed: Dict[str, Dict[str, Any]], meta: Dict[str, Any],
+                       filename: str = "srbench_full_results.json") -> Path:
+    out = Path(run_dir) / filename
     with open(out, "w") as f:
         json.dump({"meta": meta, "results": keyed}, f, indent=2)
     return out

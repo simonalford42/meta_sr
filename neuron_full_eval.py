@@ -105,6 +105,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--n-runs", type=int, default=5)
+    parser.add_argument("--merge-run-frontiers", action="store_true")
+    parser.add_argument("--task-population-bundles", type=int, default=None, metavar="N")
     parser.add_argument(
         "--seed",
         type=int,
@@ -162,7 +164,23 @@ def main() -> None:
         "timeout_in_seconds": int(args.timeout),
     })
 
-    if args.evolve_results:
+    configs = None
+    run_index_starts = None
+    runs_per_config = args.n_runs
+    if args.task_population_bundles:
+        if not args.evolve_results:
+            raise SystemExit("--task-population-bundles requires --evolve-results")
+        from bundle_loader import load_task_population_bundles
+        bundles = load_task_population_bundles(args.evolve_results, args.task_population_bundles)
+        configs = [item.to_pysr_config(pysr_kwargs) for item in bundles]
+        config = configs[0]
+        runs_per_config = 1
+        run_index_starts = list(range(len(configs)))
+        args.n_runs = len(configs)
+        args.merge_run_frontiers = True
+        method = {"kind": "task_population_portfolio", "source": str(args.evolve_results),
+                  "bundle_names": [item.display_name for item in bundles]}
+    elif args.evolve_results:
         bundle = load_bundle(args.evolve_results, select_by="train")
         config = bundle.to_pysr_config(pysr_kwargs)
         method = {
@@ -177,6 +195,7 @@ def main() -> None:
             "source": None,
             "bundle_name": "base_pysr",
         }
+    configs = configs or [config]
 
     evaluator = PySRSlurmEvaluator(
         results_dir=str(output_dir),
@@ -195,6 +214,7 @@ def main() -> None:
         domain="neuron",
         black_box=False,
         retain_pareto_frontier=True,
+        fixed_data_split_across_runs=args.merge_run_frontiers,
     )
 
     held_out_worlds = list(dict.fromkeys(args.held_out_world or []))
@@ -206,31 +226,46 @@ def main() -> None:
         f"max_evals={args.max_evals:,}"
     )
     handle = evaluator.submit_configs(
-        configs=[config],
+        configs=configs,
         dataset_names=eval_worlds,
         seed=args.seed,
-        n_runs=args.n_runs,
+        n_runs=runs_per_config,
+        run_index_start_per_config=run_index_starts,
         fitness_metric="gt",
     )
     evaluator.collect_batch(handle)
     raw = _load_raw_results(handle)
 
     records: List[Dict[str, Any]] = []
-    for result in sorted(raw, key=lambda r: (eval_worlds.index(r.dataset_name), r.run_index)):
-        frontier = result.pareto_frontier or []
+    if args.merge_run_frontiers:
+        from frontier_aggregation import group_and_merge_results
+        groups = group_and_merge_results(raw, base_seed=args.seed)
+        result_rows = [
+            (world, 0, group["frontier"], None, group["runtime_seconds"],
+             group["num_evaluations"])
+            for (world,), group in groups.items()
+        ]
+    else:
+        result_rows = [
+            (r.dataset_name, r.run_index, r.pareto_frontier or [], r.error,
+             r.runtime_seconds, r.num_evaluations) for r in raw
+        ]
+    for world, run_index, frontier, error, runtime, num_evals in sorted(
+        result_rows, key=lambda row: (eval_worlds.index(row[0]), row[1])
+    ):
         best = _best_frontier_row(frontier)
         assessment = (
             NeuronBenchDomain.classify_nrmse(float(best["test_nrmse"]))
             if best is not None else "miss"
         )
         records.append({
-            "world": result.dataset_name,
-            "seed": int(args.seed + result.run_index),
-            "run_index": int(result.run_index),
-            "status": "complete" if result.error is None and best is not None else "error",
-            "error": result.error,
-            "runtime_seconds": float(result.runtime_seconds),
-            "num_evaluations": result.num_evaluations,
+            "world": world,
+            "seed": int(args.seed + run_index),
+            "run_index": int(run_index),
+            "status": "complete" if error is None and best is not None else "error",
+            "error": error,
+            "runtime_seconds": float(runtime),
+            "num_evaluations": num_evals,
             "best_nrmse": float(best["test_nrmse"]) if best is not None else None,
             "assessment": assessment,
             "best_equation": best.get("equation") if best is not None else None,
@@ -245,7 +280,7 @@ def main() -> None:
         per_world[world] = {
             "counts": _counts(selected),
             "completed": sum(r["status"] == "complete" for r in selected),
-            "expected": args.n_runs,
+            "expected": 1 if args.merge_run_frontiers else args.n_runs,
             "median_best_nrmse": (
                 float(np.median(finite)) if finite else None
             ),
@@ -265,6 +300,7 @@ def main() -> None:
             "domain": "fully_observable_neuronbench",
             "worlds": eval_worlds,
             "n_runs": args.n_runs,
+            "merge_run_frontiers": args.merge_run_frontiers,
             "base_seed": args.seed,
             "seeds": [args.seed + i for i in range(args.n_runs)],
             "max_evals": args.max_evals,
@@ -282,10 +318,14 @@ def main() -> None:
             ),
         },
         "completed": sum(r["status"] == "complete" for r in records),
-        "expected": len(WORLDS) * args.n_runs,
+        "expected": len(eval_worlds) * (1 if args.merge_run_frontiers else args.n_runs),
         "counts": _counts(records),
         "per_world": per_world,
         "runs": records,
+        "constituent_runs": (
+            [result.to_json_dict() for result in raw]
+            if args.merge_run_frontiers else None
+        ),
         "slurm_batch_dir": str(handle.batch_dir),
         "slurm_job_ids": list(handle.job_ids),
     }

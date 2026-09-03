@@ -132,7 +132,8 @@ def _envelope(rows, grid):
 
 
 def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000,
-                           n_trials=1):
+                           n_trials=1, merge_run_frontiers=False,
+                           base_seed=10_000, bundle_names=None):
     """Persist per-dataset per-trial test frontiers and plot their envelope.
 
     Each dataset is run `n_trials` times (distinct seeds -> distinct 75/25
@@ -147,12 +148,24 @@ def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000,
         if result.get("error") or not result.get("pareto_frontier"):
             continue
         trials = datasets.setdefault(result["dataset_name"], {})
-        trials[int(result.get("run_index") or 0)] = _test_pareto(
-            result["pareto_frontier"]
+        rows = result["pareto_frontier"]
+        trials[int(result.get("run_index") or 0)] = (
+            list(rows) if merge_run_frontiers else _test_pareto(rows)
         )
     datasets = {
         name: [trials[i] for i in sorted(trials)] for name, trials in datasets.items()
     }
+    if merge_run_frontiers:
+        from frontier_aggregation import merge_frontiers
+        datasets = {
+            name: [merge_frontiers(frontiers, sources=[{
+                "source_run_index": index,
+                "source_seed": base_seed + index,
+                **({"source_bundle": bundle_names[index]}
+                   if bundle_names and index in bundle_names else {}),
+            } for index in range(len(frontiers))])]
+            for name, frontiers in datasets.items()
+        }
 
     payload = {
         "protocol": {
@@ -161,8 +174,13 @@ def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000,
             "scale_x": True,
             "scale_y": True,
             "max_train_samples": max_train_samples,
-            "selection": "test R2/complexity Pareto frontier",
+            "selection": (
+                "minimum training MSE per complexity across searches"
+                if merge_run_frontiers else
+                "test R2/complexity Pareto frontier"
+            ),
             "layout": "datasets[name] = list of per-trial frontiers",
+            "merge_run_frontiers": bool(merge_run_frontiers),
         },
         "n_trials_present": {name: len(t) for name, t in datasets.items()},
         "datasets": datasets,
@@ -250,6 +268,13 @@ def run_black_box(args, output_dir, source, manifest, run):
             f"--black-box-timeout"
         )
     config = apply_soft_timeout(source.config, source.backend, soft_timeout)
+    portfolio_configs = getattr(args, "_portfolio_configs", [source.config])
+    configs = [
+        apply_soft_timeout(item, source.backend, soft_timeout)
+        for item in portfolio_configs
+    ]
+    runs_per_config = getattr(args, "_runs_per_config", n_trials)
+    run_index_starts = getattr(args, "_run_index_starts", None)
     print(f"Black-box: {len(datasets)} datasets x {n_trials} trials = "
           f"{len(datasets) * n_trials} runs  |  per-fit wall limit: {wall_limit}s"
           f"  |  soft timeout: {soft_timeout if soft_timeout is not None else 'none'}")
@@ -267,13 +292,16 @@ def run_black_box(args, output_dir, source, manifest, run):
             job_timeout=args.job_timeout,
             wall_limit=wall_limit,
             max_retries=args.max_retries,
+            retain_pareto_frontier=args.merge_run_frontiers,
+            fixed_data_split_across_runs=args.merge_run_frontiers,
         )
         before = set(evaluator.slurm_dir.glob("eval_*"))
         evaluator.evaluate_configs(
-            configs=[config],
+            configs=configs,
             dataset_names=datasets,
             seed=args.seed,
-            n_runs=n_trials,
+            n_runs=runs_per_config,
+            run_index_start_per_config=run_index_starts,
             fitness_metric="r2",
             fullsr_wall_limit=wall_limit,
             split_label="srbench_black_box",
@@ -301,12 +329,15 @@ def run_black_box(args, output_dir, source, manifest, run):
             max_retries=args.max_retries,
             repo_root=source.repo_root,
             cache_namespace=source.cache_namespace,
+            retain_pareto_frontier=args.merge_run_frontiers,
+            fixed_data_split_across_runs=args.merge_run_frontiers,
         )
         handle = evaluator.submit_configs(
-            configs=[config],
+            configs=configs,
             dataset_names=datasets,
             seed=args.seed,
-            n_runs=n_trials,
+            n_runs=runs_per_config,
+            run_index_start_per_config=run_index_starts,
             fitness_metric="r2",
             black_box=True,
         )
@@ -328,7 +359,9 @@ def run_black_box(args, output_dir, source, manifest, run):
     with open(Path(output_dir) / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
     n_present = save_black_box_results(
-        output_dir, batch_dir, args.black_box_max_samples, n_trials=n_trials
+        output_dir, batch_dir, args.black_box_max_samples, n_trials=n_trials,
+        merge_run_frontiers=args.merge_run_frontiers, base_seed=args.seed,
+        bundle_names=getattr(args, "_bundle_names", None),
     )
     print(f"\nBlack-box results: {n_present}/{len(datasets)} dataset frontiers present.")
     if run is not None:
@@ -487,6 +520,17 @@ def main(argv=None, *, force_srbench_2025=False):
                         help="Seeds per dataset, for both ground-truth (per "
                              "task/noise) and black-box evaluation (actual "
                              "seeds = seed .. seed+n_trials-1).")
+    parser.add_argument(
+        "--merge-run-frontiers", action="store_true",
+        help="Treat the N searches as one restart portfolio and score their "
+             "training-MSE/complexity merged Pareto frontier.",
+    )
+    parser.add_argument(
+        "--task-population-bundles", type=int, default=None, metavar="N",
+        help="Evaluate N cyclic slots drawn from the unique task winners in an "
+             "evolve_pysr --population-type task run, once each, then merge. "
+             "Implies --merge-run-frontiers.",
+    )
     parser.add_argument("--noise-levels", type=float, nargs="+", default=DEFAULT_NOISE_LEVELS)
 
     parser.add_argument("--partition", type=str, default="default_partition")
@@ -536,6 +580,12 @@ def main(argv=None, *, force_srbench_2025=False):
     args = parser.parse_args(argv)
     if force_srbench_2025:
         args.srbench_2025 = True
+    if args.task_population_bundles is not None:
+        if args.task_population_bundles <= 0:
+            parser.error("--task-population-bundles must be positive")
+        if not args.evolve_results:
+            parser.error("--task-population-bundles requires --evolve-results")
+        args.merge_run_frontiers = True
 
     print("Executing command: " + " ".join(sys.argv))
 
@@ -570,6 +620,34 @@ def main(argv=None, *, force_srbench_2025=False):
         pysr_kwargs["progress"] = True
         config = replace(config, pysr_kwargs=pysr_kwargs)
         source.config = config
+    configs = [config]
+    runs_per_config = args.n_trials_per_dataset
+    run_index_starts = None
+    bundle_names = {0: getattr(config, "name", mode_name)}
+    if args.task_population_bundles is not None:
+        if source.backend != "pysr":
+            parser.error("task-population portfolios currently require evolve_pysr")
+        from bundle_loader import load_task_population_bundles
+        bundles = load_task_population_bundles(
+            args.evolve_results, args.task_population_bundles
+        )
+        configs = [
+            bundle.to_pysr_config(dict(config.pysr_kwargs)) for bundle in bundles
+        ]
+        runs_per_config = 1
+        run_index_starts = list(range(len(configs)))
+        bundle_names = {
+            index: bundle.display_name for index, bundle in enumerate(bundles)
+        }
+        args.n_trials_per_dataset = len(configs)
+        method_meta["task_population_portfolio"] = {
+            "slots": len(configs),
+            "bundle_names": list(bundle_names.values()),
+        }
+    args._portfolio_configs = configs
+    args._runs_per_config = runs_per_config
+    args._run_index_starts = run_index_starts
+    args._bundle_names = bundle_names
     print(f"Mode: {mode_name}  |  backend: {source.backend}")
 
     gt_wall = (args.fullsr_wall_limit if source.backend == "fullsr"
@@ -634,6 +712,8 @@ def main(argv=None, *, force_srbench_2025=False):
             wall_limit=args.fullsr_wall_limit,
             max_retries=args.max_retries,
             eval_noise_levels=args.noise_levels,
+            retain_pareto_frontier=args.merge_run_frontiers,
+            fixed_data_split_across_runs=args.merge_run_frontiers,
         )
     else:
         from parallel_eval_pysr import PySRSlurmEvaluator
@@ -654,7 +734,8 @@ def main(argv=None, *, force_srbench_2025=False):
             cache_namespace=source.cache_namespace,
             # SRBench 2.0 ground-truth results are reviewed from the complete
             # Pareto frontier, not only the equation selected by PySR.
-            retain_pareto_frontier=args.srbench_2025,
+            retain_pareto_frontier=(args.srbench_2025 or args.merge_run_frontiers),
+            fixed_data_split_across_runs=args.merge_run_frontiers,
         )
 
     run = None
@@ -691,6 +772,8 @@ def main(argv=None, *, force_srbench_2025=False):
         "max_samples": args.max_samples,
         "seed": args.seed,
         "n_runs": args.n_trials_per_dataset,
+        "merge_run_frontiers": args.merge_run_frontiers,
+        "bundle_names": bundle_names,
         "seeds": [args.seed + i for i in range(args.n_trials_per_dataset)],
         "noise_levels": args.noise_levels,
         "split_file": args.split_file,
@@ -707,13 +790,14 @@ def main(argv=None, *, force_srbench_2025=False):
         # FullSR natively expands all requested noise levels into one array.
         before = set(evaluator.slurm_dir.glob("eval_*"))
         evaluator.evaluate_configs(
-            configs=[config],
+            configs=configs,
             dataset_names=datasets,
             seed=args.seed,
-            n_runs=args.n_trials_per_dataset,
+            n_runs=runs_per_config,
             fitness_metric="gt",
             fullsr_wall_limit=args.fullsr_wall_limit,
             split_label=args.split_file,
+            run_index_start_per_config=run_index_starts,
         )
         created = sorted(set(evaluator.slurm_dir.glob("eval_*")) - before)
         if len(created) != 1:
@@ -734,10 +818,11 @@ def main(argv=None, *, force_srbench_2025=False):
         for noise in args.noise_levels:
             noise_map = {ds: noise for ds in datasets}
             h = evaluator.submit_configs(
-                configs=[config],
+                configs=configs,
                 dataset_names=datasets,
                 seed=args.seed,
-                n_runs=args.n_trials_per_dataset,
+                n_runs=runs_per_config,
+                run_index_start_per_config=run_index_starts,
                 target_noise_map=noise_map,
                 fitness_metric="gt",
             )
@@ -765,9 +850,19 @@ def main(argv=None, *, force_srbench_2025=False):
 
     # Build + persist the big keyed JSON from the on-disk batch artifacts.
     keyed = srio.build_keyed_results(output_dir, manifest)
+    if args.merge_run_frontiers:
+        srio.save_keyed_results(output_dir, keyed, meta={
+            "mode": mode_name, "kind": "constituent_searches",
+            "n_datasets": len(datasets), "n_runs": args.n_trials_per_dataset,
+            "noise_levels": args.noise_levels,
+        }, filename="srbench_full_constituent_results.json")
+        keyed = srio.merge_keyed_results(
+            keyed, base_seed=args.seed, bundle_names=bundle_names,
+        )
     srio.save_keyed_results(output_dir, keyed, meta={
         "mode": mode_name, "n_datasets": len(datasets),
         "n_runs": args.n_trials_per_dataset, "noise_levels": args.noise_levels,
+        "merge_run_frontiers": args.merge_run_frontiers,
     })
     n_present = sum(1 for e in keyed.values() if e["present"] and e["error"] is None)
     print(f"\nResults: {n_present}/{len(keyed)} runs present.")
