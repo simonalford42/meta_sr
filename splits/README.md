@@ -152,6 +152,14 @@ claimed solve on the uncapped complete relation. Exact witness formulas and
 their complexities are documented in
 `analysis/mips_witness_formulas/README.md`.
 
+### `mips_hard10_easy5.txt` (15)
+
+Focused MIPS evolution split calibrated from the initial default-operator
+evaluation in run 213888. It contains the ten relations that were still
+running after 20 minutes, plus five relations sampled with Python seed 42
+from the 40 completed relations that had already been solved exactly. The
+hard relations are listed first, followed by the sampled easy relations.
+
 ### `neuron_all.txt` / `neuron_loocv1.txt` ... `neuron_loocv6.txt`
 
 The six fully-observable NeuronBench vector-field tasks and their deterministic
