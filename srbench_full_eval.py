@@ -32,6 +32,11 @@ for ground truth, and 122 datasets x 10 seeds for --black-box. ``--2025``
 switches those selections to the 12 first-principles or 12 black-box problems
 from the 2025 Call for Action paper. Trial counts come from
 --n-trials-per-dataset.
+
+Seeds default to 10000..10009 -- a band held out from evolution, which runs at
+seed 42 (seeds 42..~51) plus the 100k/200k train/val reeval bands. Old results
+produced under the previous default (42) reused evolution's exact train/test
+splits on the training tasks at noise 0.0; pass --seed 42 to reproduce them.
 Results land in ``runs/<run_id>/`` (manifest.json + srbench_full_results.json)
 and are logged to the "meta-sr" wandb project as a Table plus solve-rate /
 solve-time metrics for srbench(all) / feynman / strogatz per noise level.
@@ -471,7 +476,12 @@ def main():
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--black-box-max-samples", type=int, default=10_000,
                         help="Training-row cap for black-box datasets (SRBench protocol).")
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=10_000,
+                        help="Base seed. Held-out by default: evolution runs at "
+                             "seed 42 (run_index 0..n_reevals-1, so seeds 42..~51) "
+                             "plus the 100k/200k train/val reeval bands, so the "
+                             "10k band never reuses a seed seen during evolution. "
+                             "Also seeds dataset subsampling (data_seed).")
     parser.add_argument("--n-trials-per-dataset", "--n-runs", type=int, default=10,
                         dest="n_trials_per_dataset",
                         help="Seeds per dataset, for both ground-truth (per "
