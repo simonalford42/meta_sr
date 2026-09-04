@@ -573,6 +573,9 @@ def main(argv=None, *, force_srbench_2025=False):
                         help="Maximum simultaneously running tasks in each array.")
     parser.add_argument("--time-limit", type=str, default="02:00:00")
     parser.add_argument("--mem-per-cpu", type=str, default="8G")
+    parser.add_argument("--cpus-per-task", type=int, default=1,
+                        help="CPU cores allocated to each PySR worker; values above "
+                             "one use PySR multiprocessing.")
     parser.add_argument("--job-timeout", type=float, default=None)
     parser.add_argument("--pysr-wall-limit", type=int, default=600)
     parser.add_argument("--fullsr-wall-limit", type=int, default=600,
@@ -614,7 +617,11 @@ def main(argv=None, *, force_srbench_2025=False):
     parser.add_argument("--no-wandb", action="store_true")
     parser.add_argument("--srbench2-exact-recovery", action="store_true",
                         help=argparse.SUPPRESS)
+    parser.add_argument("--baseline-l1-loss", action="store_true",
+                        help="Use L1DistLoss for a baseline SRBench 2.0 exact-recovery run.")
     args = parser.parse_args(argv)
+    if args.cpus_per_task <= 0:
+        parser.error("--cpus-per-task must be positive")
     if force_srbench_2025:
         args.srbench_2025 = True
     if args.task_population_bundles is not None:
@@ -682,8 +689,14 @@ def main(argv=None, *, force_srbench_2025=False):
 
         source = replace(
             source,
-            config=apply_srbench2_exact_recovery_protocol(source.config),
+            config=apply_srbench2_exact_recovery_protocol(
+                source.config,
+                cpus_per_task=args.cpus_per_task,
+                baseline_l1_loss=args.baseline_l1_loss,
+            ),
         )
+    elif args.baseline_l1_loss:
+        parser.error("--baseline-l1-loss requires --srbench2-exact-recovery")
     config, mode_name, method_meta = source.config, source.mode, source.method_meta
     if args.pysr_progress:
         if source.backend != "pysr":
@@ -839,6 +852,7 @@ def main(argv=None, *, force_srbench_2025=False):
             portfolio_restart_timeout_seconds=args.portfolio_restart_timeout,
             portfolio_restart_count=args.portfolio_restart_count,
             portfolio_warmup=not args.no_portfolio_warmup,
+            cpus_per_task=args.cpus_per_task,
         )
 
     run = None
@@ -883,6 +897,8 @@ def main(argv=None, *, force_srbench_2025=False):
         "timeout_in_seconds": source.soft_timeout,
         "timeout_source": source.soft_timeout_source,
         "max_samples": args.max_samples,
+        "cpus_per_task": args.cpus_per_task,
+        "baseline_l1_loss": args.baseline_l1_loss,
         "seed": args.seed,
         "n_runs": args.n_trials_per_dataset,
         "merge_run_frontiers": args.merge_run_frontiers,

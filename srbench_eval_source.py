@@ -100,13 +100,21 @@ def apply_soft_timeout(config, backend: str, timeout: Optional[int]):
     return replace(config, **{_kwargs_field(backend): kwargs})
 
 
-def apply_srbench2_exact_recovery_protocol(config):
+def apply_srbench2_exact_recovery_protocol(
+    config,
+    *,
+    cpus_per_task: int = 1,
+    baseline_l1_loss: bool = False,
+):
     """Apply the fixed PySR search space used for SRBench-2 recovery runs.
 
     Method-specific mutation, selection, survival, and loss code lives outside
     ``pysr_kwargs`` and is therefore preserved for evolved configurations.
     """
     from dataclasses import replace
+
+    if cpus_per_task <= 0:
+        raise ValueError("cpus_per_task must be positive")
 
     kwargs = dict(config.pysr_kwargs)
     for key in ("early_stop_condition", "elementwise_loss"):
@@ -138,14 +146,25 @@ def apply_srbench2_exact_recovery_protocol(config):
             "log": {"log": 0, "exp": 1},
             "sqrt": {"sqrt": 1, "exp": 1, "square": 0},
         },
-        "procs": 0,
-        "parallelism": "serial",
-        "deterministic": True,
         "batching": False,
         "precision": 64,
         "model_selection": "best",
         "warmup_maxsize_by": 0.002,
     })
+    if cpus_per_task == 1:
+        kwargs.update({
+            "procs": 0,
+            "parallelism": "serial",
+            "deterministic": True,
+        })
+    else:
+        kwargs.update({
+            "procs": int(cpus_per_task),
+            "parallelism": "multiprocessing",
+        })
+        kwargs.pop("deterministic", None)
+    if baseline_l1_loss and config.custom_loss_code is None:
+        kwargs["elementwise_loss"] = "L1DistLoss()"
     return replace(config, pysr_kwargs=kwargs)
 
 

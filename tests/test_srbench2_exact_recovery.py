@@ -73,6 +73,38 @@ def test_exact_recovery_config_is_serial_float64_without_early_stop():
     assert kwargs["unary_operators"] == ["square", "cube", "exp", "log", "sqrt"]
 
 
+def test_exact_recovery_can_use_paper_style_multiprocessing_and_l1():
+    config = OperatorBundle.create_default().to_pysr_config({
+        "elementwise_loss": "LPDistLoss{3}()",
+    })
+
+    configured = apply_srbench2_exact_recovery_protocol(
+        config,
+        cpus_per_task=8,
+        baseline_l1_loss=True,
+    )
+    kwargs = configured.pysr_kwargs
+
+    assert kwargs["elementwise_loss"] == "L1DistLoss()"
+    assert kwargs["parallelism"] == "multiprocessing"
+    assert kwargs["procs"] == 8
+    assert "deterministic" not in kwargs
+
+
+def test_exact_recovery_l1_flag_does_not_replace_evolved_custom_loss():
+    config = OperatorBundle.create_default().to_pysr_config({
+        "elementwise_loss": "LPDistLoss{3}()",
+    })
+    config.custom_loss_code = "function loss(x, y)::Float64\nreturn abs(x-y)\nend"
+
+    configured = apply_srbench2_exact_recovery_protocol(
+        config,
+        baseline_l1_loss=True,
+    )
+
+    assert "elementwise_loss" not in configured.pysr_kwargs
+
+
 def test_exact_recovery_domain_reuses_every_row(monkeypatch):
     domain = get_domain("srbench2_exact")
     X = np.arange(12, dtype=float).reshape(6, 2)
