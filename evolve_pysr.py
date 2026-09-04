@@ -59,6 +59,7 @@ from operator_types import (
     append_validation_log,
     generate_operator_code_batch,
     OperatorGenerationSpec,
+    _signature_positional_arity,
 )
 from bundle_loader import (
     load_resume_state,
@@ -210,6 +211,19 @@ def _describe_operator_kind(type_name: str, code: str) -> str:
         if a.strip()
     ]
     return "smart mutation" if "dataset" in arg_names else "mutation"
+
+
+def _uses_data_aware_mutation_signature(
+    type_name: str,
+    code: str,
+) -> bool:
+    """Whether candidate code uses the five-argument mutation interface."""
+    if type_name != "mutation":
+        return False
+    match = re.search(r"function\s+\w+\s*\(", code)
+    if match is None:
+        return False
+    return _signature_positional_arity(code, match.end() - 1) == 5
 
 
 def _make_complexity_pareto_figure(population: List[OperatorBundle], generation: int):
@@ -760,6 +774,8 @@ def run_bundle_evolution(
     split_label: Optional[str] = None,
     mutation_mode: str = "random",
     simplify_cooldown: int = 0,
+    excluded_mutation_modes: Optional[List[str]] = None,
+    allow_data_aware_mutations: bool = True,
     domain: str = "srbench",
     uninformative_prompts: bool = False,
     black_box: bool = False,
@@ -783,6 +799,13 @@ def run_bundle_evolution(
     """
     rng = random.Random(seed)
     np.random.seed(seed)
+
+    excluded_mutation_modes = list(excluded_mutation_modes or [])
+    allowed_mutation_modes = [
+        mode for mode in META_MUTATION_MODES if mode not in excluded_mutation_modes
+    ]
+    if not allowed_mutation_modes:
+        raise ValueError("At least one meta-mutation mode must remain enabled")
 
     if simplify_cooldown < 0 or simplify_cooldown > n_generations:
         raise ValueError(
@@ -878,6 +901,8 @@ def run_bundle_evolution(
         "execution_feedback_n": execution_feedback_n,
         "execution_feedback_prob": execution_feedback_prob,
         "mutation_mode": mutation_mode,
+        "excluded_mutation_modes": excluded_mutation_modes,
+        "allow_data_aware_mutations": allow_data_aware_mutations,
         "simplify_cooldown": simplify_cooldown,
     })
     metric_label = {
@@ -1378,7 +1403,16 @@ def run_bundle_evolution(
                 # Initial-pop mode: explore by default, but `mutation_mode`
                 # forces a single mode for the whole run. simplify/refine need
                 # a parent — fall back to explore if the baseline lacks one.
-                init_mode = "explore" if mutation_mode == "random" else mutation_mode
+                if mutation_mode == "random":
+                    # Preserve historical initialization unless explore is the
+                    # ablated mode. Crossover needs two distinct parents and is
+                    # therefore not usable in a fresh initial population.
+                    init_choices = [
+                        mode for mode in allowed_mutation_modes if mode != "crossover"
+                    ]
+                    init_mode = "explore" if "explore" in init_choices else rng.choice(init_choices)
+                else:
+                    init_mode = mutation_mode
                 if init_mode in ("refine", "simplify") and baseline_op is None:
                     init_mode = "explore"
                 specs.append(OperatorGenerationSpec(
@@ -1394,6 +1428,7 @@ def run_bundle_evolution(
                     temperature=temperature,
                     use_cache=use_cache,
                     reasoning_effort=reasoning_effort,
+                    allow_data_aware_mutations=allow_data_aware_mutations,
                     log_prompt_dir=prompts_log_dir,
                     log_generation=0,
                 ))
@@ -1419,7 +1454,13 @@ def run_bundle_evolution(
                     unique_name = f"{func_name}_init_{bundle_idx}"
                     code = _rename_function_identifier(code, func_name, unique_name)
 
-                    is_valid, error = validate_julia_code(unique_name, code, op_type)
+                    if (
+                        not allow_data_aware_mutations
+                        and _uses_data_aware_mutation_signature(type_name, code)
+                    ):
+                        is_valid, error = False, "data-aware mutation disabled by ablation"
+                    else:
+                        is_valid, error = validate_julia_code(unique_name, code, op_type)
                     append_validation_log(
                         prompts_log_dir, op_type, spec.mode, 0,
                         bundle_idx * 100 + attempt,
@@ -1913,17 +1954,25 @@ def run_bundle_evolution(
             # an operator from any population member that has one. If the
             # population can't supply enough parents for the chosen mode, fall
             # back along: crossover -> refine -> explore, simplify -> explore.
-            if generation_mutation_mode == "random":
-                mode = rng.choice(["explore", "refine", "simplify", "crossover"])
-            else:
-                mode = generation_mutation_mode
-            parent = None
-            parent2 = None
             type_candidates = [
                 b.get_operator(current_type_name)
                 for b in population
                 if b.get_operator(current_type_name) is not None
             ]
+            if generation_mutation_mode == "random":
+                feasible_modes = ["explore"]
+                if type_candidates:
+                    feasible_modes.extend(["refine", "simplify"])
+                if len(type_candidates) >= 2:
+                    feasible_modes.append("crossover")
+                mode = rng.choice([
+                    candidate for candidate in feasible_modes
+                    if candidate in allowed_mutation_modes
+                ])
+            else:
+                mode = generation_mutation_mode
+            parent = None
+            parent2 = None
             if mode in ("refine", "simplify"):
                 if parent_op is not None:
                     parent = parent_op
@@ -1993,6 +2042,7 @@ def run_bundle_evolution(
                     temperature=temperature,
                     use_cache=use_cache,
                     reasoning_effort=reasoning_effort,
+                    allow_data_aware_mutations=allow_data_aware_mutations,
                     task_info=cand["task_info"],
                     log_prompt_dir=prompts_log_dir if gen <= log_prompt_gens_max else None,
                     log_generation=gen,
@@ -2026,7 +2076,13 @@ def run_bundle_evolution(
                     unique_name = f"{func_name}_gen{gen}_{slot_idx}"
                     code = _rename_function_identifier(code, func_name, unique_name)
 
-                    is_valid, error = validate_julia_code(unique_name, code, current_op_type)
+                    if (
+                        not allow_data_aware_mutations
+                        and _uses_data_aware_mutation_signature(current_type_name, code)
+                    ):
+                        is_valid, error = False, "data-aware mutation disabled by ablation"
+                    else:
+                        is_valid, error = validate_julia_code(unique_name, code, current_op_type)
                     append_validation_log(
                         prompts_log_dir if gen <= log_prompt_gens_max else None,
                         current_op_type, mode, gen, variation_seed,
@@ -2852,6 +2908,18 @@ def main():
                              "The final generations are overridden when --simplify-cooldown is set. "
                              "Default 'random' picks uniformly each time, matching prior behavior. "
                              "If a non-'random' mode requires a parent the bundle lacks, falls back to explore.")
+    parser.add_argument(
+        "--exclude-mutation-mode",
+        action="append",
+        default=[],
+        choices=list(META_MUTATION_MODES),
+        help="Exclude one meta-mutation mode from --mutation-mode random. May be repeated.",
+    )
+    parser.add_argument(
+        "--no-data-aware-mutations",
+        action="store_true",
+        help="Restrict evolved mutation operators to the structural four-argument interface.",
+    )
 
     parser.add_argument(
         "--neuron-full-eval",
@@ -2874,6 +2942,12 @@ def main():
             "--simplify-cooldown must be between 0 and --generations "
             f"(got {args.simplify_cooldown} for {args.generations} generations)"
         )
+    if args.mutation_mode != "random" and args.exclude_mutation_mode:
+        parser.error("--exclude-mutation-mode requires --mutation-mode random")
+    if len(set(args.exclude_mutation_mode)) >= len(META_MUTATION_MODES):
+        parser.error("--exclude-mutation-mode cannot exclude every mode")
+    if args.simplify_cooldown > 0 and "simplify" in args.exclude_mutation_mode:
+        parser.error("--simplify-cooldown conflicts with excluding simplify")
     if args.final_eval_runs < 1:
         parser.error("--final-eval-runs must be at least 1")
 
@@ -3163,6 +3237,8 @@ def main():
         val_pysr_timeout=args.val_pysr_timeout,
         mutation_mode=args.mutation_mode,
         simplify_cooldown=args.simplify_cooldown,
+        excluded_mutation_modes=args.exclude_mutation_mode,
+        allow_data_aware_mutations=not args.no_data_aware_mutations,
         domain=args.domain,
         uninformative_prompts=args.uninformative_prompts,
         black_box=args.black_box,
@@ -3221,6 +3297,8 @@ def main():
         "exec_feedback_prob": args.exec_feedback_prob,
         "continue_from": args.continue_from,
         "mutation_mode": args.mutation_mode,
+        "excluded_mutation_modes": list(args.exclude_mutation_mode),
+        "allow_data_aware_mutations": not args.no_data_aware_mutations,
         "simplify_cooldown": args.simplify_cooldown,
         "neuron_full_eval": args.neuron_full_eval,
         "neuron_eval_runs": args.neuron_eval_runs,
