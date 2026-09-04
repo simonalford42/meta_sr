@@ -14,6 +14,16 @@ and bad-node handling.
     # an evolved bundle
     python srbench_full_eval.py --evolve-results runs/<run_id> --max-evals 1000000
 
+    # one continuous hour on one core (one independent portfolio trial)
+    python srbench_full_eval.py --ground-truth --noise-levels 0 --n-runs 1 \
+        --portfolio-time-limit 3600 --portfolio-restart-timeout 3600 \
+        --portfolio-restart-count 1 --pysr-wall-limit 3900
+
+    # serial 1M-evaluation restarts, merged under the same one-hour budget
+    python srbench_full_eval.py --ground-truth --noise-levels 0 --n-runs 1 \
+        --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 \
+        --pysr-wall-limit 600
+
 ``--evolve-results`` auto-detects both evolve_pysr.py OperatorBundles and
 evolve_fullsr.py SkeletonBundles from their run_data.json schema.
 
@@ -175,7 +185,7 @@ def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000,
             "scale_y": True,
             "max_train_samples": max_train_samples,
             "selection": (
-                "minimum training MSE per complexity across searches"
+                "minimum native training loss per complexity across searches"
                 if merge_run_frontiers else
                 "test R2/complexity Pareto frontier"
             ),
@@ -523,7 +533,32 @@ def main(argv=None, *, force_srbench_2025=False):
     parser.add_argument(
         "--merge-run-frontiers", action="store_true",
         help="Treat the N searches as one restart portfolio and score their "
-             "training-MSE/complexity merged Pareto frontier.",
+             "native-training-loss/complexity merged Pareto frontier.",
+    )
+    parser.add_argument(
+        "--portfolio-time-limit", type=float, default=None, metavar="SECONDS",
+        help="Run independent PySR restarts serially in each one-core worker "
+             "under one shared search-time budget. Startup/warm-up and scoring "
+             "are excluded; --n-runs remains the number of independent portfolio trials.",
+    )
+    restart_budget = parser.add_mutually_exclusive_group()
+    restart_budget.add_argument(
+        "--portfolio-restart-max-evals", type=int, default=None, metavar="N",
+        help="Evaluation cap for each serial restart (for example 1000000).",
+    )
+    restart_budget.add_argument(
+        "--portfolio-restart-timeout", type=float, default=None, metavar="SECONDS",
+        help="Soft time cap for each serial restart; the final restart also "
+             "receives no more than the shared remaining budget.",
+    )
+    parser.add_argument(
+        "--portfolio-restart-count", type=int, default=None, metavar="N",
+        help="Launch exactly this many restarts unless the shared budget is "
+             "exhausted. Omit to keep restarting until the budget is used.",
+    )
+    parser.add_argument(
+        "--no-portfolio-warmup", action="store_true",
+        help="Do not run the default one-second compile warm-up outside the budget.",
     )
     parser.add_argument(
         "--task-population-bundles", type=int, default=None, metavar="N",
@@ -588,6 +623,32 @@ def main(argv=None, *, force_srbench_2025=False):
         if not args.evolve_results:
             parser.error("--task-population-bundles requires --evolve-results")
         args.merge_run_frontiers = True
+    if args.portfolio_time_limit is not None:
+        if args.portfolio_time_limit <= 0:
+            parser.error("--portfolio-time-limit must be positive")
+        if ((args.portfolio_restart_max_evals is None)
+                == (args.portfolio_restart_timeout is None)):
+            parser.error(
+                "--portfolio-time-limit requires exactly one of "
+                "--portfolio-restart-max-evals or --portfolio-restart-timeout"
+            )
+        if args.portfolio_restart_count is not None and args.portfolio_restart_count <= 0:
+            parser.error("--portfolio-restart-count must be positive")
+        if args.merge_run_frontiers:
+            parser.error(
+                "--portfolio-time-limit already merges each serial portfolio; "
+                "do not combine it with --merge-run-frontiers"
+            )
+        if args.task_population_bundles is not None:
+            parser.error(
+                "serial restart portfolios currently support one fixed method, "
+                "not --task-population-bundles"
+            )
+    elif (args.portfolio_restart_max_evals is not None
+          or args.portfolio_restart_timeout is not None
+          or args.portfolio_restart_count is not None
+          or args.no_portfolio_warmup):
+        parser.error("portfolio restart options require --portfolio-time-limit")
 
     print("Executing command: " + " ".join(sys.argv))
 
@@ -662,9 +723,33 @@ def main(argv=None, *, force_srbench_2025=False):
     args._bundle_names = bundle_names
     print(f"Mode: {mode_name}  |  backend: {source.backend}")
 
+    if args.portfolio_time_limit is not None and source.backend != "pysr":
+        parser.error("serial restart portfolios currently require the PySR backend")
+
     gt_wall = (args.fullsr_wall_limit if source.backend == "fullsr"
                else args.pysr_wall_limit)
-    if source.soft_timeout is None:
+    if args.portfolio_time_limit is not None:
+        restart_desc = (
+            f"{args.portfolio_restart_max_evals:,} evals"
+            if args.portfolio_restart_max_evals is not None else
+            f"{args.portfolio_restart_timeout:g}s"
+        )
+        count_desc = (
+            str(args.portfolio_restart_count)
+            if args.portfolio_restart_count is not None else "until exhausted"
+        )
+        print(
+            f"Serial portfolio: {args.portfolio_time_limit:g}s shared search "
+            f"budget | restart budget={restart_desc} | restarts={count_desc} | "
+            f"hard wall/restart={gt_wall}s"
+        )
+        if (args.portfolio_restart_timeout is not None
+                and args.portfolio_restart_timeout >= gt_wall):
+            parser.error(
+                f"portfolio restart timeout ({args.portfolio_restart_timeout:g}s) "
+                f"must be below --pysr-wall-limit ({gt_wall}s)"
+            )
+    elif source.soft_timeout is None:
         print(f"Soft timeout: none ({source.soft_timeout_source})  |  hard wall: "
               f"{gt_wall}s. Fits that overrun the wall are discarded, not scored.")
     else:
@@ -749,6 +834,11 @@ def main(argv=None, *, force_srbench_2025=False):
             retain_pareto_frontier=(args.srbench_2025 or args.merge_run_frontiers),
             fixed_data_split_across_runs=args.merge_run_frontiers,
             domain=("srbench2_exact" if args.srbench2_exact_recovery else "srbench"),
+            portfolio_time_limit_seconds=args.portfolio_time_limit,
+            portfolio_restart_max_evals=args.portfolio_restart_max_evals,
+            portfolio_restart_timeout_seconds=args.portfolio_restart_timeout,
+            portfolio_restart_count=args.portfolio_restart_count,
+            portfolio_warmup=not args.no_portfolio_warmup,
         )
 
     run = None
@@ -768,6 +858,16 @@ def main(argv=None, *, force_srbench_2025=False):
                 "n_datasets": len(datasets),
                 "split_file": args.split_file,
                 "method_meta": method_meta,
+                "serial_restart_portfolio": (
+                    None if args.portfolio_time_limit is None else {
+                        "total_search_budget_seconds": args.portfolio_time_limit,
+                        "restart_max_evals": args.portfolio_restart_max_evals,
+                        "restart_timeout_seconds": args.portfolio_restart_timeout,
+                        "restart_count": args.portfolio_restart_count,
+                        "warmup_excluded_from_budget": not args.no_portfolio_warmup,
+                        "frontier_loss_key": "loss",
+                    }
+                ),
             },
             script_name="srbench_full_eval.py",
             output_dir=output_dir,
@@ -786,6 +886,17 @@ def main(argv=None, *, force_srbench_2025=False):
         "seed": args.seed,
         "n_runs": args.n_trials_per_dataset,
         "merge_run_frontiers": args.merge_run_frontiers,
+        "serial_restart_portfolio": (
+            None if args.portfolio_time_limit is None else {
+                "total_search_budget_seconds": args.portfolio_time_limit,
+                "restart_max_evals": args.portfolio_restart_max_evals,
+                "restart_timeout_seconds": args.portfolio_restart_timeout,
+                "restart_count": args.portfolio_restart_count,
+                "warmup_excluded_from_budget": not args.no_portfolio_warmup,
+                "frontier_loss_key": "loss",
+                "cpus_per_task": 1,
+            }
+        ),
         "bundle_names": bundle_names,
         "seeds": [args.seed + i for i in range(args.n_trials_per_dataset)],
         "noise_levels": args.noise_levels,

@@ -35,6 +35,13 @@ Usage:
         --evolve-results outputs/evolve_mutation_*/run_data.json \
         --splits splits/train.txt splits/val.txt splits/test.txt \
         --n-runs 10
+
+    # Train/validation task performance from serial 90-second restarts (40 max)
+    python evaluate_new_pysr.py \
+        --evolve-results runs/709715 \
+        --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt \
+        --portfolio-time-limit 3600 --portfolio-restart-timeout 90 \
+        --portfolio-restart-count 40 --pysr-wall-limit 270
 """
 
 import argparse
@@ -405,6 +412,10 @@ def run_final_evaluation(
     black_box: bool = False,
     domain: Optional[str] = None,
     fitness_metric: Optional[str] = None,
+    portfolio_time_limit: Optional[float] = None,
+    portfolio_restart_max_evals: Optional[int] = None,
+    portfolio_restart_timeout: Optional[float] = None,
+    portfolio_restart_count: Optional[int] = None,
 ) -> Dict[str, "EvalSummary"]:
     """Run final evaluation on requested splits after an evolution, OpenEvolve, or HPO run.
 
@@ -484,6 +495,10 @@ def run_final_evaluation(
         pysr_wall_limit=pysr_wall_limit,
         black_box=black_box,
         domain=domain,
+        portfolio_time_limit_seconds=portfolio_time_limit,
+        portfolio_restart_max_evals=portfolio_restart_max_evals,
+        portfolio_restart_timeout_seconds=portfolio_restart_timeout,
+        portfolio_restart_count=portfolio_restart_count,
     )
 
     # Single converter: bundle -> PySRConfig (merges custom code + HPO hparams).
@@ -605,6 +620,16 @@ def run_final_evaluation(
         "black_box": black_box,
         "domain": domain,
         "fitness_metric": fitness_metric,
+        "serial_restart_portfolio": (
+            None if portfolio_time_limit is None else {
+                "total_search_budget_seconds": portfolio_time_limit,
+                "restart_max_evals": portfolio_restart_max_evals,
+                "restart_timeout_seconds": portfolio_restart_timeout,
+                "restart_count": portfolio_restart_count,
+                "warmup_excluded_from_budget": True,
+                "frontier_loss_key": "loss",
+            }
+        ),
     }
     summary_data.update(_bundle_summary_fields(bundle))
     for split_name, s in split_summaries.items():
@@ -687,6 +712,19 @@ def main() -> None:
                         help="Number of seeds/runs per config per dataset")
     parser.add_argument("--merge-run-frontiers", action="store_true",
                         help="Collapse the N fresh searches into one final frontier")
+    parser.add_argument(
+        "--portfolio-time-limit", type=float, default=None, metavar="SECONDS",
+        help="Run serial restarts under one shared search-time budget per "
+             "dataset/trial; startup and scoring are excluded.",
+    )
+    portfolio_restart = parser.add_mutually_exclusive_group()
+    portfolio_restart.add_argument(
+        "--portfolio-restart-max-evals", type=int, default=None, metavar="N",
+    )
+    portfolio_restart.add_argument(
+        "--portfolio-restart-timeout", type=float, default=None, metavar="SECONDS",
+    )
+    parser.add_argument("--portfolio-restart-count", type=int, default=None)
     parser.add_argument("--task-population-bundles", type=int, default=None, metavar="N",
                         help="Run N cyclic slots from an evolve_pysr task population once each")
     parser.add_argument("--seed", type=int, default=42,
@@ -732,6 +770,31 @@ def main() -> None:
                              "pysr_kwargs saved by an evolve run (useful for cross-domain evals)")
 
     args = parser.parse_args()
+
+    if args.portfolio_time_limit is not None:
+        if args.portfolio_time_limit <= 0:
+            parser.error("--portfolio-time-limit must be positive")
+        if ((args.portfolio_restart_max_evals is None)
+                == (args.portfolio_restart_timeout is None)):
+            parser.error(
+                "--portfolio-time-limit requires exactly one restart budget"
+            )
+        if args.portfolio_restart_count is not None and args.portfolio_restart_count <= 0:
+            parser.error("--portfolio-restart-count must be positive")
+        if args.merge_run_frontiers or args.task_population_bundles:
+            parser.error(
+                "serial portfolio mode cannot be combined with the legacy "
+                "parallel frontier or task-population portfolios"
+            )
+        if (args.portfolio_restart_timeout is not None
+                and args.portfolio_restart_timeout >= args.pysr_wall_limit):
+            parser.error(
+                "--portfolio-restart-timeout must be below --pysr-wall-limit"
+            )
+    elif (args.portfolio_restart_max_evals is not None
+          or args.portfolio_restart_timeout is not None
+          or args.portfolio_restart_count is not None):
+        parser.error("portfolio restart options require --portfolio-time-limit")
 
     if args.splits is None:
         args.splits = (
@@ -801,6 +864,15 @@ def main() -> None:
         "splits": args.splits,
         "n_runs": args.n_runs,
         "merge_run_frontiers": args.merge_run_frontiers,
+        "serial_restart_portfolio": (
+            None if args.portfolio_time_limit is None else {
+                "total_search_budget_seconds": args.portfolio_time_limit,
+                "restart_max_evals": args.portfolio_restart_max_evals,
+                "restart_timeout_seconds": args.portfolio_restart_timeout,
+                "restart_count": args.portfolio_restart_count,
+                "frontier_loss_key": "loss",
+            }
+        ),
         "seed": args.seed,
         "max_samples": args.max_samples,
         "max_evals": args.max_evals,
@@ -875,6 +947,10 @@ def main() -> None:
         domain=domain,
         retain_pareto_frontier=args.merge_run_frontiers,
         fixed_data_split_across_runs=args.merge_run_frontiers,
+        portfolio_time_limit_seconds=args.portfolio_time_limit,
+        portfolio_restart_max_evals=args.portfolio_restart_max_evals,
+        portfolio_restart_timeout_seconds=args.portfolio_restart_timeout,
+        portfolio_restart_count=args.portfolio_restart_count,
         **evaluator_kwargs,
     )
 
@@ -974,6 +1050,7 @@ def main() -> None:
         "total_cached": total_cached,
         "domain": domain,
         "fitness_metric": fitness_metric,
+        "serial_restart_portfolio": wandb_config["serial_restart_portfolio"],
     }
     if autoresearch_commit is not None:
         summary_data["autoresearch"] = {

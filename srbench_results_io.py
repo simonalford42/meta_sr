@@ -93,6 +93,7 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                 "best_equation": None,
                 "best_loss": None,
                 "pareto_frontier": None,
+                "portfolio": None,
                 "config_id": int(spec.get("config_id", 0)),
                 "error": None,
             }
@@ -113,6 +114,7 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                         best_equation=res.get("best_equation"),
                         best_loss=res.get("best_loss"),
                         pareto_frontier=res.get("pareto_frontier"),
+                        portfolio=res.get("portfolio"),
                         error=res.get("error"),
                     )
                 except Exception as e:  # corrupt/partial file
@@ -166,7 +168,7 @@ def merge_keyed_results(
             "solve_time": sum(solve_times) if solve_times else None,
             "solve_time_source": "sum_of_constituent_searches",
             "best_equation": best.get("equation") if best else None,
-            "best_loss": best.get("train_mse") if best else None,
+            "best_loss": best.get("loss") if best else None,
             "pareto_frontier": frontier,
             "error": None if successful else "No successful constituent searches",
             "n_searches": len(entries),
@@ -180,11 +182,15 @@ def merge_keyed_results(
 def _solve_time_from_result(res: Dict[str, Any]) -> Tuple[Optional[float], Optional[str]]:
     """(solve_time, source) for one raw task result dict.
 
-    Prefers the execution-trace ``chunk_runtime`` sum (pure fit wall time,
-    the methodology of scripts/analyze_pysr_solve_time.py); ``runtime_seconds``
-    also includes worker startup / Julia compile overhead (~4.4x inflated on
-    average) and is only used as a fallback for trace-less runs.
+    Serial portfolios report their explicitly budgeted aggregate search time.
+    Otherwise this prefers the execution-trace ``chunk_runtime`` sum (pure fit
+    wall time, the methodology of scripts/analyze_pysr_solve_time.py).
+    ``runtime_seconds`` also includes worker startup / Julia compile overhead
+    (~4.4x inflated on average) and is only used as a fallback.
     """
+    portfolio = res.get("portfolio") or {}
+    if portfolio.get("search_runtime_seconds") is not None:
+        return float(portfolio["search_runtime_seconds"]), "portfolio_search_runtime"
     trace = res.get("execution_trace") or []
     chunks = [
         e.get("chunk_runtime") for e in trace

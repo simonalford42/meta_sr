@@ -40,14 +40,9 @@ def main() -> None:
 
     merged = {}
     for name, records in grouped.items():
-        # New results carry common train_mse. Historical results from these
-        # three benchmarks share a fixed training set and one algorithm/loss,
-        # so their native loss is also comparable and can be used safely.
-        has_common = any(
-            row.get("train_mse") is not None
-            for record in records for row in record["frontier"]
-        )
-        loss_key = "train_mse" if has_common else "loss"
+        # Preserve the algorithm's own objective. PySR++ may evolve a custom
+        # loss, so replacing it with MSE changes the method being evaluated.
+        loss_key = "loss"
         try:
             frontier = merge_frontiers(
                 [record["frontier"] for record in records],

@@ -113,6 +113,34 @@ class PySRWallLimitExceeded(TimeoutError):
 _GT_CHECK_WALL_LIMIT_S = 300
 
 
+def _portfolio_restart_seed(base_seed: int, trial_index: int, restart_index: int) -> int:
+    """Return a stable, disjoint PySR seed for one portfolio constituent."""
+    sequence = np.random.SeedSequence(
+        [int(base_seed), int(trial_index), int(restart_index), 0x50595352]
+    )
+    # PySR/Julia expects a signed 32-bit-compatible integer seed.
+    return int(sequence.generate_state(1, dtype=np.uint32)[0] % (2**31 - 1))
+
+
+def _portfolio_restart_timeout(
+    total_seconds: float,
+    consumed_seconds: float,
+    per_restart_seconds: Optional[float],
+) -> Optional[int]:
+    """Soft timeout for the next restart, rounded down to stay in budget.
+
+    ``None`` means that less than one whole second remains and no further
+    restart should be launched.
+    """
+    remaining = float(total_seconds) - float(consumed_seconds)
+    if remaining < 1.0:
+        return None
+    allowed = remaining
+    if per_restart_seconds is not None:
+        allowed = min(allowed, float(per_restart_seconds))
+    return max(1, int(math.floor(allowed)))
+
+
 def _summarize_error(error_msg: Optional[str]) -> str:
     """Collapse a PySR error (possibly containing a Julia stacktrace) to a single line."""
     if not error_msg:
@@ -393,6 +421,16 @@ def _build_cache_identity(
         model_kwargs["_cache_namespace"] = spec.cache_namespace
     if getattr(spec, "data_split_seed", None) is not None:
         model_kwargs["_data_split_seed"] = int(spec.data_split_seed)
+    if getattr(spec, "portfolio_time_limit_seconds", None) is not None:
+        model_kwargs["_portfolio_protocol"] = {
+            "version": 1,
+            "total_seconds": float(spec.portfolio_time_limit_seconds),
+            "restart_max_evals": spec.portfolio_restart_max_evals,
+            "restart_timeout_seconds": spec.portfolio_restart_timeout_seconds,
+            "restart_count": spec.portfolio_restart_count,
+            "warmup": bool(spec.portfolio_warmup),
+            "frontier_loss": "native",
+        }
     return pysr_mutation_kwargs, model_kwargs, spec.hof_n_steps
 
 
@@ -1070,6 +1108,14 @@ class PySRTaskSpec:
     data_split_seed: Optional[int] = None
     # Source revision/protocol identifier used only to isolate cache requests.
     cache_namespace: Optional[str] = None
+    # Optional serial restart portfolio. One worker loads/compiles the method
+    # once, then runs independent searches sequentially under this shared fit-
+    # time budget. The first tiny warm-up fit is outside the budget.
+    portfolio_time_limit_seconds: Optional[float] = None
+    portfolio_restart_max_evals: Optional[int] = None
+    portfolio_restart_timeout_seconds: Optional[float] = None
+    portfolio_restart_count: Optional[int] = None
+    portfolio_warmup: bool = True
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -1129,6 +1175,9 @@ class PySRTaskResult:
     # test_nrmse, assessment, and equation.  None when the domain does not
     # request frontier retention.
     pareto_frontier: Optional[List[Dict]] = None
+    # Serial-portfolio audit information. Constituent frontiers remain in the
+    # raw task artifact; higher-level summaries use pareto_frontier above.
+    portfolio: Optional[Dict[str, Any]] = None
 
     def to_json_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -1148,6 +1197,7 @@ class PySRTaskResult:
         d.setdefault('f1_score', None)
         d.setdefault('noise_results', None)
         d.setdefault('pareto_frontier', None)
+        d.setdefault('portfolio', None)
         return cls(**d)
 
 
@@ -1193,6 +1243,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
     model_kwargs.pop("_domain", None)  # cache-identity marker, not a PySR kwarg
     model_kwargs.pop("_cache_namespace", None)  # cache marker, not a PySR kwarg
     model_kwargs.pop("_data_split_seed", None)  # cache marker, not a PySR kwarg
+    model_kwargs.pop("_portfolio_protocol", None)  # cache marker, not a PySR kwarg
 
     # Resolve the evaluation domain (dataset loading, sympy mappings, "solved"
     # check — see domains.py). Pre-domain-field boolean task JSONs carried a
@@ -1378,14 +1429,40 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
         noise_levels = _spec_noise_levels(spec)
         multi_noise = bool(spec.target_noise_levels)
 
-        def _run_one_noise(noise_level: float) -> Dict[str, Any]:
+        def _run_one_noise(
+            noise_level: float,
+            *,
+            model_kwargs_override: Optional[Dict[str, Any]] = None,
+            search_seed: Optional[int] = None,
+            check_solved: bool = True,
+            keep_model: bool = False,
+            path_suffix: Optional[str] = None,
+            hard_wall_limit: Optional[int] = None,
+        ) -> Dict[str, Any]:
             """Fit + score PySR at a single noise level. Reuses the shared dataset,
             PySR import, and compiled operators above (the costly part); only the
             fit itself is per-level. Returns a per-level result dict; a per-level
             crash / wall-limit is captured as `error` so the other levels survive."""
             level_start = _time.time()
+            active_model_kwargs = (
+                dict(model_kwargs_override)
+                if model_kwargs_override is not None else dict(model_kwargs)
+            )
+            active_seed = run_seed if search_seed is None else int(search_seed)
+            active_hard_wall = (
+                spec.pysr_wall_limit
+                if hard_wall_limit is None else int(hard_wall_limit)
+            )
+            active_model_kwargs["random_state"] = active_seed
+            local_hof_milestones = hof_milestones
+            local_hof_milestone_kind = hof_milestone_kind
+            if model_kwargs_override is not None:
+                local_hof_milestones = []
             # Per-level HOF file so concurrent levels don't append into one CSV.
-            if multi_noise:
+            if path_suffix is not None:
+                root, ext = os.path.splitext(hof_csv_base)
+                hof_csv_out = f"{root}_{path_suffix}{ext}"
+            elif multi_noise:
                 root, ext = os.path.splitext(hof_csv_base)
                 tag = ("%g" % noise_level).replace(".", "p").replace("-", "m")
                 hof_csv_out = f"{root}_noise{tag}{ext}"
@@ -1401,7 +1478,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     y_train = add_noise(y_train, noise_level, seed=noise_seed)
                     print(f"[{spec.dataset_name}] Applied target noise: {noise_level}", flush=True)
 
-                model = PySRRegressor(**model_kwargs)
+                model = PySRRegressor(**active_model_kwargs)
                 # Redirect PySR's run output to a per-task temp dir so hof_n_steps=0
                 # fits don't leak a run dir under the shared "pysr_outputs" forever
                 # (the milestone path in run_pysr_with_hof_checkpoints overrides and
@@ -1420,11 +1497,11 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 # failure in the mean), not the whole task.
                 def _wall_alarm(_signum, _frame):
                     raise PySRWallLimitExceeded(
-                        f"PySR wall-clock limit exceeded ({spec.pysr_wall_limit}s)"
+                        f"PySR wall-clock limit exceeded ({active_hard_wall}s)"
                     )
 
                 _prev_handler = _signal.signal(_signal.SIGALRM, _wall_alarm)
-                _signal.alarm(int(spec.pysr_wall_limit))
+                _signal.alarm(active_hard_wall)
                 recovered_after_hard_limit = False
                 try:
                     try:
@@ -1433,14 +1510,14 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                             feature_names=variable_names,
                             dataset_name=spec.dataset_name,
                             results_dir=hof_results_dir,
-                            milestones=hof_milestones,
+                            milestones=local_hof_milestones,
                             model=model,
-                            seed=run_seed,
+                            seed=active_seed,
                             hof_path=hof_csv_out,
-                            milestone_kind=hof_milestone_kind,
+                            milestone_kind=local_hof_milestone_kind,
                             total_timeout_in_seconds=(
-                                model_kwargs.get("timeout_in_seconds")
-                                if hof_milestones else None
+                                active_model_kwargs.get("timeout_in_seconds")
+                                if local_hof_milestones else None
                             ),
                         )
                     except PySRWallLimitExceeded:
@@ -1481,35 +1558,36 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                         f"GT match check exceeded {_GT_CHECK_WALL_LIMIT_S}s"
                     )
 
-                _gt_prev = _signal.signal(_signal.SIGALRM, _gt_alarm)
-                _signal.alarm(_GT_CHECK_WALL_LIMIT_S)
-                try:
-                    gt_match_result = domain.check_solved(
-                        equations_df=model.equations_,
-                        best_df_index=best.name if best is not None else None,
-                        target=ground_truth_for_match,
-                        var_names=variable_names,
-                        predict_fn=lambda idx: model.predict(X_val, index=int(idx)),
-                        y_val=y_val,
-                        predict_on=lambda idx, Xq: model.predict(Xq, index=int(idx)),
-                        dataset_name=spec.dataset_name,
-                    )
-                    gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
-                    matched_idx = gt_match_result.get("matched_df_index")
-                    if matched_idx is not None and model.equations_ is not None:
-                        try:
-                            gt_matched_equation = str(model.equations_.loc[matched_idx]["equation"])
-                        except Exception:
-                            gt_matched_equation = None
-                except PySRWallLimitExceeded as _gt_e:
-                    print(f"[{spec.dataset_name}] WARNING: {_gt_e} -> scoring "
-                          f"non-match", flush=True)
-                    gt_match_score = 0.0
-                except Exception:
-                    gt_match_score = 0.0
-                finally:
-                    _signal.alarm(0)
-                    _signal.signal(_signal.SIGALRM, _gt_prev)
+                if check_solved:
+                    _gt_prev = _signal.signal(_signal.SIGALRM, _gt_alarm)
+                    _signal.alarm(_GT_CHECK_WALL_LIMIT_S)
+                    try:
+                        gt_match_result = domain.check_solved(
+                            equations_df=model.equations_,
+                            best_df_index=best.name if best is not None else None,
+                            target=ground_truth_for_match,
+                            var_names=variable_names,
+                            predict_fn=lambda idx: model.predict(X_val, index=int(idx)),
+                            y_val=y_val,
+                            predict_on=lambda idx, Xq: model.predict(Xq, index=int(idx)),
+                            dataset_name=spec.dataset_name,
+                        )
+                        gt_match_score = 1.0 if gt_match_result.get("match", False) else 0.0
+                        matched_idx = gt_match_result.get("matched_df_index")
+                        if matched_idx is not None and model.equations_ is not None:
+                            try:
+                                gt_matched_equation = str(model.equations_.loc[matched_idx]["equation"])
+                            except Exception:
+                                gt_matched_equation = None
+                    except PySRWallLimitExceeded as _gt_e:
+                        print(f"[{spec.dataset_name}] WARNING: {_gt_e} -> scoring "
+                              f"non-match", flush=True)
+                        gt_match_score = 0.0
+                    except Exception:
+                        gt_match_score = 0.0
+                    finally:
+                        _signal.alarm(0)
+                        _signal.signal(_signal.SIGALRM, _gt_prev)
 
                 # Evaluate on validation set
                 y_pred = model.predict(X_val)
@@ -1601,7 +1679,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 if spec.black_box:
                     r2_frontier = float(r2)
                 else:
-                    frontier_maxsize = int(spec.pysr_kwargs.get("maxsize", 40))
+                    frontier_maxsize = int(active_model_kwargs.get("maxsize", 40))
                     try:
                         r2_frontier = _compute_frontier_avg_r2(
                             model, X_val, y_val, frontier_maxsize
@@ -1633,9 +1711,11 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     "error": None,
                     "timed_out": recovered_after_hard_limit,
                     "runtime_seconds": _time.time() - level_start,
+                    "search_runtime_seconds": t_search,
                     "num_evaluations": num_evals_used,
                     "execution_trace": execution_trace,
                     "pareto_frontier": pareto_frontier,
+                    "_model": model if keep_model else None,
                 }
             except Exception as e:
                 return {
@@ -1653,9 +1733,11 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     "error": f"Error: {_summarize_error(str(e))}",
                     "timed_out": isinstance(e, PySRWallLimitExceeded),
                     "runtime_seconds": _time.time() - level_start,
+                    "search_runtime_seconds": 0.0,
                     "num_evaluations": None,
                     "execution_trace": None,
                     "pareto_frontier": None,
+                    "_model": None,
                 }
             finally:
                 # Best-effort cleanup of the per-task PySR output dir.
@@ -1665,7 +1747,271 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     except Exception:
                         pass
 
-        level_dicts = [_run_one_noise(lvl) for lvl in noise_levels]
+        if spec.portfolio_time_limit_seconds is not None:
+            if multi_noise:
+                raise ValueError(
+                    "serial restart portfolios require one noise level per task"
+                )
+            from frontier_aggregation import merge_frontiers
+            import pandas as pd
+
+            noise_level = noise_levels[0]
+            warmup_seconds = 0.0
+            if spec.portfolio_warmup:
+                warmup_kwargs = dict(model_kwargs)
+                warmup_kwargs.update({
+                    "max_evals": min(
+                        int(spec.portfolio_restart_max_evals or 1000), 1000
+                    ),
+                    "timeout_in_seconds": 1,
+                    "niterations": 1,
+                    "progress": False,
+                })
+                warmup_started = _time.time()
+                warmup = _run_one_noise(
+                    noise_level,
+                    model_kwargs_override=warmup_kwargs,
+                    search_seed=_portfolio_restart_seed(
+                        spec.seed, spec.run_index, 2**31 - 2
+                    ),
+                    check_solved=False,
+                    keep_model=False,
+                    path_suffix="portfolio_warmup",
+                    hard_wall_limit=min(spec.pysr_wall_limit, 600),
+                )
+                warmup_seconds = _time.time() - warmup_started
+                if warmup.get("error"):
+                    print(
+                        f"[{spec.dataset_name}] WARNING: portfolio warm-up "
+                        f"failed ({warmup['error']}); continuing with the real runs",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"[{spec.dataset_name}] Portfolio warm-up complete in "
+                        f"{warmup_seconds:.1f}s (excluded from budget)",
+                        flush=True,
+                    )
+
+            consumed_search_seconds = 0.0
+            restart_results: List[Dict[str, Any]] = []
+            restart_models: List[Any] = []
+            restart_limit = spec.portfolio_restart_count or 1_000_000
+            while len(restart_results) < restart_limit:
+                restart_timeout = _portfolio_restart_timeout(
+                    spec.portfolio_time_limit_seconds,
+                    consumed_search_seconds,
+                    spec.portfolio_restart_timeout_seconds,
+                )
+                if restart_timeout is None:
+                    break
+                restart_index = len(restart_results)
+                restart_seed = _portfolio_restart_seed(
+                    spec.seed, spec.run_index, restart_index
+                )
+                restart_kwargs = dict(model_kwargs)
+                restart_kwargs["timeout_in_seconds"] = restart_timeout
+                if spec.portfolio_restart_max_evals is None:
+                    restart_kwargs["max_evals"] = None
+                    restart_kwargs["niterations"] = max(
+                        int(restart_kwargs.get("niterations") or 0), 10_000_000
+                    )
+                else:
+                    restart_kwargs["max_evals"] = int(
+                        spec.portfolio_restart_max_evals
+                    )
+                print(
+                    f"[{spec.dataset_name}] Portfolio restart {restart_index + 1} "
+                    f"seed={restart_seed}, soft_timeout={restart_timeout}s, "
+                    f"search_used={consumed_search_seconds:.1f}/"
+                    f"{spec.portfolio_time_limit_seconds:.1f}s",
+                    flush=True,
+                )
+                item = _run_one_noise(
+                    noise_level,
+                    model_kwargs_override=restart_kwargs,
+                    search_seed=restart_seed,
+                    check_solved=False,
+                    keep_model=True,
+                    path_suffix=f"portfolio_restart{restart_index:04d}",
+                )
+                consumed_search_seconds += max(
+                    0.0, float(item.get("search_runtime_seconds") or 0.0)
+                )
+                model = item.pop("_model", None)
+                item["restart_index"] = restart_index
+                item["seed"] = restart_seed
+                item["soft_timeout_seconds"] = restart_timeout
+                restart_results.append(item)
+                restart_models.append(model)
+                if item.get("error") is not None:
+                    print(
+                        f"[{spec.dataset_name}] Stopping portfolio after failed "
+                        f"restart {restart_index + 1}: {item['error']}",
+                        flush=True,
+                    )
+                    break
+
+            successful_indices = [
+                index for index, item in enumerate(restart_results)
+                if item.get("error") is None and item.get("pareto_frontier")
+                and restart_models[index] is not None
+            ]
+            frontiers = [
+                restart_results[index]["pareto_frontier"]
+                for index in successful_indices
+            ]
+            sources = [{
+                "source_restart_index": restart_results[index]["restart_index"],
+                "source_seed": restart_results[index]["seed"],
+                "source_search_runtime_seconds": restart_results[index].get(
+                    "search_runtime_seconds"
+                ),
+            } for index in successful_indices]
+            merged_frontier = merge_frontiers(frontiers, sources=sources)
+
+            gt_match_score = 0.0
+            gt_matched_equation = None
+            portfolio_r2_frontier: Optional[float] = None
+            if merged_frontier:
+                # Check exact recovery only after native-loss aggregation. This
+                # avoids spending the one-hour search budget repeatedly checking
+                # constituent frontiers and ensures a dominated match does not
+                # count as a portfolio solution.
+                route = []
+                frame_rows = []
+                restart_by_source = {
+                    source_pos: original_index
+                    for source_pos, original_index in enumerate(successful_indices)
+                }
+                for merged_index, row in enumerate(merged_frontier):
+                    original_index = restart_by_source[int(row["source_index"])]
+                    route.append((original_index, int(row["pysr_index"])))
+                    frame_rows.append({
+                        "complexity": int(row["complexity"]),
+                        "equation": row["equation"],
+                        "loss": float(row["loss"]),
+                    })
+                    row["solved"] = False
+                equations_df = pd.DataFrame(frame_rows)
+
+                def _portfolio_predict(index, Xq=None):
+                    restart_index, pysr_index = route[int(index)]
+                    model = restart_models[restart_index]
+                    data = X_val if Xq is None else Xq
+                    prediction = model.predict(data, index=pysr_index)
+                    if spec.black_box:
+                        prediction = y_scaler.inverse_transform(
+                            np.asarray(prediction).reshape(-1, 1)
+                        ).ravel()
+                    return prediction
+
+                # Recompute the validation frontier objective on the merged
+                # loss/complexity frontier. Averaging constituent scores (or
+                # taking the last row's R²) would not describe the portfolio
+                # that is actually being evaluated.
+                try:
+                    portfolio_r2_frontier = _compute_fixed_grid_frontier_avg_r2(
+                        equations_df.sort_values("complexity").iterrows(),
+                        lambda idx: _portfolio_predict(idx),
+                        y_val,
+                        int(model_kwargs.get("maxsize", 40)),
+                    )
+                except Exception as exc:
+                    print(
+                        f"[{spec.dataset_name}] WARNING: portfolio frontier-R² "
+                        f"failed ({exc}); using the selected equation's R²",
+                        flush=True,
+                    )
+
+                def _gt_alarm(_signum, _frame):
+                    raise PySRWallLimitExceeded(
+                        f"GT match check exceeded {_GT_CHECK_WALL_LIMIT_S}s"
+                    )
+
+                _gt_prev = _signal.signal(_signal.SIGALRM, _gt_alarm)
+                _signal.alarm(_GT_CHECK_WALL_LIMIT_S)
+                try:
+                    match = domain.check_solved(
+                        equations_df=equations_df,
+                        best_df_index=len(equations_df) - 1,
+                        target=ground_truth_for_match,
+                        var_names=variable_names,
+                        predict_fn=lambda idx: _portfolio_predict(idx),
+                        y_val=y_val,
+                        predict_on=lambda idx, Xq: _portfolio_predict(idx, Xq),
+                        dataset_name=spec.dataset_name,
+                    )
+                    matched_index = match.get("matched_df_index")
+                    if match.get("match", False):
+                        gt_match_score = 1.0
+                    if matched_index is not None:
+                        matched_index = int(matched_index)
+                        merged_frontier[matched_index]["solved"] = True
+                        gt_matched_equation = str(
+                            merged_frontier[matched_index]["equation"]
+                        )
+                except Exception as exc:
+                    print(
+                        f"[{spec.dataset_name}] WARNING: portfolio GT check "
+                        f"failed ({exc}); scoring non-match",
+                        flush=True,
+                    )
+                finally:
+                    _signal.alarm(0)
+                    _signal.signal(_signal.SIGALRM, _gt_prev)
+
+            best = merged_frontier[-1] if merged_frontier else None
+            best_r2 = None if best is None else best.get("r2", best.get("test_r2"))
+            if best_r2 is None:
+                best_r2 = -1.0
+            if portfolio_r2_frontier is None:
+                portfolio_r2_frontier = max(float(best_r2), 0.0)
+            total_evals = sum(
+                float(item["num_evaluations"])
+                for item in restart_results
+                if item.get("num_evaluations") is not None
+            )
+            compact_restarts = []
+            for item in restart_results:
+                compact_restarts.append({
+                    key: value for key, value in item.items()
+                    if not key.startswith("_")
+                })
+            nr = {
+                "target_noise": noise_level,
+                "r2_score": float(best_r2),
+                "r2_frontier_score": float(portfolio_r2_frontier),
+                "acc_score": None if best is None else best.get("accuracy"),
+                "f1_score": None if best is None else best.get("f1"),
+                "best_equation": None if best is None else best.get("equation"),
+                "best_loss": float("inf") if best is None else float(best["loss"]),
+                "gt_match_score": gt_match_score,
+                "gt_matched_equation": gt_matched_equation,
+                "error": None if merged_frontier else "No successful portfolio frontier",
+                "timed_out": any(item.get("timed_out", False) for item in restart_results),
+                "runtime_seconds": _time.time() - start_time,
+                "search_runtime_seconds": consumed_search_seconds,
+                "num_evaluations": total_evals if total_evals else None,
+                "execution_trace": None,
+                "pareto_frontier": merged_frontier,
+                "portfolio": {
+                    "total_search_budget_seconds": spec.portfolio_time_limit_seconds,
+                    "search_runtime_seconds": consumed_search_seconds,
+                    "warmup_seconds": warmup_seconds,
+                    "warmup_excluded_from_budget": bool(spec.portfolio_warmup),
+                    "restart_max_evals": spec.portfolio_restart_max_evals,
+                    "restart_timeout_seconds": spec.portfolio_restart_timeout_seconds,
+                    "restart_count_requested": spec.portfolio_restart_count,
+                    "restart_count_started": len(restart_results),
+                    "restart_count_successful": len(successful_indices),
+                    "frontier_loss_key": "loss",
+                    "restarts": compact_restarts,
+                },
+            }
+            level_dicts = [nr]
+        else:
+            level_dicts = [_run_one_noise(lvl) for lvl in noise_levels]
 
         # Single-noise: preserve the original flat result shape (no noise_results).
         if not multi_noise:
@@ -1688,6 +2034,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 num_evaluations=nr["num_evaluations"],
                 execution_trace=nr["execution_trace"],
                 pareto_frontier=nr.get("pareto_frontier"),
+                portfolio=nr.get("portfolio"),
             )
 
         # Multi-noise: per-run score is the mean across levels; representative
@@ -1776,8 +2123,10 @@ def _aggregate_pysr_results(
                 run_best_equations: List[Optional[str]] = []
                 run_gt_matched_equations: List[Optional[str]] = []
                 run_pareto_frontiers: List[Optional[List[Dict]]] = []
+                run_portfolios: List[Optional[Dict[str, Any]]] = []
                 for r in all_run_results:
                     run_pareto_frontiers.append(r.pareto_frontier)
+                    run_portfolios.append(r.portfolio)
                     if r.error is not None:
                         run_r2_scores.append(-1.0)
                         run_r2c_scores.append(-1.0)
@@ -1860,6 +2209,7 @@ def _aggregate_pysr_results(
                     "n_total_runs": len(all_run_results),
                     "execution_traces": all_traces,
                     "run_pareto_frontiers": run_pareto_frontiers,
+                    "run_portfolios": run_portfolios,
                 })
             else:
                 # No results for this (config, dataset) at all (not even errors).
@@ -1885,6 +2235,7 @@ def _aggregate_pysr_results(
                     "n_total_runs": 0,
                     "execution_traces": [],
                     "run_pareto_frontiers": [],
+                    "run_portfolios": [],
                 })
 
         # Overall average is the mean of per-dataset averages over datasets
@@ -2074,6 +2425,11 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         fixed_data_split_across_runs: bool = False,
         cache_namespace: Optional[str] = None,
         cpus_per_task: int = 1,
+        portfolio_time_limit_seconds: Optional[float] = None,
+        portfolio_restart_max_evals: Optional[int] = None,
+        portfolio_restart_timeout_seconds: Optional[float] = None,
+        portfolio_restart_count: Optional[int] = None,
+        portfolio_warmup: bool = True,
     ):
         super().__init__(
             results_dir=results_dir,
@@ -2103,12 +2459,57 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # Run-level evaluation domain, stamped onto every spec submit_configs
         # builds (one evolution/HPO run is one domain). See domains.py.
         self.domain = domain
-        self.retain_pareto_frontier = retain_pareto_frontier
+        self.retain_pareto_frontier = (
+            retain_pareto_frontier or portfolio_time_limit_seconds is not None
+        )
         self.fixed_data_split_across_runs = fixed_data_split_across_runs
         if cpus_per_task <= 0:
             raise ValueError("cpus_per_task must be positive")
         self.cpus_per_task = int(cpus_per_task)
         self.cache_namespace = cache_namespace
+        self.portfolio_time_limit_seconds = portfolio_time_limit_seconds
+        self.portfolio_restart_max_evals = portfolio_restart_max_evals
+        self.portfolio_restart_timeout_seconds = portfolio_restart_timeout_seconds
+        self.portfolio_restart_count = portfolio_restart_count
+        self.portfolio_warmup = bool(portfolio_warmup)
+        if self.portfolio_time_limit_seconds is not None:
+            if self.portfolio_time_limit_seconds <= 0:
+                raise ValueError("portfolio_time_limit_seconds must be positive")
+            if self.portfolio_restart_max_evals is not None and self.portfolio_restart_max_evals <= 0:
+                raise ValueError("portfolio_restart_max_evals must be positive")
+            if (self.portfolio_restart_timeout_seconds is not None
+                    and self.portfolio_restart_timeout_seconds <= 0):
+                raise ValueError("portfolio_restart_timeout_seconds must be positive")
+            if (self.portfolio_restart_timeout_seconds is not None
+                    and self.portfolio_restart_timeout_seconds >= self.pysr_wall_limit):
+                raise ValueError(
+                    "portfolio_restart_timeout_seconds must be below "
+                    "pysr_wall_limit so the soft timeout wins"
+                )
+            if self.portfolio_restart_count is not None and self.portfolio_restart_count <= 0:
+                raise ValueError("portfolio_restart_count must be positive")
+            if ((self.portfolio_restart_max_evals is None)
+                    == (self.portfolio_restart_timeout_seconds is None)):
+                raise ValueError(
+                    "a serial portfolio needs exactly one of restart max-evals "
+                    "or restart timeout"
+                )
+            if eval_noise_levels:
+                raise ValueError(
+                    "serial portfolios do not support eval_noise_levels; submit one "
+                    "noise level per task"
+                )
+            if self.cpus_per_task != 1:
+                raise ValueError("serial portfolio evaluation requires cpus_per_task=1")
+            if self.use_cache:
+                print("  Serial portfolio mode disables the task cache", flush=True)
+                self.use_cache = False
+        elif (self.portfolio_restart_max_evals is not None
+              or self.portfolio_restart_timeout_seconds is not None
+              or self.portfolio_restart_count is not None):
+            raise ValueError(
+                "portfolio restart options require portfolio_time_limit_seconds"
+            )
         # Run-level data protocol. Evolution creates many batches through
         # helper layers that do not pass per-call protocol flags, so retain a
         # default here; one-off callers can still override it in
@@ -2319,6 +2720,11 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         retain_pareto_frontier=self.retain_pareto_frontier,
                         data_split_seed=(seed if self.fixed_data_split_across_runs else None),
                         cache_namespace=self.cache_namespace,
+                        portfolio_time_limit_seconds=self.portfolio_time_limit_seconds,
+                        portfolio_restart_max_evals=self.portfolio_restart_max_evals,
+                        portfolio_restart_timeout_seconds=self.portfolio_restart_timeout_seconds,
+                        portfolio_restart_count=self.portfolio_restart_count,
+                        portfolio_warmup=self.portfolio_warmup,
                     ))
 
         n_tasks = len(tasks)
@@ -2479,6 +2885,16 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         effective_wall = (
             pysr_wall_limit if pysr_wall_limit is not None else self.pysr_wall_limit
         )
+        if self.portfolio_time_limit_seconds is not None:
+            # The handle/watchdogs describe the whole serial task, while each
+            # spec still carries the per-restart hard wall above.
+            effective_wall = max(
+                effective_wall,
+                int(math.ceil(self.portfolio_time_limit_seconds))
+                + min(self.pysr_wall_limit, 600)
+                + _GT_CHECK_WALL_LIMIT_S
+                + 120,
+            )
         slurm_time_limit = _slurm_time_for_wall(self.time_limit, effective_wall)
 
         batch_id = batch_dir.name

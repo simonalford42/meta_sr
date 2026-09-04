@@ -1,9 +1,9 @@
 """Shared aggregation for evaluation-time restart/algorithm portfolios.
 
-The merge key is a common, independently computed training MSE rather than an
-engine's native loss.  That distinction matters for portfolios whose evolved
-bundles use different custom loss functions: their native losses need not have
-the same scale, while training MSE always does.
+Frontiers are merged using the method's native training loss.  In particular,
+PySR++ bundles may evolve a custom loss, and evaluation-time aggregation must
+preserve the loss/complexity tradeoff that defines that method rather than
+silently replacing it with MSE.
 """
 
 from __future__ import annotations
@@ -21,12 +21,12 @@ def merge_frontiers(
     frontiers: Sequence[Optional[Sequence[Mapping[str, Any]]]],
     *,
     sources: Optional[Sequence[Mapping[str, Any]]] = None,
-    loss_key: str = "train_mse",
+    loss_key: str = "loss",
 ) -> List[Dict[str, Any]]:
     """Return the loss/complexity Pareto frontier across several searches.
 
-    At each exact complexity the row with minimum ``train_mse`` wins.  A final
-    low-complexity-to-high-complexity scan removes rows whose training MSE is
+    At each exact complexity the row with minimum native ``loss`` wins.  A final
+    low-complexity-to-high-complexity scan removes rows whose native loss is
     no better than an already-retained simpler row.  Test/validation metrics
     are deliberately absent from selection.
     """
@@ -35,43 +35,43 @@ def merge_frontiers(
 
     candidates: List[Dict[str, Any]] = []
     saw_rows = False
-    missing_train_mse = False
+    missing_loss = False
     for source_index, frontier in enumerate(frontiers):
         source = dict(sources[source_index]) if sources is not None else {}
         for original in frontier or []:
             saw_rows = True
             if original.get(loss_key) is None:
-                missing_train_mse = True
+                missing_loss = True
                 continue
             try:
                 complexity = int(original["complexity"])
-                train_mse = float(original[loss_key])
+                loss = float(original[loss_key])
             except (KeyError, TypeError, ValueError):
                 continue
-            if complexity < 0 or not math.isfinite(train_mse):
+            if complexity < 0 or not math.isfinite(loss):
                 continue
             row = dict(original)
             row["complexity"] = complexity
-            row["train_mse"] = train_mse
+            row[loss_key] = loss
             row["source_index"] = source_index
             row.update(source)
             candidates.append(row)
 
-    if saw_rows and not candidates and missing_train_mse:
+    if saw_rows and missing_loss:
         raise FrontierMergeError(
-            f"frontier rows do not contain {loss_key}; this evaluation predates "
+            f"one or more frontier rows do not contain {loss_key}; this evaluation predates "
             "mergeable-frontier recording and cannot be soundly merged"
         )
 
-    # Stable deterministic tie break: common loss, equation text, then source.
+    # Stable deterministic tie break: native loss, equation text, then source.
     by_complexity: Dict[int, Dict[str, Any]] = {}
     for row in candidates:
-        key = (row["train_mse"], str(row.get("equation", "")), row["source_index"])
+        key = (row[loss_key], str(row.get("equation", "")), row["source_index"])
         old = by_complexity.get(row["complexity"])
         if old is None:
             by_complexity[row["complexity"]] = row
             continue
-        old_key = (old["train_mse"], str(old.get("equation", "")), old["source_index"])
+        old_key = (old[loss_key], str(old.get("equation", "")), old["source_index"])
         if key < old_key:
             by_complexity[row["complexity"]] = row
 
@@ -79,9 +79,9 @@ def merge_frontiers(
     best_loss = float("inf")
     for complexity in sorted(by_complexity):
         row = by_complexity[complexity]
-        if row["train_mse"] < best_loss:
+        if row[loss_key] < best_loss:
             merged.append(row)
-            best_loss = row["train_mse"]
+            best_loss = row[loss_key]
     return merged
 
 
