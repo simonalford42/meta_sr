@@ -51,6 +51,35 @@ def test_one_request_per_frontier_uses_openrouter_chat_schema(tmp_path):
     assert body["provider"] == {"require_parameters": True}
 
 
+def test_loads_empiricalbench_result_frontiers(tmp_path):
+    run_dir = tmp_path / "empbench"
+    run_dir.mkdir()
+    (run_dir / "empbench_results.json").write_text(json.dumps({
+        "protocol": {"datasets": ["empirical_hubble", "empirical_planck"]},
+        "runs": [
+            {
+                "dataset": "empirical_hubble",
+                "seed": 10000,
+                "error": None,
+                "frontier": [{"complexity": 3, "equation": "2*x0"}],
+            },
+            {
+                "dataset": "empirical_planck",
+                "seed": 10001,
+                "error": "failed",
+                "frontier": [],
+            },
+        ],
+    }))
+
+    items = scorer.load_review_items(run_dir)
+
+    assert len(items) == 1
+    assert items[0]["dataset"] == "empirical_hubble"
+    assert items[0]["seed"] == 10000
+    assert items[0]["custom_id"] == "e-t000000"
+
+
 def test_cost_guard_is_conservative_and_below_default_for_fixture(tmp_path):
     items = scorer.load_review_items(_make_run(tmp_path))
     requests = [scorer.build_request(item, scorer.DEFAULT_MODEL, "medium", 1000) for item in items]

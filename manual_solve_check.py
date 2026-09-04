@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenRouter Batch API, one-frontier-per-request SRBench 2.0 solve checks."""
+"""OpenRouter Batch API, one-frontier-per-request benchmark solve checks."""
 
 from __future__ import annotations
 
@@ -72,6 +72,36 @@ TARGETS = {
     "first_principles_tully_fisher": {
         "kind": "ground_truth",
         "target": "M = c0 + c1*log(DV), the magnitude-space form of L proportional to DV^2.5; the stored target is astronomical magnitude.",
+    },
+    "empirical_hubble": {"kind": "ground_truth", "target": "v = c*D"},
+    "empirical_kepler": {"kind": "ground_truth", "target": "P = c*a^(3/2)"},
+    "empirical_newton": {
+        "kind": "ground_truth",
+        "target": "logF = c0 + log(m1) + log(m2) - 2*log(r)",
+    },
+    "empirical_bode": {
+        "kind": "ground_truth",
+        "target": "loga = log(c0 + c1*exp(c2*n))",
+    },
+    "empirical_leavitt": {
+        "kind": "ground_truth",
+        "target": "M = c0 + c1*log(P)",
+    },
+    "empirical_schechter": {
+        "kind": "ground_truth",
+        "target": "logn = c0 + c1*log(L) + c2*L",
+    },
+    "empirical_ideal_gas": {
+        "kind": "ground_truth",
+        "target": "logP = c0 + log(n) + log(T) - log(V)",
+    },
+    "empirical_planck": {
+        "kind": "ground_truth",
+        "target": "logB = log(c0*nu^3/(exp(c1*nu/T)-1))",
+    },
+    "empirical_rydberg": {
+        "kind": "ground_truth",
+        "target": "log(lambda) = log(c/(1/n1^2 - 1/n2^2))",
     },
 }
 
@@ -149,12 +179,44 @@ def write_json_atomic(path: Path, payload: Any) -> None:
 
 
 def load_review_items(run_dir: Path) -> list[dict[str, Any]]:
+    empirical_path = run_dir / "empbench_results.json"
+    if empirical_path.exists():
+        payload = json.loads(empirical_path.read_text())
+        unknown = sorted(set(payload.get("protocol", {}).get("datasets", [])) - set(TARGETS))
+        if unknown:
+            raise ValueError(f"Unsupported EmpiricalBench datasets: {unknown[:5]}")
+        items = []
+        for index, result in enumerate(payload.get("runs", [])):
+            if result.get("error") or not result.get("frontier"):
+                continue
+            source_payload = {
+                "dataset": result["dataset"],
+                "seed": int(result["seed"]),
+                "noise": 0.0,
+                "frontier": [
+                    {
+                        "frontier_index": frontier_index,
+                        "complexity": row.get("complexity"),
+                        "equation": row.get("equation"),
+                    }
+                    for frontier_index, row in enumerate(result["frontier"])
+                ],
+            }
+            source_hash = hashlib.sha256(
+                json.dumps(source_payload, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            items.append({
+                **source_payload,
+                "source_hash": source_hash,
+                "custom_id": f"e-t{index:06d}",
+            })
+        return items
+
     manifest = json.loads((run_dir / "manifest.json").read_text())
     unknown = sorted(set(manifest.get("datasets", [])) - set(TARGETS))
     if unknown:
         raise ValueError(
-            "API manual solve check currently supports only the 12 SRBench 2.0 "
-            f"phenomenological/first-principles datasets; unsupported: {unknown[:5]}"
+            f"API manual solve check does not support datasets: {unknown[:5]}"
         )
     items = []
     for batch_index, batch in enumerate(manifest.get("batches", [])):
@@ -353,7 +415,7 @@ def write_aggregate(run_dir: Path, review_records: list[dict[str, Any]],
     for row in review_records:
         by_dataset[row["dataset"]].append(row)
     lines = [
-        "# SRBench 2.0 API manual solve check", "",
+        "# API manual solve check", "",
         f"Model: `{model}`; reasoning: `{reasoning_effort}`; cost: `${total_cost:.4f}`", "",
         "| Dataset | Exact | Near | Phenomenological | Miss | N/A | Error |",
         "|---|---:|---:|---:|---:|---:|---:|",
