@@ -216,7 +216,7 @@ def format_srbench2_runs(run_dirs: "list[Path]") -> str:
         if keyed is None and manifest.get("batches"):
             keyed = srio.build_keyed_results(run_dir, manifest)
         keyed = keyed or {}
-        expected = (srio.expected_keys(manifest)
+        expected = (srio.expected_keys(manifest, keyed)
                     if manifest.get("datasets") and manifest.get("seeds") else [])
         gt_completed = sum(
             1 for key in expected
@@ -257,7 +257,7 @@ def summarize_run(run_dir: Path) -> dict:
         keyed = srio.build_keyed_results(run_dir, manifest)
     keyed = keyed or {}
 
-    expected = srio.expected_keys(manifest) if manifest.get("datasets") else []
+    expected = srio.expected_keys(manifest, keyed) if manifest.get("datasets") else []
     present = sum(1 for k, e in keyed.items()
                   if e.get("present") and e.get("error") is None)
     bb_present, bb_expected, bb_r2 = _black_box_summary(run_dir, manifest)
@@ -377,15 +377,21 @@ def inspect_run(run_dir: Path, args) -> None:
         keyed = srio.build_keyed_results(run_dir, manifest)
 
     # ---- completion ----
-    expected = srio.expected_keys(manifest)
+    expected = srio.expected_keys(manifest, keyed)
     n_expected = len(expected)
     present = {k for k, e in keyed.items() if e.get("present") and e.get("error") is None}
     errored = {k for k, e in keyed.items() if e.get("present") and e.get("error") is not None}
     missing = [k for k in expected if k not in keyed or not keyed[k].get("present")]
 
     print(f"Run: {run_dir}  (mode={manifest.get('mode')})")
-    print(f"Grid: {manifest['n_datasets']} tasks x {manifest['n_runs']} seeds "
-          f"x {len(noise_levels)} noise = {n_expected} runs")
+    is_merged = bool(keyed and any("n_searches" in e for e in keyed.values()))
+    if manifest.get("merge_run_frontiers") and is_merged:
+        print(f"Grid: {manifest['n_datasets']} tasks x 1 merged portfolio "
+              f"({manifest['n_runs']} searches) x {len(noise_levels)} noise "
+              f"= {n_expected} results")
+    else:
+        print(f"Grid: {manifest['n_datasets']} tasks x {manifest['n_runs']} seeds "
+              f"x {len(noise_levels)} noise = {n_expected} runs")
     print(f"Completed: {len(present)}/{n_expected}   "
           f"(errored: {len(errored)}, missing: {len(missing)})")
 

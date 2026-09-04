@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Regression tests for SRBench result inspection."""
 
+import io
 import json
 import os
 import sys
 import tempfile
 import time
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -18,6 +21,7 @@ from inspect_srbench_results import (
     format_summary_table,
     format_srbench2_runs,
     find_srbench2_runs,
+    inspect_run,
     summarize_run,
 )
 from srbench_official_results import (
@@ -151,6 +155,57 @@ class SRBench2TableTests(unittest.TestCase):
 
 
 class SummaryTableTests(unittest.TestCase):
+    def test_merged_frontier_completion_uses_collapsed_grid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "merged"
+            run_dir.mkdir()
+            manifest = {
+                "mode": "baseline",
+                "n_datasets": 2,
+                "n_runs": 3,
+                "datasets": ["feynman_a", "strogatz_b"],
+                "seeds": [10000, 10001, 10002],
+                "noise_levels": [0.0, 0.1],
+                "batches": [],
+                "merge_run_frontiers": True,
+            }
+            with open(run_dir / "manifest.json", "w") as f:
+                json.dump(manifest, f)
+            results = {}
+            for dataset in manifest["datasets"]:
+                for noise in manifest["noise_levels"]:
+                    key = f"{dataset}|10000|{noise:g}"
+                    results[key] = {
+                        "dataset": dataset,
+                        "family": ("Feynman" if "feynman" in dataset
+                                   else "Strogatz"),
+                        "seed": 10000,
+                        "noise": noise,
+                        "present": True,
+                        "error": None,
+                        "solved": False,
+                        "test_r2": None,
+                        "runtime_seconds": None,
+                        "n_searches": 3,
+                    }
+            with open(run_dir / "srbench_full_results.json", "w") as f:
+                json.dump({"results": results}, f)
+
+            output = io.StringIO()
+            args = SimpleNamespace(show_missing=50, exclude_unsolvable=False,
+                                   wandb=False)
+            with redirect_stdout(output):
+                inspect_run(run_dir, args)
+
+            text = output.getvalue()
+            self.assertIn(
+                "Grid: 2 tasks x 1 merged portfolio (3 searches) x 2 noise = 4 results",
+                text,
+            )
+            self.assertIn("Completed: 4/4   (errored: 0, missing: 0)", text)
+            self.assertNotIn("Missing (", text)
+            self.assertTrue(summarize_run(run_dir)["complete"])
+
     def test_displays_manifest_max_evals(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "12345"

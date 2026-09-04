@@ -205,9 +205,21 @@ def _entry_solve_time(e: Dict[str, Any]) -> Optional[float]:
     return e.get("runtime_seconds")
 
 
-def expected_keys(manifest: Dict[str, Any]) -> List[str]:
-    """All (dataset, seed, noise) keys the run is supposed to produce."""
+def expected_keys(
+    manifest: Dict[str, Any],
+    keyed: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> List[str]:
+    """All keys expected for the supplied constituent or merged results."""
     seeds = manifest["seeds"]
+    # A merged-frontier evaluation persists one portfolio result per
+    # dataset/noise combination, keyed by the base (first) seed.  The remaining
+    # seeds describe the constituent searches and therefore must not be counted
+    # as missing merged results by inspection/reporting code. Checking the
+    # entries preserves the original multi-seed grid when inspecting unfinished
+    # constituent batch artifacts before the merged JSON has been written.
+    has_merged_entries = keyed and any("n_searches" in e for e in keyed.values())
+    if manifest.get("merge_run_frontiers") and has_merged_entries and seeds:
+        seeds = seeds[:1]
     keys = []
     for ds in manifest["datasets"]:
         for s in seeds:
