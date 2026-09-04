@@ -577,8 +577,6 @@ def main(argv=None, *, force_srbench_2025=False):
     parser.add_argument("--results-dir", type=str, default=None,
                         help="Run directory (default: runs/<SLURM_JOB_ID> or local_*).")
     parser.add_argument("--no-wandb", action="store_true")
-    parser.add_argument("--srbench2-exact-recovery", action="store_true",
-                        help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if force_srbench_2025:
         args.srbench_2025 = True
@@ -613,16 +611,6 @@ def main(argv=None, *, force_srbench_2025=False):
           f"{len(datasets) * args.n_trials_per_dataset * len(args.noise_levels)}")
 
     source = load_evaluation_source(args)
-    if args.srbench2_exact_recovery:
-        if source.backend != "pysr":
-            parser.error("SRBench 2.0 exact recovery currently requires PySR")
-        from dataclasses import replace
-        from srbench_eval_source import apply_srbench2_exact_recovery_protocol
-
-        source = replace(
-            source,
-            config=apply_srbench2_exact_recovery_protocol(source.config),
-        )
     config, mode_name, method_meta = source.config, source.mode, source.method_meta
     if args.pysr_progress:
         if source.backend != "pysr":
@@ -748,7 +736,6 @@ def main(argv=None, *, force_srbench_2025=False):
             # Pareto frontier, not only the equation selected by PySR.
             retain_pareto_frontier=(args.srbench_2025 or args.merge_run_frontiers),
             fixed_data_split_across_runs=args.merge_run_frontiers,
-            domain=("srbench2_exact" if args.srbench2_exact_recovery else "srbench"),
         )
 
     run = None
@@ -795,9 +782,6 @@ def main(argv=None, *, force_srbench_2025=False):
         "unsolvable_tasks": list(srio.UNSOLVABLE_TASKS),
         "batches": [],
         "evaluation_types": ["ground_truth"] + (["black_box"] if args.black_box else []),
-        "ground_truth_protocol": (
-            "srbench2_exact_recovery" if args.srbench2_exact_recovery else "srbench"
-        ),
     }
     with open(Path(output_dir) / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)

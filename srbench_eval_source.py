@@ -100,55 +100,6 @@ def apply_soft_timeout(config, backend: str, timeout: Optional[int]):
     return replace(config, **{_kwargs_field(backend): kwargs})
 
 
-def apply_srbench2_exact_recovery_protocol(config):
-    """Apply the fixed PySR search space used for SRBench-2 recovery runs.
-
-    Method-specific mutation, selection, survival, and loss code lives outside
-    ``pysr_kwargs`` and is therefore preserved for evolved configurations.
-    """
-    from dataclasses import replace
-
-    kwargs = dict(config.pysr_kwargs)
-    for key in ("early_stop_condition", "elementwise_loss"):
-        kwargs.pop(key, None)
-    kwargs.update({
-        "niterations": 1_000_000_000,
-        "populations": 15,
-        "population_size": 33,
-        "maxsize": 30,
-        "maxdepth": 20,
-        "binary_operators": ["+", "-", "*", "/"],
-        "unary_operators": ["square", "cube", "exp", "log", "sqrt"],
-        "constraints": {
-            "square": 13,
-            "cube": 13,
-            "exp": 13,
-            "log": 13,
-            "sqrt": 13,
-            "/": (-1, 13),
-            "*": (-1, -1),
-            "+": (-1, -1),
-            "-": (-1, -1),
-        },
-        "nested_constraints": {
-            "/": {"/": 2},
-            "exp": {"exp": 0, "log": 1, "sqrt": 0},
-            "square": {"square": 1, "cube": 1, "log": 0, "sqrt": 0},
-            "cube": {"cube": 1, "square": 1},
-            "log": {"log": 0, "exp": 1},
-            "sqrt": {"sqrt": 1, "exp": 1, "square": 0},
-        },
-        "procs": 0,
-        "parallelism": "serial",
-        "deterministic": True,
-        "batching": False,
-        "precision": 64,
-        "model_selection": "best",
-        "warmup_maxsize_by": 0.002,
-    })
-    return replace(config, pysr_kwargs=kwargs)
-
-
 def scale_soft_timeout(timeout: Optional[int], from_wall: int, to_wall: int) -> Optional[int]:
     """Rescale a soft timeout for a different hard wall, preserving their ratio.
 

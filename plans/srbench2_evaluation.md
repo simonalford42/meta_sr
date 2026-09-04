@@ -45,31 +45,6 @@ accuracy and expression complexity relative to accepted hypotheses. Absorption
 and Bode are explicitly phenomenological and do not have unique known
 ground-truth equations.
 
-## Adopted exact-recovery protocol
-
-For this project's phenomenological/first-principles evaluation, the objective
-is recovery of the accepted functional form rather than reproduction of the
-official SRBench 2025 predictive protocol. `srbench2_full_eval.py` therefore
-uses the following dedicated ground-truth protocol:
-
-- fit on all available rows and score the complete saved Pareto frontier on
-  those same rows;
-- preserve the datasets' intentional representations (including logged
-  targets) but apply no additional feature or target standardization;
-- allow 60 minutes of search, with a 3900-second hard worker guard and no
-  numerical early-stop condition;
-- use ten independent searches, seeds 10000--10009 by default;
-- use one CPU in serial mode, 15 populations of size 33, and no batching;
-- use `maxsize=30`, `maxdepth=20`, and 64-bit precision;
-- use binary operators `+`, `-`, `*`, and `/`, and unary operators `square`,
-  `cube`, `exp`, `log`, and `sqrt`, with the PySR-paper constraints;
-- retain every Pareto-frontier expression for functional-form review.
-
-These choices intentionally differ from official SRBench 2025, which uses a
-75/25 predictive split, standardized features and targets, and a different
-method adapter. Black-box-only invocations retain the existing predictive
-protocol and must be run separately from exact-recovery jobs.
-
 ## Initial runs
 
 The prepared, unsubmitted commands in `submit_jobs.sh` evaluate baseline PySR
