@@ -96,7 +96,7 @@ The planned interface is:
 --manual-solve-check-model MODEL        # default: gpt-5.6-terra
 --manual-solve-check-reasoning EFFORT   # default: medium
 --manual-solve-check-max-output N       # default: 1000 tokens
---manual-solve-check-max-cost DOLLARS   # default: 2.00 for SRBench 2.0
+--manual-solve-check-max-cost DOLLARS   # default: 5.00
 --manual-solve-check-force              # replace valid existing judgments
 ```
 
@@ -176,8 +176,8 @@ cache-write tokens, and $6.00 per million output tokens. The measured SRBench
 2.0 frontiers contain roughly 26--29 equations each. For 120 independent
 reviews, the expected total is about $0.50--$1.10 with concise outputs; a
 1,000-token-per-request output cap gives an estimated total near $1.00. The
-default $2.00 guard leaves room for cache misses, token-estimation error, and a
-small number of retries.
+default $5.00 guard leaves substantial room for cache misses, token-estimation
+error, and retries while still bounding accidental spend.
 
 The implementation will use the API-reported input, cached-input, reasoning,
 and output usage to calculate the actual run cost. Prompt caching is an
@@ -198,44 +198,20 @@ It should own reference resolution, prompt/schema versioning, Batch API
 submission and recovery, response validation, atomic per-frontier persistence,
 cost accounting, and aggregation.
 
-Refactor `scripts/review_srbench2_frontiers.py` to call that shared module. It
-will remain useful for submitting or resuming reviews on an already completed
-run, including runs created before `--manual-solve-check` existed. Preserve a
-legacy Codex-CLI mode only as an explicit fallback; the default automated path
-uses the Batch API and does not consume the ChatGPT/Codex subscription quota.
+Refactor `scripts/review_srbench2_frontiers.py` into an API-only wrapper around
+that shared module. It will remain useful for submitting or resuming reviews on
+an already completed run, including runs created before
+`--manual-solve-check` existed. Remove the Codex CLI execution path entirely;
+both automatic and standalone reviews must use the Batch API and must not
+consume the ChatGPT/Codex subscription quota.
 
 Tests should cover request cardinality (12 datasets x 10 seeds = 120), one
 frontier per request, stable `custom_id` generation, target resolution,
 structured-output validation, cost-bound refusal, source-hash invalidation,
 partial/failed Batch responses, interrupted polling and resume, duplicate-call
-prevention, and aggregation with missing/error reviews. API calls must be
-mocked in tests.
-
-## Existing Codex CLI reviewer
-
-After a ground-truth run completes:
-
-```bash
-python scripts/review_srbench2_frontiers.py RUN_DIR
-```
-
-The current script reads every saved Pareto expression and launches one
-non-interactive `codex exec` review per dataset, grouping all seeds for that
-dataset into one prompt. It uses the credentials from the user's existing Codex
-login. This is the legacy behavior; it does not provide the planned one-query-
-per-frontier isolation and consumes ChatGPT/Codex subscription usage.
-
-Outputs default to:
-
-- `RUN_DIR/codex_frontier_review.json`
-- `RUN_DIR/codex_frontier_review.md`
-
-The legacy reviewer's default is `gpt-5.6-terra` with `high` reasoning.
+prevention, API-only enforcement, and aggregation with missing/error reviews.
+API calls must be mocked in tests.
 
 These labels are advisory model judgments. The saved frontier and cited
 equation remain the auditable evidence; ambiguous cases should still receive a
 human pass before publication.
-
-Use `--model MODEL --reasoning-effort LEVEL` to change the reviewer,
-`--datasets a,b` to review a subset, and `--output`/`--markdown` to change
-output paths.
