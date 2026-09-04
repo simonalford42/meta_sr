@@ -2557,9 +2557,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         use_cache_for_run = handle.use_cache_for_run
         retry_count = 0
 
-        # Floor the wait watchdogs at this batch's effective wall + queue margin
-        # so SLURM queue-wait / Julia-compile time isn't mistaken for a stall.
-        stall_t, job_t = self._floored_watchdogs(handle.pysr_wall_limit)
+        # Scale the total watchdog for however many throttled array waves this
+        # batch needs. Without this, a 120-task, 60-concurrent batch of
+        # one-hour fits is cancelled at two hours just before wave two writes.
+        stall_t, job_t = self._wave_scaled_watchdogs(
+            handle.pysr_wall_limit, len(handle.uncached_indices)
+        )
 
         if not handle.uncached_indices:
             results, failed_indices = self._collect_results(results_subdir, n_tasks, timed_out=False)
@@ -2618,9 +2621,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         f"{len(rc)} tasks)"
                     )
 
+                retry_stall_t, retry_job_t = self._wave_scaled_watchdogs(
+                    handle.pysr_wall_limit, len(failed_indices)
+                )
                 self._wait_for_retry_jobs(
                     retry_job_ids, len(failed_indices), batch_dir, failed_indices,
-                    stall_timeout=stall_t, job_timeout=job_t,
+                    stall_timeout=retry_stall_t, job_timeout=retry_job_t,
                 )
 
                 # Re-collect results for retried tasks
@@ -2733,10 +2739,11 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         total_cached = sum(h.n_cached for h in handles)
         batch_dirs = [h.batch_dir for h in handles]
 
-        # Floor the watchdogs at the largest per-batch wall + queue margin so a
-        # slow/queued batch doesn't get the whole shared array cancelled.
+        # Floor and wave-scale the watchdogs so throttled arrays can run every
+        # sequential wave before the shared total-runtime cap fires.
         max_wall = max((h.pysr_wall_limit for h in handles), default=self.pysr_wall_limit)
-        stall_t, job_t = self._floored_watchdogs(max_wall)
+        total_uncached = sum(len(h.uncached_indices) for h in handles)
+        stall_t, job_t = self._wave_scaled_watchdogs(max_wall, total_uncached)
 
         if all_initial_jobs:
             job_completed = self._wait_for_jobs_multi_batch(
@@ -2819,9 +2826,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 for h, failed in zip(handles, per_batch_failed)
                 for idx in failed
             ]
+            retry_stall_t, retry_job_t = self._wave_scaled_watchdogs(
+                max_wall, total_failed
+            )
             self._wait_for_retry_jobs_multi_batch(
                 retry_job_ids, all_retry_indices,
-                stall_timeout=stall_t, job_timeout=job_t,
+                stall_timeout=retry_stall_t, job_timeout=retry_job_t,
             )
 
             # Re-collect per batch
@@ -3381,6 +3391,29 @@ python -u -m parallel_eval_pysr --worker \\
             None if self.stall_timeout is None else max(self.stall_timeout, floor)
         )
         job = None if self.job_timeout is None else max(self.job_timeout, floor)
+        return stall, job
+
+    def _wave_scaled_watchdogs(
+        self, wall_limit: Optional[int], n_tasks: int
+    ) -> Tuple[Optional[float], Optional[float]]:
+        """Size the total-runtime watchdog for queued array waves.
+
+        ``job_timeout`` covers the whole array, not an individual task. When
+        an array is throttled with ``max_concurrent_jobs``, healthy tasks run
+        in sequential waves. Budget one per-task wall limit per wave plus the
+        normal queue/compile margin so the final wave is not cancelled just
+        before it writes its results.
+        """
+        stall, job = self._floored_watchdogs(wall_limit)
+        if job is None or wall_limit is None or n_tasks <= 0:
+            return stall, job
+        concurrency = (
+            self.max_concurrent_jobs
+            if self.max_concurrent_jobs and self.max_concurrent_jobs > 0
+            else min(n_tasks, 256)
+        )
+        n_waves = math.ceil(n_tasks / max(1, concurrency))
+        job = max(job, n_waves * wall_limit + _WATCHDOG_MARGIN_S)
         return stall, job
 
     def _wait_for_jobs(

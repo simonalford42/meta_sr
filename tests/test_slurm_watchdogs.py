@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 import slurm_eval
+from parallel_eval_pysr import PySRSlurmEvaluator
 
 
 def test_pending_time_is_credited_to_both_watchdogs():
@@ -114,3 +115,26 @@ def test_terminal_poll_race_recounts_new_result(tmp_path, capsys):
 
     assert completed is True
     assert "results found" not in capsys.readouterr().out
+
+
+def test_pysr_job_watchdog_scales_for_throttled_array_waves():
+    evaluator = object.__new__(PySRSlurmEvaluator)
+    evaluator.stall_timeout = 300.0
+    evaluator.job_timeout = 7200.0
+    evaluator.max_concurrent_jobs = 60
+
+    stall, job = evaluator._wave_scaled_watchdogs(3900, 120)
+
+    assert stall == 4800
+    assert job == 8700
+
+
+def test_pysr_retry_watchdog_only_budgets_missing_tasks():
+    evaluator = object.__new__(PySRSlurmEvaluator)
+    evaluator.stall_timeout = 300.0
+    evaluator.job_timeout = 7200.0
+    evaluator.max_concurrent_jobs = 60
+
+    _, job = evaluator._wave_scaled_watchdogs(3900, 17)
+
+    assert job == 7200
