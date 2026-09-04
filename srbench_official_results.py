@@ -349,7 +349,7 @@ def _column_from_records(
         _black_box_stats(black_box["run_dir"], black_box["manifest"])
         if black_box else (0, None)
     )
-    _, gt_10m_rate, _ = (
+    gt_10m_completed, gt_10m_rate, _ = (
         _ground_truth_stats(gt_10m["run_dir"], gt_10m["manifest"])
         if gt_10m else (0, None, None)
     )
@@ -384,6 +384,7 @@ def _column_from_records(
         "gt_any_seed_rate": gt_any_seed_rate,
         "gt_10m_rate": gt_10m_rate,
         "gt_completed": gt_completed,
+        "gt_10m_completed": gt_10m_completed,
         "bb_completed": bb_completed,
     }
 
@@ -452,7 +453,7 @@ def build_official_columns(
         "val_gt": None, "val_r2": None,
         "test_gt": None, "test_r2": None, "bb_r2": None,
         "gt_rate": None, "gt_any_seed_rate": None, "gt_10m_rate": None,
-        "gt_completed": 0, "bb_completed": 0,
+        "gt_completed": 0, "gt_10m_completed": 0, "bb_completed": 0,
     }
     columns = []
     for key, label, family, metric in OFFICIAL_COLUMNS:
@@ -504,6 +505,9 @@ def format_official_table(columns: list[dict]) -> str:
         ("SRBench GT solve (all, 10M)", lambda column: _fmt_rate(column["gt_10m_rate"])),
         ("SRBench BB R2", lambda column: _fmt_score(column["bb_r2"])),
         ("GT completed", lambda column: _fmt_completed(column["gt_completed"], GT_TOTAL)),
+        ("GT completed (10M)", lambda column: _fmt_completed(
+            column["gt_10m_completed"], GT_TOTAL
+        )),
         ("BB completed", lambda column: _fmt_completed(
             column["bb_completed"], BLACK_BOX_TOTAL
         )),

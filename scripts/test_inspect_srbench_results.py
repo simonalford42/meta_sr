@@ -284,8 +284,12 @@ class OfficialTableTests(unittest.TestCase):
             self.assertEqual(column["gt_rate"], 1 / 3)
             self.assertEqual(column["gt_any_seed_rate"], 1 / 3)
             self.assertEqual(column["gt_10m_rate"], 0.0)
+            self.assertEqual(column["gt_10m_completed"], 1)
             self.assertEqual(column["bb_r2"], 0.8)
+            self.assertIn("GT completed", table)
+            self.assertIn("GT completed (10M)", table)
             self.assertIn("3/5320", table)
+            self.assertIn("1/5320", table)
             self.assertIn("1/1220", table)
 
     def test_official_table_omits_eval_slurm_and_split_rows(self):
@@ -302,6 +306,7 @@ class OfficialTableTests(unittest.TestCase):
             "gt_any_seed_rate": None,
             "gt_10m_rate": None,
             "gt_completed": 0,
+            "gt_10m_completed": 0,
             "bb_completed": 0,
         }]
 
@@ -322,7 +327,7 @@ class OfficialTableTests(unittest.TestCase):
             "test_gt": 0.5, "test_r2": 0.6,
             "gt_rate": 0.7, "gt_any_seed_rate": 0.8,
             "gt_10m_rate": 0.9, "bb_r2": 1.0,
-            "gt_completed": 1, "bb_completed": 1,
+            "gt_completed": 1, "gt_10m_completed": 1, "bb_completed": 1,
         }
 
         table = format_official_table([column])
@@ -351,12 +356,15 @@ class OfficialTableTests(unittest.TestCase):
             "gt_rate": None, "gt_any_seed_rate": None,
             "gt_10m_rate": None, "bb_r2": None,
             "gt_completed": GT_TOTAL,
+            "gt_10m_completed": GT_TOTAL - 1,
             "bb_completed": BLACK_BOX_TOTAL - 1,
         }
 
         table = format_official_table([column])
 
         self.assertIn(f"✓ {GT_TOTAL}/{GT_TOTAL}", table)
+        self.assertIn(f"{GT_TOTAL - 1}/{GT_TOTAL}", table)
+        self.assertNotIn(f"✓ {GT_TOTAL - 1}/{GT_TOTAL}", table)
         self.assertIn(f"{BLACK_BOX_TOTAL - 1}/{BLACK_BOX_TOTAL}", table)
         self.assertNotIn(f"✓ {BLACK_BOX_TOTAL - 1}/{BLACK_BOX_TOTAL}", table)
 
@@ -364,7 +372,7 @@ class OfficialTableTests(unittest.TestCase):
         self.assertEqual(
             [column[0] for column in OFFICIAL_COLUMNS],
             [
-                "pysr_baseline", "basicsr_baseline",
+                "pysr_baseline", "autoresearch_gt", "basicsr_baseline",
                 "hpo_gt", "pysrpp_gt", "basicsrpp_gt",
                 "hpo_gt_r2", "pysrpp_gt_r2", "basicsrpp_gt_r2",
                 "hpo_r2", "pysrpp_r2", "basicsrpp_r2",
