@@ -35,7 +35,7 @@ def _make_run(tmp_path: Path, n_seeds: int = 2) -> Path:
     return run_dir
 
 
-def test_one_request_per_frontier_and_explicit_cache(tmp_path):
+def test_one_request_per_frontier_uses_openrouter_chat_schema(tmp_path):
     items = scorer.load_review_items(_make_run(tmp_path))
     assert len(items) == 4
     assert len({item["custom_id"] for item in items}) == 4
@@ -43,11 +43,12 @@ def test_one_request_per_frontier_and_explicit_cache(tmp_path):
 
     request = scorer.build_request(items[0], scorer.DEFAULT_MODEL, "medium", 1000)
     body = request["body"]
-    assert request["url"] == "/v1/responses"
-    assert body["model"] == "gpt-5.6-terra"
-    assert body["input"][0]["content"][0]["prompt_cache_breakpoint"] == {"mode": "explicit"}
-    assert body["prompt_cache_options"] == {"mode": "explicit", "ttl": "30m"}
-    assert body["text"]["format"]["strict"] is True
+    assert set(request) == {"custom_id", "body"}
+    assert body["model"] == "openai/gpt-5.6-terra"
+    assert body["messages"][0]["role"] == "system"
+    assert body["messages"][1]["role"] == "user"
+    assert body["response_format"]["json_schema"]["strict"] is True
+    assert body["provider"] == {"require_parameters": True}
 
 
 def test_cost_guard_is_conservative_and_below_default_for_fixture(tmp_path):
@@ -76,14 +77,15 @@ def test_batch_output_writes_per_frontier_and_aggregate(tmp_path):
                 "status_code": 200,
                 "request_id": "req_test",
                 "body": {
-                    "output": [{"content": [{"type": "output_text", "text": json.dumps(review)}]}],
-                    "usage": {"input_tokens": 100, "output_tokens": 20},
+                    "id": "gen_test",
+                    "choices": [{"message": {"content": json.dumps(review)}}],
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 20},
                 },
             },
         }))
-    records = scorer.process_batch_output(
+    records = scorer.process_batch_results(
         run_dir,
-        ("\n".join(lines) + "\n").encode(),
+        [json.loads(line) for line in lines],
         {item["custom_id"]: item for item in items},
         scorer.DEFAULT_MODEL,
         "medium",
@@ -92,3 +94,58 @@ def test_batch_output_writes_per_frontier_and_aggregate(tmp_path):
     aggregate = json.loads((run_dir / "manual_solve_check_results.json").read_text())
     assert aggregate["classification_counts"] == {"exact": 2}
     assert aggregate["n_reviews"] == 2
+
+
+def test_run_submits_openrouter_batch_and_reads_inline_results(tmp_path, monkeypatch):
+    run_dir = _make_run(tmp_path, n_seeds=1)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    class FakeClient:
+        requests = None
+
+        def __init__(self, api_key, base_url):
+            assert api_key == "test-key"
+            assert base_url == "https://openrouter.ai/api"
+
+        def json_request(self, method, path, payload=None):
+            if method == "POST":
+                assert path == "/beta/batches"
+                assert payload["endpoint"] == "/v1/chat/completions"
+                assert payload["model"] == scorer.DEFAULT_MODEL
+                self.requests = payload["requests"]
+                return {"id": "batch_test", "status": "validating"}
+            assert method == "GET"
+            assert path == "/beta/batches/batch_test"
+            results = []
+            for request in self.requests:
+                review = {
+                    "classification": "exact",
+                    "best_frontier_indices": [0],
+                    "matching_equation": "test equation",
+                    "explanation": "Algebraically identical.",
+                }
+                results.append({
+                    "custom_id": request["custom_id"],
+                    "response": {
+                        "status": 200,
+                        "body": {
+                            "id": "gen_test",
+                            "choices": [{"message": {"content": json.dumps(review)}}],
+                            "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+                        },
+                    },
+                })
+            return {
+                "id": "batch_test",
+                "status": "completed",
+                "request_counts": {"total": len(results), "completed": len(results), "failed": 0},
+                "results": results,
+            }
+
+    monkeypatch.setattr(scorer, "OpenRouterHTTPClient", FakeClient)
+    args = scorer.build_parser().parse_args([str(run_dir)])
+    assert scorer.run(args) == 0
+    state = json.loads((run_dir / "manual_solve_check" / "batch_state.json").read_text())
+    assert state["provider"] == "openrouter"
+    assert state["batch_id"] == "batch_test"
+    assert (run_dir / "manual_solve_check" / "responses.json").exists()

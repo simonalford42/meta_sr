@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""API-only, one-frontier-per-request SRBench 2.0 manual solve checks."""
+"""OpenRouter Batch API, one-frontier-per-request SRBench 2.0 solve checks."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,14 +19,15 @@ from typing import Any
 
 PROMPT_VERSION = 1
 TERMINAL_BATCH_STATES = {"completed", "failed", "expired", "cancelled"}
-DEFAULT_MODEL = "gpt-5.6-terra"
+DEFAULT_MODEL = "openai/gpt-5.6-terra"
 
-# Short-context Batch prices in dollars per million tokens. Keep synchronized
-# with https://developers.openai.com/api/docs/pricing.
+# OpenRouter Batch prices in dollars per million tokens. Keep synchronized with
+# https://openrouter.ai/api/v1/models. OpenAI cache writes are billed as ordinary
+# input; cache reads receive the listed discount.
 BATCH_PRICES = {
-    "gpt-5.6-luna": {"input": 0.10, "cached": 0.01, "write": 0.125, "output": 0.60},
-    "gpt-5.6-terra": {"input": 1.00, "cached": 0.10, "write": 1.25, "output": 6.00},
-    "gpt-5.6-sol": {"input": 2.00, "cached": 0.20, "write": 2.50, "output": 10.00},
+    "openai/gpt-5.6-luna": {"input": 0.10, "cached": 0.01, "write": 0.10, "output": 0.60},
+    "openai/gpt-5.6-terra": {"input": 1.00, "cached": 0.10, "write": 1.00, "output": 6.00},
+    "openai/gpt-5.6-sol": {"input": 1.00, "cached": 0.10, "write": 1.00, "output": 5.00},
 }
 
 TARGETS = {
@@ -213,39 +213,25 @@ def build_request(item: dict[str, Any], model: str, reasoning_effort: str,
         "noise": item["noise"],
         "frontier": item["frontier"],
     }, separators=(",", ":"))
-    cache_key = hashlib.sha256(
-        f"srbench2-manual-v{PROMPT_VERSION}:{item['dataset']}".encode()
-    ).hexdigest()[:32]
     return {
         "custom_id": item["custom_id"],
-        "method": "POST",
-        "url": "/v1/responses",
         "body": {
             "model": model,
             "reasoning": {"effort": reasoning_effort},
-            "input": [
-                {
-                    "role": "developer",
-                    "content": [{
-                        "type": "input_text",
-                        "text": shared,
-                        "prompt_cache_breakpoint": {"mode": "explicit"},
-                    }],
-                },
-                {"role": "user", "content": [{"type": "input_text", "text": changing}]},
+            "messages": [
+                {"role": "system", "content": shared},
+                {"role": "user", "content": changing},
             ],
-            "prompt_cache_key": cache_key,
-            "prompt_cache_options": {"mode": "explicit", "ttl": "30m"},
-            "text": {
-                "verbosity": "low",
-                "format": {
-                    "type": "json_schema",
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
                     "name": "srbench_frontier_review",
                     "strict": True,
                     "schema": REVIEW_SCHEMA,
                 },
             },
-            "max_output_tokens": max_output_tokens,
+            "provider": {"require_parameters": True},
+            "max_tokens": max_output_tokens,
         },
     }
 
@@ -272,8 +258,8 @@ def estimate_cost_upper(requests: list[dict[str, Any]], model: str,
     }
 
 
-class OpenAIHTTPClient:
-    def __init__(self, api_key: str, base_url: str = "https://api.openai.com/v1"):
+class OpenRouterHTTPClient:
+    def __init__(self, api_key: str, base_url: str = "https://openrouter.ai/api"):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
 
@@ -290,32 +276,19 @@ class OpenAIHTTPClient:
                 return response.read(), response.headers.get("Content-Type", "")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:2000]
-            raise RuntimeError(f"OpenAI API {method} {path} failed ({exc.code}): {detail}") from exc
+            raise RuntimeError(f"OpenRouter API {method} {path} failed ({exc.code}): {detail}") from exc
 
     def json_request(self, method: str, path: str, payload: Any | None = None) -> dict[str, Any]:
         data = None if payload is None else json.dumps(payload).encode()
         raw, _ = self._request(method, path, data, "application/json" if data else None)
         return json.loads(raw)
 
-    def upload_batch_input(self, path: Path) -> dict[str, Any]:
-        boundary = "----srbench-" + uuid.uuid4().hex
-        content = path.read_bytes()
-        body = (
-            f"--{boundary}\r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\nbatch\r\n"
-            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{path.name}\"\r\n"
-            "Content-Type: application/jsonl\r\n\r\n"
-        ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
-        raw, _ = self._request(
-            "POST", "/files", body, f"multipart/form-data; boundary={boundary}"
-        )
-        return json.loads(raw)
-
-    def download_file(self, file_id: str) -> bytes:
-        raw, _ = self._request("GET", f"/files/{file_id}/content")
-        return raw
-
-
 def _extract_output_text(body: dict[str, Any]) -> str:
+    choices = body.get("choices") or []
+    if choices:
+        content = (choices[0].get("message") or {}).get("content")
+        if isinstance(content, str):
+            return content
     for output in body.get("output", []):
         for content in output.get("content", []):
             if content.get("type") == "output_text":
@@ -325,12 +298,12 @@ def _extract_output_text(body: dict[str, Any]) -> str:
 
 def calculate_cost(usage: dict[str, Any], model: str) -> float:
     prices = BATCH_PRICES[model]
-    input_tokens = int(usage.get("input_tokens") or 0)
-    details = usage.get("input_tokens_details") or {}
+    input_tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+    details = usage.get("prompt_tokens_details") or usage.get("input_tokens_details") or {}
     cached = int(details.get("cached_tokens") or 0)
     writes = int(details.get("cache_write_tokens") or 0)
     ordinary = max(0, input_tokens - cached - writes)
-    output_tokens = int(usage.get("output_tokens") or 0)
+    output_tokens = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
     return (
         ordinary * prices["input"]
         + cached * prices["cached"]
@@ -364,7 +337,7 @@ def write_aggregate(run_dir: Path, review_records: list[dict[str, Any]],
     total_cost = sum(float(row.get("cost_usd") or 0.0) for row in review_records)
     payload = {
         "format_version": 1,
-        "reviewer": "openai-batch-api",
+        "reviewer": "openrouter-batch-api",
         "model": model,
         "reasoning_effort": reasoning_effort,
         "prompt_version": PROMPT_VERSION,
@@ -406,22 +379,21 @@ def write_aggregate(run_dir: Path, review_records: list[dict[str, Any]],
     (run_dir / "manual_solve_check_results.md").write_text("\n".join(lines) + "\n")
 
 
-def process_batch_output(run_dir: Path, raw: bytes, items_by_id: dict[str, dict[str, Any]],
-                         model: str, reasoning_effort: str) -> list[dict[str, Any]]:
+def process_batch_results(run_dir: Path, results: list[dict[str, Any]],
+                          items_by_id: dict[str, dict[str, Any]], model: str,
+                          reasoning_effort: str) -> list[dict[str, Any]]:
     review_dir = run_dir / "manual_solve_check" / "reviews"
     records = []
     seen = set()
-    for line in raw.decode("utf-8").splitlines():
-        if not line.strip():
-            continue
-        envelope = json.loads(line)
+    for envelope in results:
         custom_id = envelope["custom_id"]
         item = items_by_id[custom_id]
         seen.add(custom_id)
         response = envelope.get("response") or {}
         body = response.get("body") or {}
         try:
-            if envelope.get("error") or int(response.get("status_code", 0)) != 200:
+            status_code = response.get("status_code", response.get("status", 200 if body else 0))
+            if envelope.get("error") or int(status_code) != 200:
                 raise ValueError(str(envelope.get("error") or body)[:1000])
             review = json.loads(_extract_output_text(body))
             _validate_review(review, len(item["frontier"]))
@@ -438,7 +410,8 @@ def process_batch_output(run_dir: Path, raw: bytes, items_by_id: dict[str, dict[
             **review,
             "model": model, "reasoning_effort": reasoning_effort,
             "prompt_version": PROMPT_VERSION, "source_hash": item["source_hash"],
-            "custom_id": custom_id, "api_request_id": response.get("request_id"),
+            "custom_id": custom_id,
+            "api_request_id": response.get("request_id") or body.get("id"),
             "usage": usage, "cost_usd": calculate_cost(usage, model), "reviewed_at": _now(),
         }
         write_json_atomic(review_dir / f"{custom_id}.json", record)
@@ -471,9 +444,9 @@ def run(args: argparse.Namespace) -> int:
     items_by_id = {item["custom_id"]: item for item in items}
 
     state = json.loads(state_path.read_text()) if state_path.exists() and not args.force else None
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key and not args.dry_run:
-        raise SystemExit("OPENAI_API_KEY is required (it is never written to disk or logs)")
+        raise SystemExit("OPENROUTER_API_KEY is required (it is never written to disk or logs)")
 
     requests = [
         build_request(item, args.model, args.reasoning_effort, args.max_output_tokens)
@@ -486,6 +459,7 @@ def run(args: argparse.Namespace) -> int:
     ]
     if state is not None:
         expected_state = {
+            "provider": "openrouter",
             "model": args.model,
             "reasoning_effort": args.reasoning_effort,
             "max_output_tokens": args.max_output_tokens,
@@ -509,40 +483,36 @@ def run(args: argparse.Namespace) -> int:
     if estimate["maximum_cost_usd"] > args.max_cost:
         raise SystemExit("Refusing paid submission: estimated maximum exceeds --max-cost")
 
-    input_path = work_dir / "batch_input.jsonl"
-    input_path.parent.mkdir(parents=True, exist_ok=True)
-    input_path.write_text("".join(json.dumps(request, separators=(",", ":")) + "\n" for request in requests))
+    batch_payload = {
+        "endpoint": "/v1/chat/completions",
+        "model": args.model,
+        "requests": requests,
+    }
+    input_path = work_dir / "batch_input.json"
+    write_json_atomic(input_path, batch_payload)
     if args.dry_run:
         print(f"Dry run only; wrote {input_path}")
         return 0
 
-    client = OpenAIHTTPClient(api_key, args.base_url)
+    client = OpenRouterHTTPClient(api_key, args.base_url)
     if state is None:
-        uploaded = client.upload_batch_input(input_path)
-        batch = client.json_request("POST", "/batches", {
-            "input_file_id": uploaded["id"],
-            "endpoint": "/v1/responses",
-            "completion_window": "24h",
-            "metadata": {"kind": "srbench2_manual_solve", "prompt_version": str(PROMPT_VERSION)},
-        })
+        batch = client.json_request("POST", "/beta/batches", batch_payload)
         state = {
-            "format_version": 1, "created_at": _now(), "run_dir": str(run_dir),
+            "format_version": 1, "provider": "openrouter",
+            "created_at": _now(), "run_dir": str(run_dir),
             "model": args.model, "reasoning_effort": args.reasoning_effort,
             "max_output_tokens": args.max_output_tokens, "cost_estimate": estimate,
-            "input_file_id": uploaded["id"], "batch_id": batch["id"],
-            "status": batch.get("status"),
+            "batch_id": batch["id"], "status": batch.get("status"),
             "requests": request_sources,
         }
         write_json_atomic(state_path, state)
-        print(f"Submitted OpenAI Batch {batch['id']} with {len(requests)} requests.", flush=True)
+        print(f"Submitted OpenRouter Batch {batch['id']} with {len(requests)} requests.", flush=True)
 
     while True:
-        batch = client.json_request("GET", f"/batches/{state['batch_id']}")
+        batch = client.json_request("GET", f"/beta/batches/{state['batch_id']}")
         state.update({
             "status": batch.get("status"), "checked_at": _now(),
             "request_counts": batch.get("request_counts"),
-            "output_file_id": batch.get("output_file_id"),
-            "error_file_id": batch.get("error_file_id"),
         })
         write_json_atomic(state_path, state)
         print(f"Batch {state['batch_id']}: {state['status']} {state.get('request_counts') or ''}", flush=True)
@@ -555,14 +525,13 @@ def run(args: argparse.Namespace) -> int:
 
     if state["status"] != "completed":
         raise SystemExit(f"Batch ended with status {state['status']}; inspect {state_path}")
-    if not state.get("output_file_id"):
-        raise SystemExit("Completed Batch has no output_file_id")
-    raw = client.download_file(state["output_file_id"])
-    responses_path = work_dir / "responses.jsonl"
-    responses_path.write_bytes(raw)
-    if state.get("error_file_id"):
-        (work_dir / "errors.jsonl").write_bytes(client.download_file(state["error_file_id"]))
-    records = process_batch_output(run_dir, raw, items_by_id, args.model, args.reasoning_effort)
+    results = batch.get("results")
+    if not isinstance(results, list):
+        raise SystemExit("Completed OpenRouter Batch has no inline results")
+    write_json_atomic(work_dir / "responses.json", {"results": results})
+    records = process_batch_results(
+        run_dir, results, items_by_id, args.model, args.reasoning_effort
+    )
     total = sum(row["cost_usd"] for row in records)
     print(f"Wrote {len(records)} reviews; measured Batch cost ${total:.4f}.")
     return 0
@@ -580,7 +549,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-wait", action="store_true")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--base-url", default="https://api.openai.com/v1", help=argparse.SUPPRESS)
+    parser.add_argument("--base-url", default="https://openrouter.ai/api", help=argparse.SUPPRESS)
     return parser
 
 

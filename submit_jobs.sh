@@ -2,8 +2,8 @@
 
 # 9/4/26
 
-# sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-api-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_gt_baseline --model gpt-5.6-terra --reasoning-effort medium --max-output-tokens 1000 --max-cost 5
-# sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-api-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_ground_truth --model gpt-5.6-terra --reasoning-effort medium --max-output-tokens 1000 --max-cost 5
+# sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-api-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_gt_baseline --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 1000 --max-cost 5
+# sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-api-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_ground_truth --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 1000 --max-cost 5
 
 srb_aggregate=$(sbatch --parsable -J srb-aggregate-base run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
 sbatch --dependency=afterany:"$srb_aggregate" -J srb-aggregate-709715 run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
