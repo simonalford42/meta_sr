@@ -57,6 +57,7 @@ def selected_runs(runs_root: Path, project_root: Path) -> list[dict]:
             candidates = [
                 record for record in records
                 if record["manifest"].get("max_evals") == budget
+                and not record["manifest"].get("merge_run_frontiers")
                 and (
                     _has_ground_truth(record["run_dir"], record["manifest"])
                     if kind == "gt"
