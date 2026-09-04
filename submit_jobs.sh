@@ -2,8 +2,8 @@
 
 # 9/4/26
 
-# sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-api-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_gt_baseline --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 1000 --max-cost 5
-# sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-api-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_ground_truth --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 1000 --max-cost 5
+sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 1000 --max-cost 2
+sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-4_ground_truth --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 1000 --max-cost 2
 sbatch -J evolve-srbench-90s run.sh evolve_pysr.py --operator-type all --population-type task --generations 45 --simplify-cooldown 15 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models best2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --val-n-runs 10 --identify-topk 10 --final-eval-runs 10 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270
 
 srb_aggregate=$(sbatch --parsable -J srb-aggregate-base run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
