@@ -294,6 +294,22 @@ class EmpiricalBenchDomain(SRBenchDomain):
         return X, y, X, y, target
 
 
+class SRBench2ExactRecoveryDomain(SRBenchDomain):
+    """SRBench 2025 first-principles data under an all-row recovery protocol."""
+
+    name = "srbench2_exact"
+
+    def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
+        # Exact-recovery assessment asks whether the search can rediscover the
+        # accepted relationship from all observations.  Reuse the same rows for
+        # fitting and frontier scoring instead of applying SRBench's predictive
+        # train/test split.
+        X, y, target = self.load_dataset(
+            dataset_name, max_samples=max_samples, data_seed=data_seed
+        )
+        return X, y, X, y, target
+
+
 class LogicBenchDomain(Domain):
     """Boolean-function synthesis over band/bor/bxor/bnot with L2 loss.
 
@@ -998,6 +1014,7 @@ class UninformativePromptDomain(Domain):
 DOMAINS: Dict[str, Domain] = {
     "srbench": SRBenchDomain(),
     "empiricalbench": EmpiricalBenchDomain(),
+    "srbench2_exact": SRBench2ExactRecoveryDomain(),
     "boolean": LogicBenchDomain(),
     "boolformer": BoolformerDomain(),
     "mips": MIPSTransitionDomain(),

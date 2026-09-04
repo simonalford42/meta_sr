@@ -32,15 +32,15 @@ TARGETS = {
         "target": "No unique ground-truth equation. The conventional reference family is a = c0 + c1*exp(c2*n); label a match as phenomenological_match, not exact.",
     },
     "first_principles_hubble": {"kind": "ground_truth", "target": "v = c*D"},
-    "first_principles_ideal_gas": {"kind": "ground_truth", "target": "P = c*n*T/V"},
+    "first_principles_ideal_gas": {"kind": "ground_truth", "target": "logP = log(c*n*T/V) = c0 + log(n) + log(T) - log(V); the stored target is log pressure"},
     "first_principles_kepler": {"kind": "ground_truth", "target": "P = c*a^(3/2)"},
     "first_principles_leavitt": {"kind": "ground_truth", "target": "M = c0 + c1*logP (the input feature is already log10(period))"},
-    "first_principles_newton": {"kind": "ground_truth", "target": "F = c*m1*m2/r^2"},
-    "first_principles_planck": {"kind": "ground_truth", "target": "B = c0*nu^3/(exp(c1*nu/T)-1)"},
-    "first_principles_rydberg": {"kind": "ground_truth", "target": "lambda = c/(1/n1^2 - 1/n2^2)"},
-    "first_principles_schechter": {"kind": "ground_truth", "target": "phi = c0*L^alpha*exp(-L/c1)"},
+    "first_principles_newton": {"kind": "ground_truth", "target": "logF = log(c*m1*m2/r^2) = c0 + log(m1) + log(m2) - 2*log(r); the stored target is log force"},
+    "first_principles_planck": {"kind": "ground_truth", "target": "logB = log(c0*nu^3/(exp(c1*nu/T)-1)); the stored target is log spectral radiance"},
+    "first_principles_rydberg": {"kind": "ground_truth", "target": "log(lambda) = log(c/(1/n1^2 - 1/n2^2)); the stored target is log wavelength"},
+    "first_principles_schechter": {"kind": "ground_truth", "target": "log(phi) = c0 + alpha*log(L) - L/c1; the stored target is log number density"},
     "first_principles_supernovae_zr": {"kind": "ground_truth", "target": "flux = c0/(c1*exp(c2*t) + exp(-c3*t))"},
-    "first_principles_tully_fisher": {"kind": "ground_truth", "target": "L = c*DV^2.5"},
+    "first_principles_tully_fisher": {"kind": "ground_truth", "target": "M = c0 + c1*log(DV), the magnitude-space form of L proportional to DV^2.5; the stored target is astronomical magnitude"},
 }
 
 SCHEMA = {
