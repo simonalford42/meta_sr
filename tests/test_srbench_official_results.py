@@ -91,3 +91,26 @@ def test_nested_merged_portfolio_joins_exact_training_source(tmp_path: Path) -> 
     assert column["gt_10_restarts_completed"] == 1
     assert column["gt_10_restarts_rate"] == 1.0
     assert column["eval_ids"] == "standard,123/merged"
+
+
+def test_merged_only_autoresearch_portfolio_is_reported(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    run_dir = runs / "autoresearch_merged"
+    _write_eval(
+        run_dir, mode="autoresearch", source="autoresearch_sr/results.tsv",
+        entries=[True], merged=True,
+    )
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["method_meta"].update({
+        "commit": "e425e7ed5894b0ebd7718fed0d77a252df2fa443",
+        "fitness_metric": "gt",
+    })
+    _write_json(manifest_path, manifest)
+
+    column = _column(build_official_columns(runs, tmp_path), "Autoresearch PySR")
+
+    assert column["gt_completed"] == 0
+    assert column["gt_10_restarts_completed"] == 1
+    assert column["gt_10_restarts_rate"] == 1.0
+    assert column["eval_ids"] == "autoresearch_merged"

@@ -497,17 +497,25 @@ def build_official_columns(
     }
     columns = []
     for key, label, family, metric in OFFICIAL_COLUMNS:
+        available_keys = set(grouped) | set(merged_grouped)
         candidates = [
-            (group_key, records) for group_key, records in grouped.items()
+            (
+                group_key,
+                grouped.get(group_key, []),
+                merged_grouped.get(group_key, []),
+            )
+            for group_key in available_keys
             if group_key[0] == family and group_key[1] == metric
         ]
         if candidates:
-            selected_group, records = max(
-                candidates, key=lambda item: _source_recency(item[1])
+            selected_group, records, merged_records = max(
+                candidates,
+                key=lambda item: _source_recency(item[1] or item[2]),
             )
+            representative = (records or merged_records)[0]
             values = _column_from_records(
-                records, merged_grouped.get(selected_group, []),
-                records[0]["training"], project_root,
+                records, merged_records,
+                representative["training"], project_root,
             )
         else:
             values = dict(blank)
@@ -546,7 +554,7 @@ def format_official_table(columns: list[dict]) -> str:
         ("SRBench GT solve (any seed)",
          lambda column: _fmt_rate(column["gt_any_seed_rate"])),
         ("SRBench GT solve (10 restarts)",
-         lambda column: _fmt_rate(column["gt_10_restarts_rate"])),
+         lambda column: _fmt_rate(column.get("gt_10_restarts_rate"))),
         ("SRBench GT solve (all, 10M)", lambda column: _fmt_rate(column["gt_10m_rate"])),
         ("SRBench BB R2", lambda column: _fmt_score(column["bb_r2"])),
         ("GT completed", lambda column: _fmt_completed(column["gt_completed"], GT_TOTAL)),
@@ -554,7 +562,7 @@ def format_official_table(columns: list[dict]) -> str:
             column["gt_10m_completed"], GT_TOTAL
         )),
         ("GT completed (10 restarts)", lambda column: _fmt_completed(
-            column["gt_10_restarts_completed"], GT_MERGED_TOTAL
+            column.get("gt_10_restarts_completed", 0), GT_MERGED_TOTAL
         )),
         ("BB completed", lambda column: _fmt_completed(
             column["bb_completed"], BLACK_BOX_TOTAL
