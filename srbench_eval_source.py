@@ -105,6 +105,7 @@ def apply_srbench2_exact_recovery_protocol(
     *,
     cpus_per_task: int = 1,
     baseline_l1_loss: bool = False,
+    no_maxsize_warmup: bool = False,
 ):
     """Apply the fixed PySR search space used for SRBench-2 recovery runs.
 
@@ -149,7 +150,7 @@ def apply_srbench2_exact_recovery_protocol(
         "batching": False,
         "precision": 64,
         "model_selection": "best",
-        "warmup_maxsize_by": 0.002,
+        "warmup_maxsize_by": 0.0 if no_maxsize_warmup else 0.002,
     })
     if cpus_per_task == 1:
         kwargs.update({

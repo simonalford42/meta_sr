@@ -155,6 +155,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-population-bundles", type=int, default=None, metavar="N")
     parser.add_argument("--portfolio-time-limit", type=float, default=None, metavar="SECONDS")
     parser.add_argument("--portfolio-restart-max-evals", type=int, default=None, metavar="N")
+    parser.add_argument("--no-maxsize-warmup", action="store_true",
+                        help="Disable PySR's gradual max-size warm-up.")
     parser.add_argument("--seed", type=int, default=10_000)
     parser.add_argument("--data-seed", type=int, default=42)
     parser.add_argument("--max-samples", type=int, default=1000)
@@ -220,6 +222,8 @@ def main() -> None:
     ):
         pysr_kwargs.pop(key, None)
     pysr_kwargs.update(PAPER_PYSR_KWARGS)
+    if args.no_maxsize_warmup:
+        pysr_kwargs["warmup_maxsize_by"] = 0.0
     pysr_kwargs["timeout_in_seconds"] = args.timeout
     if args.cpus_per_task == 1:
         pysr_kwargs.update({
@@ -384,6 +388,7 @@ def main() -> None:
             "cpus_per_task": args.cpus_per_task,
             "portfolio_time_limit_seconds": args.portfolio_time_limit,
             "portfolio_restart_max_evals": args.portfolio_restart_max_evals,
+            "maxsize_warmup": not args.no_maxsize_warmup,
             "train_rows": "all",
             "pysr_kwargs": pysr_kwargs,
             "target_noise_added": 0.0,

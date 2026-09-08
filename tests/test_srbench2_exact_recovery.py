@@ -91,6 +91,17 @@ def test_exact_recovery_can_use_paper_style_multiprocessing_and_l1():
     assert "deterministic" not in kwargs
 
 
+def test_exact_recovery_can_disable_maxsize_warmup():
+    config = OperatorBundle.create_default().to_pysr_config({})
+
+    configured = apply_srbench2_exact_recovery_protocol(
+        config,
+        no_maxsize_warmup=True,
+    )
+
+    assert configured.pysr_kwargs["warmup_maxsize_by"] == 0.0
+
+
 def test_exact_recovery_l1_flag_does_not_replace_evolved_custom_loss():
     config = OperatorBundle.create_default().to_pysr_config({
         "elementwise_loss": "LPDistLoss{3}()",

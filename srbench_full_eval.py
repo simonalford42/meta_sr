@@ -619,6 +619,8 @@ def main(argv=None, *, force_srbench_2025=False):
                         help=argparse.SUPPRESS)
     parser.add_argument("--baseline-l1-loss", action="store_true",
                         help="Use L1DistLoss for a baseline SRBench 2.0 exact-recovery run.")
+    parser.add_argument("--no-maxsize-warmup", action="store_true",
+                        help="Disable PySR's gradual max-size warm-up.")
     args = parser.parse_args(argv)
     if args.cpus_per_task <= 0:
         parser.error("--cpus-per-task must be positive")
@@ -693,6 +695,7 @@ def main(argv=None, *, force_srbench_2025=False):
                 source.config,
                 cpus_per_task=args.cpus_per_task,
                 baseline_l1_loss=args.baseline_l1_loss,
+                no_maxsize_warmup=args.no_maxsize_warmup,
             ),
         )
     elif args.baseline_l1_loss:
@@ -899,6 +902,7 @@ def main(argv=None, *, force_srbench_2025=False):
         "max_samples": args.max_samples,
         "cpus_per_task": args.cpus_per_task,
         "baseline_l1_loss": args.baseline_l1_loss,
+        "maxsize_warmup": not args.no_maxsize_warmup,
         "seed": args.seed,
         "n_runs": args.n_trials_per_dataset,
         "merge_run_frontiers": args.merge_run_frontiers,
