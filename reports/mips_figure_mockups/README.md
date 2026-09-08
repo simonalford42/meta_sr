@@ -1,5 +1,9 @@
 # MIPS figure mockups
 
+For the verified **5 → 9 → 11** ten-seed progression and Sankey, waterfall,
+nested-donut and staircase designs, see [the newer progression figures](../mips_progression_mockups/README.md).
+This directory retains the separate one-hour, three-seed comparison.
+
 Generated from local experiment results on 2026-09-08. No experiments submitted.
 
 - **01_bars**: recommended main figure; two panels with counts and seed dots.

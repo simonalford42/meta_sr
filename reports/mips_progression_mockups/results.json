@@ -1,0 +1,472 @@
+{
+  "partition": {
+    "original_solved": [
+      "bit_addition",
+      "rnn_abs_value_numerical",
+      "rnn_abs_value_of_diff_numerical",
+      "rnn_add_mod_3_numerical",
+      "rnn_bit_dot_prod_mod2_numerical",
+      "rnn_bit_shift_right_numerical",
+      "rnn_bitwise_and",
+      "rnn_bitwise_not",
+      "rnn_bitwise_or",
+      "rnn_bitwise_xor",
+      "rnn_diff_last2_numerical",
+      "rnn_identity_numerical",
+      "rnn_newton_freebody_numerical",
+      "rnn_newton_gravity_numerical",
+      "rnn_newton_spring_numerical",
+      "rnn_parity_last3_numerical",
+      "rnn_parity_numerical",
+      "rnn_parity_of_zeros_numerical",
+      "rnn_prev1_numerical",
+      "rnn_prev2_numerical",
+      "rnn_prev3_numerical",
+      "rnn_prev4_numerical",
+      "rnn_prev5_numerical",
+      "rnn_sum_last2_numerical",
+      "rnn_sum_last3_numerical",
+      "rnn_sum_last4_numerical",
+      "rnn_sum_last5_numerical",
+      "rnn_sum_last6_numerical",
+      "rnn_sum_last7_numerical",
+      "rnn_sum_numerical"
+    ],
+    "outside_sr_candidate_set": [
+      "rnn_add_mod_4_numerical",
+      "rnn_add_mod_5_numerical",
+      "rnn_add_mod_6_numerical",
+      "rnn_add_mod_7_numerical",
+      "rnn_add_mod_8_numerical",
+      "rnn_balanced_parenthesis_numerical",
+      "rnn_bit_palindromes_numerical",
+      "rnn_diff_of_abs_value_numerical",
+      "rnn_dithering_numerical",
+      "rnn_div_3_numerical",
+      "rnn_evens_counter_numerical",
+      "rnn_evens_detector_numerical",
+      "rnn_majority0_1_numerical",
+      "rnn_majority0_2_numerical",
+      "rnn_majority0_3_numerical",
+      "rnn_newton_magnetic_numerical",
+      "rnn_parity_of_index_numerical",
+      "rnn_perfect_square_detector_numerical"
+    ],
+    "base_solved": [
+      "rnn_base_3_addition",
+      "rnn_max_numerical",
+      "rnn_min_numerical",
+      "rnn_parity_last2_numerical",
+      "rnn_unique2_numerical"
+    ],
+    "added_by_srbench": [
+      "rnn_base_4_addition",
+      "rnn_base_5_addition",
+      "rnn_base_6_addition",
+      "rnn_base_7_addition"
+    ],
+    "added_by_mips": [
+      "rnn_alternating_last4_numerical",
+      "rnn_parity_last4_numerical"
+    ],
+    "remaining": [
+      "rnn_alternating_last3_numerical",
+      "rnn_div_5_numerical",
+      "rnn_div_7_numerical"
+    ]
+  },
+  "methods": {
+    "PySR": {
+      "new_solved": [
+        "rnn_base_3_addition",
+        "rnn_max_numerical",
+        "rnn_min_numerical",
+        "rnn_parity_last2_numerical",
+        "rnn_unique2_numerical"
+      ],
+      "group_exact_seeds": {
+        "rnn_abs_value_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_abs_value_of_diff_numerical": [
+          0,
+          1,
+          2,
+          3,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_add_mod_3_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_alternating_last4_numerical": [],
+        "rnn_base_3_addition": [
+          3,
+          9
+        ],
+        "rnn_base_4_addition": [],
+        "rnn_base_5_addition": [],
+        "rnn_base_6_addition": [],
+        "rnn_base_7_addition": [],
+        "rnn_max_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_min_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_parity_last2_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_unique2_numerical": [
+          2,
+          4,
+          5,
+          8
+        ],
+        "rnn_parity_last4_numerical": [],
+        "rnn_div_7_numerical": [],
+        "rnn_div_5_numerical": [],
+        "rnn_alternating_last3_numerical": []
+      },
+      "scalar_solved_any_seed": 37,
+      "scalar_exact_fits": 316,
+      "scalar_total_fits": 510
+    },
+    "SRBench bundle": {
+      "new_solved": [
+        "rnn_base_3_addition",
+        "rnn_base_4_addition",
+        "rnn_base_5_addition",
+        "rnn_base_6_addition",
+        "rnn_base_7_addition",
+        "rnn_max_numerical",
+        "rnn_min_numerical",
+        "rnn_parity_last2_numerical",
+        "rnn_unique2_numerical"
+      ],
+      "group_exact_seeds": {
+        "rnn_abs_value_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_abs_value_of_diff_numerical": [
+          0,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8
+        ],
+        "rnn_add_mod_3_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_alternating_last4_numerical": [],
+        "rnn_base_3_addition": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_base_4_addition": [
+          0,
+          1,
+          3,
+          4,
+          5,
+          7,
+          8,
+          9
+        ],
+        "rnn_base_5_addition": [
+          1,
+          5
+        ],
+        "rnn_base_6_addition": [
+          2,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_base_7_addition": [
+          1,
+          8
+        ],
+        "rnn_max_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_min_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_parity_last2_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_unique2_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_parity_last4_numerical": [],
+        "rnn_div_7_numerical": [],
+        "rnn_div_5_numerical": [],
+        "rnn_alternating_last3_numerical": []
+      },
+      "scalar_solved_any_seed": 39,
+      "scalar_exact_fits": 347,
+      "scalar_total_fits": 510
+    },
+    "MIPS meta-evolution": {
+      "new_solved": [
+        "rnn_alternating_last4_numerical",
+        "rnn_base_3_addition",
+        "rnn_base_4_addition",
+        "rnn_base_5_addition",
+        "rnn_base_6_addition",
+        "rnn_base_7_addition",
+        "rnn_max_numerical",
+        "rnn_min_numerical",
+        "rnn_parity_last2_numerical",
+        "rnn_parity_last4_numerical",
+        "rnn_unique2_numerical"
+      ],
+      "group_exact_seeds": {
+        "rnn_abs_value_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_abs_value_of_diff_numerical": [
+          0,
+          1,
+          2,
+          3,
+          5,
+          6,
+          7,
+          8
+        ],
+        "rnn_add_mod_3_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_alternating_last4_numerical": [
+          0,
+          1,
+          2,
+          6,
+          8
+        ],
+        "rnn_base_3_addition": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_base_4_addition": [
+          4,
+          5,
+          9
+        ],
+        "rnn_base_5_addition": [
+          4,
+          5,
+          8
+        ],
+        "rnn_base_6_addition": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "rnn_base_7_addition": [
+          1,
+          2
+        ],
+        "rnn_max_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_min_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_parity_last2_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "rnn_unique2_numerical": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "rnn_parity_last4_numerical": [
+          8
+        ],
+        "rnn_div_7_numerical": [],
+        "rnn_div_5_numerical": [],
+        "rnn_alternating_last3_numerical": []
+      },
+      "scalar_solved_any_seed": 41,
+      "scalar_exact_fits": 362,
+      "scalar_total_fits": 510
+    }
+  }
+}
