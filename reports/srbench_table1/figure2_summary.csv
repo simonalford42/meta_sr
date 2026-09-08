@@ -1,0 +1,6 @@
+method,r2_rank,size_rank,r2_low,r2_high,size_low,size_high,pareto_rank
+PySR++,2.0,3.5,2.0,2.0,3.0,4.0,2
+BasicSR++,2.0,2.0,2.0,3.0,1.75,2.25,1
+HPO,2.0,3.75,2.0,3.0,3.0,4.0,3
+PySR,4.0,2.0,3.75,4.0,2.0,3.0,2
+BasicSR,5.0,4.0,5.0,5.0,3.0,5.0,4
