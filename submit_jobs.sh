@@ -2,6 +2,9 @@
 
 # 9/8/26
 
+trainval_90s=$(sbatch --parsable -J eval-709715-trainval-90s run.sh evaluate_new_pysr.py --evolve-results runs/709715 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --output-dir runs/709715/train_val_90s_10seed)
+sbatch --dependency=afterany:"$trainval_90s" -J eval-273201-trainval-90s run.sh evaluate_new_pysr.py --evolve-results runs/273201 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --output-dir runs/273201/train_val_90s_10seed
+
 retry_9_8=$(sbatch --parsable -J srb2-9-8-retry-base-8c-l1 run.sh scripts/retry_pysr_errors.py runs/srbench2_9-4_gt_baseline_8core_l1 --cpus-per-task 8 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --max-retries 5)
 retry_9_8=$(sbatch --parsable --dependency=afterany:"$retry_9_8" -J srb2-9-8-retry-709715-8c run.sh scripts/retry_pysr_errors.py runs/709715/srbench2_9-4_ground_truth_8core --cpus-per-task 8 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --max-retries 5)
 retry_9_8=$(sbatch --parsable --dependency=afterany:"$retry_9_8" -J emp-9-8-retry-709715-8c run.sh scripts/retry_pysr_errors.py runs/709715/empiricalbench_paper/evolved --cpus-per-task 8 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 2G --max-concurrent-jobs 45 --max-retries 5)
