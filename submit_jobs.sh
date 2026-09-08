@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
 # 9/8/26
+srb_15m_base=$(sbatch --parsable -J srb-15m-base-portfolio run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_15m_portfolio_1e6 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 900 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache)
+sbatch --dependency=afterany:"$srb_15m_base" -J srb-15m-709715-portfolio run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_15m_portfolio_1e6 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 900 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache
+
 sbatch -J eval-273201-trainval-90s-noearly run.sh evaluate_new_pysr.py --evolve-results runs/273201 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --no-early-stop --output-dir runs/273201/train_val_90s_10seed_no_early_stop
 
 no_warmup_9_8=$(sbatch --parsable -J emp-9-8-base-8c-l1-nowarm run.sh empbench_full_eval.py --output-dir runs/empiricalbench_9-8_baseline_8core_l1_60m_no_warmup --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 2G --max-concurrent-jobs 45 --no-cache)
