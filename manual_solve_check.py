@@ -557,7 +557,8 @@ def run(args: argparse.Namespace) -> int:
         return 0
 
     client = OpenRouterHTTPClient(api_key, args.base_url)
-    if state is None:
+    submitted_now = state is None
+    if submitted_now:
         batch = client.json_request("POST", "/beta/batches", batch_payload)
         state = {
             "format_version": 1, "provider": "openrouter",
@@ -570,8 +571,25 @@ def run(args: argparse.Namespace) -> int:
         write_json_atomic(state_path, state)
         print(f"Submitted OpenRouter Batch {batch['id']} with {len(requests)} requests.", flush=True)
 
+    not_found_deadline = time.monotonic() + 300 if submitted_now else None
     while True:
-        batch = client.json_request("GET", f"/beta/batches/{state['batch_id']}")
+        try:
+            batch = client.json_request("GET", f"/beta/batches/{state['batch_id']}")
+        except RuntimeError as exc:
+            eventually_consistent_404 = (
+                not_found_deadline is not None
+                and time.monotonic() < not_found_deadline
+                and "failed (404)" in str(exc)
+                and "not found" in str(exc).lower()
+            )
+            if not eventually_consistent_404:
+                raise
+            print(
+                f"Batch {state['batch_id']} is not visible yet; retrying status lookup.",
+                flush=True,
+            )
+            time.sleep(min(args.poll_seconds, 10))
+            continue
         state.update({
             "status": batch.get("status"), "checked_at": _now(),
             "request_counts": batch.get("request_counts"),

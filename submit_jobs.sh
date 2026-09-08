@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+# 9/8/26
+
+retry_9_8=$(sbatch --parsable -J srb2-9-8-retry-base-8c-l1 run.sh scripts/retry_pysr_errors.py runs/srbench2_9-4_gt_baseline_8core_l1 --cpus-per-task 8 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --max-retries 5)
+retry_9_8=$(sbatch --parsable --dependency=afterany:"$retry_9_8" -J srb2-9-8-retry-709715-8c run.sh scripts/retry_pysr_errors.py runs/709715/srbench2_9-4_ground_truth_8core --cpus-per-task 8 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --max-retries 5)
+retry_9_8=$(sbatch --parsable --dependency=afterany:"$retry_9_8" -J emp-9-8-retry-709715-8c run.sh scripts/retry_pysr_errors.py runs/709715/empiricalbench_paper/evolved --cpus-per-task 8 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 2G --max-concurrent-jobs 45 --max-retries 5)
+retry_9_8=$(sbatch --parsable --dependency=afterany:"$retry_9_8" -J srb2-9-8-709715-portfolio run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-8_ground_truth_1core_portfolio_1m --n-runs 10 --seed 10000 --noise-levels 0 --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
+review_9_8=$(sbatch --parsable --dependency=afterany:"$retry_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-base-8c-l1 run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline_8core_l1 --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10 --force)
+review_9_8=$(sbatch --parsable --dependency=afterany:"$review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-709715-8c run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-4_ground_truth_8core --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10 --force)
+review_9_8=$(sbatch --parsable --dependency=afterany:"$review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J emp-9-8-review-709715-8c run.sh scripts/review_srbench2_frontiers.py runs/709715/empiricalbench_paper/evolved --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 5 --force)
+sbatch --dependency=afterany:"$review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-709715-portfolio run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-8_ground_truth_1core_portfolio_1m --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+
 # 9/4/26
 
 srb2_protocol=$(sbatch --parsable --dependency=afterany:273201 -J srb2-9-4-base-8c-l1 run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-4_gt_baseline_8core_l1 --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)

@@ -178,3 +178,58 @@ def test_run_submits_openrouter_batch_and_reads_inline_results(tmp_path, monkeyp
     assert state["provider"] == "openrouter"
     assert state["batch_id"] == "batch_test"
     assert (run_dir / "manual_solve_check" / "responses.json").exists()
+
+
+def test_new_batch_retries_eventual_consistency_404(tmp_path, monkeypatch):
+    run_dir = _make_run(tmp_path, n_seeds=1)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(scorer.time, "sleep", lambda _: None)
+
+    class EventuallyConsistentClient:
+        get_count = 0
+        requests = []
+
+        def __init__(self, api_key, base_url):
+            pass
+
+        def json_request(self, method, path, payload=None):
+            if method == "POST":
+                self.requests = payload["requests"]
+                return {"id": "batch_delayed", "status": "validating"}
+            type(self).get_count += 1
+            if type(self).get_count == 1:
+                raise RuntimeError(
+                    "OpenRouter API GET /beta/batches/batch_delayed failed (404): "
+                    "Batch job not found"
+                )
+            results = []
+            for request in self.requests:
+                review = {
+                    "classification": "exact",
+                    "best_frontier_indices": [0],
+                    "matching_equation": "test equation",
+                    "explanation": "Algebraically identical.",
+                }
+                results.append({
+                    "custom_id": request["custom_id"],
+                    "response": {
+                        "status": 200,
+                        "body": {
+                            "id": "gen_test",
+                            "choices": [{"message": {"content": json.dumps(review)}}],
+                            "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+                        },
+                    },
+                })
+            return {
+                "id": "batch_delayed",
+                "status": "completed",
+                "request_counts": {"total": len(results), "completed": len(results), "failed": 0},
+                "results": results,
+            }
+
+    monkeypatch.setattr(scorer, "OpenRouterHTTPClient", EventuallyConsistentClient)
+    args = scorer.build_parser().parse_args([str(run_dir)])
+
+    assert scorer.run(args) == 0
+    assert EventuallyConsistentClient.get_count == 2
