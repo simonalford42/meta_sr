@@ -13,27 +13,19 @@
 
 \begin{table}[t]
   \caption{Numerical recovery on fully observable NeuronBench. Each row contains
-  25 fits: five held-out neuron worlds and five random seeds per world. Runtime
-  is reported only over correct (exact or near-exact) fits.}
+  25 fits: five held-out neuron worlds and five random seeds per world.}
   \label{tab:neuronbench-recovery}
   \centering
   \small
   \setlength{\tabcolsep}{4pt}
-  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}Xrrrr@{}}
+  \begin{tabularx}{\linewidth}{@{}Xrrr@{}}
     \toprule
-    Method & Exact & Near exact & Failed &
-    \shortstack{Time for correct\\solutions (s)} \\
+    Method & Exact & Near exact & Failed \\
     \midrule
-    PySR
-      & 0 (0\%) & 8 (32\%) & 17 (68\%) & 53.3 [49.8, 56.5] \\
-    Evolved PySR (top-1; uninformative prompt; no execution feedback)
-      & \textbf{23 (92\%)} & 2 (8\%) & \textbf{0 (0\%)}
-      & 159.5 [142.9, 233.6] \\
+    PySR & 0 & 8 & 17  \\
+    Evolved PySR & 23  & 2  & 0 \\
     \bottomrule
   \end{tabularx}
   \vspace{2pt}
 
-  {\footnotesize Exact: NRMSE $\leq 10^{-6}$; near exact:
-  $10^{-6}<\mathrm{NRMSE}\leq10^{-3}$. Time is median [IQR] wall-clock
-  seconds over exact and near-exact fits.}
 \end{table}
