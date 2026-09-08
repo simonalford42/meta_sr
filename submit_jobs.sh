@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 # 9/8/26
+sbatch -J srb-merge-709715-taskpop run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_taskpop_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --task-population-bundles 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
+
 srb_15m_base=$(sbatch --parsable -J srb-15m-base-portfolio run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_15m_portfolio_1e6 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 900 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache)
 sbatch --dependency=afterany:"$srb_15m_base" -J srb-15m-709715-portfolio run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_15m_portfolio_1e6 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 900 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache
 
