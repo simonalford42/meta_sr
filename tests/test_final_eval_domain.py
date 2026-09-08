@@ -73,3 +73,34 @@ def test_evolve_final_eval_replays_boolean_domain(tmp_path):
     summary = json.loads((tmp_path / "final_eval_summary.json").read_text())
     assert summary["domain"] == "boolean"
     assert summary["fitness_metric"] == "gt-acc"
+
+
+def test_final_eval_can_disable_saved_early_stop(tmp_path):
+    run_data = tmp_path / "run_data.json"
+    run_data.write_text(json.dumps({
+        "config": {
+            "domain": "srbench",
+            "fitness_metric": "gt",
+            "pysr_kwargs": {"early_stop_condition": 1e-8},
+        },
+    }))
+    split = tmp_path / "train.txt"
+    split.write_text("feynman_I_6_2a\n")
+
+    bundle = OperatorBundle.create_default()
+    with patch("evaluate_new_pysr.load_method", return_value=(bundle, "evolve")), patch(
+        "evaluate_new_pysr.PySRSlurmEvaluator", _RecordingEvaluator,
+    ):
+        run_final_evaluation(
+            output_dir=str(tmp_path),
+            method_source="evolve",
+            method_path=str(run_data),
+            partition="test",
+            splits=[str(split)],
+            n_runs=1,
+            no_early_stop=True,
+        )
+
+    assert "early_stop_condition" not in _RecordingEvaluator.config.pysr_kwargs
+    summary = json.loads((tmp_path / "final_eval_summary.json").read_text())
+    assert summary["no_early_stop"] is True

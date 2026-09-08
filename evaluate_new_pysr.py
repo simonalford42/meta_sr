@@ -51,7 +51,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -189,6 +189,13 @@ def _bundle_summary_fields(bundle) -> Dict[str, Any]:
         ]
     fields["evolve_train_score"] = bundle.score
     return fields
+
+
+def _without_early_stopping(config: PySRConfig) -> PySRConfig:
+    """Return a config with PySR's loss-based early stop disabled."""
+    pysr_kwargs = dict(config.pysr_kwargs)
+    pysr_kwargs.pop("early_stop_condition", None)
+    return replace(config, pysr_kwargs=pysr_kwargs)
 
 
 # =============================================================================
@@ -416,6 +423,7 @@ def run_final_evaluation(
     portfolio_restart_max_evals: Optional[int] = None,
     portfolio_restart_timeout: Optional[float] = None,
     portfolio_restart_count: Optional[int] = None,
+    no_early_stop: bool = False,
 ) -> Dict[str, "EvalSummary"]:
     """Run final evaluation on requested splits after an evolution, OpenEvolve, or HPO run.
 
@@ -503,6 +511,9 @@ def run_final_evaluation(
 
     # Single converter: bundle -> PySRConfig (merges custom code + HPO hparams).
     config = bundle.to_pysr_config(pysr_kwargs)
+    if no_early_stop:
+        config = _without_early_stopping(config)
+        print("  Early stopping: disabled")
     for t, op in bundle.operators.items():
         if op is not None:
             print(f"  Loaded [{t}] {op.name}")
@@ -620,6 +631,7 @@ def run_final_evaluation(
         "black_box": black_box,
         "domain": domain,
         "fitness_metric": fitness_metric,
+        "no_early_stop": no_early_stop,
         "serial_restart_portfolio": (
             None if portfolio_time_limit is None else {
                 "total_search_budget_seconds": portfolio_time_limit,
@@ -737,6 +749,11 @@ def main() -> None:
                         help="PySR timeout in seconds (PySR's own timeout_in_seconds)")
     parser.add_argument("--wall-clock-only", action="store_true",
                         help="Stop PySR on wall-clock timeout only (drop max_evals)")
+    parser.add_argument(
+        "--no-early-stop",
+        action="store_true",
+        help="Remove PySR's loss-based early_stop_condition after loading the method",
+    )
     parser.add_argument("--noise", type=float, default=0.0,
                         help="Per-target Gaussian noise level applied uniformly to all datasets")
     parser.add_argument("--random-target-noise", action="store_true",
@@ -878,6 +895,7 @@ def main() -> None:
         "max_evals": args.max_evals,
         "timeout": args.timeout,
         "wall_clock_only": args.wall_clock_only,
+        "no_early_stop": args.no_early_stop,
         "noise": args.noise,
         "random_target_noise": args.random_target_noise,
         "pysr_wall_limit": args.pysr_wall_limit,
@@ -956,6 +974,12 @@ def main() -> None:
 
     # Single converter: bundle -> PySRConfig (merges custom code + HPO hparams).
     config = portfolio_configs or bundle.to_pysr_config(pysr_kwargs)
+    if args.no_early_stop:
+        if isinstance(config, list):
+            config = [_without_early_stopping(item) for item in config]
+        else:
+            config = _without_early_stopping(config)
+        print("Early stopping: disabled")
     if bundle.best_hparams:
         print(f"Applied {len(bundle.best_hparams)} HPO-tuned hparam(s) from bundle: "
               f"{sorted(bundle.best_hparams.keys())}")
@@ -1050,6 +1074,7 @@ def main() -> None:
         "total_cached": total_cached,
         "domain": domain,
         "fitness_metric": fitness_metric,
+        "no_early_stop": args.no_early_stop,
         "serial_restart_portfolio": wandb_config["serial_restart_portfolio"],
     }
     if autoresearch_commit is not None:
