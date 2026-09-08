@@ -84,12 +84,19 @@ def find_full_srbench_runs(
     A full-SRBench run is identified by the ground-truth manifest grid or by a
     black-box evaluation marker written by ``srbench_full_eval.py``. If
     ``since_days`` is provided, only manifests modified within that many days
-    are included.
+    are included. Search nested bundle directories too, excluding the archive
+    directly under ``runs_root``.
     """
     runs_root = Path(runs_root)
     cutoff = time.time() - since_days * 24 * 60 * 60 if since_days is not None else None
     found = []
-    for manifest_path in sorted(runs_root.glob("*/manifest.json")):
+    manifest_paths = (
+        manifest_path
+        for child in runs_root.iterdir()
+        if child.is_dir() and child.name != "archive"
+        for manifest_path in child.rglob("manifest.json")
+    ) if runs_root.is_dir() else ()
+    for manifest_path in sorted(manifest_paths):
         if cutoff is not None and manifest_path.stat().st_mtime < cutoff:
             continue
         try:
@@ -320,9 +327,7 @@ def format_summary_table(rows: "list[dict]") -> str:
 
     # (header, key-fn) for each column.
     cols = [
-        # Run dirs are named runs/<SLURM_JOB_ID> (utils.resolve_run_dir), so the
-        # directory name is the job id of the srbench_full_eval.py driver job
-        # (or a local_* name when the eval was not run under SLURM).
+        # --see-all uses paths relative to runs_root, including bundle parents.
         ("slurm", lambda r: str(r.get("slurm", "-"))),
         ("bundle", lambda r: str(r["bundle"])),
         ("completed", lambda r: f"{r['completed']}/{r['total']}"),
@@ -439,7 +444,7 @@ def main():
     mode.add_argument("--run-id",
                       help="Run id / directory name under --runs-root.")
     mode.add_argument("--see-all", action="store_true",
-                      help="Inspect every full-SRBench run under --runs-root.")
+                      help="Inspect full-SRBench runs recursively under --runs-root, excluding archive/.")
     mode.add_argument(
         "--official", action="store_true",
         help="Show the official baseline/HPO/PySR++/BasicSR++ comparison table.",
@@ -485,11 +490,13 @@ def main():
             sys.exit(1)
         rows = []
         for run_dir in run_dirs:
+            run_label = str(run_dir.relative_to(args.runs_root))
             try:
                 summary = summarize_run(run_dir)
             except Exception as e:
-                print(f"{run_dir.name}: ERROR {e}")
+                print(f"{run_label}: ERROR {e}")
                 continue
+            summary["slurm"] = run_label
             rows.append(summary)
         # Keep completed runs first and move unfinished runs to the bottom.
         rows.sort(key=lambda row: not row["complete"])

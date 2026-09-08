@@ -11,6 +11,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -22,6 +23,7 @@ from inspect_srbench_results import (
     format_srbench2_runs,
     find_srbench2_runs,
     inspect_run,
+    main,
     summarize_run,
 )
 from srbench_official_results import (
@@ -77,13 +79,43 @@ class BlackBoxSummaryTests(unittest.TestCase):
 
 
 class FindRunsTests(unittest.TestCase):
+    def test_nested_runs_exclude_archive_and_keep_distinct_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs_root = Path(tmp)
+            names = ["baseline", "709715/srbench_gt_90s",
+                     "120458/srbench_gt_90s", "bundle/deeper/evaluation"]
+            for name in names + ["archive/old", "archive/bundle/evaluation"]:
+                run_dir = runs_root / name
+                run_dir.mkdir(parents=True)
+                (run_dir / "manifest.json").write_text(json.dumps({
+                    "datasets": [], "noise_levels": [], "batches": [],
+                }))
+            (runs_root / "invalid").mkdir()
+            (runs_root / "invalid/manifest.json").write_text("invalid json")
+            (runs_root / "unrelated").mkdir()
+            (runs_root / "unrelated/manifest.json").write_text("{}")
+            self.assertEqual(find_full_srbench_runs(runs_root),
+                             sorted(runs_root / name for name in names))
+            output = io.StringIO()
+            with patch.object(sys, "argv", ["inspect_srbench_results.py",
+                              "--see-all", "--runs-root", str(runs_root)]):
+                with redirect_stdout(output):
+                    main()
+            for name in names:
+                self.assertIn(name, output.getvalue())
+            self.assertNotIn("archive/", output.getvalue())
+
+    def test_missing_root_returns_no_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(find_full_srbench_runs(Path(tmp) / "missing"), [])
+
     def test_since_filters_by_manifest_modification_time(self):
         with tempfile.TemporaryDirectory() as tmp:
             runs_root = Path(tmp)
             now = time.time()
-            for run_id, age_days in (("recent", 3), ("old", 10)):
+            for run_id, age_days in (("bundle/recent", 3), ("bundle/old", 10)):
                 run_dir = runs_root / run_id
-                run_dir.mkdir()
+                run_dir.mkdir(parents=True)
                 manifest_path = run_dir / "manifest.json"
                 with open(manifest_path, "w") as f:
                     json.dump({"datasets": [], "noise_levels": [], "batches": []}, f)
@@ -92,11 +124,11 @@ class FindRunsTests(unittest.TestCase):
 
             self.assertEqual(
                 find_full_srbench_runs(runs_root, since_days=7),
-                [runs_root / "recent"],
+                [runs_root / "bundle/recent"],
             )
             self.assertEqual(
                 find_full_srbench_runs(runs_root),
-                [runs_root / "old", runs_root / "recent"],
+                [runs_root / "bundle/old", runs_root / "bundle/recent"],
             )
 
     def test_v2_finds_nested_runs_only(self):
