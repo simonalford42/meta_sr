@@ -1,0 +1,173 @@
+\documentclass[10pt,letterpaper]{article}
+\usepackage[margin=0.7in]{geometry}
+\usepackage{amsmath,amssymb,graphicx,xcolor,booktabs,array,fancyhdr,hyperref}
+\definecolor{ink}{HTML}{16324F}
+\definecolor{muted}{HTML}{52616B}
+\definecolor{baseline}{HTML}{246A91}
+\definecolor{evolved}{HTML}{A65B20}
+\definecolor{highlight}{HTML}{FFF2C6}
+\definecolor{highlightedge}{HTML}{B98B17}
+\definecolor{card}{HTML}{F4F6F8}
+\definecolor{cardedge}{HTML}{D9E0E5}
+\hypersetup{colorlinks=true,urlcolor=baseline,linkcolor=baseline}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{muted}Supernova ZR / full saved Pareto frontiers}
+\fancyhead[R]{\small\color{muted}Seed 10009}
+\fancyfoot[L]{\small\color{muted}September 8 runs / prepared September 9, 2026}
+\fancyfoot[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.2pt}
+\newsavebox{\equationbox}
+\newcommand{\fitformula}[1]{%
+  \sbox{\equationbox}{$\displaystyle #1$}%
+  \ifdim\wd\equationbox>0.97\linewidth
+    \resizebox{0.97\linewidth}{!}{\usebox{\equationbox}}%
+  \else\usebox{\equationbox}\fi}
+\newcommand{\entry}[8]{%
+  \begingroup
+  \setlength{\fboxsep}{8pt}%
+  \noindent\fcolorbox{#7edge}{#7}{%
+    \begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
+    {\small\bfseries #1}\hfill{\small Complexity #2}\hfill
+    {\small Loss $=#3$}\hfill{\small $R^2=#4$}\hfill
+    {\small $R^2_{\mathrm{cal}}=#5$}\\[8pt]
+    \centering\fitformula{f(t)=#6}\par
+    #8
+    \end{minipage}}%
+  \endgroup\par\vspace{8pt}}
+\begin{document}
+\thispagestyle{empty}
+{\LARGE\bfseries\color{ink}Supernova ZR: baseline vs. evolved}\par
+{\large Full portfolio Pareto frontiers, seed 10009}\par
+One core; 60-minute total search budget; restarts capped at $10^6$ evaluations;
+no max-size warmup. Baseline uses L1 loss. Evolved uses the validation-selected
+bundle from run 709715 and its custom affine-profile loss.
+
+\section*{Reference family and the highlighted candidates}
+The task fits normalized observed flux as a function of time $t$ (days relative
+to the observed peak). The 236 rows span $-18.04$ to $86.75$ days. The accepted
+reference is the empirical Bazin family, not a known physical generating law:
+\[
+  F(t;A,B,C,D)=\frac{A}{B\exp(Ct)+\exp(-Dt)}.
+\]
+The yellow boxes identify the saved review's \emph{closest structural match},
+not the lowest-loss or highest-$R^2$ member. B06 is the simplest exact-family
+match cited by the baseline review. E13 is the evolved review's near match.
+All 15 baseline and all 20 evolved frontier rows follow, in increasing complexity.
+
+\textbf{Baseline B06 (exact):}
+\[
+ \frac{\exp(a t)}{\exp(t)+b}
+ =\frac{1/b}{(1/b)\exp((1-a)t)+\exp(-a t)},\qquad
+ a\simeq0.955950,\quad b\simeq2.25986\times10^{-5}.
+\]
+\textbf{Evolved E13 (near):}
+\[
+ \frac{(0.0571477t)^3+0.976272}
+ {\exp(-0.127003t)+1.27564\exp(0.119704t)}.
+\]
+Its denominator has the reference structure, but its numerator contains a real
+nonconstant cubic term. Rounding here is for display only; the raw syntax-tree
+version appears in the frontier.
+
+\section*{Metrics}
+Let $p_i=f(t_i)$, $S_y=\sum_i(y_i-\bar y)^2$, and let
+$(\hat a,\hat b)$ minimize $\sum_i(y_i-a p_i-b)^2$. Then
+\[
+ R^2=1-\frac{\sum_i(y_i-p_i)^2}{S_y},\qquad
+ R^2_{\mathrm{cal}}=1-\frac{\sum_i(y_i-\hat a p_i-\hat b)^2}{S_y}.
+\]
+The native losses are
+\[
+ L_{\mathrm{L1}}=\frac1n\sum_i|y_i-p_i|,\qquad
+ L_{\mathrm{custom}}=\sqrt{\operatorname{clip}(1-R^2_{\mathrm{cal}},0,1)}
+ +\frac{1}{256}\frac{\sqrt{1-R^2}}{1+\sqrt{1-R^2}}.
+\]
+The custom expression matches the implementation on this dataset (its tiny
+target-normalization floor is inactive). Calibration fits scale and offset only,
+not the equation's internal constants. For constant predictions, calibration
+returns the target mean and $R^2_{\mathrm{cal}}=0$.
+
+\textbf{Reading the tables.} Loss is each method's own search loss; the two loss
+columns have different meanings and should not be compared numerically. Every
+$R^2$ is recomputed on the same 236 training rows, without clipping negative
+values. Calibrated $R^2$ is a diagnostic, not a held-out score or the stored raw
+equation's prediction quality. Constants are displayed to six significant digits;
+all metrics use the full-precision stored expressions. Row IDs are zero-based
+positions in the merged frontier, not the original per-restart PySR indices.
+
+{\footnotesize Reference context: \href{https://arxiv.org/html/2402.04298v4\#S5.SS3}
+{Russeil et al., Multi-View Symbolic Regression, section 5.3 and Table 4}.}
+
+\clearpage
+{\Large\bfseries\color{baseline}Baseline portfolio}\par
+{\large Native loss: mean absolute error (L1)}\par
+Seed 10009; 217 successful restarts; full merged frontier. Rows B00--B04 (1/3).\par\vspace{6pt}
+\entry{B00}{1}{0.161802}{-0.174873}{0}{0.131753}{card}{}
+\entry{B01}{4}{0.114846}{-2.39165}{0.160738}{\exp\!\left(t\cdot \left(-0.0420392\right)\right)}{card}{}
+\entry{B02}{5}{0.0874656}{0.466576}{0.51394}{t\cdot \left(-0.00794238\right) + 0.55892}{card}{}
+\entry{B03}{6}{0.0553266}{0.790392}{0.790887}{\frac{325.338}{\left(t\right)^{2} + 424.217}}{card}{}
+\entry{B04}{7}{0.0455936}{0.727226}{0.727711}{\frac{0.559926}{\exp\!\left(\left(t\cdot 0.0253315\right)^{2}\right)}}{card}{}
+\clearpage
+{\Large\bfseries\color{baseline}Baseline portfolio}\par
+{\large Native loss: mean absolute error (L1)}\par
+Seed 10009; 217 successful restarts; full merged frontier. Rows B05--B09 (2/3).\par\vspace{6pt}
+\entry{B05}{8}{0.045073}{0.762847}{0.764589}{\frac{645.304}{\left(t\right)^{2} + 863.234} - 0.0758309}{card}{}
+\entry{B06}{9}{0.0255688}{0.971463}{0.972425}{\frac{\exp\!\left(t\cdot 0.95595\right)}{\exp\!\left(t\right) + 2.25986\times 10^{-5}}}{highlight}{\par\vspace{6pt}{\small\bfseries Closest structural match: EXACT. Algebraically in the Bazin family.}}
+\entry{B07}{10}{0.0239115}{0.975998}{0.976389}{\frac{\sqrt{\exp\!\left(t\right)}}{\exp\!\left(t\cdot 0.54407\right) + 0.00510327}}{card}{}
+\entry{B08}{11}{0.0229951}{0.971604}{0.972677}{\frac{\exp\!\left(t\right)}{\exp\!\left(\frac{t}{0.961963}\right) + 1.13455\times 10^{-5}} + \left(-0.0255283\right)}{card}{}
+\entry{B09}{13}{0.0210628}{0.976917}{0.977359}{\frac{\exp\!\left(t\cdot 0.328156\right)}{\exp\!\left(t\cdot 0.366919\right) + 0.0424653} + \left(-0.0316802\right)}{card}{}
+\clearpage
+{\Large\bfseries\color{baseline}Baseline portfolio}\par
+{\large Native loss: mean absolute error (L1)}\par
+Seed 10009; 217 successful restarts; full merged frontier. Rows B10--B14 (3/3).\par\vspace{6pt}
+\entry{B10}{14}{0.0203803}{0.977902}{0.978554}{\frac{\exp\!\left(t\cdot \left(-0.0392879\right)\right) - 0.0282795}{\sqrt{\exp\!\left(-9.38494 - t\right) + 0.962586}}}{card}{}
+\entry{B11}{15}{0.0197551}{0.979419}{0.979513}{\frac{\exp\!\left(t\cdot 0.344832\right)}{\exp\!\left(t\cdot 0.383571\right) + t\cdot \left(-0.00257239\right)} + \left(-0.0299226\right)}{card}{}
+\entry{B12}{17}{0.0176212}{0.985718}{0.986869}{\frac{\exp\!\left(\left(t\right)^{2}\cdot \left(-0.0138108\right)\right) + 0.407837}{\exp\!\left(\left(\left(t\cdot \left(-0.0570707\right) + 0.972911\right)\cdot 0.613631\right)^{2}\right)}}{card}{}
+\entry{B13}{18}{0.00823029}{0.995682}{0.995832}{\frac{\exp\!\left(t\cdot \left(-0.0341614\right)\right)}{\exp\!\left(-0.148379 - \left(t\cdot 0.06168 + \left(-0.47134\right)\right)^{3}\right) - t\cdot \left(-0.0335344\right)}}{card}{}
+\entry{B14}{20}{0.00805523}{0.995947}{0.996002}{\frac{\exp\!\left(\left(0.284446 - t\right)\cdot 0.0350296\right)}{\frac{\exp\!\left(\left(0.480282 - t\cdot 0.0617161\right)^{3}\right) - t\cdot \left(-0.0378628\right)}{1.14979}}}{card}{}
+\vfill{\footnotesize\color{muted}Source run: 
+\nolinkurl{runs/srbench2_9-8_gt_baseline_1core_l1_portfolio_1m_no_warmup}
+\par Full-precision equations and metrics are retained in the companion JSON.}
+\clearpage
+{\Large\bfseries\color{evolved}Evolved portfolio}\par
+{\large Native loss: custom affine-profile loss}\par
+Seed 10009; 77 successful restarts; full merged frontier. Rows E00--E04 (1/4).\par\vspace{6pt}
+\entry{E00}{1}{0.701069}{-49147.9}{0.51394}{t}{card}{}
+\entry{E01}{2}{0.700248}{-2.13488\times 10^{8}}{0.515108}{\left(t\right)^{2}}{card}{}
+\entry{E02}{3}{0.699418}{-0.798909}{0.51394}{t\cdot 0.00217409}{card}{}
+\entry{E03}{4}{0.560726}{-49140}{0.689933}{\sqrt{t\cdot t}}{card}{}
+\entry{E04}{5}{0.316638}{-976.591}{0.902123}{\ln\!\left(\left(4.23476 - t\right)^{2}\right)}{card}{}
+\clearpage
+{\Large\bfseries\color{evolved}Evolved portfolio}\par
+{\large Native loss: custom affine-profile loss}\par
+Seed 10009; 77 successful restarts; full merged frontier. Rows E05--E09 (2/4).\par\vspace{6pt}
+\entry{E05}{7}{0.26372}{-256.405}{0.932377}{\ln\!\left(\exp\!\left(t\cdot \left(-0.281753\right)\right) + t\right)}{card}{}
+\entry{E06}{8}{0.178138}{-1067.77}{0.969603}{\ln\!\left(\exp\!\left(t\cdot \left(-0.506237\right)\right) + \left(t\right)^{2}\right)}{card}{}
+\entry{E07}{9}{0.136175}{-202.094}{0.982437}{\ln\!\left(\frac{\left(t\right)^{2} + 13.7774}{t + 22.7922}\right)}{card}{}
+\entry{E08}{10}{0.132851}{-3970.93}{0.983357}{\ln\!\left(\left(\frac{\left(t\right)^{3}}{t + 16.7407}\right)^{2} + 5.21675\right)}{card}{}
+\entry{E09}{11}{0.129274}{-360.754}{0.984234}{t\cdot \left(-0.0480561\right) + \sqrt{\sqrt{t\cdot t + 1.97038}}}{card}{}
+\clearpage
+{\Large\bfseries\color{evolved}Evolved portfolio}\par
+{\large Native loss: custom affine-profile loss}\par
+Seed 10009; 77 successful restarts; full merged frontier. Rows E10--E14 (3/4).\par\vspace{6pt}
+\entry{E10}{12}{0.11305}{-1062.08}{0.988062}{\left(1.00066 - t\cdot 0.0212141\right)^{3} + \ln\!\left(\left(t\right)^{2} - \left(-6.73503\right)\right)}{card}{}
+\entry{E11}{14}{0.111361}{-0.349908}{0.988062}{\left(\ln\!\left(\left(t\right)^{2} - \left(-6.80919\right)\right) + \left(1.00017 - t\cdot 0.0212099\right)^{3}\right)\cdot 0.0202608}{card}{}
+\entry{E12}{16}{0.108949}{-4134.8}{0.988954}{\left(\left(47.5941 - t\right)\cdot 0.026687\right)^{3} + \ln\!\left(\left(t\cdot \left(t\right)^{3} + 55.6294\right)\cdot 0.685358\right)}{card}{}
+\entry{E13}{18}{0.080043}{0.315679}{0.993873}{\frac{\left(t\cdot 0.0571477\right)^{3} + 0.976272}{\exp\!\left(t\cdot 0.119704\right)\cdot \left(\exp\!\left(t\cdot \left(-0.246707\right)\right) + 1.27564\right)}}{highlight}{\par\vspace{6pt}{\small\bfseries Closest structural match: NEAR. Extra cubic numerator; not in the Bazin family.}}
+\entry{E14}{20}{0.0698723}{-9478.69}{0.995643}{t\cdot 0.0929013 - \left(\ln\!\left(\left(-29.0947 + t\right)^{2} + t\right)\cdot 0.599663 + \ln\!\left(\left(\left(t\right)^{3}\right)^{2} + 1999.67\right)\right)}{card}{}
+\clearpage
+{\Large\bfseries\color{evolved}Evolved portfolio}\par
+{\large Native loss: custom affine-profile loss}\par
+Seed 10009; 77 successful restarts; full merged frontier. Rows E15--E19 (4/4).\par\vspace{6pt}
+\entry{E15}{22}{0.0665761}{-9204.2}{0.996067}{\ln\!\left(\left(\left(t\right)^{2}\right)^{3} + 1999.68\right) + \ln\!\left(t + \left(t + \left(-28.0842\right)\right)^{2} + \left(-1.32598\right)\right)\cdot 0.612279 - t\cdot 0.0931809}{card}{}
+\entry{E16}{23}{0.0617656}{0.910611}{0.996295}{\exp\!\left(t\cdot \left(-0.00890719\right)\cdot \left(t - \left(-3.60761\right)\right)\right) - \frac{-0.920096 - t\cdot 0.0892947}{\exp\!\left(1.31416 - t\cdot t\cdot \left(-0.00104235\right)\right)}}{card}{}
+\entry{E17}{25}{0.0501894}{-11076.5}{0.997854}{\frac{\ln\!\left(t\cdot 4.54376 + \left(t + \left(-26.074\right)\right)^{2}\right)}{t\cdot 0.00108345 - \left(-0.193845\right) - \frac{\frac{-27.5708}{0.831265 - t}}{-0.19307 - t}}}{card}{}
+\entry{E18}{27}{0.0495817}{-0.895537}{0.997761}{\frac{\ln\!\left(\left(\left(25.3662 - t\right)^{2} + 49.077\right)\cdot 63.3788\right)}{\left(\left(t\right)^{2} + 120.801\right)\cdot \left(\frac{63.3803}{t + t\cdot 2.41807 + \left(-2.27579\right)}\right)^{2} + t}}{card}{}
+\entry{E19}{29}{0.0492654}{-0.0573048}{0.997764}{\frac{\ln\!\left(\left(\left(25.3699 - t\right)^{2} + 49.0231\right)\cdot 63.3676\right)}{\left(\left(t\right)^{2} + 120.822\right)\cdot \left(\frac{63.3802}{t + t\cdot 2.41698 + \left(-2.28243\right)}\right)^{2} + t} - \left(-0.2059\right)}{card}{}
+\vfill{\footnotesize\color{muted}Source run: 
+\nolinkurl{runs/709715/srbench2_9-8_ground_truth_1core_portfolio_1m_no_warmup}
+\par Full-precision equations and metrics are retained in the companion JSON.}
+\end{document}
