@@ -34,6 +34,109 @@ The baseline uses L1 loss. Evolved PySR uses the validation-selected bundle from
 
 Portfolio searches restart after 1 million evaluations within a shared 60-minute budget. Single SRBench2 searches have a 1-billion-evaluation cap. SRBench2 runs used zero added noise.
 
+## Per-task results
+
+Each character is one seed, in ascending order: **10000–10004** for EmpiricalBench and **10000–10009** for SRBench2. **E** = exact, **N** = near, **M** = miss, **P** = phenomenological match. Solved seeds count E + P. These use the same saved reviews as the summary above, displayed in the compact style of `inspect_srbench_results.py --v2`.
+
+### EmpiricalBench baseline
+
+| Task | Solved seeds | Per-seed review |
+|---|---:|---|
+| bode | 5/5 | `EPPPP` |
+| hubble | 5/5 | `EEEEE` |
+| ideal gas | 5/5 | `EEEEE` |
+| kepler | 5/5 | `EPEEE` |
+| leavitt | 5/5 | `PEEPE` |
+| newton | 5/5 | `EEEEE` |
+| planck | 0/5 | `NNNMN` |
+| rydberg | 0/5 | `NNMMN` |
+| schechter | 5/5 | `PPPPE` |
+
+### SRBench2 baseline, 8 cores
+
+| Task | Solved seeds | Per-seed review |
+|---|---:|---|
+| absorption | 10/10 | `PPPPPPPPPP` |
+| bode | 10/10 | `PPPPPPPPPP` |
+| hubble | 10/10 | `EEEEEEEEEE` |
+| ideal gas | 10/10 | `EEEEEEEEEE` |
+| kepler | 10/10 | `EEEEEEEEEE` |
+| leavitt | 10/10 | `EEEEEEEEEE` |
+| newton | 10/10 | `EEEEEEEEEE` |
+| planck | 0/10 | `NNNNNNNNNN` |
+| rydberg | 3/10 | `EEEMNNNNNM` |
+| schechter | 9/10 | `EEEENEEEEE` |
+| supernovae zr | 8/10 | `EEEENEEEEM` |
+| tully fisher | 10/10 | `EEEEEEEEEE` |
+
+### SRBench2 baseline, 1 core
+
+| Task | Solved seeds | Per-seed review |
+|---|---:|---|
+| absorption | 10/10 | `PPPPPPPPPP` |
+| bode | 10/10 | `PPPPPPPPPP` |
+| hubble | 10/10 | `EEEEEEEEEE` |
+| ideal gas | 10/10 | `EEEEEEEEEE` |
+| kepler | 10/10 | `EEEEEEEEEE` |
+| leavitt | 10/10 | `EEEEEEEEEE` |
+| newton | 10/10 | `EEEEEEEEEE` |
+| planck | 0/10 | `NNNNNNNNNN` |
+| rydberg | 0/10 | `MNNNNMNNMN` |
+| schechter | 10/10 | `EEEEEEEEEE` |
+| supernovae zr | 7/10 | `EEENEENNEE` |
+| tully fisher | 10/10 | `EEEEEEEEEE` |
+
+### SRBench2 baseline, portfolio
+
+| Task | Solved seeds | Per-seed review |
+|---|---:|---|
+| absorption | 10/10 | `PPPPPPPPPP` |
+| bode | 10/10 | `PPPPPPPPPP` |
+| hubble | 10/10 | `EEEEEEEEEE` |
+| ideal gas | 10/10 | `EEEEEEEEEE` |
+| kepler | 10/10 | `EEEEEEEEEE` |
+| leavitt | 10/10 | `EEEEEEEEEE` |
+| newton | 10/10 | `EEEEEEEEEE` |
+| planck | 0/10 | `NNNNNNNNNN` |
+| rydberg | 2/10 | `MNNNNENNNE` |
+| schechter | 10/10 | `EEEEEEEEEE` |
+| supernovae zr | 10/10 | `EEEEEEEEEE` |
+| tully fisher | 10/10 | `EEEEEEEEEE` |
+
+### SRBench2 evolved, single
+
+| Task | Solved seeds | Per-seed review |
+|---|---:|---|
+| absorption | 10/10 | `PPPPPPPPPP` |
+| bode | 10/10 | `PPPPPPPPPP` |
+| hubble | 10/10 | `EEEEEEEEEE` |
+| ideal gas | 10/10 | `EEEEEEEEEE` |
+| kepler | 10/10 | `EEEEEEEEEE` |
+| leavitt | 8/10 | `EEMEEEEEEN` |
+| newton | 10/10 | `EEEEEEEEEE` |
+| planck | 0/10 | `NNNNNNNNNN` |
+| rydberg | 1/10 | `NNNNNMNNEM` |
+| schechter | 8/10 | `EEEEENENEE` |
+| supernovae zr | 0/10 | `MMMMMMMMMM` |
+| tully fisher | 10/10 | `EEEEEEEEEE` |
+
+### SRBench2 evolved, portfolio
+
+| Task | Solved seeds | Per-seed review |
+|---|---:|---|
+| absorption | 10/10 | `PPPPPPPPPP` |
+| bode | 10/10 | `PPPPPPPPPP` |
+| hubble | 10/10 | `EEEEEEEEEE` |
+| ideal gas | 10/10 | `EEEEEEEEEE` |
+| kepler | 10/10 | `EEEEEEEEEE` |
+| leavitt | 10/10 | `EEEEEEEEEE` |
+| newton | 10/10 | `EEEEEEEEEE` |
+| planck | 0/10 | `NNNNNNNNNN` |
+| rydberg | 5/10 | `NENNEENNEE` |
+| schechter | 10/10 | `EEEEEEEEEE` |
+| supernovae zr | 0/10 | `MNMMMNNMMN` |
+| tully fisher | 10/10 | `EEEEEEEEEE` |
+
 ## Sources
 
 Counts come from `manual_solve_check_results.json` in each run directory:
