@@ -1156,6 +1156,7 @@ class PySRTaskResult:
     run_index: int = 0
     timed_out: bool = False
     runtime_seconds: float = 0.0
+    search_runtime_seconds: Optional[float] = None
     num_evaluations: Optional[float] = None
     # Parsed hall-of-fame milestone records loaded from run_pysr_srbench HOF CSVs.
     # Each entry is a dict with keys: milestone_evals, chunk_runtime, equations,
@@ -2031,6 +2032,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 run_index=spec.run_index,
                 timed_out=nr["timed_out"],
                 runtime_seconds=_time.time() - start_time,
+                search_runtime_seconds=nr.get("search_runtime_seconds"),
                 num_evaluations=nr["num_evaluations"],
                 execution_trace=nr["execution_trace"],
                 pareto_frontier=nr.get("pareto_frontier"),

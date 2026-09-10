@@ -516,6 +516,8 @@ def main(argv=None, *, force_srbench_2025=False):
     parser.add_argument("--datasets", type=str, default=None,
                         help="Comma-separated dataset override (for smoke tests).")
     parser.add_argument("--max-evals", type=int, default=1_000_000)
+    parser.add_argument("--no-early-stop", action="store_true",
+                        help="Disable loss-based early stopping after loading the method.")
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--black-box-max-samples", type=int, default=10_000,
                         help="Training-row cap for black-box datasets (SRBench protocol).")
@@ -733,6 +735,16 @@ def main(argv=None, *, force_srbench_2025=False):
             "slots": len(configs),
             "bundle_names": list(bundle_names.values()),
         }
+    if args.no_early_stop:
+        if source.backend != "pysr":
+            parser.error("--no-early-stop requires the PySR backend")
+        from dataclasses import replace
+        configs = [replace(item, pysr_kwargs={
+            key: value for key, value in item.pysr_kwargs.items()
+            if key != "early_stop_condition"
+        }) for item in configs]
+        config = configs[0]
+        source.config = config
     args._portfolio_configs = configs
     args._runs_per_config = runs_per_config
     args._run_index_starts = run_index_starts
@@ -898,6 +910,7 @@ def main(argv=None, *, force_srbench_2025=False):
         "method_meta": method_meta,
         "max_evals": args.max_evals,
         "timeout_in_seconds": source.soft_timeout,
+        "no_early_stop": args.no_early_stop,
         "timeout_source": source.soft_timeout_source,
         "max_samples": args.max_samples,
         "cpus_per_task": args.cpus_per_task,

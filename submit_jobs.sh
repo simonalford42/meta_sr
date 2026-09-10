@@ -7,6 +7,10 @@ if [[ "${1:-}" == "portfolio-curve" ]]; then
     exit
 fi
 
+srb_noearly_base=$(sbatch --parsable --dependency=afterany:750000 -J srb-1m-base-noearly run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_1m_noearly_1seed --seed 10000 --n-runs 1 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000 --no-early-stop --timeout 0 --pysr-wall-limit 1800 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:40:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache) || exit
+srb_noearly_evolved=$(sbatch --parsable --dependency=afterany:750000 -J srb-1m-709715-noearly run.sh srbench_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench_gt_1m_noearly_1seed --seed 10000 --n-runs 1 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000 --no-early-stop --timeout 0 --pysr-wall-limit 1800 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:40:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache) || exit
+sbatch --dependency=afterok:"$srb_noearly_base":"$srb_noearly_evolved" --partition=default_partition --cpus-per-task=1 --mem=2G --time=00:10:00 -J srb-1m-noearly-times run.sh scripts/summarize_srbench_search_time.py
+
 sbatch -J srb-bb-autoresearch run.sh srbench_full_eval.py --autoresearch e425e7ed5894b0ebd7718fed0d77a252df2fa443 --black-box --results-dir runs/srbench_bb_autoresearch_10seed --max-evals 1000000 --seed 10000 --n-runs 10 --black-box-max-samples 10000 --black-box-timeout 1500 --black-box-wall-limit 1800 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --job-timeout 7200 --mem-per-cpu 8G --max-retries 5
 sbatch -J neuron-eval-709715 run.sh neuron_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/neuron_full_eval_5seed --n-runs 5 --seed 10000 --max-evals 1000000 --max-samples 1024 --partition default_partition --max-concurrent-jobs 30 --time-limit 00:15:00 --mem-per-cpu 8G --timeout 500 --pysr-wall-limit 600 --job-timeout 1800
 
