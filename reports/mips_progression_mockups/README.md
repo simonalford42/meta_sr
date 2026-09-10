@@ -99,3 +99,62 @@ Committed audit data:
 - `sources.json`: SHA-256 hashes of all consumed JSON files.
 
 No SLURM jobs were submitted or new searches run to produce these figures.
+
+## Inspect and audit the counts (2026-09-10)
+
+The read-only inspector loads the raw task manifests and individual result JSON
+files. It requires only Python's standard library, runs no Julia or SLURM jobs,
+and prints both definitions of whole-problem recovery:
+
+```bash
+# Compare all three methods, including every task group.
+python scripts/inspect_mips_results.py
+
+# Explain the base-6 discrepancy using successful run indices.
+python scripts/inspect_mips_results.py --task base_6 --components
+
+# Inspect the subtask lost by the SRBench bundle.
+python scripts/inspect_mips_results.py --task alternating_last4 --components
+
+# Show exact witness expressions, seeds, and raw result paths for one method.
+python scripts/inspect_mips_results.py \
+  --eval-dir runs/709715/final_eval_mips_native_10seed \
+  --task base_4 --equations
+```
+
+The `--eval-dir` flag accepts either an evaluation root or its
+`slurm_pysr/eval_0000` directory. Missing results are explicitly reported;
+recorded errors and timeouts are counted. The inspector reads stored exactness
+scores and witnesses; it does not reevaluate expressions.
+
+### Why two more subtasks can yield four more problems
+
+SRBench gains three distinct components: `base_4_addition:hidden:0`,
+`base_5_addition:hidden:0`, and `base_7_addition:hidden:1`. It loses
+`alternating_last4:hidden:0`, giving a **net gain of two** (37 → 39).
+The three gained components complete base-4, base-5 and base-7 addition.
+
+Base-6 addition provides the fourth newly completed problem without adding a
+new distinct component. Base PySR solves hidden:0 at run indices
+`0,1,2,6,7,8,9`, hidden:1 only at `3`, and output:0 in all ten runs. Their
+intersection is empty. SRBench solves all three together at run indices
+`2,6,7,8,9`. Thus its joint task success changes from 0/10 to 5/10.
+
+| Definition | Base PySR | SRBench bundle | MIPS evolution |
+|---|---:|---:|---:|
+| New problems: all components within the same seed, at least once | 5/14 | 9/14 | 11/14 |
+| New problems: each component found in any seed, allowing recombination | 7/14 | 9/14 | 11/14 |
+| Distinct subtasks: found in any seed | 37/51 | 39/51 | 41/51 |
+
+The extra two baseline problems under the second definition are base-6 addition
+and alternating-last4. For the latter, base PySR solves hidden:0 only at run
+index 1 and hidden:1 only at run index 0. SRBench loses hidden:0 entirely.
+Therefore the **across-seed problem sets are not nested**, even though the
+same-seed problem sets used in the figures are nested.
+
+The figure's 5 → 9 → 11 is correct for joint same-seed success. If the intended
+claim is “we collected formulas for every component using all ten attempts,”
+use 7 → 9 → 11 instead, and do not use a purely additive Sankey/waterfall without
+representing the lost/recovered alternating-last4 task. Combining formulas
+across seeds is a different recovery criterion; assembled-program validation
+remains separate under either definition.
