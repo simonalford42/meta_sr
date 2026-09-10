@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# 9/10/26
+sbatch -J neuron-eval-709715 run.sh neuron_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/neuron_full_eval_5seed --n-runs 5 --seed 10000 --max-evals 1000000 --max-samples 1024 --partition default_partition --max-concurrent-jobs 30 --time-limit 00:15:00 --mem-per-cpu 8G --timeout 500 --pysr-wall-limit 600 --job-timeout 1800
+
 # 9/9/26
 sbatch -J srb-15m-base-single run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_15m_single --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000000 --timeout 900 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache
 
