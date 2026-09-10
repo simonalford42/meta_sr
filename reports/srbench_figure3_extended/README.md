@@ -3,7 +3,8 @@
 `figure3_extended.png`, `.pdf`, and `.svg` retain the 14 methods from the
 [2021 SRBench Figure 3](https://datasets-benchmarks-proceedings.neurips.cc/paper_files/paper/2021/file/c0c7c76d30bd3dcaefc96f40275bdc0a-Paper-round1.pdf)
 and add MDLformer, BasicSR, PySR, evolved BasicSR trained on GT-R2, and evolved
-PySR from run 709715, plus AIFeynman2. The main plot now has 20 methods.
+PySR from run 709715. The main plot has 19 methods.
+The four local methods have bold labels; MDLformer is labeled `mdlformer`.
 
 The plotting script extracts and executes the actual `compare` function from
 `srbench/postprocessing/groundtruth_results.ipynb`. It uses the notebook's
@@ -12,7 +13,7 @@ offset), white grid, facet titles, legend, fonts, and axis formatting. The
 canvas is enlarged for the extra rows and longer labels. The discrete
 `flare_r` palette is passed explicitly to preserve the original colors under
 Seaborn 0.13, which otherwise treats numeric noise levels as continuous.
-There is no added title, row shading, or custom labeling style.
+There is no added title or row shading.
 `srbench_compare_source.py.txt` records the exact executed function.
 
 The main figure restricts every method to the original 130-task universe:
@@ -28,17 +29,15 @@ These three additional datasets are included in the companion
 | Original 14 methods | `srbench/results/symbolic_dataset_results_sum.csv.gz` |
 | PySR | `runs/290227` |
 | BasicSR | `runs/150814` |
-| Evolved BasicSR (GT-R2) | `runs/271625`, evaluating training run `150815` |
-| Evolved PySR (709715) | `runs/973699`, evaluating training run `709715` |
-| MDLformer (SR4MDL) | Author-released `SSSR` trials; see below |
-| AIFeynman2 | Author-released `AIFeynman2` trials from the same SR4MDL release |
+| Evolved BasicSR | `runs/271625`, evaluating training run `150815` |
+| Evolved PySR | `runs/973699`, evaluating training run `709715` |
+| mdlformer | Author-released `SSSR` trials; see below |
 
 MDLformer results come from the
 [SR4MDL release](https://github.com/tsinghua-fib-lab/SR4MDL/tree/a79f5260247a219e359b870ab3e91650208b87d2/release).
 The authors' `visualize.ipynb` explicitly maps `SSSR` to `Ours`.
 `mdlformer_trials.csv.gz` preserves the relevant trial-level fields for that
-method only. `aifeynman2_trials.csv.gz` preserves the separately labeled
-AIFeynman2 trials; the original AIFeynman row is retained as well.
+method only. The original AIFeynman row is retained.
 `mdlformer_source.json` records the pinned upstream commit,
 download URL, source SHA-256, and mapping evidence. These are released
 results, not a local rerun of MDLformer or an extraction from a plotted image.
@@ -62,14 +61,6 @@ dataset/noise cells have ten seeds, eleven cells have nine, and one cell has
 eight. It covers all 532 dataset/noise cells. Missing trials are not imputed.
 The historical summary has nine missing AIFeynman dataset/noise cells and
 one missing gplearn cell; its original available-cell convention is retained.
-AIFeynman2 has 4,669 released trials across 511 dataset/noise cells, covering
-116 Feynman and 14 Strogatz tasks overall. Its missing trials and cells are
-not imputed, following the same available-cell convention.
-
-The released AIFeynman2 row is numerically identical to the original
-SRBench AIFeynman row: all 511 dataset/noise cells, solution rates, and
-trial counts match exactly. Both labels are retained as requested, but they
-are not independent evaluations and their plotted curves overlap in value.
 Every plotted point's task and trial counts are recorded in the summary CSVs.
 
 This is a comparison of existing evaluations, not a new controlled rerun.
@@ -91,6 +82,6 @@ python scripts/plot_srbench_figure3_extended.py
 
 No SLURM jobs, model evaluations, or downloads are performed by the plotting
 script. It uses the saved local runs, the local SRBench summary, and the
-committed MDLformer and AIFeynman2 trial extracts. `dataset_rates.csv` is the combined
+committed MDLformer trial extract. `dataset_rates.csv` is the combined
 dataset-level snapshot; each figure has a corresponding `_summary.csv`.
 `provenance.json` records input hashes and the local run manifests.

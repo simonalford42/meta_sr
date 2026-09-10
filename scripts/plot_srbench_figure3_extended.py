@@ -27,10 +27,10 @@ OUT = ROOT / "reports/srbench_figure3_extended"
 LOCAL = {
     "PySR": "290227",
     "BasicSR": "150814",
-    "Evolved BasicSR (GT-R2)": "271625",
-    "Evolved PySR (709715)": "973699",
+    "Evolved BasicSR": "271625",
+    "Evolved PySR": "973699",
 }
-MDL = "MDLformer (SR4MDL)"
+MDL = "mdlformer"
 NOISE = [0, .001, .01, .1]
 MARKERS = ["o", "s", "x", "+"]
 
@@ -92,21 +92,6 @@ def collect():
     rates["method"] = MDL
     rates["source"] = "SR4MDL author release"
     frames.append(rates)
-    aif = pd.read_csv(OUT / "aifeynman2_trials.csv.gz")
-    assert aif.symbolic_solution.notna().all()
-    assert not aif.duplicated(["dataset", "random_state", "target_noise"]).any()
-    aif = aif.rename(columns={"data_group": "family", "target_noise": "noise"})
-    aif_rates = aif.groupby(["dataset", "family", "noise"], as_index=False).agg(
-        rate=("symbolic_solution", "mean"), n_seeds=("symbolic_solution", "size"))
-    aif_rates["method"] = "AIFeynman2"
-    aif_rates["source"] = "SR4MDL author release"
-    frames.append(aif_rates)
-    provenance["aifeynman2"] = {
-        "source_url": provenance["mdlformer"]["raw_results_url"],
-        "raw_results_sha256": provenance["mdlformer"]["raw_results_sha256"],
-        "algorithm": "AIFeynman2", "available_trials": len(aif),
-        "trial_extract_sha256": sha(OUT / "aifeynman2_trials.csv.gz"),
-    }
     all_rates = pd.concat(frames, ignore_index=True)
     assert all_rates.rate.between(0, 1).all()
     assert set(all_rates.noise) == set(NOISE)
@@ -161,6 +146,11 @@ def render(data, stem):
     )
     assert len(captured) == 1
     grid = captured[0]
+    for ax in grid.axes.flat:
+        for label in ax.get_yticklabels():
+            if label.get_text() in LOCAL:
+                label.set_fontweight("bold")
+    grid.tight_layout()
     for extension in ["png", "pdf", "svg"]:
         path = OUT / f"{stem}.{extension}"
         grid.figure.savefig(path, dpi=400, bbox_inches="tight")

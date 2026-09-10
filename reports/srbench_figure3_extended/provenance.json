@@ -661,7 +661,7 @@
       },
       "results_sha256": "4a9fcfa471de423f249f2b5692d151436a8cfd1c592139752bb23c51004dc901"
     },
-    "Evolved BasicSR (GT-R2)": {
+    "Evolved BasicSR": {
       "path": "runs/271625",
       "manifest": {
         "mode": "evolve_fullsr",
@@ -1028,7 +1028,7 @@
       },
       "results_sha256": "008c19b9e9856e6060478109389c9238e337689baffc0166325cee4ab8baf9a2"
     },
-    "Evolved PySR (709715)": {
+    "Evolved PySR": {
       "path": "runs/973699",
       "manifest": {
         "mode": "evolve",
@@ -1412,13 +1412,6 @@
   "plotting": "Execute the compare function directly from the local SRBench groundtruth_results.ipynb",
   "seaborn_version": "0.13.2",
   "missing_results": "No imputation; retain available trials and dataset/noise cells; counts saved in summaries",
-  "aifeynman2": {
-    "source_url": "https://raw.githubusercontent.com/tsinghua-fib-lab/SR4MDL/a79f5260247a219e359b870ab3e91650208b87d2/release/whitebox_results_full.csv.gz",
-    "raw_results_sha256": "93aa5b15a5e03bec0bbee44350c0dfd7c926394139c4e80d6796a60c560331d5",
-    "algorithm": "AIFeynman2",
-    "available_trials": 4669,
-    "trial_extract_sha256": "3c70f2a6f42199f3f3882bd2ee63abc8b0527d356c6b0ad79e46f5e9ddb9b8d2"
-  },
   "excluded_from_shared_figure": [
     "feynman_I_26_2",
     "feynman_I_30_5",

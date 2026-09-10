@@ -426,6 +426,8 @@ def render(output, results):
         'trials_with_unresolved_checks': sum(bool(r['unresolved_checks_before_solve']) for r in records),
         'final_positive_without_recovery': sum(r['final_merged_solved'] and
             r['first_solve_seconds'] is None for r in records),
+        'additional_cumulative_recoveries': {m: sum(not r['final_merged_solved'] and
+            r['first_solve_seconds'] is not None for r in records if r['method'] == m) for m in RUNS},
         'counts': dict(totals),
         'final_merged_recoveries': {m: sum(r['final_merged_solved'] for r in records
                                         if r['method'] == m) for m in RUNS},
