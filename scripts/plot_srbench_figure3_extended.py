@@ -30,7 +30,7 @@ LOCAL = {
     "Evolved BasicSR": "271625",
     "Evolved PySR": "973699",
 }
-MDL = "mdlformer"
+MDL = "MDLformer"
 NOISE = [0, .001, .01, .1]
 MARKERS = ["o", "s", "x", "+"]
 
@@ -146,6 +146,9 @@ def render(data, stem):
     )
     assert len(captured) == 1
     grid = captured[0]
+    for family, ax in grid.axes_dict.items():
+        n_tasks = data.loc[data.family == family, "dataset"].nunique()
+        ax.set_title(f"{family} (n={n_tasks})")
     for ax in grid.axes.flat:
         for label in ax.get_yticklabels():
             if label.get_text() in LOCAL:
