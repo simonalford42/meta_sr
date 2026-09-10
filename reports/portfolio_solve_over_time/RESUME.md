@@ -1,10 +1,10 @@
 # Resume: SRBench 15-minute portfolio recovery curves
 
-The user is disconnecting and wants to resume checking results later. The task is not complete until the full table/plot are validated and reported. All original searches finished before this analysis; do not rerun benchmark searches.
+The user returned and requested continuation. The task is not complete until the full table/plot are validated and reported. All original searches finished before this analysis; do not rerun benchmark searches.
 
 ## Latest snapshot
 
-2026-09-10T17:07:33 EDT: 10404/10640 unique trial histories complete; 236 remain. Needed jobs: {'PENDING': 53, 'RUNNING': 183}. Other queued/running jobs with records already saved: {'PENDING': 10, 'RUNNING': 10}.
+2026-09-10T17:44 EDT: 10632/10640 unique trial histories complete; eight remain, all queued for priority. Retry arrays 779168 and 779169 request 16 GiB and 30 minutes after seven timeouts and one 4-GiB OOM. The cache audit found zero conflicts across 757,795 distinct definite decisions in 2,135 files.
 
 ## Objective and inputs
 
@@ -17,25 +17,25 @@ Saved logs have final Pareto frontiers and durations for each serial restart, bu
 
 ## Jobs and checkpoint mapping
 
-- **774709**: local array indices 0–549, **global seed-plan offset 320**.
-- **774710**: local array indices 0–549, **global seed-plan offset 870**.
+- **779168**: retry local indices 114,116,264,294, **global seed-plan offset 320**; replaces failed workers from 774709.
+- **779169**: retry local indices 73,116,287,295, **global seed-plan offset 870**; replaces failed workers from 774710.
 - **772032**: first seed array, global offset 0, indices 0–319; all 320 completed.
 - **759513**: old 648-group array; its remaining workers were deliberately canceled after replacing their work with seed shards. Do not restart these canceled workers.
 - Earlier coarse arrays 753564 and 757119, and plot jobs 753565/759514, are obsolete/canceled.
 
 `group_plan.json` has 648 ten-seed groups covering 81 datasets; the other 52 datasets finished in the coarse pass. `seed_plan.json` has 1,420 single-seed workers covering 142 of those groups. Existing plan indices must not be reordered/regenerated. Plans and expensive worker caches are local and gitignored.
 
-The two current arrays have a throttle of 235 each. Pending workers were reduced to 2 GiB after 477 measured peaks stayed below 700 MiB; earlier running jobs retain 4 GiB. Time limit is 30 minutes, with checkpointed retries. Cluster MaxArraySize is 1001, so global seed indices are translated with `--index-offset`.
+Each current array has a throttle of four, 16 GiB per worker, and a 30-minute time limit. All earlier seed workers are inactive. Existing checkpoints and sibling caches are reused.
 
 ## Monitor and resume commands
 
-At handoff, local monitor PID **3209945** is running. It may stop if the session/process allocation ends; SLURM jobs continue independently. Check for an existing monitor before starting another:
+A replacement local monitor was started at 17:33 EDT (tool session 63729). It may stop if the session/process allocation ends; SLURM jobs continue independently. Check for an existing monitor before starting another:
 
 ```bash
 pgrep -af '^python -u scripts/monitor_portfolio_curve.py'
 tail -20 outputs/portfolio_curve_monitor.log
-squeue -r -j774709,774710
-sacct -S 2026-09-10 -j774709,774710 -X --format=JobID,State,Elapsed
+squeue -r -j779168,779169
+sacct -S 2026-09-10 -j779168,779169 -X --format=JobID,State,Elapsed
 ```
 
 Always bound `sacct` by this run's date: job IDs also have old June accounting records.
@@ -43,7 +43,7 @@ Always bound `sacct` by this run's date: job IDs also have old June accounting r
 If the monitor stopped, resume it with:
 
 ```bash
-python -u scripts/monitor_portfolio_curve.py --array 759513 --seed-array 772032 774709 774710 --seed-offsets 0 320 870 --since 2026-09-10 >> outputs/portfolio_curve_monitor.log 2>&1
+python -u scripts/monitor_portfolio_curve.py --array 759513 --seed-array 779168 779169 --seed-offsets 320 870 --since 2026-09-10 >> outputs/portfolio_curve_monitor.log 2>&1
 ```
 
 It assembles completed seed groups, records/requeues TIMEOUT jobs through guarded modes in `submit_jobs.sh`, and renders once all 648 group checkpoints exist. It skips polling fully completed arrays to avoid purged controller IDs.
@@ -57,6 +57,7 @@ The user explicitly authorized submission, monitoring, and retries for this anal
 ```bash
 python scripts/analyze_portfolio_seed_shards.py --collect
 python scripts/analyze_portfolio_solve_over_time.py --collect-groups --render-only
+python scripts/validate_portfolio_curve.py
 ```
 
 Expected outputs here: `first_recovery.json`, `solve_rate.csv` (each minute and all noise levels), `solve_rate.png`, `solve_rate.pdf`, and `README.md`. They may appear automatically while offline. Do not present a subset as final.
