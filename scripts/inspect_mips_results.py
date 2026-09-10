@@ -3,6 +3,7 @@
 
 Default: compare the three ten-seed evaluations behind the MIPS figures.
 Also report tasks and subtasks solved using only the first scheduled seed.
+Report cumulative recovery from the first N scheduled seeds, N=1..10.
 Successful components are identified by recorded gt_match_score == 1.
 """
 import argparse
@@ -77,6 +78,19 @@ def table(headers, rows):
         print('  '.join(x.ljust(w) for x, w in zip(row, widths)))
 
 
+def prefix_recovery(m, original_solved):
+    """Pool component successes over ordered seed prefixes, never skipping misses."""
+    included = set()
+    rows = []
+    for n, run in enumerate(sorted(m['runs'])[:10], start=1):
+        included.add(run)
+        components = {c for c in m['components'] if m['exact'][c] & included}
+        tasks = {g for g, cs in m['groups'].items() if cs <= components}
+        rows.append(dict(n=n, subtasks=len(components), tasks=len(tasks),
+                         new_tasks=len(tasks - original_solved)))
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--eval-dir', type=Path, help='Inspect one raw eval_0000 directory or its evaluation root.')
@@ -124,6 +138,21 @@ def main():
     table(['Method', 'Run index', 'Seed', 'Present fits', 'Subtasks solved',
            'Tasks solved', 'New tasks solved'], first_rows)
     print('Tasks solved includes all evaluated groups; new tasks excludes original successes.')
+    prefixes = {name: prefix_recovery(m, original_solved) for name, m in methods.items()}
+    print('\nCumulative recovery using the first N scheduled seeds (ascending run_index), N=1..10:')
+    print('Subtask: exact in any included seed. Task: every component exact somewhere across included seeds.')
+    print('Missing results stay in their scheduled prefix; unavailable prefix lengths are shown as -.')
+    for metric, title, denominators in [
+        ('subtasks', 'Subtasks solved', {k: len(m['components']) for k, m in methods.items()}),
+        ('tasks', 'Tasks solved (all evaluated groups)', {k: len(m['groups']) for k, m in methods.items()}),
+        ('new_tasks', 'New tasks solved (excluding original successes)',
+         {k: len(set(m['groups']) - original_solved) for k, m in methods.items()}),
+    ]:
+        print(f'\n{title}:')
+        table(['N', *methods], [[n, *[
+            f"{prefixes[name][n-1][metric]}/{denominators[name]}"
+            if n <= len(prefixes[name]) else '-' for name in methods
+        ]] for n in range(1, 11)])
     all_groups = sorted(set().union(*(set(m['groups']) for m in methods.values())))
     selected = [g for g in all_groups if not args.task or args.task in g]
     if not selected:

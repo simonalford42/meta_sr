@@ -139,6 +139,14 @@ Counts cover the full split even when `--task` filters the detailed rows.
 | SRBench bundle | 34 | 9 | 6 |
 | MIPS evolution | 35 | 9 | 6 |
 
+The inspector also prints **cumulative recovery for N=1…10**, using the first N
+scheduled seeds in ascending `run_index` order. A subtask counts if any included
+seed solves it; a task counts if every component is solved somewhere among
+those seeds, allowing components from different seeds. Separate tables show
+subtasks / 51, all evaluated tasks / 17, and new tasks / 14. These are fixed
+prefixes, not averages over random subsets of N seeds. Missing results do not
+shift the prefix; lengths beyond an evaluation's seed count display `-`.
+
 ### Why two more subtasks can yield four more problems
 
 SRBench gains three distinct components: `base_4_addition:hidden:0`,
