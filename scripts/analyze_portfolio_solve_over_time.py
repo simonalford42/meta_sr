@@ -403,7 +403,9 @@ def render(output, results):
               'constant offsets or scale factors), rather than a numerical-error threshold.', '',
               'Parsing, float rounding, and simplification are memoized within each worker. '
               'Hard datasets can be split into method/noise groups of ten seeds; each group seeds its '
-              'own cache from the earlier dataset cache and definite sibling-group checks, leaving shared caches unchanged.', '',
+              'own cache from the earlier dataset cache and definite sibling-group checks, leaving shared caches unchanged. '
+              'The slowest groups may be split again by seed; checkpoints are merged only after input-signature '
+              'and trial-identity checks.', '',
               'Only restart-end frontiers are available, so discovery time is an upper bound at restart resolution. '
               'Warm-up and scoring are excluded. Small search-budget overshoots at the last restart are mapped '
               'to the nominal 15-minute endpoint; raw times are retained in first_recovery.json. '

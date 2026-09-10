@@ -1,6 +1,122 @@
 #!/usr/bin/env bash
 
 # 9/10/26
+if [[ "${1:-}" == "portfolio-monitor-20260910-161652" ]]; then
+    scancel 759513_185 759513_186 759513_191 759513_193 759513_194 759513_339 759513_403 759513_407 759513_435 759513_442 759513_458 759513_491 759513_496 759513_497 759513_499 759513_504 759513_505 759513_506 759513_507 759513_523 759513_528 759513_529 759513_531 759513_536 759513_537 759513_538 759513_539 759513_545 759513_546 759513_547 759513_603 759513_611
+    sbatch --parsable --partition=default_partition --array=0-319%320 --cpus-per-task=1 --mem=4G --time=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-seeds run.sh scripts/analyze_portfolio_seed_shards.py
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-161120" ]]; then
+    for portfolio_group_job in 759513_130 759513_131 759513_133 759513_476 759513_477 759513_478 759513_479 759513_480 759513_481; do scontrol update JobId="$portfolio_group_job" TimeLimit=00:30:00 TimeMin=00:30:00 || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-161102" ]]; then
+    for portfolio_group_job in 759513_130 759513_131 759513_133; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-160454" ]]; then
+    for portfolio_group_job in 759513_84; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-160350" ]]; then
+    for portfolio_group_job in 759513_35 759513_39 759513_41 759513_42 759513_43 759513_74 759513_75 759513_82 759513_83; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-160303" ]]; then
+    for portfolio_group_job in 759513_635 759513_31; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-160152" ]]; then
+    for portfolio_group_job in 759513_498 759513_499 759513_503 759513_504 759513_505 759513_506 759513_507 759513_512 759513_513 759513_514 759513_515 759513_516 759513_517 759513_519 759513_520 759513_521 759513_522 759513_523 759513_528 759513_529 759513_530 759513_531 759513_536 759513_537 759513_538 759513_539 759513_545 759513_546 759513_547 759513_550 759513_554 759513_587 759513_602 759513_603 759513_608 759513_609 759513_610 759513_611 759513_615; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-160046" ]]; then
+    for portfolio_group_job in 759513_495 759513_496 759513_497; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155941" ]]; then
+    for portfolio_group_job in 759513_484 759513_485 759513_486 759513_487 759513_488 759513_489 759513_490 759513_491 759513_494; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155858" ]]; then
+    scontrol release 759513_130 759513_131 759513_132 759513_133
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155844" ]]; then
+    scontrol hold 759513_130 759513_131 759513_132 759513_133
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155750" ]]; then
+    for portfolio_group_job in 759513_482 759513_483; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155610" ]]; then
+    for portfolio_group_job in 759513_481 759513_480 759513_479 759513_478 759513_477 759513_476 759513_130 759513_131 759513_132 759513_133 759513_134 759513_135; do scontrol update JobId="$portfolio_group_job" TimeLimit=00:10:00 TimeMin=00:10:00 || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155542" ]]; then
+    for portfolio_group_job in 759513_479 759513_480 759513_481; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155438" ]]; then
+    for portfolio_group_job in 759513_476 759513_477 759513_478; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155350" ]]; then
+    for portfolio_group_job in 759513_474 759513_475; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155247" ]]; then
+    for portfolio_group_job in 759513_468 759513_469 759513_470 759513_471 759513_472 759513_473; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155142" ]]; then
+    for portfolio_group_job in 759513_464 759513_465 759513_466 759513_467; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-155038" ]]; then
+    for portfolio_group_job in 759513_456 759513_457 759513_458 759513_459; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-154934" ]]; then
+    for portfolio_group_job in 759513_435 759513_436 759513_437 759513_438 759513_439 759513_440 759513_441 759513_442 759513_443 759513_446 759513_447 759513_451; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-154834" ]]; then
+    for portfolio_group_job in 759513_225 759513_226 759513_227 759513_229 759513_230 759513_231 759513_232 759513_233 759513_234 759513_235 759513_243 759513_249 759513_250 759513_251 759513_253 759513_254 759513_255 759513_256 759513_257 759513_258 759513_259 759513_264 759513_265 759513_266 759513_267 759513_268 759513_269 759513_270 759513_271 759513_273 759513_274 759513_275 759513_289 759513_290 759513_291 759513_296 759513_297 759513_298 759513_299 759513_300 759513_301 759513_302 759513_303 759513_320 759513_321 759513_322 759513_323 759513_324 759513_325 759513_326 759513_327 759513_329 759513_330 759513_331 759513_334 759513_335 759513_336 759513_337 759513_338 759513_339 759513_340 759513_342 759513_347 759513_352 759513_353 759513_354 759513_355 759513_356 759513_361 759513_368 759513_369 759513_370 759513_371 759513_373 759513_374 759513_376 759513_377 759513_378 759513_379 759513_381 759513_383 759513_384 759513_386 759513_387 759513_391 759513_392 759513_393 759513_394 759513_395 759513_400 759513_401 759513_402 759513_403 759513_404 759513_405 759513_406 759513_407 759513_408 759513_409 759513_410 759513_411 759513_415 759513_417 759513_418 759513_419 759513_422 759513_423 759513_424 759513_425 759513_426 759513_427 759513_428 759513_429 759513_430 759513_431 759513_432 759513_433 759513_434; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-154748" ]]; then
+    for portfolio_group_job in 759513_218 759513_219; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-154309" ]]; then
+    for portfolio_group_job in 759513_130 759513_131 759513_132 759513_133 759513_134 759513_135 759513_143 759513_153 759513_154 759513_157 759513_161 759513_162 759513_163 759513_165 759513_166 759513_167 759513_171 759513_177 759513_178 759513_179 759513_180 759513_181 759513_182 759513_183 759513_184 759513_185 759513_186 759513_187 759513_188 759513_189 759513_190 759513_191 759513_192 759513_193 759513_194 759513_195 759513_196 759513_197 759513_198 759513_199 759513_201 759513_203; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
 if [[ "${1:-}" == "portfolio-monitor-20260910-154006" ]]; then
     for portfolio_group_job in 759513_129; do scontrol requeue "$portfolio_group_job" || exit; done
     exit

@@ -42,29 +42,44 @@ def journal(commands):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--array', type=int, required=True)
+    parser.add_argument('--seed-array', type=int)
+    parser.add_argument('--since', default=datetime.now().strftime('%Y-%m-%d'),
+                        help='Accounting start date; excludes historical reused job IDs')
     args = parser.parse_args()
     output = ROOT / 'reports/portfolio_solve_over_time'
     plan = json.loads((output / 'group_plan.json').read_text())
+    seed_plan = json.loads((output / 'seed_plan.json').read_text()) if args.seed_array else []
+    split_parents = {p['parent_index'] for p in seed_plan}
     while True:
+        if seed_plan:
+            from analyze_portfolio_seed_shards import collect_seed_groups
+            collect_seed_groups(output)
         completed = {i for i, item in enumerate(plan) if
                      (output / 'group_shards/datasets' / f'{item["cache_key"]}.json').exists()}
-        states = run('sacct', '-j', str(args.array), '-X', '-n', '-P', '--format=JobID,State')
-        active = set(run('squeue', '-r', '-j', str(args.array), '-h', '-o%i').split())
-        counts = Counter()
+        arrays = [(args.array, completed, split_parents)]
+        seed_completed = {i for i, item in enumerate(seed_plan) if
+                          (output / 'seed_shards/datasets' / f'{item["cache_key"]}.json').exists()}
+        if args.seed_array:
+            arrays.append((args.seed_array, seed_completed, set()))
         retry = []
         errors = []
-        for line in states.splitlines():
-            job, state, *_ = line.split('|')
-            counts[state] += 1
-            match = re.fullmatch(str(args.array) + r'_(\d+)', job)
-            if not match or job in active or int(match[1]) in completed:
-                continue
-            if state == 'TIMEOUT':
-                retry.append(job)
-            elif state not in ('COMPLETED', 'RUNNING', 'PENDING'):
-                errors.append((job, state))
+        counts = Counter()
+        for array, finished, replaced in arrays:
+            states = run('sacct', '-S', args.since, '-j', str(array), '-X', '-n', '-P', '--format=JobID,State')
+            active = set(run('squeue', '-r', '-j', str(array), '-h', '-o%i').split())
+            for line in states.splitlines():
+                job, state, *_ = line.split('|')
+                counts[state] += 1
+                match = re.fullmatch(str(array) + r'_(\d+)', job)
+                if not match or job in active or int(match[1]) in finished or int(match[1]) in replaced:
+                    continue
+                if state == 'TIMEOUT':
+                    retry.append(job)
+                elif state not in ('COMPLETED', 'RUNNING', 'PENDING'):
+                    errors.append((job, state))
         print(datetime.now().isoformat(timespec='seconds'),
-              f'groups={len(completed)}/{len(plan)}', dict(counts), flush=True)
+              f'groups={len(completed)}/{len(plan)}',
+              f'seeds={len(seed_completed)}/{len(seed_plan)}', dict(counts), flush=True)
         if errors:
             raise RuntimeError(f'Unexpected failures: {errors}')
         if retry:
@@ -74,7 +89,7 @@ def main():
             print(run('python', 'scripts/analyze_portfolio_solve_over_time.py',
                       '--collect-groups', '--render-only'), flush=True)
             return
-        time.sleep(45)
+        time.sleep(15)
 
 
 if __name__ == '__main__':
