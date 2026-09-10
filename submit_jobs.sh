@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 
 # 9/10/26
+if [[ "${1:-}" == "portfolio-monitor-20260910-151054" ]]; then
+    for portfolio_group_job in 759513_65 759513_66 759513_67 759513_70 759513_71 759513_73 759513_74; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-curve-expand" ]]; then
+    scontrol update JobId=759513 ArrayTaskThrottle=98
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-curve-requeue-2" ]]; then
+    scontrol release 759513_0 759513_3
+    scontrol update JobId=759513 ArrayTaskThrottle=48
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-curve-requeue-1" ]]; then
+    scancel 759514
+    for portfolio_group_job in 759513_4 759513_5 759513_7 759513_23 759513_25 759513_26 759513_27 759513_28 759513_29 759513_30 759513_33 759513_34 759513_35 759513_36 759513_37 759513_38 759513_39 759513_40 759513_41 759513_42 759513_43; do scontrol requeue "$portfolio_group_job"; done
+    exit
+fi
+
 if [[ "${1:-}" == "portfolio-curve-local-slots" ]]; then
     scontrol hold 759513_0 759513_1 759513_2 759513_3
     scontrol update JobId=759513 ArrayTaskThrottle=46

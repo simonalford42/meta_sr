@@ -163,3 +163,18 @@ def test_memoized_checker_preserves_symbolic_rules():
         matches = [evaluation.check_pysr_symbolic_match(
             eq, 'x0', var_names=['x0'], timeout_seconds=3)['match'] for eq in equations]
         assert matches == [True, True, False, False]
+
+
+def test_sibling_cache_prefers_resolved_and_positive(tmp_path):
+    path = tmp_path / 'sibling.json'
+    entries = {'positive': {'match': True}, 'resolved': {'match': False},
+               'unresolved': {'match': False, 'error': 'timeout'},
+               'retain_positive': {'match': False}}
+    path.write_text(json.dumps(entries))
+    cache = {'positive': {'match': False},
+             'resolved': {'match': False, 'error': 'timeout'},
+             'retain_positive': {'match': True}}
+    curve.merge_definite_caches(cache, [path, tmp_path / 'absent.json'])
+    assert cache == {'positive': {'match': True}, 'resolved': {'match': False},
+                     'retain_positive': {'match': True}}
+    assert json.loads(path.read_text()) == entries

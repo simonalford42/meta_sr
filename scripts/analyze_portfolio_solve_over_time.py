@@ -162,7 +162,21 @@ def collect_groups(output):
     print(f'Collected {complete}/{len(grouped)} grouped datasets', flush=True)
 
 
-def analyze_dataset(dataset, specs, output, cache_key=None, seed_cache=None):
+def merge_definite_caches(cache, paths):
+    """Read atomic sibling snapshots; keep positive and resolved checks first."""
+    for path in paths:
+        if not Path(path).exists():
+            continue
+        for equation, checked in json.loads(Path(path).read_text()).items():
+            if checked.get('error'):
+                continue
+            current = cache.get(equation)
+            if current is None or current.get('error') or checked['match']:
+                cache[equation] = checked
+
+
+def analyze_dataset(dataset, specs, output, cache_key=None, seed_cache=None,
+                    sibling_caches=()):
     configure_symbolic_caches()
     from evaluation import (check_pysr_symbolic_match, get_dataset_var_names,
                             parse_expr_str_to_sympy, round_floats, _alarm_scope)
@@ -181,6 +195,7 @@ def analyze_dataset(dataset, specs, output, cache_key=None, seed_cache=None):
     cache = json.loads(Path(seed_cache).read_text()) if seed_cache and Path(seed_cache).exists() else {}
     if cache_path.exists():
         cache.update(json.loads(cache_path.read_text()))
+    merge_definite_caches(cache, sibling_caches)
     names = get_dataset_var_names(dataset)
     variables = [f'x{i}' for i in range(len(names))]
     target = _remap_formula_variables(get_dataset_gt_formula(dataset), names, variables)
@@ -388,7 +403,7 @@ def render(output, results):
               'constant offsets or scale factors), rather than a numerical-error threshold.', '',
               'Parsing, float rounding, and simplification are memoized within each worker. '
               'Hard datasets can be split into method/noise groups of ten seeds; each group seeds its '
-              'own cache from the earlier dataset cache and leaves that shared cache unchanged.', '',
+              'own cache from the earlier dataset cache and definite sibling-group checks, leaving shared caches unchanged.', '',
               'Only restart-end frontiers are available, so discovery time is an upper bound at restart resolution. '
               'Warm-up and scoring are excluded. Small search-budget overshoots at the last restart are mapped '
               'to the nominal 15-minute endpoint; raw times are retained in first_recovery.json. '
@@ -441,12 +456,16 @@ def main():
         (args.output / sub).mkdir(parents=True, exist_ok=True)
     if args.group_task or args.group_index is not None:
         index = args.group_index if args.group_index is not None else int(os.environ['SLURM_ARRAY_TASK_ID'])
-        item = json.loads((args.output / 'group_plan.json').read_text())[index]
+        plan = json.loads((args.output / 'group_plan.json').read_text())
+        item = plan[index]
         shard_output = args.output / 'group_shards'
         for sub in ('cache', 'datasets'):
             (shard_output / sub).mkdir(parents=True, exist_ok=True)
         result = analyze_dataset(item['dataset'], item['specs'], shard_output,
-                                 item['cache_key'], item['seed_cache'])
+                                 item['cache_key'], item['seed_cache'],
+                                 [shard_output / 'cache' / f'{p["cache_key"]}.json'
+                                  for p in plan if p['dataset'] == item['dataset']
+                                  and p['cache_key'] != item['cache_key']])
         print(item['cache_key'], result['counters'], flush=True)
         return
     if args.collect_groups:
