@@ -1,6 +1,71 @@
 #!/usr/bin/env bash
 
 # 9/10/26
+if [[ "${1:-}" == "portfolio-monitor-20260910-154006" ]]; then
+    for portfolio_group_job in 759513_129; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-153919" ]]; then
+    for portfolio_group_job in 759513_113 759513_114 759513_115 759513_116 759513_117 759513_118 759513_119 759513_121 759513_122 759513_123 759513_128; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-153530" ]]; then
+    for portfolio_group_job in 759513_86 759513_87; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-153055" ]]; then
+    for portfolio_group_job in 759513_85; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-153008" ]]; then
+    for portfolio_group_job in 759513_84; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-152911" ]]; then
+    scontrol update JobId=759513 ArrayTaskThrottle=500
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-152750" ]]; then
+    for portfolio_group_job in 759513_80 759513_81 759513_82 759513_83; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-152216" ]]; then
+    scontrol release 759513_1
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-152056" ]]; then
+    for portfolio_group_job in 759513_78 759513_79; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-152012" ]]; then
+    scontrol release 759513_2
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-151751" ]]; then
+    for portfolio_group_job in 759513_77; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-curve-idle-capacity" ]]; then
+    scontrol update JobId=759513 ArrayTaskThrottle=298
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-monitor-20260910-151532" ]]; then
+    for portfolio_group_job in 759513_75 759513_76; do scontrol requeue "$portfolio_group_job" || exit; done
+    exit
+fi
+
 if [[ "${1:-}" == "portfolio-monitor-20260910-151054" ]]; then
     for portfolio_group_job in 759513_65 759513_66 759513_67 759513_70 759513_71 759513_73 759513_74; do scontrol requeue "$portfolio_group_job" || exit; done
     exit

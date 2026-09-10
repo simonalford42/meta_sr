@@ -408,7 +408,7 @@ def render(output, results):
               'Warm-up and scoring are excluded. Small search-budget overshoots at the last restart are mapped '
               'to the nominal 15-minute endpoint; raw times are retained in first_recovery.json. '
               'Cumulative recovery can exceed the final merged-frontier score, because a later native-loss '
-              'frontier can discard an earlier matching equation. Timeouts/parsing failures are unresolved '
+              'frontier can discard an earlier matching equation; fresh checks may also resolve equations missed during original scoring. Timeouts/parsing failures are unresolved '
               'and treated as non-matches, as in the evaluator; the curve is conservative for such checks.', '']
     for noise in noises + ['all']:
         report.extend([f'## Noise {noise}', '', '| Minutes | Base PySR | 709715 |',
@@ -419,7 +419,7 @@ def render(output, results):
             report.append(f"| {minute} | " + ' | '.join(
                 f"{v['percent_solved']:.2f}% ({v['solved']}/{v['expected']})" for v in vals) + ' |')
         report.append('')
-    report.extend(['## Validation and accounting', '', '```json', json.dumps({
+    report.extend(['## Validation and accounting', '', 'Counters describe the final pass for each worker; earlier checkpointed passes are not counted again.', '', '```json', json.dumps({
         'trials': len(records), 'status': dict(Counter(r['status'] for r in records)),
         'trials_with_unresolved_checks': sum(bool(r['unresolved_checks_before_solve']) for r in records),
         'final_positive_without_recovery': sum(r['final_merged_solved'] and
