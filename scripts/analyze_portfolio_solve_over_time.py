@@ -173,10 +173,17 @@ def analyze_dataset(dataset, specs, output):
             if restart.get('error'):
                 counters['failed_restarts'] += 1
                 continue
-            rows = sorted(restart.get('pareto_frontier') or [],
-                          key=lambda r: -r['complexity'])
+            def candidate_order(row):
+                r2 = row.get('r2')
+                if r2 is None or not math.isfinite(r2):
+                    r2 = -math.inf
+                return (-r2, row['complexity'])
+
+            rows = sorted(restart.get('pareto_frontier') or [], key=candidate_order)
             # Prefer an already-verified equation in this restart; its timestamp
             # is the same regardless of which frontier equation matches first.
+            # Among unknown rows, try strong held-out fits first. This affects
+            # checking cost only; every eligible row is visited until a match.
             rows.sort(key=lambda r: not cache.get(r['equation'], {}).get('match'))
             for row in rows:
                 r2 = row.get('r2')
@@ -282,6 +289,10 @@ def render(output, results):
     for d in results:
         totals.update(d['counters'])
     report = ['# SRBench 15-minute portfolio recovery over time', '',
+              'Inputs: `runs/srbench_gt_baseline_15m_portfolio_1e6` and '
+              '`runs/709715/srbench_gt_15m_portfolio_1e6`. Each trial uses a 900-second '
+              'serial-restart search budget, up to 1,000,000 evaluations per restart, '
+              'and seeds 10000–10009.', '',
               'Metric: percentage of task–seed trials with a symbolic recovery on any completed restart frontier. '
               f'All {n_datasets} selected tasks remain in the denominator; each method has '
               f'{n_datasets * 10:,} trials per noise level.', '',
@@ -289,7 +300,9 @@ def render(output, results):
               'held-out R² ≥ 0.5 gate. Positive final checks are reused; unchecked `solved=False` flags are never '
               'treated as negative checks. Results are cached by dataset, exact equation text, and the rounded '
               'SymPy tree used by the checker across seeds, noise levels, and methods; checking stops after '
-              'first recovery. Timeout results are not shared across differently spelled equations.', '',
+              'first recovery. Timeout results are not shared across differently spelled equations. '
+              'Recovery follows the repository’s SRBench symbolic-equivalence criterion (including '
+              'constant offsets or scale factors), rather than a numerical-error threshold.', '',
               'Only restart-end frontiers are available, so discovery time is an upper bound at restart resolution. '
               'Warm-up and scoring are excluded. Small search-budget overshoots at the last restart are mapped '
               'to the nominal 15-minute endpoint; raw times are retained in first_recovery.json. '

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 # 9/10/26
+# scontrol update JobId=753564 TimeLimit=00:30:00
 if [[ "${1:-}" == "portfolio-curve" ]]; then
     portfolio_curve=$(sbatch --parsable --partition=default_partition --array=0-132%50 --cpus-per-task=1 --mem=4G --time=04:00:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-curve run.sh scripts/analyze_portfolio_solve_over_time.py --array-task) || exit
     sbatch --dependency=afterok:"$portfolio_curve" --partition=default_partition --cpus-per-task=1 --mem=4G --time=00:15:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-plot run.sh scripts/analyze_portfolio_solve_over_time.py --render-only
