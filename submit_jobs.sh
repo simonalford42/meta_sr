@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 
 # 9/10/26
+if [[ "${1:-}" == "portfolio-curve-retry-1" ]]; then
+    # scontrol update JobId=753564 ArrayTaskThrottle=25
+    scancel 753565
+    sbatch --hold --parsable --partition=default_partition --array=0,2,3,7,8,9,10,11,13,14,15,17,18,21,22,23,24,25,26,35,36,38,39,44,48%25 --cpus-per-task=1 --mem=4G --time=04:00:00 --time-min=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-retry1 run.sh scripts/analyze_portfolio_solve_over_time.py --array-task
+    exit
+fi
+
 # scontrol update JobId=753564 TimeLimit=00:30:00
 if [[ "${1:-}" == "portfolio-curve" ]]; then
     portfolio_curve=$(sbatch --parsable --partition=default_partition --array=0-132%50 --cpus-per-task=1 --mem=4G --time=04:00:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-curve run.sh scripts/analyze_portfolio_solve_over_time.py --array-task) || exit

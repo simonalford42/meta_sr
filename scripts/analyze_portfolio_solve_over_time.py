@@ -210,7 +210,7 @@ def analyze_dataset(dataset, specs, output):
                         if key and not checked.get('error'):
                             cache[key] = checked
                     cache[equation] = checked
-                    if (counters['new_checks'] + counters['rounded_cache_hits']) % 100 == 0:
+                    if (counters['new_checks'] + counters['rounded_cache_hits']) % 25 == 0:
                         write_json(cache_path, cache)
                 if checked.get('error'):
                     counters['unresolved_check_uses'] += 1
@@ -228,6 +228,10 @@ def analyze_dataset(dataset, specs, output):
                     len(portfolio['restarts']) - record['first_solve_restart'])
                 break
         records.append(record)
+        if len(records) % 10 == 0:
+            print(f"{dataset}: {len(records)}/{len(specs)} trials checked; "
+                  f"new_checks={counters['new_checks']}, "
+                  f"rounded_hits={counters['rounded_cache_hits']}", flush=True)
     write_json(cache_path, cache)
     result = {'dataset': dataset, 'signature': signature, 'records': records,
               'counters': dict(counters)}
