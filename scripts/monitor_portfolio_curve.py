@@ -42,10 +42,14 @@ def journal(commands):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--array', type=int, required=True)
-    parser.add_argument('--seed-array', type=int)
+    parser.add_argument('--seed-array', type=int, nargs='+')
+    parser.add_argument('--seed-offsets', type=int, nargs='+')
     parser.add_argument('--since', default=datetime.now().strftime('%Y-%m-%d'),
                         help='Accounting start date; excludes historical reused job IDs')
     args = parser.parse_args()
+    offsets = args.seed_offsets or [0] * len(args.seed_array or [])
+    if len(offsets) != len(args.seed_array or []):
+        parser.error('Provide one offset for each seed array')
     output = ROOT / 'reports/portfolio_solve_over_time'
     plan = json.loads((output / 'group_plan.json').read_text())
     seed_plan = json.loads((output / 'seed_plan.json').read_text()) if args.seed_array else []
@@ -56,11 +60,16 @@ def main():
             collect_seed_groups(output)
         completed = {i for i, item in enumerate(plan) if
                      (output / 'group_shards/datasets' / f'{item["cache_key"]}.json').exists()}
-        arrays = [(args.array, completed, split_parents)]
+        arrays = []
+        if any(i not in completed and i not in split_parents for i in range(len(plan))):
+            arrays.append((args.array, completed, split_parents))
         seed_completed = {i for i, item in enumerate(seed_plan) if
                           (output / 'seed_shards/datasets' / f'{item["cache_key"]}.json').exists()}
         if args.seed_array:
-            arrays.append((args.seed_array, seed_completed, set()))
+            for array, offset, end in zip(args.seed_array, offsets, offsets[1:] + [len(seed_plan)]):
+                if all(i in seed_completed for i in range(offset, end)):
+                    continue
+                arrays.append((array, {i - offset for i in seed_completed if offset <= i < end}, set()))
         retry = []
         errors = []
         counts = Counter()

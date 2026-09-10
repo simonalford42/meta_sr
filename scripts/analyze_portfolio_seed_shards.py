@@ -12,14 +12,20 @@ from analyze_portfolio_solve_over_time import (
 )
 
 
-def prepare(output, limit=32):
+def prepare(output, limit=32, extend=False, all_remaining=False):
     destination = output / 'seed_plan.json'
-    if destination.exists():
+    if destination.exists() and not extend:
         raise ValueError('Seed plan already exists; do not reorder live workers')
+    plan = json.loads(destination.read_text()) if destination.exists() else []
+    covered = {p['parent_index'] for p in plan}
+    original_count = len(plan)
     groups = json.loads((output / 'group_plan.json').read_text())
     remaining = []
     for index, item in enumerate(groups):
-        if (output / 'group_shards/datasets' / f'{item["cache_key"]}.json').exists():
+        if index in covered or (output / 'group_shards/datasets' / f'{item["cache_key"]}.json').exists():
+            continue
+        if all_remaining:
+            remaining.append((0, index))
             continue
         path = output / 'group_shards/cache' / f'{item["cache_key"]}.json'
         cache = json.loads(path.read_text()) if path.exists() else {}
@@ -33,14 +39,15 @@ def prepare(output, limit=32):
                     break
                 unknown.update(r['equation'] for r in rows if r['equation'] not in cache)
         remaining.append((len(unknown), index))
-    selected = [i for n, i in sorted(remaining, reverse=True)[:limit] if n >= 2000]
-    plan = []
+    selected = ([i for _, i in remaining] if all_remaining else
+                [i for n, i in sorted(remaining, reverse=True)[:limit] if n >= 2000])
     for index in selected:
         for spec in groups[index]['specs']:
             plan.append({'parent_index': index, 'parent': groups[index], 'specs': [spec],
                          'cache_key': f'seed_{len(plan):04d}'})
     write_json(destination, plan)
-    print(f'Prepared {len(plan)} seed jobs for {len(selected)} slow groups: {selected}', flush=True)
+    print(f'Prepared {len(plan) - original_count} new seed jobs, indices {original_count}–{len(plan)-1}, '
+          f'for {len(selected)} groups: {selected}', flush=True)
 
 
 def identity(record):
@@ -100,7 +107,7 @@ def run_seed(output, index):
     siblings = [output / 'group_shards/cache' / f'{p["cache_key"]}.json'
                 for p in group_plan if p['dataset'] == parent['dataset']]
     siblings += [shard_output / 'cache' / f'{p["cache_key"]}.json'
-                 for p in plan if p['parent_index'] == item['parent_index']
+                 for p in plan if p['parent']['dataset'] == parent['dataset']
                  and p['cache_key'] != item['cache_key']]
     result = analyze_dataset(parent['dataset'], item['specs'], shard_output,
                              item['cache_key'], parent['seed_cache'], siblings)
@@ -113,13 +120,16 @@ def main():
     parser.add_argument('--prepare', action='store_true')
     parser.add_argument('--collect', action='store_true')
     parser.add_argument('--limit', type=int, default=32)
+    parser.add_argument('--extend', action='store_true', help='Append; preserve all existing worker indices')
+    parser.add_argument('--all-remaining', action='store_true')
+    parser.add_argument('--index-offset', type=int, default=0)
     args = parser.parse_args()
     if args.prepare:
-        prepare(args.output, args.limit)
+        prepare(args.output, args.limit, args.extend, args.all_remaining)
     elif args.collect:
         print('Collected seed groups:', collect_seed_groups(args.output), flush=True)
     else:
-        run_seed(args.output, int(os.environ['SLURM_ARRAY_TASK_ID']))
+        run_seed(args.output, int(os.environ['SLURM_ARRAY_TASK_ID']) + args.index_offset)
 
 
 if __name__ == '__main__':

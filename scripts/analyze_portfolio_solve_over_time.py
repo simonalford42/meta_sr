@@ -463,11 +463,16 @@ def main():
         shard_output = args.output / 'group_shards'
         for sub in ('cache', 'datasets'):
             (shard_output / sub).mkdir(parents=True, exist_ok=True)
+        siblings = [shard_output / 'cache' / f'{p["cache_key"]}.json'
+                    for p in plan if p['dataset'] == item['dataset']
+                    and p['cache_key'] != item['cache_key']]
+        seed_plan_path = args.output / 'seed_plan.json'
+        if seed_plan_path.exists():
+            siblings += [args.output / 'seed_shards/cache' / f'{p["cache_key"]}.json'
+                         for p in json.loads(seed_plan_path.read_text())
+                         if p['parent']['dataset'] == item['dataset']]
         result = analyze_dataset(item['dataset'], item['specs'], shard_output,
-                                 item['cache_key'], item['seed_cache'],
-                                 [shard_output / 'cache' / f'{p["cache_key"]}.json'
-                                  for p in plan if p['dataset'] == item['dataset']
-                                  and p['cache_key'] != item['cache_key']])
+                                 item['cache_key'], item['seed_cache'], siblings)
         print(item['cache_key'], result['counters'], flush=True)
         return
     if args.collect_groups:

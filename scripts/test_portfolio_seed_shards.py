@@ -40,3 +40,25 @@ def test_seed_collection_and_completed_parent_reuse(tmp_path, monkeypatch):
     child = json.loads((seed_dir / 'seed_0000.json').read_text())
     assert child['records'] == [result['records'][0]]
     assert child['counters'] == {'completed_parent_reused': 1}
+
+
+def test_extension_preserves_live_worker_indices(tmp_path):
+    source = tmp_path / 'source.json'
+    source.write_text('{}')
+    groups = []
+    for i in range(2):
+        groups.append({'dataset': f'task{i}', 'cache_key': f'group_{i:04d}',
+                       'specs': [{'method': 'Base PySR', 'dataset': f'task{i}',
+                                  'noise': 0., 'seed': n, 'path': str(source)}
+                                 for n in (10000, 10001)]})
+    old = [{'parent_index': 0, 'parent': groups[0], 'specs': [spec],
+            'cache_key': f'seed_{i:04d}'} for i, spec in enumerate(groups[0]['specs'])]
+    (tmp_path / 'group_plan.json').write_text(json.dumps(groups))
+    (tmp_path / 'seed_plan.json').write_text(json.dumps(old))
+    seeds.prepare(tmp_path, extend=True, all_remaining=True)
+    new = json.loads((tmp_path / 'seed_plan.json').read_text())
+    assert new[:len(old)] == old
+    assert [p['cache_key'] for p in new] == [f'seed_{i:04d}' for i in range(4)]
+    assert [p['parent_index'] for p in new] == [0, 0, 1, 1]
+    seeds.prepare(tmp_path, extend=True, all_remaining=True)
+    assert json.loads((tmp_path / 'seed_plan.json').read_text()) == new
