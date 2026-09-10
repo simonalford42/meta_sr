@@ -127,6 +127,18 @@ The `--eval-dir` flag accepts either an evaluation root or its
 recorded errors and timeouts are counted. The inspector reads stored exactness
 scores and witnesses; it does not reevaluate expressions.
 
+The default output also includes a **first-seed-only** summary, using the
+lowest scheduled `run_index` (run 0, seed 192 for these evaluations). It shows
+subtasks solved, all evaluated tasks solved, and newly solved tasks excluding
+original successes. It never substitutes a later seed for missing results.
+Counts cover the full split even when `--task` filters the detailed rows.
+
+| First seed only | Subtasks / 51 | All evaluated tasks / 17 | New tasks / 14 |
+|---|---:|---:|---:|
+| PySR | 32 | 6 | 3 |
+| SRBench bundle | 34 | 9 | 6 |
+| MIPS evolution | 35 | 9 | 6 |
+
 ### Why two more subtasks can yield four more problems
 
 SRBench gains three distinct components: `base_4_addition:hidden:0`,

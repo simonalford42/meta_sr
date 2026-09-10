@@ -2,6 +2,7 @@
 """Inspect raw MIPS results without running searches or modifying files.
 
 Default: compare the three ten-seed evaluations behind the MIPS figures.
+Also report tasks and subtasks solved using only the first scheduled seed.
 Successful components are identified by recorded gt_match_score == 1.
 """
 import argparse
@@ -34,6 +35,7 @@ def inspect(path):
     expected = set()
     missing = []
     runs = set()
+    seeds_by_run = defaultdict(set)
     for i, task in enumerate(tasks):
         ds, run = task['dataset_name'], task['run_index']
         key = (ds, run)
@@ -44,6 +46,7 @@ def inspect(path):
             raise ValueError(f'Not a MIPS dataset: {ds}')
         groups[ds.split(':')[1]].add(ds)
         runs.add(run)
+        seeds_by_run[run].add(task['seed'])
         file = path / f'results/task_{i:06d}.json'
         if not file.exists():
             missing.append(str(file))
@@ -62,7 +65,7 @@ def inspect(path):
     assembled = {g for g, cs in groups.items() if all(exact[c] for c in cs)}
     return dict(path=path, groups=groups, exact=exact, records=records, missing=missing,
                 runs=runs, joint=joint, assembled=assembled, components=components,
-                present=present, expected=expected)
+                present=present, expected=expected, seeds_by_run=seeds_by_run)
 
 
 def table(headers, rows):
@@ -106,6 +109,21 @@ def main():
     print('\nSame seed: at least one run_index solves every component together.')
     print('Across seeds: every component has a success, possibly in different run_indices.')
     print('New groups exclude the original reproduction successes; assembled programs are not revalidated here.')
+    first_rows = []
+    for name, m in methods.items():
+        first = min(m['runs'])
+        candidates = set(m['groups']) - original_solved
+        first_rows.append([
+            name, first, ','.join(map(str, sorted(m['seeds_by_run'][first]))),
+            f"{sum((c, first) in m['present'] for c in m['components'])}/{len(m['components'])}",
+            f"{sum(first in m['exact'][c] for c in m['components'])}/{len(m['components'])}",
+            f"{sum(first in m['joint'][g] for g in m['groups'])}/{len(m['groups'])}",
+            f"{sum(first in m['joint'][g] for g in candidates)}/{len(candidates)}",
+        ])
+    print('\nFirst seed only (lowest scheduled run_index; missing results do not select a later seed):')
+    table(['Method', 'Run index', 'Seed', 'Present fits', 'Subtasks solved',
+           'Tasks solved', 'New tasks solved'], first_rows)
+    print('Tasks solved includes all evaluated groups; new tasks excludes original successes.')
     all_groups = sorted(set().union(*(set(m['groups']) for m in methods.values())))
     selected = [g for g in all_groups if not args.task or args.task in g]
     if not selected:
