@@ -84,3 +84,31 @@ def test_missing_and_unresolved(tmp_path, monkeypatch):
     assert result['records'][0]['unresolved_checks_before_solve'] == 1
     assert result['records'][0]['first_solve_seconds'] is None
     assert result['records'][1]['status'] == 'missing'
+
+
+def test_rounding_equivalent_equations_share_definite_checks(tmp_path, monkeypatch):
+    import evaluation
+    import utils
+    monkeypatch.setattr(evaluation, 'get_dataset_var_names', lambda _: ['x0'])
+    monkeypatch.setattr(utils, 'get_dataset_gt_formula', lambda _: 'x0')
+    checked = []
+
+    def check(eq, *a, **kw):
+        checked.append(eq)
+        return {'match': False, 'error': None}
+
+    monkeypatch.setattr(evaluation, 'check_pysr_symbolic_match', check)
+    for sub in ('cache', 'datasets'):
+        (tmp_path / sub).mkdir()
+    path = tmp_path / 'trial.json'
+    path.write_text(json.dumps({'portfolio': {
+        'search_runtime_seconds': 900, 'total_search_budget_seconds': 900,
+        'restarts': [{'restart_index': 0, 'search_runtime_seconds': 900,
+                      'pareto_frontier': [
+                          {'equation': eq, 'complexity': 5, 'r2': 1}
+                          for eq in ['1.00001*x0 + 2.0001', '1.00002*x0 + 2.0002']]}]}}))
+    specs = [{'method': 'Base PySR', 'dataset': 'fake', 'seed': 10000,
+              'noise': 0, 'path': str(path)}]
+    result = curve.analyze_dataset('fake', specs, tmp_path)
+    assert len(checked) == 1
+    assert result['counters']['rounded_cache_hits'] == 1

@@ -86,17 +86,19 @@ def inventory(grouped, output):
 
 
 def analyze_dataset(dataset, specs, output):
-    from evaluation import check_pysr_symbolic_match, get_dataset_var_names
+    from evaluation import (check_pysr_symbolic_match, get_dataset_var_names,
+                            parse_expr_str_to_sympy, round_floats, _alarm_scope)
+    from sympy import srepr
     from parallel_eval_pysr import _remap_formula_variables
     from utils import get_dataset_gt_formula
 
     output = Path(output)
     cache_path = output / 'cache' / f'{dataset}.json'
     result_path = output / 'datasets' / f'{dataset}.json'
-    signature = hashlib.sha256(json.dumps([
+    signature = hashlib.sha256(('rounded-cache-v1:' + json.dumps([
         (s, Path(s['path']).stat().st_mtime_ns if Path(s['path']).exists() else None)
         for s in specs
-    ], sort_keys=True).encode()).hexdigest()
+    ], sort_keys=True)).encode()).hexdigest()
     if result_path.exists():
         old = json.loads(result_path.read_text())
         if old.get('signature') == signature:
@@ -109,6 +111,20 @@ def analyze_dataset(dataset, specs, output):
         raise ValueError(f'Missing ground truth: {dataset}')
     counters = Counter()
     records = []
+
+    def rounded_key(equation):
+        # check_symbolic_match starts with exactly these parse/round operations.
+        # Equal rounded SymPy trees therefore share the same symbolic decision.
+        def alarm_handler(*_):
+            raise TimeoutError('rounding cache key timed out')
+        try:
+            with _alarm_scope(3, alarm_handler):
+                tree = round_floats(parse_expr_str_to_sympy(equation, variables))
+                digest = hashlib.sha256(srepr(tree).encode()).hexdigest()
+            return f'[rounded-v1:{digest}]'
+        except Exception:
+            counters['rounding_key_failures'] += 1
+            return None
     # Existing *positive* checks are reusable. False row flags are NOT negative
     # evidence: the original evaluator stops after one match.
     known = set()
@@ -123,6 +139,16 @@ def analyze_dataset(dataset, specs, output):
                      if r.get('solved'))
     for equation in known:
         cache[equation] = {'match': True, 'source': 'saved_positive'}
+    # Seed rounded aliases for both saved positives and checks from prior runs.
+    for equation, checked in list(cache.items()):
+        if equation.startswith('[rounded-v1:') or checked.get('error'):
+            continue
+        key = rounded_key(equation)
+        if key:
+            if key in cache and cache[key]['match'] != checked['match']:
+                counters['rounded_decision_conflicts'] += 1
+            if not cache.get(key, {}).get('match'):
+                cache[key] = checked
     for spec in specs:
         record = {k: v for k, v in spec.items() if k != 'path'}
         record.update(first_solve_seconds=None, first_solve_budget_seconds=None,
@@ -162,13 +188,22 @@ def analyze_dataset(dataset, specs, output):
                     checked = cache[equation]
                     counters['cache_hits'] += 1
                 else:
-                    checked_raw = check_pysr_symbolic_match(
-                        equation, target, var_names=variables, timeout_seconds=3)
-                    checked = {'match': bool(checked_raw.get('match')),
-                               'error': checked_raw.get('error'), 'source': 'sympy'}
+                    key = rounded_key(equation)
+                    if key and key in cache:
+                        checked = cache[key]
+                        counters['rounded_cache_hits'] += 1
+                    else:
+                        checked_raw = check_pysr_symbolic_match(
+                            equation, target, var_names=variables, timeout_seconds=3)
+                        checked = {'match': bool(checked_raw.get('match')),
+                                   'error': checked_raw.get('error'), 'source': 'sympy'}
+                        counters['new_checks'] += 1
+                        # A timeout is not an algebraic decision, and a different
+                        # spelling may simplify faster. Only share definite results.
+                        if key and not checked.get('error'):
+                            cache[key] = checked
                     cache[equation] = checked
-                    counters['new_checks'] += 1
-                    if counters['new_checks'] % 100 == 0:
+                    if (counters['new_checks'] + counters['rounded_cache_hits']) % 100 == 0:
                         write_json(cache_path, cache)
                 if checked.get('error'):
                     counters['unresolved_check_uses'] += 1
@@ -234,13 +269,13 @@ def render(output, results):
         ax.grid(alpha=0.2)
         ax.set_xticks([0, 3, 6, 9, 12, 15])
     axes[0, 0].legend(frameon=False)
-    fig.supxlabel('Cumulative search time (minutes)')
+    fig.supxlabel('Cumulative search time (minutes)', y=0.045)
     fig.supylabel('Trials recovered at least once (%)')
     n_datasets = len({r['dataset'] for r in records})
     fig.suptitle(f'15-minute restart portfolios · {n_datasets} tasks × 10 seeds per noise level')
-    fig.text(0.5, 0.005, 'Recovery credited at restart completion; warm-up excluded; final budget overshoot mapped to 15 min.',
+    fig.text(0.5, 0.015, 'Recovery credited at restart completion; warm-up excluded; final budget overshoot mapped to 15 min.',
              ha='center', fontsize=8)
-    fig.tight_layout(rect=(0.02, 0.025, 1, 0.97))
+    fig.tight_layout(rect=(0.02, 0.08, 1, 0.97))
     for ext in ('png', 'pdf'):
         fig.savefig(output / f'solve_rate.{ext}', dpi=180)
     totals = Counter()
@@ -252,8 +287,9 @@ def render(output, results):
               f'{n_datasets * 10:,} trials per noise level.', '',
               'The existing SRBench symbolic checker is used with a 3-second expression timeout and the saved '
               'held-out R² ≥ 0.5 gate. Positive final checks are reused; unchecked `solved=False` flags are never '
-              'treated as negative checks. Results are cached by dataset and exact equation text across seeds, '
-              'noise levels, and methods; checking stops after first recovery.', '',
+              'treated as negative checks. Results are cached by dataset, exact equation text, and the rounded '
+              'SymPy tree used by the checker across seeds, noise levels, and methods; checking stops after '
+              'first recovery. Timeout results are not shared across differently spelled equations.', '',
               'Only restart-end frontiers are available, so discovery time is an upper bound at restart resolution. '
               'Warm-up and scoring are excluded. Small search-budget overshoots at the last restart are mapped '
               'to the nominal 15-minute endpoint; raw times are retained in first_recovery.json. '
