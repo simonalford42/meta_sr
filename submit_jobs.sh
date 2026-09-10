@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
 # 9/10/26
+if [[ "${1:-}" == "portfolio-existing-interactive-20260910" ]]; then
+    srun --jobid=779095 --overlap --nodes=1 --ntasks=1 --cpus-per-task=8 --mem=50G --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 bash run.sh scripts/finish_portfolio_curve.py --workers 8
+    exit
+fi
+
 if [[ "${1:-}" == "portfolio-monitor-20260910-173300" ]]; then
     sbatch --parsable --partition=default_partition --array=114,116,264,294%4 --cpus-per-task=1 --mem=16G --time=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-final8 run.sh scripts/analyze_portfolio_seed_shards.py --index-offset 320
     sbatch --parsable --partition=default_partition --array=73,116,287,295%4 --cpus-per-task=1 --mem=16G --time=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-final8 run.sh scripts/analyze_portfolio_seed_shards.py --index-offset 870

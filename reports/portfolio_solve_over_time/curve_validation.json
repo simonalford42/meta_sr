@@ -1,0 +1,9 @@
+{
+  "trials": 10640,
+  "recovered_trials": 6719,
+  "method_noise_cells": 8,
+  "trials_per_cell": 1330,
+  "csv_rows": 160,
+  "original_positives_lost": 0,
+  "checks": "identities, source status, restart timing, matching frontier membership, R2 gate, CSV counts and monotonicity"
+}
