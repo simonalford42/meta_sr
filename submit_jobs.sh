@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 
 # 9/10/26
+if [[ "${1:-}" == "portfolio-curve" ]]; then
+    portfolio_curve=$(sbatch --parsable --partition=default_partition --array=0-132%50 --cpus-per-task=1 --mem=4G --time=04:00:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-curve run.sh scripts/analyze_portfolio_solve_over_time.py --array-task) || exit
+    sbatch --dependency=afterok:"$portfolio_curve" --partition=default_partition --cpus-per-task=1 --mem=4G --time=00:15:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-plot run.sh scripts/analyze_portfolio_solve_over_time.py --render-only
+    exit
+fi
+
 sbatch -J srb-bb-autoresearch run.sh srbench_full_eval.py --autoresearch e425e7ed5894b0ebd7718fed0d77a252df2fa443 --black-box --results-dir runs/srbench_bb_autoresearch_10seed --max-evals 1000000 --seed 10000 --n-runs 10 --black-box-max-samples 10000 --black-box-timeout 1500 --black-box-wall-limit 1800 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --job-timeout 7200 --mem-per-cpu 8G --max-retries 5
 sbatch -J neuron-eval-709715 run.sh neuron_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/neuron_full_eval_5seed --n-runs 5 --seed 10000 --max-evals 1000000 --max-samples 1024 --partition default_partition --max-concurrent-jobs 30 --time-limit 00:15:00 --mem-per-cpu 8G --timeout 500 --pysr-wall-limit 600 --job-timeout 1800
 
