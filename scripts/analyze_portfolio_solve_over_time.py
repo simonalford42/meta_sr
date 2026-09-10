@@ -355,7 +355,7 @@ def render(output, results):
             ax.step(xs, ys, where='post', label=method, color=colors[method], linewidth=2)
         ax.set_title(f'Target noise: {noise:g}')
         ax.set_xlim(0, 15)
-        ax.set_ylim(bottom=0)
+        ax.set_ylim(0, 100)
         ax.grid(alpha=0.2)
         ax.set_xticks([0, 3, 6, 9, 12, 15])
     axes[0, 0].legend(frameon=False)
@@ -432,13 +432,16 @@ def main():
                         help='Prepare smaller method/noise groups for unfinished datasets')
     parser.add_argument('--group-task', action='store_true',
                         help='Analyze group_plan.json[SLURM_ARRAY_TASK_ID]')
+    parser.add_argument('--group-index', type=int,
+                        help='Analyze one group locally without a SLURM array environment')
     parser.add_argument('--collect-groups', action='store_true',
                         help='Combine completed groups into dataset checkpoints')
     args = parser.parse_args()
     for sub in ('cache', 'datasets'):
         (args.output / sub).mkdir(parents=True, exist_ok=True)
-    if args.group_task:
-        item = json.loads((args.output / 'group_plan.json').read_text())[int(os.environ['SLURM_ARRAY_TASK_ID'])]
+    if args.group_task or args.group_index is not None:
+        index = args.group_index if args.group_index is not None else int(os.environ['SLURM_ARRAY_TASK_ID'])
+        item = json.loads((args.output / 'group_plan.json').read_text())[index]
         shard_output = args.output / 'group_shards'
         for sub in ('cache', 'datasets'):
             (shard_output / sub).mkdir(parents=True, exist_ok=True)

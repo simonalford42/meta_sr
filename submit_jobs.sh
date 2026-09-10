@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 
 # 9/10/26
+if [[ "${1:-}" == "portfolio-curve-local-slots" ]]; then
+    scontrol hold 759513_0 759513_1 759513_2 759513_3
+    scontrol update JobId=759513 ArrayTaskThrottle=46
+    exit
+fi
+
+# scontrol update JobId=759513 TimeLimit=00:30:00
 if [[ "${1:-}" == "portfolio-curve-groups" ]]; then
     portfolio_groups=$(sbatch --parsable --partition=default_partition --array=0-647%50 --cpus-per-task=1 --mem=4G --time=04:00:00 --time-min=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-groups run.sh scripts/analyze_portfolio_solve_over_time.py --group-task) || exit
     sbatch --dependency=afterok:"$portfolio_groups" --partition=default_partition --cpus-per-task=1 --mem=4G --time=00:15:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-plot run.sh scripts/analyze_portfolio_solve_over_time.py --collect-groups --render-only
