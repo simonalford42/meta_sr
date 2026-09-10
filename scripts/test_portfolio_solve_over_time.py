@@ -112,3 +112,54 @@ def test_rounding_equivalent_equations_share_definite_checks(tmp_path, monkeypat
     result = curve.analyze_dataset('fake', specs, tmp_path)
     assert len(checked) == 1
     assert result['counters']['rounded_cache_hits'] == 1
+
+
+def test_group_shards_preserve_records_and_share_seed_cache_read_only(tmp_path, monkeypatch):
+    import evaluation
+    import utils
+    monkeypatch.setattr(evaluation, 'get_dataset_var_names', lambda _: ['x0'])
+    monkeypatch.setattr(utils, 'get_dataset_gt_formula', lambda _: 'x0')
+
+    def must_not_check(*a, **kw):
+        raise AssertionError('The seed cache already proves this match')
+
+    monkeypatch.setattr(evaluation, 'check_pysr_symbolic_match', must_not_check)
+    for directory in ('cache', 'datasets', 'group_shards/cache', 'group_shards/datasets'):
+        (tmp_path / directory).mkdir(parents=True)
+    seed = tmp_path / 'cache/fake.json'
+    seed.write_text(json.dumps({'x0': {'match': True, 'source': 'sympy'}}))
+    seed_bytes = seed.read_bytes()
+    raw = tmp_path / 'trial.json'
+    raw.write_text(json.dumps({'portfolio': {
+        'search_runtime_seconds': 30, 'total_search_budget_seconds': 900,
+        'restarts': [{'restart_index': 0, 'search_runtime_seconds': 30,
+                      'pareto_frontier': [{'equation': 'x0', 'complexity': 1, 'r2': 1}]}]}}))
+    specs = [{'method': method, 'dataset': 'fake', 'seed': 10000,
+              'noise': 0, 'path': str(raw)} for method in ['Base PySR', '709715']]
+    curve.prepare_groups({'fake': specs}, tmp_path)
+    plan = json.loads((tmp_path / 'group_plan.json').read_text())
+    assert len(plan) == 2
+    for i, item in enumerate(plan):
+        curve.analyze_dataset('fake', item['specs'], tmp_path / 'group_shards',
+                              item['cache_key'], item['seed_cache'])
+        curve.collect_groups(tmp_path)
+        if i == 0:
+            assert not (tmp_path / 'datasets/fake.json').exists()
+    final = json.loads((tmp_path / 'datasets/fake.json').read_text())
+    assert final['signature'] == curve.input_signature(specs)
+    assert len(final['records']) == 2
+    assert {r['method'] for r in final['records']} == {'Base PySR', '709715'}
+    assert all(r['first_solve_seconds'] == 30 for r in final['records'])
+    assert seed.read_bytes() == seed_bytes
+    curve.prepare_groups({'fake': specs}, tmp_path)
+    assert json.loads((tmp_path / 'group_plan.json').read_text()) == []
+
+
+def test_memoized_checker_preserves_symbolic_rules():
+    import evaluation
+    curve.configure_symbolic_caches()
+    equations = ['1.00001*x0', 'x0 + 2', 'x0**2', '0']
+    for _ in range(2):
+        matches = [evaluation.check_pysr_symbolic_match(
+            eq, 'x0', var_names=['x0'], timeout_seconds=3)['match'] for eq in equations]
+        assert matches == [True, True, False, False]

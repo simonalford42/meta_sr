@@ -12,6 +12,7 @@ import argparse
 from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import csv
+from functools import lru_cache
 import hashlib
 import json
 import math
@@ -33,6 +34,26 @@ def write_json(path, data):
     temp = path.with_suffix('.tmp')
     temp.write_text(json.dumps(data, indent=2, allow_nan=False) + '\n')
     temp.replace(path)
+
+
+def configure_symbolic_caches():
+    """Memoize pure checker operations inside this analysis process only."""
+    import evaluation
+    if getattr(evaluation, '_portfolio_analysis_memoized', False):
+        return
+    original_parse = evaluation.parse_expr_str_to_sympy
+
+    @lru_cache(maxsize=4096)
+    def parse_cached(expression, variables):
+        return original_parse(expression, list(variables) if variables else None)
+
+    def parse(expression, var_names=None):
+        return parse_cached(expression, tuple(var_names or ()))
+
+    evaluation.parse_expr_str_to_sympy = parse
+    evaluation.round_floats = lru_cache(maxsize=8192)(evaluation.round_floats)
+    evaluation.simplify = lru_cache(maxsize=2048)(evaluation.simplify)
+    evaluation._portfolio_analysis_memoized = True
 
 
 def index_inputs():
@@ -85,7 +106,64 @@ def inventory(grouped, output):
     print(json.dumps(result, indent=2))
 
 
-def analyze_dataset(dataset, specs, output):
+def input_signature(specs):
+    return hashlib.sha256(('rounded-cache-v1:' + json.dumps([
+        (s, Path(s['path']).stat().st_mtime_ns if Path(s['path']).exists() else None)
+        for s in specs
+    ], sort_keys=True)).encode()).hexdigest()
+
+
+def prepare_groups(grouped, output):
+    """Split unfinished datasets by method/noise; retain ten-seed cache sharing."""
+    plan = []
+    for dataset, specs in sorted(grouped.items()):
+        signature = input_signature(specs)
+        existing = output / 'datasets' / f'{dataset}.json'
+        if existing.exists() and json.loads(existing.read_text()).get('signature') == signature:
+            continue
+        pairs = defaultdict(list)
+        for spec in specs:
+            pairs[(spec['method'], spec['noise'])].append(spec)
+        for members in pairs.values():
+            plan.append({'dataset': dataset, 'specs': members,
+                         'dataset_signature': signature,
+                         'cache_key': f'group_{len(plan):04d}',
+                         'seed_cache': str(output / 'cache' / f'{dataset}.json')})
+    write_json(output / 'group_plan.json', plan)
+    print(f'Prepared {len(plan)} groups across {len(set(p["dataset"] for p in plan))} unfinished datasets')
+
+
+def collect_groups(output):
+    plan = json.loads((output / 'group_plan.json').read_text())
+    grouped = defaultdict(list)
+    for item in plan:
+        grouped[item['dataset']].append(item)
+    complete = 0
+    for dataset, items in grouped.items():
+        paths = [output / 'group_shards/datasets' / f'{p["cache_key"]}.json' for p in items]
+        if not all(p.exists() for p in paths):
+            continue
+        records = []
+        counters = Counter()
+        for item, path in zip(items, paths):
+            result = json.loads(path.read_text())
+            if result['signature'] != input_signature(item['specs']):
+                raise ValueError(f'Stale group checkpoint: {path}')
+            records.extend(result['records'])
+            counters.update(result['counters'])
+        identity = lambda r: (r['method'], r['dataset'], r['seed'], r['noise'])
+        expected = {identity(s) for item in items for s in item['specs']}
+        if len(records) != len(expected) or {identity(r) for r in records} != expected:
+            raise ValueError(f'Duplicate or missing group records for {dataset}')
+        write_json(output / 'datasets' / f'{dataset}.json', {
+            'dataset': dataset, 'signature': items[0]['dataset_signature'],
+            'records': records, 'counters': dict(counters)})
+        complete += 1
+    print(f'Collected {complete}/{len(grouped)} grouped datasets', flush=True)
+
+
+def analyze_dataset(dataset, specs, output, cache_key=None, seed_cache=None):
+    configure_symbolic_caches()
     from evaluation import (check_pysr_symbolic_match, get_dataset_var_names,
                             parse_expr_str_to_sympy, round_floats, _alarm_scope)
     from sympy import srepr
@@ -93,17 +171,16 @@ def analyze_dataset(dataset, specs, output):
     from utils import get_dataset_gt_formula
 
     output = Path(output)
-    cache_path = output / 'cache' / f'{dataset}.json'
-    result_path = output / 'datasets' / f'{dataset}.json'
-    signature = hashlib.sha256(('rounded-cache-v1:' + json.dumps([
-        (s, Path(s['path']).stat().st_mtime_ns if Path(s['path']).exists() else None)
-        for s in specs
-    ], sort_keys=True)).encode()).hexdigest()
+    cache_path = output / 'cache' / f'{cache_key or dataset}.json'
+    result_path = output / 'datasets' / f'{cache_key or dataset}.json'
+    signature = input_signature(specs)
     if result_path.exists():
         old = json.loads(result_path.read_text())
         if old.get('signature') == signature:
             return old
-    cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+    cache = json.loads(Path(seed_cache).read_text()) if seed_cache and Path(seed_cache).exists() else {}
+    if cache_path.exists():
+        cache.update(json.loads(cache_path.read_text()))
     names = get_dataset_var_names(dataset)
     variables = [f'x{i}' for i in range(len(names))]
     target = _remap_formula_variables(get_dataset_gt_formula(dataset), names, variables)
@@ -140,7 +217,9 @@ def analyze_dataset(dataset, specs, output):
     for equation in known:
         cache[equation] = {'match': True, 'source': 'saved_positive'}
     # Seed rounded aliases for both saved positives and checks from prior runs.
-    for equation, checked in list(cache.items()):
+    has_rounded_aliases = any(k.startswith('[rounded-v1:') for k in cache)
+    prime = [(eq, cache[eq]) for eq in known] if has_rounded_aliases else list(cache.items())
+    for equation, checked in prime:
         if equation.startswith('[rounded-v1:') or checked.get('error'):
             continue
         key = rounded_key(equation)
@@ -307,6 +386,9 @@ def render(output, results):
               'first recovery. Timeout results are not shared across differently spelled equations. '
               'Recovery follows the repository’s SRBench symbolic-equivalence criterion (including '
               'constant offsets or scale factors), rather than a numerical-error threshold.', '',
+              'Parsing, float rounding, and simplification are memoized within each worker. '
+              'Hard datasets can be split into method/noise groups of ten seeds; each group seeds its '
+              'own cache from the earlier dataset cache and leaves that shared cache unchanged.', '',
               'Only restart-end frontiers are available, so discovery time is an upper bound at restart resolution. '
               'Warm-up and scoring are excluded. Small search-budget overshoots at the last restart are mapped '
               'to the nominal 15-minute endpoint; raw times are retained in first_recovery.json. '
@@ -346,14 +428,36 @@ def main():
                         help='Render completed dataset checkpoints; requires every selected dataset')
     parser.add_argument('--inventory-only', action='store_true',
                         help='Audit saved trials and restart timestamps without symbolic checks')
+    parser.add_argument('--prepare-groups', action='store_true',
+                        help='Prepare smaller method/noise groups for unfinished datasets')
+    parser.add_argument('--group-task', action='store_true',
+                        help='Analyze group_plan.json[SLURM_ARRAY_TASK_ID]')
+    parser.add_argument('--collect-groups', action='store_true',
+                        help='Combine completed groups into dataset checkpoints')
     args = parser.parse_args()
     for sub in ('cache', 'datasets'):
         (args.output / sub).mkdir(parents=True, exist_ok=True)
+    if args.group_task:
+        item = json.loads((args.output / 'group_plan.json').read_text())[int(os.environ['SLURM_ARRAY_TASK_ID'])]
+        shard_output = args.output / 'group_shards'
+        for sub in ('cache', 'datasets'):
+            (shard_output / sub).mkdir(parents=True, exist_ok=True)
+        result = analyze_dataset(item['dataset'], item['specs'], shard_output,
+                                 item['cache_key'], item['seed_cache'])
+        print(item['cache_key'], result['counters'], flush=True)
+        return
+    if args.collect_groups:
+        collect_groups(args.output)
+        if not args.render_only:
+            return
     grouped = index_inputs()
     if args.datasets:
         grouped = {k: v for k, v in grouped.items() if k in args.datasets}
     if args.inventory_only:
         inventory(grouped, args.output)
+        return
+    if args.prepare_groups:
+        prepare_groups(grouped, args.output)
         return
     if args.array_task:
         dataset = sorted(grouped)[int(os.environ['SLURM_ARRAY_TASK_ID'])]

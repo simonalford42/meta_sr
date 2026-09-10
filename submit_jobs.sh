@@ -1,6 +1,26 @@
 #!/usr/bin/env bash
 
 # 9/10/26
+if [[ "${1:-}" == "portfolio-curve-groups" ]]; then
+    portfolio_groups=$(sbatch --parsable --partition=default_partition --array=0-647%50 --cpus-per-task=1 --mem=4G --time=04:00:00 --time-min=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-groups run.sh scripts/analyze_portfolio_solve_over_time.py --group-task) || exit
+    sbatch --dependency=afterok:"$portfolio_groups" --partition=default_partition --cpus-per-task=1 --mem=4G --time=00:15:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-plot run.sh scripts/analyze_portfolio_solve_over_time.py --collect-groups --render-only
+    exit
+fi
+
+if [[ "${1:-}" == "portfolio-curve-group-prepare" ]]; then
+    scancel 753564 757119
+    python scripts/analyze_portfolio_solve_over_time.py --prepare-groups
+    exit
+fi
+
+# scontrol update JobId=757119 ArrayTaskThrottle=16
+# scontrol update JobId=757119 ArrayTaskThrottle=12
+if [[ "${1:-}" == "portfolio-curve-release-retry-1" ]]; then
+    scontrol update JobId=757119 ArrayTaskThrottle=8 || exit
+    scontrol release 757119
+    exit
+fi
+
 if [[ "${1:-}" == "portfolio-curve-retry-1" ]]; then
     # scontrol update JobId=753564 ArrayTaskThrottle=25
     scancel 753565
