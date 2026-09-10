@@ -102,6 +102,14 @@ No SLURM jobs were submitted or new searches run to produce these figures.
 
 ## Inspect and audit the counts (2026-09-10)
 
+**Current default scope:** the inspector excludes the three originally solved
+tasks and all seven of their subtasks. All summary and N-seed tables therefore
+use **14 tasks and 44 subtasks**. Pooling all ten seeds yields **30/44, 32/44,
+34/44 subtasks** and **7/14, 9/14, 11/14 tasks** for PySR, SRBench and MIPS,
+respectively. To reproduce the full-split numbers documented below, run
+`python scripts/inspect_mips_results.py --include-originally-solved`.
+The existing figure artifacts retain their documented original scope.
+
 The read-only inspector loads the raw task manifests and individual result JSON
 files. It requires only Python's standard library, runs no Julia or SLURM jobs,
 and prints both definitions of whole-problem recovery:

@@ -2,6 +2,7 @@
 """Inspect raw MIPS results without running searches or modifying files.
 
 Default: compare the three ten-seed evaluations behind the MIPS figures.
+Exclude originally solved tasks and all their subtasks by default.
 Also report tasks and subtasks solved using only the first scheduled seed.
 Report cumulative recovery from the first N scheduled seeds, N=1..10.
 Successful components are identified by recorded gt_match_score == 1.
@@ -19,7 +20,7 @@ DEFAULTS = {
 }
 
 
-def inspect(path):
+def inspect(path, excluded_tasks=()):
     path = path.resolve()
     if not (path / 'tasks.json').exists():
         path = path / 'slurm_pysr/eval_0000'
@@ -39,12 +40,14 @@ def inspect(path):
     seeds_by_run = defaultdict(set)
     for i, task in enumerate(tasks):
         ds, run = task['dataset_name'], task['run_index']
+        if not ds.startswith('mips:'):
+            raise ValueError(f'Not a MIPS dataset: {ds}')
+        if ds.split(':')[1] in excluded_tasks:
+            continue
         key = (ds, run)
         if key in expected:
             raise ValueError(f'Duplicate dataset/run: {key}')
         expected.add(key)
-        if not ds.startswith('mips:'):
-            raise ValueError(f'Not a MIPS dataset: {ds}')
         groups[ds.split(':')[1]].add(ds)
         runs.add(run)
         seeds_by_run[run].add(task['seed'])
@@ -59,6 +62,8 @@ def inspect(path):
         if r.get('gt_match_score') == 1:
             exact[ds].add(run)
         records.append(dict(r, source=str(file), seed=task['seed']))
+    if not groups:
+        raise ValueError(f'No tasks remain after excluding original successes: {path}')
     components = set().union(*groups.values())
     if expected != {(ds, r) for ds in components for r in runs}:
         raise ValueError(f'Nonrectangular dataset/run manifest: {path}')
@@ -97,12 +102,17 @@ def main():
     parser.add_argument('--task', help='Filter task names by substring, e.g. base_6 or alternating_last4.')
     parser.add_argument('--components', action='store_true', help='Show per-component exact run indices.')
     parser.add_argument('--equations', action='store_true', help='Show one recorded exact witness per component and its raw path.')
+    parser.add_argument('--include-originally-solved', action='store_true',
+                        help='Include originally solved tasks and their subtasks in the evaluated scope.')
     parser.add_argument('--original-summary', type=Path, default=ROOT / 'outputs/mips_reproduction_all/summary.json')
     args = parser.parse_args()
     original = json.loads(args.original_summary.read_text())
     original_solved = {t['task'] for t in original['tasks'] if t['independent_success']}
     paths = {str(args.eval_dir): args.eval_dir} if args.eval_dir else {k: ROOT / p for k, p in DEFAULTS.items()}
-    methods = {k: inspect(p) for k, p in paths.items()}
+    excluded = set() if args.include_originally_solved else original_solved
+    methods = {k: inspect(p, excluded_tasks=excluded) for k, p in paths.items()}
+    print('Scope: ' + ('all evaluated tasks and subtasks' if args.include_originally_solved
+                      else 'originally unsolved tasks and their subtasks only'))
     rows = []
     for name, m in methods.items():
         candidates = set(m['groups']) - original_solved
@@ -118,7 +128,7 @@ def main():
         errors = sum(bool(r.get('error')) for r in m['records'])
         timeouts = sum(bool(r.get('timed_out')) for r in m['records'])
         print(f'  {len(m["runs"])} seeds; {errors} recorded errors; {timeouts} recorded timeouts')
-    print('\nSummary (counts always cover the full evaluated split):')
+    print('\nSummary (counts cover the selected scope; --task only filters detail rows):')
     table(['Method', 'Present fits', 'Exact fits', 'Subtasks any seed', 'New groups same seed', 'New groups across seeds'], rows)
     print('\nSame seed: at least one run_index solves every component together.')
     print('Across seeds: every component has a success, possibly in different run_indices.')
@@ -137,14 +147,14 @@ def main():
     print('\nFirst seed only (lowest scheduled run_index; missing results do not select a later seed):')
     table(['Method', 'Run index', 'Seed', 'Present fits', 'Subtasks solved',
            'Tasks solved', 'New tasks solved'], first_rows)
-    print('Tasks solved includes all evaluated groups; new tasks excludes original successes.')
+    print('Tasks solved includes all groups in the selected scope; new tasks excludes original successes.')
     prefixes = {name: prefix_recovery(m, original_solved) for name, m in methods.items()}
     print('\nCumulative recovery using the first N scheduled seeds (ascending run_index), N=1..10:')
     print('Subtask: exact in any included seed. Task: every component exact somewhere across included seeds.')
     print('Missing results stay in their scheduled prefix; unavailable prefix lengths are shown as -.')
     for metric, title, denominators in [
         ('subtasks', 'Subtasks solved', {k: len(m['components']) for k, m in methods.items()}),
-        ('tasks', 'Tasks solved (all evaluated groups)', {k: len(m['groups']) for k, m in methods.items()}),
+        ('tasks', 'Tasks solved (selected scope)', {k: len(m['groups']) for k, m in methods.items()}),
         ('new_tasks', 'New tasks solved (excluding original successes)',
          {k: len(set(m['groups']) - original_solved) for k, m in methods.items()}),
     ]:
