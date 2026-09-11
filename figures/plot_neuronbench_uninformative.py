@@ -10,8 +10,8 @@ Primary artifacts
   16,384-state Z-rebound test set used by :class:`NeuronBenchDomain`.
 
 Run 708907 used one training world (Z-rebound), uninformative prompts, and no
-execution feedback.  Colors encode the exclusive numerical classes used by the
-NeuronBench evaluation: recovered <= 1e-6, near-exact <= 1e-3, failure > 1e-3.
+execution feedback. Colors encode a binary numerical classification:
+recovered <= 1e-6 and failure > 1e-6.
 """
 
 from __future__ import annotations
@@ -60,7 +60,6 @@ WORLD_LABELS = {
 }
 COLORS = {
     "recovered": "#2E7D32",
-    "near-exact": "#2166AC",
     "failure": "#B2182B",
 }
 
@@ -73,8 +72,6 @@ def read_json(path: Path) -> dict:
 def outcome(nrmse: float) -> str:
     if nrmse <= NeuronBenchDomain.RECOVERED_NRMSE:
         return "recovered"
-    if nrmse <= NeuronBenchDomain.NEAR_EXACT_NRMSE:
-        return "near-exact"
     return "failure"
 
 
@@ -156,7 +153,7 @@ def count_outcomes(values: dict[str, list[float]]) -> dict[str, int]:
     return counts
 
 
-def make_figure(output_stem: Path, dpi: int) -> None:
+def make_figure(output_stem: Path) -> None:
     baseline = baseline_values()
     evolved = evolved_values()
 
@@ -177,7 +174,7 @@ def make_figure(output_stem: Path, dpi: int) -> None:
 
     method_specs = (
         ("PySR", baseline, -0.16, "o"),
-        ("Evolved PySR", evolved, 0.16, "D"),
+        ("Evolved PySR", evolved, 0.16, "*"),
     )
     seed_offsets = np.linspace(-0.055, 0.055, 5)
     for world_index, world in enumerate(WORLDS):
@@ -186,46 +183,13 @@ def make_figure(output_stem: Path, dpi: int) -> None:
                 ax.scatter(
                     world_index + method_offset + seed_offset,
                     value,
-                    s=34,
+                    s=38 if marker == "o" else 92,
                     marker=marker,
                     facecolor=COLORS[outcome(value)],
                     edgecolor="white",
                     linewidth=0.55,
                     zorder=3,
                 )
-
-    ax.axhline(
-        NeuronBenchDomain.RECOVERED_NRMSE,
-        color="#555555",
-        linestyle="--",
-        linewidth=0.9,
-        zorder=1,
-    )
-    ax.axhline(
-        NeuronBenchDomain.NEAR_EXACT_NRMSE,
-        color="#777777",
-        linestyle=":",
-        linewidth=0.9,
-        zorder=1,
-    )
-    ax.text(
-        5.48,
-        1.25 * NeuronBenchDomain.RECOVERED_NRMSE,
-        r"$10^{-6}$",
-        color="#555555",
-        fontsize=8,
-        ha="right",
-        va="bottom",
-    )
-    ax.text(
-        5.48,
-        1.25 * NeuronBenchDomain.NEAR_EXACT_NRMSE,
-        r"$10^{-3}$",
-        color="#666666",
-        fontsize=8,
-        ha="right",
-        va="bottom",
-    )
 
     ax.set_yscale("log")
     ax.set_ylim(3e-13, 3e-2)
@@ -245,22 +209,19 @@ def make_figure(output_stem: Path, dpi: int) -> None:
                markerfacecolor=COLORS["recovered"], markeredgecolor="white",
                label="Recovered"),
         Line2D([0], [0], marker="o", linestyle="none", markersize=6,
-               markerfacecolor=COLORS["near-exact"], markeredgecolor="white",
-               label="Near-exact"),
-        Line2D([0], [0], marker="o", linestyle="none", markersize=6,
                markerfacecolor=COLORS["failure"], markeredgecolor="white",
                label="Failure"),
         Line2D([0], [0], marker="o", linestyle="none", markersize=5.5,
                markerfacecolor="#555555", markeredgecolor="#555555",
                label="PySR"),
-        Line2D([0], [0], marker="D", linestyle="none", markersize=5.2,
+        Line2D([0], [0], marker="*", linestyle="none", markersize=9,
                markerfacecolor="#555555", markeredgecolor="#555555",
                label="Evolved PySR"),
     ]
     ax.legend(
         handles=legend_handles,
         loc="lower left",
-        ncol=5,
+        ncol=4,
         frameon=False,
         columnspacing=1.25,
         handletextpad=0.4,
@@ -293,16 +254,12 @@ def make_figure(output_stem: Path, dpi: int) -> None:
     fig.tight_layout(rect=(0.04, 0.06, 0.995, 0.88))
 
     output_stem.parent.mkdir(parents=True, exist_ok=True)
-    for suffix in (".pdf", ".png", ".svg"):
-        kwargs = {"dpi": dpi} if suffix == ".png" else {}
-        fig.savefig(output_stem.with_suffix(suffix), bbox_inches="tight", **kwargs)
+    fig.savefig(output_stem.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
     print(f"PySR outcomes: {count_outcomes(baseline)}")
     print(f"Evolved PySR outcomes: {count_outcomes(evolved)}")
     print(f"Wrote {output_stem.with_suffix('.pdf')}")
-    print(f"Wrote {output_stem.with_suffix('.png')}")
-    print(f"Wrote {output_stem.with_suffix('.svg')}")
 
 
 def main() -> None:
@@ -313,9 +270,8 @@ def main() -> None:
         default=FIGURE_DIR / "neuronbench_uninformative_all_fits",
         help="Output path without a file extension",
     )
-    parser.add_argument("--dpi", type=int, default=300)
     args = parser.parse_args()
-    make_figure(args.output_stem, args.dpi)
+    make_figure(args.output_stem)
 
 
 if __name__ == "__main__":
