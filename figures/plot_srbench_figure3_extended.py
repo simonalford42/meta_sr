@@ -23,7 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import srbench_results_io as srio
 
-OUT = ROOT / "reports/srbench_figure3_extended"
+OUT = ROOT / "figures/srbench_figure3_extended"
+PDF_OUT = ROOT / "figures"
 LOCAL = {
     "PySR": "290227",
     "BasicSR": "150814",
@@ -154,11 +155,7 @@ def render(data, stem):
             if label.get_text() in LOCAL:
                 label.set_fontweight("bold")
     grid.tight_layout()
-    for extension in ["png", "pdf", "svg"]:
-        path = OUT / f"{stem}.{extension}"
-        grid.figure.savefig(path, dpi=400, bbox_inches="tight")
-        if extension == "svg":
-            path.write_text("\n".join(line.rstrip() for line in path.read_text().splitlines()) + "\n")
+    grid.figure.savefig(PDF_OUT / f"{stem}.pdf", bbox_inches="tight")
     plt.close(grid.figure)
     summaries = []
     for (method, family, noise), group in data.groupby(["method", "family", "noise"]):
@@ -178,7 +175,7 @@ def main():
     (OUT / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
     render(rates[rates.dataset.isin(shared)], "figure3_extended")
     render(rates[rates.method.isin(set(LOCAL) | {MDL})], "five_methods_133_tasks")
-    print(OUT / "figure3_extended.png")
+    print(PDF_OUT / "figure3_extended.pdf")
 
 
 if __name__ == "__main__":

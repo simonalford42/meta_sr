@@ -1,6 +1,6 @@
 # Extended SRBench ground-truth Figure 3
 
-`figure3_extended.png`, `.pdf`, and `.svg` retain the 14 methods from the
+`../figure3_extended.pdf` retains the 14 methods from the
 [2021 SRBench Figure 3](https://datasets-benchmarks-proceedings.neurips.cc/paper_files/paper/2021/file/c0c7c76d30bd3dcaefc96f40275bdc0a-Paper-round1.pdf)
 and add MDLformer, BasicSR, PySR, evolved BasicSR trained on GT-R2, and evolved
 PySR from run 709715. The main plot has 19 methods.
@@ -20,7 +20,7 @@ The main figure restricts every method to the original 130-task universe:
 116 Feynman and 14 Strogatz datasets. The local evaluations and MDLformer
 release also contain `feynman_I_26_2`, `feynman_I_30_5`, and `feynman_test_10`.
 These three additional datasets are included in the companion
-`five_methods_133_tasks` figure, which shows only the five added methods.
+`../five_methods_133_tasks.pdf` figure, which shows only the five added methods.
 
 ## Inputs
 
@@ -77,7 +77,7 @@ From the repository root:
 
 ```bash
 python -m pip install seaborn==0.13.2
-python scripts/plot_srbench_figure3_extended.py
+python figures/plot_srbench_figure3_extended.py
 ```
 
 No SLURM jobs, model evaluations, or downloads are performed by the plotting
@@ -85,3 +85,6 @@ script. It uses the saved local runs, the local SRBench summary, and the
 committed MDLformer trial extract. `dataset_rates.csv` is the combined
 dataset-level snapshot; each figure has a corresponding `_summary.csv`.
 `provenance.json` records input hashes and the local run manifests.
+
+PDF figures are written directly into `figures/`. Supporting data and provenance
+are stored in `figures/srbench_figure3_extended/`. PNG and SVG are not generated.
