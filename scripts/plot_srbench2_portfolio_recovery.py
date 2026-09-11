@@ -64,7 +64,7 @@ def main():
         fig.savefig(out/f'solve_rate_log.{suffix}', dpi=180)
     plt.close(fig)
     with (out/'solve_rate.csv').open('w') as f:
-        writer = csv.DictWriter(f, fieldnames=list(table[0]))
+        writer = csv.DictWriter(f, fieldnames=list(table[0]), lineterminator="\n")
         writer.writeheader()
         writer.writerows(table)
     (out/'README.md').write_text(
