@@ -174,7 +174,6 @@ def main():
     rates.to_csv(OUT / "dataset_rates.csv", index=False)
     (OUT / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
     render(rates[rates.dataset.isin(shared)], "figure3_extended")
-    render(rates[rates.method.isin(set(LOCAL) | {MDL})], "five_methods_133_tasks")
     print(PDF_OUT / "figure3_extended.pdf")
 
 

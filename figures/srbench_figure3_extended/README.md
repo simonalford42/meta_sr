@@ -19,8 +19,7 @@ There is no added title or row shading.
 The main figure restricts every method to the original 130-task universe:
 116 Feynman and 14 Strogatz datasets. The local evaluations and MDLformer
 release also contain `feynman_I_26_2`, `feynman_I_30_5`, and `feynman_test_10`.
-These three additional datasets are included in the companion
-`../five_methods_133_tasks.pdf` figure, which shows only the five added methods.
+These three additional datasets are excluded from the figure.
 
 ## Inputs
 
@@ -69,7 +68,7 @@ PySR, BasicSR, and evolved BasicSR have a 500-second search timeout; evolved
 PySR's soft timeout is disabled. Historical methods and MDLformer retain
 their respective published evaluation protocols, budgets, seeds, and solution
 checks. Shared task names do not imply identical compute or scoring protocols.
-Training and validation tasks remain included in both figures.
+Training and validation tasks remain included in the figure.
 
 ## Reproduce
 
@@ -83,8 +82,8 @@ python figures/plot_srbench_figure3_extended.py
 No SLURM jobs, model evaluations, or downloads are performed by the plotting
 script. It uses the saved local runs, the local SRBench summary, and the
 committed MDLformer trial extract. `dataset_rates.csv` is the combined
-dataset-level snapshot; each figure has a corresponding `_summary.csv`.
+dataset-level snapshot; `figure3_extended_summary.csv` contains the plotted scores.
 `provenance.json` records input hashes and the local run manifests.
 
-PDF figures are written directly into `figures/`. Supporting data and provenance
+The PDF figure is written directly into `figures/`. Supporting data and provenance
 are stored in `figures/srbench_figure3_extended/`. PNG and SVG are not generated.
