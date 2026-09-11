@@ -196,7 +196,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
                 )
 
     ax.set_yscale("log")
-    ax.set_ylim(3e-13, 3e-2)
+    ax.set_ylim(1e-14, 3e-2)
     ax.set_xlim(-0.55, len(WORLDS) - 0.45)
     ax.set_ylabel("Held-out NRMSE")
     ax.set_xticks(range(len(WORLDS)), [WORLD_LABELS[world] for world in WORLDS])
@@ -249,7 +249,6 @@ def make_figure(output_stem: Path, scale: float) -> None:
     ax.legend(
         handles=legend_handles,
         loc="lower right",
-        bbox_to_anchor=(1.0, 1.01),
         ncol=4,
         frameon=False,
         columnspacing=1.25,
