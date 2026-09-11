@@ -15,8 +15,8 @@ from typing import Dict, Iterable, Optional
 import srbench_results_io as srio
 
 
-GT_TOTAL = 5_320
-GT_MERGED_TOTAL = 532
+GT_TOTAL = 5_200
+GT_MERGED_TOTAL = 520
 BLACK_BOX_TOTAL = 1_220
 ONE_MILLION = 1_000_000
 TEN_MILLION = 10_000_000
@@ -238,6 +238,7 @@ def _ground_truth_stats(
     keyed = srio.load_keyed_results(run_dir)
     if keyed is None and manifest.get("batches"):
         keyed = srio.build_keyed_results(run_dir, manifest)
+    manifest, keyed = srio.standard_ground_truth_view(manifest, keyed or {})
     present = [
         entry for entry in (keyed or {}).values()
         if entry.get("present") and entry.get("error") is None
@@ -284,6 +285,7 @@ def _split_performance(
     keyed = srio.load_keyed_results(run_dir)
     if keyed is None and manifest.get("batches"):
         keyed = srio.build_keyed_results(run_dir, manifest)
+    manifest, keyed = srio.standard_ground_truth_view(manifest, keyed or {})
     train_names = _load_split_names(project_root, OFFICIAL_TRAIN_SPLIT)
     val_names = _load_split_names(project_root, OFFICIAL_VAL_SPLIT)
     if not train_names or not val_names:

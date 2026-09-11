@@ -19,11 +19,30 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # The 3 SRBench ground-truth tasks whose formulas need inverse trig
 # (arcsin / arccos), which is outside our operator set — a symbolic GT match is
-# impossible, so they can never be "solved". Kept in the 133-task grid for a
-# canonical denominator but flagged so stats can optionally exclude them.
+# impossible with this operator set. SRBench 2021 excludes them from its
+# canonical 130-task benchmark; historical local runs may still contain them.
 UNSOLVABLE_TASKS = ("feynman_test_10", "feynman_I_26_2", "feynman_I_30_5")
 
 FAMILIES = ("all", "feynman", "strogatz")
+
+
+def standard_ground_truth_view(manifest: dict, keyed: dict) -> tuple[dict, dict]:
+    """Exclude the three legacy inverse-trig tasks without changing stored data.
+
+    Filter both the result rows and expected manifest grid so legacy 133-task
+    runs and new 130-task runs use the same reporting denominator.
+    SRBench 2025 has a separate task universe and is left untouched.
+    """
+    if manifest.get("srbench_edition") == 2025:
+        return manifest, keyed
+    manifest = dict(manifest)
+    if "datasets" in manifest:
+        manifest["datasets"] = [name for name in manifest["datasets"]
+                                if name not in UNSOLVABLE_TASKS]
+        manifest["n_datasets"] = len(manifest["datasets"])
+    keyed = {key: entry for key, entry in keyed.items()
+             if entry.get("dataset") not in UNSOLVABLE_TASKS}
+    return manifest, keyed
 
 
 def family_of(dataset_name: str) -> str:

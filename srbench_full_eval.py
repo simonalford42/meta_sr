@@ -2,7 +2,8 @@
 """Submit a full SRBench evaluation (all tasks x seeds x noise levels).
 
 Drives the native evaluator for the loaded method (PySR or FullSR) over every
-task in a split file. PySR modes retain caching, SLURM array chunking, retries,
+task in a split file, excluding the three inverse-trig tasks for SRBench 2021
+(130 ground-truth tasks by default). PySR modes retain caching, chunking, retries,
 and bad-node handling.
 
     # baseline PySR
@@ -394,6 +395,23 @@ def build_config(args):
     return load_pysr_evaluation_config(args)
 
 
+def load_evaluation_datasets(args):
+    """Select the task grid, applying SRBench 2021's three GT exclusions."""
+    from utils import load_dataset_names_from_split
+
+    if args.datasets:
+        datasets = [d.strip() for d in args.datasets.split(",") if d.strip()]
+    elif args.srbench_2025:
+        datasets = load_ground_truth_datasets_2025()
+    else:
+        datasets = load_dataset_names_from_split(args.split_file)
+    if not args.srbench_2025 and (args.ground_truth or not args.black_box):
+        datasets = [name for name in datasets if name not in srio.UNSOLVABLE_TASKS]
+        if not datasets:
+            raise ValueError("No ground-truth tasks remain after SRBench inverse-trig exclusions")
+    return datasets
+
+
 def cache_report(args) -> None:
     """Print what a rerun of this command would actually execute.
 
@@ -412,7 +430,6 @@ def cache_report(args) -> None:
 
     from srbench_eval_source import (apply_soft_timeout, load_evaluation_source,
                                      scale_soft_timeout)
-    from utils import load_dataset_names_from_split
 
     source = load_evaluation_source(args)
     if source.backend != "fullsr":
@@ -448,12 +465,7 @@ def cache_report(args) -> None:
             print(f"    ... and {len(uncached) - 10} more")
         shutil.rmtree(scratch, ignore_errors=True)
 
-    if args.datasets:
-        datasets = [d.strip() for d in args.datasets.split(",") if d.strip()]
-    elif args.srbench_2025:
-        datasets = load_ground_truth_datasets_2025()
-    else:
-        datasets = load_dataset_names_from_split(args.split_file)
+    datasets = load_evaluation_datasets(args)
 
     if args.ground_truth or not args.black_box:
         _report("ground truth", datasets, source.config,
@@ -461,8 +473,10 @@ def cache_report(args) -> None:
                 args.max_samples, args.noise_levels, False, "gt")
 
     if args.black_box:
-        bb_datasets = (datasets if args.datasets
-                       else load_black_box_datasets(args.srbench_2025))
+        bb_datasets = (
+            [d.strip() for d in args.datasets.split(",") if d.strip()]
+            if args.datasets else load_black_box_datasets(args.srbench_2025)
+        )
         bb_wall = args.black_box_wall_limit
         if args.black_box_timeout is not None:
             bb_timeout = args.black_box_timeout if args.black_box_timeout > 0 else None
@@ -667,19 +681,14 @@ def main(argv=None, *, force_srbench_2025=False):
         cache_report(args)
         return
 
-    from utils import resolve_run_dir, load_dataset_names_from_split, copy_slurm_log
+    from utils import resolve_run_dir, copy_slurm_log
     from srbench_eval_source import load_evaluation_source
 
     output_dir = resolve_run_dir(args.results_dir, label="srbench_full_eval")
     os.makedirs(output_dir, exist_ok=True)
     print(f"Run directory: {output_dir}")
 
-    if args.datasets:
-        datasets = [d.strip() for d in args.datasets.split(",") if d.strip()]
-    elif args.srbench_2025:
-        datasets = load_ground_truth_datasets_2025()
-    else:
-        datasets = load_dataset_names_from_split(args.split_file)
+    datasets = load_evaluation_datasets(args)
     print(f"Datasets: {len(datasets)}  |  seeds: {args.n_trials_per_dataset}  |  "
           f"noise levels: {args.noise_levels}  |  total runs: "
           f"{len(datasets) * args.n_trials_per_dataset * len(args.noise_levels)}")

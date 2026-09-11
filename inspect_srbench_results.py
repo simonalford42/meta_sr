@@ -15,6 +15,9 @@ Usage:
     python inspect_srbench_results.py --see-all --since 7
     python inspect_srbench_results.py --official
     python inspect_srbench_results.py --v2
+
+SRBench 2021 scores and completion counts exclude the three inverse-trig
+tasks by default, including when reading historical 133-task evaluations.
 """
 
 import argparse
@@ -264,6 +267,7 @@ def summarize_run(run_dir: Path) -> dict:
         keyed = srio.build_keyed_results(run_dir, manifest)
     keyed = keyed or {}
 
+    manifest, keyed = srio.standard_ground_truth_view(manifest, keyed)
     expected = srio.expected_keys(manifest, keyed) if manifest.get("datasets") else []
     present = sum(1 for k, e in keyed.items()
                   if e.get("present") and e.get("error") is None)
@@ -381,6 +385,7 @@ def inspect_run(run_dir: Path, args) -> None:
         print("(srbench_full_results.json absent — rebuilding from batch artifacts)")
         keyed = srio.build_keyed_results(run_dir, manifest)
 
+    manifest, keyed = srio.standard_ground_truth_view(manifest, keyed)
     # ---- completion ----
     expected = srio.expected_keys(manifest, keyed)
     n_expected = len(expected)
@@ -411,16 +416,9 @@ def inspect_run(run_dir: Path, args) -> None:
     # ---- stats ----
     metrics = srio.aggregate_metrics(keyed, noise_levels)
     print("\n" + "=" * 70)
-    print("STATS (all 133 tasks)")
+    print(f"STATS ({manifest['n_datasets']} tasks)")
     print("=" * 70)
     print(srio.format_metrics_console(metrics, noise_levels))
-
-    if args.exclude_unsolvable:
-        metrics_excl = srio.aggregate_metrics(keyed, noise_levels, exclude_unsolvable=True)
-        print("\n" + "=" * 70)
-        print(f"STATS (excluding {len(srio.UNSOLVABLE_TASKS)} inverse-trig unsolvables)")
-        print("=" * 70)
-        print(srio.format_metrics_console(metrics_excl, noise_levels))
 
     if args.wandb:
         from wandb_utils import init_wandb, finish_wandb
@@ -459,7 +457,7 @@ def main():
     parser.add_argument("--show-missing", type=int, default=50,
                         help="Max number of missing (task,seed,noise) triples to print.")
     parser.add_argument("--exclude-unsolvable", action="store_true",
-                        help="Also report stats excluding the 3 inverse-trig tasks.")
+                        help="Compatibility flag: the 3 inverse-trig tasks are now excluded by default.")
     parser.add_argument("--wandb", action="store_true",
                         help="Re-log the results table + metrics to wandb.")
     args = parser.parse_args()

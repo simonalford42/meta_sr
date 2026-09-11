@@ -375,8 +375,8 @@ class OfficialTableTests(unittest.TestCase):
             self.assertEqual(column["bb_r2"], 0.8)
             self.assertIn("GT completed", table)
             self.assertIn("GT completed (10M)", table)
-            self.assertIn("3/5320", table)
-            self.assertIn("1/5320", table)
+            self.assertIn("3/5200", table)
+            self.assertIn("1/5200", table)
             self.assertIn("1/1220", table)
 
     def test_official_table_omits_eval_slurm_and_split_rows(self):
