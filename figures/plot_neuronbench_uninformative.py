@@ -168,8 +168,7 @@ def make_figure(output_stem: Path) -> None:
     })
     fig, ax = plt.subplots(figsize=(8.2, 4.5))
 
-    # Visually separate the single evolution task from the five transfer tasks.
-    ax.axvspan(-0.55, 0.50, color="#F1F1F1", zorder=0)
+    # Mark the boundary between the one evolution task and five transfer tasks.
     ax.axvline(0.50, color="#8A8A8A", linewidth=0.8, zorder=1)
 
     method_specs = (
@@ -194,15 +193,31 @@ def make_figure(output_stem: Path) -> None:
     ax.set_yscale("log")
     ax.set_ylim(3e-13, 3e-2)
     ax.set_xlim(-0.55, len(WORLDS) - 0.45)
-    ax.set_ylabel("Best held-out NRMSE")
+    ax.set_ylabel("Held-out NRMSE")
     ax.set_xticks(range(len(WORLDS)), [WORLD_LABELS[world] for world in WORLDS])
     ax.tick_params(axis="x", length=0, pad=7)
     ax.grid(axis="y", which="major", color="#DDDDDD", linewidth=0.55)
     ax.grid(axis="x", visible=False)
     ax.spines[["top", "right"]].set_visible(False)
 
-    ax.text(0.0, 1.4e-2, "training task", ha="center", va="center", fontsize=9)
-    ax.text(3.0, 1.4e-2, "held-out tasks", ha="center", va="center", fontsize=9)
+    ax.text(
+        0.0,
+        1.025,
+        "training task",
+        transform=ax.get_xaxis_transform(),
+        ha="center",
+        va="bottom",
+        fontsize=9,
+    )
+    ax.text(
+        3.0,
+        1.025,
+        "held-out tasks",
+        transform=ax.get_xaxis_transform(),
+        ha="center",
+        va="bottom",
+        fontsize=9,
+    )
 
     legend_handles = [
         Line2D([0], [0], marker="o", linestyle="none", markersize=6,
@@ -228,30 +243,7 @@ def make_figure(output_stem: Path) -> None:
         borderaxespad=0.6,
     )
 
-    fig.suptitle(
-        "NeuronBench seed-level recovery: PySR vs. evolved PySR",
-        x=0.075,
-        y=0.975,
-        ha="left",
-        fontsize=13,
-        fontweight="bold",
-    )
-    fig.text(
-        0.075,
-        0.915,
-        "Run 708907: top-1, uninformative prompt, no execution feedback; five fits per method and world",
-        ha="left",
-        fontsize=9,
-    )
-    fig.text(
-        0.075,
-        0.015,
-        "Z-rebound evolved fits are training-task reevaluations scored on its independent 16,384-state test set; all other evolved fits are transfer tasks.",
-        ha="left",
-        fontsize=7.5,
-        color="#444444",
-    )
-    fig.tight_layout(rect=(0.04, 0.06, 0.995, 0.88))
+    fig.tight_layout(rect=(0.02, 0.02, 0.995, 0.94))
 
     output_stem.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_stem.with_suffix(".pdf"), bbox_inches="tight")
