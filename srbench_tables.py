@@ -1,12 +1,14 @@
 """Compact SRBench method and compute-budget tables for the inspector."""
-import csv
-import gzip
 import math
 from pathlib import Path
 
 import srbench_results_io as srio
 from srbench_official_results import build_official_columns, BLACK_BOX_TOTAL
 
+
+# User-supplied benchmark reference, not recomputed from the released trial snapshot.
+# Keep this value unchanged when local SRBench task denominators change.
+MDLFORMER_REFERENCE_GT = 0.405
 
 GROUPS = [
     ("PySR", [("", "pysr_baseline")]),
@@ -100,22 +102,6 @@ def _rate(rows, datasets=None, noise=None):
     return sum(values)/len(values) if values else None
 
 
-def _mdl_rate(project_root, canonical):
-    path = project_root / "reports/srbench_figure3_extended/mdlformer_trials.csv.gz"
-    if not path.exists():
-        return None
-    cells = {}
-    with gzip.open(path, "rt") as handle:
-        for row in csv.DictReader(handle):
-            if row["dataset"] in canonical:
-                cells.setdefault((row["dataset"], float(row["target_noise"])), []).append(
-                    row["symbolic_solution"].lower() in {"true", "1"})
-    expected = {(name, noise) for name in canonical for noise in [0, .001, .01, .1]}
-    if cells.keys() != expected:
-        return None
-    return sum(sum(values)/len(values) for values in cells.values())/len(cells)
-
-
 def build_tables(runs_root="runs", project_root=None):
     project_root = Path(project_root) if project_root else Path(__file__).resolve().parent
     runs_root = Path(runs_root)
@@ -137,7 +123,7 @@ def build_tables(runs_root="runs", project_root=None):
         column = columns.get(key, {})
         bb.append(_format(column.get("bb_r2") if column.get("bb_completed") == BLACK_BOX_TOTAL
                           else None, rate=False))
-        gt.append(_format(_mdl_rate(project_root, canonical) if key == "mdlformer"
+        gt.append(_format(MDLFORMER_REFERENCE_GT if key == "mdlformer"
                           else _rate(complete(column.get("gt_path")))))
     table1 = _grid([("", [""])] + [(label, [sub for sub, _ in subs]) for label, subs in GROUPS],
                    [["SRBench black box (R2)", *bb], ["SRBench ground truth", *gt]])
@@ -164,8 +150,8 @@ def build_tables(runs_root="runs", project_root=None):
                      _format(_rate(evo_rows, datasets, noise))])
     table2 = _grid([("", [""]), ("PySR", [""]), ("Evolved", [""])], rows, subheaders=False)
     return ("Table 1: 1M-evaluation method comparison\n" + table1
-            + "\nBlack box: mean test R2. Ground truth: solve rate over 130 tasks and four noise levels."
-            + "\nMDLFormer GT: author-released trials, averaged per task/noise; BB unavailable."
+            + "\nBlack box: mean test R2. Local ground truth: solve rate over 130 tasks and four noise levels."
+            + "\nMDLFormer GT: supplied reference score (40.5%), without task-count rescaling; BB unavailable."
             + "\n\nTable 2: PySR vs PySR++ GT (evolved=" + evolved.get("training_id", "TBD") + ")\n"
             + table2 + "\nBreakdown below the divider uses 1M evaluations; 10 seeds."
-            + "\nTBD = unavailable or incomplete local evaluation (MDLFormer uses available released seeds).")
+            + "\nTBD = unavailable or incomplete local evaluation.")

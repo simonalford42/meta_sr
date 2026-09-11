@@ -64,6 +64,9 @@ def test_tables_group_order_subsets_budgets_and_missing(tmp_path):
         header.index(label) for label in ["PySR", "PySR++", "BasicSR", "BasicSR++", "HPO", "Autoresearch", "MDLFormer"])
     assert output.count("GT-R2") == 3
     assert "0.750" in output and "50.00%" in output
+    # The supplied MDLFormer reference must not depend on local task counts.
+    assert "40.50%" in output
+    assert "without task-count rescaling" in output
     table2 = output.split("Table 2:")[1]
     train = next(line for line in table2.splitlines() if "Train tasks" in line)
     rest = next(line for line in table2.splitlines() if "Excluding train" in line)
