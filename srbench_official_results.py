@@ -402,11 +402,14 @@ def _column_from_records(
         "gt_10m_completed": gt_10m_completed,
         "gt_10_restarts_completed": gt_10_restarts_completed,
         "bb_completed": bb_completed,
+        "gt_path": str(gt["run_dir"]) if gt else None,
+        "bb_path": str(black_box["run_dir"]) if black_box else None,
     }
 
 
 def build_official_columns(
-    runs_root: "str | Path", project_root: "str | Path | None" = None
+    runs_root: "str | Path", project_root: "str | Path | None" = None,
+    *, single_search_only: bool = False,
 ) -> list[dict]:
     """Discover and summarize the official comparison columns."""
     runs_root = Path(runs_root)
@@ -421,6 +424,20 @@ def build_official_columns(
                 manifest = json.load(handle)
         except (OSError, json.JSONDecodeError):
             return
+        if single_search_only:
+            if (manifest.get("srbench_edition") == 2025
+                    or manifest.get("serial_restart_portfolio")
+                    or manifest.get("no_early_stop")):
+                return
+            if manifest.get("merge_run_frontiers"):
+                # A requested merge may still have an intact per-seed result grid.
+                # Those individual searches can be used, but merged portfolios cannot.
+                rows = srio.load_keyed_results(manifest_path.parent)
+                if rows is None and manifest.get("batches"):
+                    rows = srio.build_keyed_results(manifest_path.parent, manifest)
+                if not rows or any("n_searches" in entry for entry in rows.values()):
+                    return
+                manifest = {**manifest, "merge_run_frontiers": False}
         family = _method_family(manifest)
         if family is None:
             return

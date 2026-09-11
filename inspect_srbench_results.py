@@ -14,6 +14,7 @@ Usage:
     python inspect_srbench_results.py --see-all
     python inspect_srbench_results.py --see-all --since 7
     python inspect_srbench_results.py --official
+    python inspect_srbench_results.py --tables
     python inspect_srbench_results.py --v2
 
 SRBench 2021 scores and completion counts exclude the three inverse-trig
@@ -447,6 +448,8 @@ def main():
         "--official", action="store_true",
         help="Show the official baseline/HPO/PySR++/BasicSR++ comparison table.",
     )
+    mode.add_argument("--tables", action="store_true",
+                      help="Show the method comparison and PySR/evolved budget tables.")
     mode.add_argument(
         "--v2", action="store_true",
         help="Show SRBench 2.0 completion and per-problem frontier reviews.",
@@ -470,6 +473,11 @@ def main():
     if args.official:
         from srbench_official_results import build_official_table
         print(build_official_table(args.runs_root))
+        return
+
+    if args.tables:
+        from srbench_tables import build_tables
+        print(build_tables(args.runs_root))
         return
 
     if args.v2:
@@ -505,7 +513,7 @@ def main():
         return
 
     if not args.run_id:
-        parser.error("one of --run-id, --see-all, --official, or --v2 is required")
+        parser.error("one of --run-id, --see-all, --official, --tables, or --v2 is required")
 
     run_dir = Path(args.runs_root) / args.run_id
     if not run_dir.is_dir():
