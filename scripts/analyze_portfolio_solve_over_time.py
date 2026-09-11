@@ -332,56 +332,13 @@ def analyze_dataset(dataset, specs, output, cache_key=None, seed_cache=None,
     write_json(result_path, result)
     return result
 
-
-def render_noise_average(output, records):
-    """Average the four noise-level recovery curves with equal weight."""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
-    noises = [0.0, 0.001, 0.01, 0.1]
-    fig, ax = plt.subplots(figsize=(8, 5.5))
-    colors = {'Base PySR': '#3264ad', '709715': '#d45b24'}
-    for method in RUNS:
-        subsets = [[r for r in records if r['method'] == method and r['noise'] == noise]
-                   for noise in noises]
-        assert all(subsets), f'Missing noise level for {method}'
-        events = sorted((r['first_solve_budget_seconds'], 25 / len(subset))
-                        for subset in subsets for r in subset
-                        if r['first_solve_budget_seconds'] is not None)
-        xs, ys = [0.1], [0]
-        for seconds, weight in events:
-            xs.append(seconds)
-            ys.append(ys[-1] + weight)
-        xs.append(900)
-        ys.append(ys[-1])
-        ax.step(xs, ys, where='post', color=colors[method], linewidth=2,
-                label=f'{method} ({ys[-1]:.2f}% at 15 min)')
-    ax.set(xscale='log', xlim=(0.1, 900), ylim=(0, 100),
-           xlabel='Cumulative search time (seconds, log scale)',
-           ylabel='Trials recovered at least once (%)',
-           title='15-minute portfolios · average across noise levels')
-    ax.set_xticks([0.1, 1, 10, 30, 100, 300, 900],
-                  labels=['0.1', '1', '10', '30', '100', '300', '900'])
-    ax.grid(alpha=0.2)
-    ax.legend(frameon=False, loc='upper left')
-    fig.text(0.5, 0.055, 'Equal weight for noise 0, 0.001, 0.01, 0.1 · 133 tasks × 10 seeds per level',
-             ha='center', fontsize=9)
-    fig.text(0.5, 0.02, 'Recovery credited at restart completion; warm-up excluded; final overshoot mapped to 15 min.',
-             ha='center', fontsize=8)
-    fig.tight_layout(rect=(0, 0.09, 1, 1))
-    for ext in ('png', 'pdf'):
-        fig.savefig(output / f'solve_rate_noise_average.{ext}', dpi=180)
-    plt.close(fig)
-
-
 def render(output, results):
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
+    from figures.plot_portfolio_solve_over_time import DEFAULT_OUTPUT, render_figures
 
     records = [r for d in results for r in d['records']]
-    render_noise_average(output, records)
+    n_datasets = len({r['dataset'] for r in records})
+    figure_output = DEFAULT_OUTPUT if output == ROOT / "reports/portfolio_solve_over_time" else output
+    render_figures(records, figure_output)
     write_json(output / 'first_recovery.json', records)
     noises = [0.0, 0.001, 0.01, 0.1]
     table = []
@@ -396,36 +353,10 @@ def render(output, results):
                 table.append({'noise': noise, 'minutes': minute, 'method': method,
                               'solved': solved, 'expected': len(subset),
                               'percent_solved': 100 * solved / len(subset)})
-    with (output / 'solve_rate.csv').open('w') as f:
+    with (figure_output / 'solve_rate.csv').open('w') as f:
         writer = csv.DictWriter(f, fieldnames=list(table[0]))
         writer.writeheader()
         writer.writerows(table)
-    fig, axes = plt.subplots(2, 2, figsize=(10, 7), sharex=True, sharey=True)
-    colors = {'Base PySR': '#3264ad', '709715': '#d45b24'}
-    for ax, noise in zip(axes.flat, noises):
-        for method in RUNS:
-            subset = [r for r in records if r['method'] == method and r['noise'] == noise]
-            times = sorted(r['first_solve_budget_seconds'] / 60 for r in subset
-                           if r['first_solve_budget_seconds'] is not None)
-            xs = [0] + times + [15]
-            ys = [0] + [100 * i / len(subset) for i in range(1, len(times) + 1)]
-            ys.append(ys[-1])
-            ax.step(xs, ys, where='post', label=method, color=colors[method], linewidth=2)
-        ax.set_title(f'Target noise: {noise:g}')
-        ax.set_xlim(0, 15)
-        ax.set_ylim(0, 100)
-        ax.grid(alpha=0.2)
-        ax.set_xticks([0, 3, 6, 9, 12, 15])
-    axes[0, 0].legend(frameon=False)
-    fig.supxlabel('Cumulative search time (minutes)', y=0.045)
-    fig.supylabel('Trials recovered at least once (%)')
-    n_datasets = len({r['dataset'] for r in records})
-    fig.suptitle(f'15-minute restart portfolios · {n_datasets} tasks × 10 seeds per noise level')
-    fig.text(0.5, 0.015, 'Recovery credited at restart completion; warm-up excluded; final budget overshoot mapped to 15 min.',
-             ha='center', fontsize=8)
-    fig.tight_layout(rect=(0.02, 0.08, 1, 0.97))
-    for ext in ('png', 'pdf'):
-        fig.savefig(output / f'solve_rate.{ext}', dpi=180)
     totals = Counter()
     for d in results:
         totals.update(d['counters'])
@@ -455,8 +386,8 @@ def render(output, results):
               'Cumulative recovery can exceed the final merged-frontier score, because a later native-loss '
               'frontier can discard an earlier matching equation; fresh checks may also resolve equations missed during original scoring. Timeouts/parsing failures are unresolved '
               'and treated as non-matches, as in the evaluator; the curve is conservative for such checks.', '']
-    report.extend(['[Plot averaged equally over all four noise levels, with logarithmic seconds](solve_rate_noise_average.png) '
-                   '([PDF](solve_rate_noise_average.pdf)). The `Noise all` table uses the same weighting '
+    report.extend(['[Plot averaged equally over all four noise levels, with logarithmic seconds](../../figures/portfolio_solve_over_time/solve_rate_noise_average.png) '
+                   '([PDF](../../figures/portfolio_solve_over_time/solve_rate_noise_average.pdf)). The `Noise all` table uses the same weighting '
                    'because each noise level has the same number of trials.', ''])
     for noise in noises + ['all']:
         report.extend([f'## Noise {noise}', '', '| Minutes | Base PySR | 709715 |',

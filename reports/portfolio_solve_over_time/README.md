@@ -10,7 +10,7 @@ Parsing, float rounding, and simplification are memoized within each worker. Har
 
 Only restart-end frontiers are available, so discovery time is an upper bound at restart resolution. Warm-up and scoring are excluded. Small search-budget overshoots at the last restart are mapped to the nominal 15-minute endpoint; raw times are retained in first_recovery.json. Cumulative recovery can exceed the final merged-frontier score, because a later native-loss frontier can discard an earlier matching equation; fresh checks may also resolve equations missed during original scoring. Timeouts/parsing failures are unresolved and treated as non-matches, as in the evaluator; the curve is conservative for such checks.
 
-[Plot averaged equally over all four noise levels, with logarithmic seconds](solve_rate_noise_average.png) ([PDF](solve_rate_noise_average.pdf)). The `Noise all` table uses the same weighting because each noise level has the same number of trials.
+[Plot averaged equally over all four noise levels, with logarithmic seconds](../../figures/portfolio_solve_over_time/solve_rate_noise_average.png) ([PDF](../../figures/portfolio_solve_over_time/solve_rate_noise_average.pdf)). The `Noise all` table uses the same weighting because each noise level has the same number of trials.
 
 ## Noise 0.0
 

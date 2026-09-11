@@ -49,7 +49,7 @@ def main():
         assert any(row['equation'] == record['first_solve_equation'] and
                    row.get('r2') is not None and math.isfinite(row['r2']) and row['r2'] >= .5
                    for row in restart['pareto_frontier'])
-    rows = list(csv.DictReader((output / 'solve_rate.csv').open()))
+    rows = list(csv.DictReader((ROOT / 'figures/portfolio_solve_over_time/solve_rate.csv').open()))
     assert len(rows) == 160
     previous = {}
     seen = set()

@@ -2,7 +2,7 @@
 
 Completed 2026-09-10 at approximately 18:05 EDT. All 10,640 trial histories are analyzed and validated. No benchmark searches were rerun.
 
-Results: [report and tables](README.md), [minute-by-minute CSV](solve_rate.csv), [plot](solve_rate.png), [PDF](solve_rate.pdf), [trial records](first_recovery.json).
+Results: [report and tables](README.md), [minute-by-minute CSV](../../figures/portfolio_solve_over_time/solve_rate.csv), [plot](../../figures/portfolio_solve_over_time/solve_rate.png), [PDF](../../figures/portfolio_solve_over_time/solve_rate.pdf), [trial records](first_recovery.json).
 
 At 15 minutes, base PySR versus 709715 recovery is 62.78% versus 68.87% without noise, 62.56% versus 69.17% at noise 0.001, 62.71% versus 65.49% at noise 0.01, and 57.07% versus 56.54% at noise 0.1. Across noise levels: 61.28% versus 65.02%.
 
