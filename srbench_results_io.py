@@ -112,6 +112,7 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                 "best_equation": None,
                 "best_loss": None,
                 "pareto_frontier": None,
+                "execution_trace": None,
                 "portfolio": None,
                 "config_id": int(spec.get("config_id", 0)),
                 "error": None,
@@ -133,6 +134,7 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                         best_equation=res.get("best_equation"),
                         best_loss=res.get("best_loss"),
                         pareto_frontier=res.get("pareto_frontier"),
+                        execution_trace=res.get("execution_trace"),
                         portfolio=res.get("portfolio"),
                         error=res.get("error"),
                     )

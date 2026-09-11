@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+# 9/11/26
+if [[ "${1:-}" == "srb2-minute-frontiers" ]]; then
+    srb2_minute_base=$(sbatch --parsable -J srb2-60m-base-minute run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-11_baseline_1core_l1_60m_minute_frontiers --n-runs 10 --seed 10000 --noise-levels 0 --max-samples 1000 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --no-early-stop --no-maxsize-warmup --frontier-snapshot-seconds 60 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb) || exit
+    sbatch --dependency=afterany:"$srb2_minute_base" -J srb2-60m-709715-minute run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-11_1core_60m_minute_frontiers --n-runs 10 --seed 10000 --noise-levels 0 --max-samples 1000 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --no-early-stop --no-maxsize-warmup --frontier-snapshot-seconds 60 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb
+    exit $?
+fi
+
+
 # 9/10/26
 if [[ "${1:-}" == "portfolio-existing-interactive-20260910" ]]; then
     srun --jobid=779095 --overlap --nodes=1 --ntasks=1 --cpus-per-task=8 --mem=50G --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 bash run.sh scripts/finish_portfolio_curve.py --workers 8

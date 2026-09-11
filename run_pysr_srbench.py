@@ -177,6 +177,7 @@ def run_pysr_with_hof_checkpoints(
     milestone_kind="evals",
     total_timeout_in_seconds=None,
     timeout_reserve_seconds=0,
+    frontier_snapshot_seconds=None,
 ):
     """
     Run PySR with HOF checkpoint logging at each milestone.
@@ -199,6 +200,15 @@ def run_pysr_with_hof_checkpoints(
     """
     os.makedirs(results_dir, exist_ok=True)
     hof_path = hof_path or os.path.join(results_dir, f"{dataset_name}_hof.csv")
+
+    if frontier_snapshot_seconds is not None:
+        if milestones:
+            raise ValueError('Continuous snapshots cannot be combined with warm-start milestones')
+        from frontier_snapshots import FrontierSnapshotRecorder
+        with FrontierSnapshotRecorder(model.output_directory, hof_path+'.snapshots.jsonl',
+                                      frontier_snapshot_seconds):
+            model.fit(X_train, y_train, variable_names=feature_names)
+        return model
 
     # Only define a specific temp directory if we are doing milestone logging
     if milestones:

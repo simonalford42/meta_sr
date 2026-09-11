@@ -178,6 +178,8 @@ def _spec_expects_execution_trace(task: "PySRTaskSpec") -> bool:
     empty (see _evaluate_pysr_task), so no trace is ever written. Such specs
     are trace-exempt; otherwise the trace cache gate would re-run them forever.
     """
+    if task.frontier_snapshot_seconds is not None:
+        return True
     if task.hof_n_steps <= 0:
         return False
     pk = task.pysr_kwargs or {}
@@ -408,6 +410,8 @@ def _build_cache_identity(
 
     model_kwargs = {**pysr_mutation_kwargs, **spec.pysr_kwargs}
     model_kwargs['random_state'] = spec.seed + spec.run_index
+    if spec.frontier_snapshot_seconds is not None:
+        model_kwargs['_frontier_snapshot_seconds'] = spec.frontier_snapshot_seconds
     # Black-box uses a different split/scaling/data-cleaning protocol and must
     # never collide with an otherwise identical ground-truth cache entry.
     # Add this only for black-box so historical ground-truth keys stay valid.
@@ -995,6 +999,10 @@ def _load_execution_trace(hof_csv_paths: List[str]) -> Optional[List[Dict]]:
     all_milestones: List[Dict] = []
 
     for path in hof_csv_paths:
+        if path.endswith('.snapshots.jsonl') and os.path.exists(path):
+            with open(path) as f:
+                all_milestones.extend(json.loads(line) for line in f if line.strip())
+            continue
         if not os.path.exists(path):
             print(f"WARNING: HOF CSV not found: {path}", flush=True)
             continue
@@ -1093,6 +1101,7 @@ class PySRTaskSpec:
     fitness_metric: str = "r2"  # 'r2' or 'gt'
     hof_csv_paths: List[str] = field(default_factory=list)  # Paths to HOF CSVs from run_pysr_srbench
     hof_n_steps: int = 0  # Number of HOF checkpoints to write during fit (0 = disabled)
+    frontier_snapshot_seconds: Optional[float] = None
     pysr_wall_limit: int = 600  # Hard wall-clock limit for PySR search (seconds); on overrun,
     # the task errors out with score=0 and is NOT retried.
     black_box: bool = False  # Use the official SRBench black-box data protocol.
@@ -1485,7 +1494,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 # (the milestone path in run_pysr_with_hof_checkpoints overrides and
                 # cleans its own dir, so this only bites the no-milestone fit).
                 # Preserve an explicit caller override (any non-default value).
-                if getattr(model, "output_directory", None) in (None, "pysr_outputs"):
+                if (spec.frontier_snapshot_seconds is not None
+                        or getattr(model, "output_directory", None) in (None, "pysr_outputs")):
                     _tmp_base = os.environ.get("TMPDIR") or None
                     _tmp_output_dir = tempfile.mkdtemp(prefix="pysr_out_", dir=_tmp_base)
                     model.output_directory = _tmp_output_dir
@@ -1520,6 +1530,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                                 active_model_kwargs.get("timeout_in_seconds")
                                 if local_hof_milestones else None
                             ),
+                            frontier_snapshot_seconds=spec.frontier_snapshot_seconds,
                         )
                     except PySRWallLimitExceeded:
                         # A soft shared deadline should normally return first.
@@ -1692,7 +1703,9 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
                 # Load this level's execution trace from the HOF CSV.
                 execution_trace = None
-                if spec.hof_n_steps > 0:
+                if spec.frontier_snapshot_seconds is not None:
+                    execution_trace = _load_execution_trace([hof_csv_out+'.snapshots.jsonl'])
+                elif spec.hof_n_steps > 0:
                     execution_trace = _load_execution_trace([hof_csv_out])
 
                 _acc_str = "" if acc_score is None else f", acc={acc_score:.4f}"
@@ -2419,6 +2432,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         repo_root: Optional[str] = None,
         hof_results_dir: str= "results_pysr",
         hof_n_steps: int = 0,
+        frontier_snapshot_seconds: Optional[float] = None,
         pysr_wall_limit: int = 600,
         eval_noise_levels: Optional[List[float]] = None,
         domain: str = "srbench",
@@ -2457,6 +2471,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         self._pending_cache_entries: List[Dict[str, Any]] = []
         self.hof_results_dir = hof_results_dir
         self.hof_n_steps = hof_n_steps
+        self.frontier_snapshot_seconds = frontier_snapshot_seconds
+        if frontier_snapshot_seconds is not None:
+            if not math.isfinite(frontier_snapshot_seconds) or frontier_snapshot_seconds <= 0:
+                raise ValueError('frontier_snapshot_seconds must be positive and finite')
+            if hof_n_steps or portfolio_time_limit_seconds is not None:
+                raise ValueError('Continuous frontier snapshots require a single uninterrupted fit')
         self.pysr_wall_limit = pysr_wall_limit
         # Run-level evaluation domain, stamped onto every spec submit_configs
         # builds (one evolution/HPO run is one domain). See domains.py.
@@ -2716,6 +2736,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         fitness_metric=fitness_metric,
                         hof_csv_paths=hof_csv_paths,
                         hof_n_steps=self.hof_n_steps,
+                        frontier_snapshot_seconds=self.frontier_snapshot_seconds,
                         pysr_wall_limit=(pysr_wall_limit if pysr_wall_limit is not None else self.pysr_wall_limit),
                         black_box=effective_black_box,
                         domain=self.domain,

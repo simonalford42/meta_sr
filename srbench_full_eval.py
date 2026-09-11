@@ -631,6 +631,8 @@ def main(argv=None, *, force_srbench_2025=False):
     parser.add_argument("--results-dir", type=str, default=None,
                         help="Run directory (default: runs/<SLURM_JOB_ID> or local_*).")
     parser.add_argument("--no-wandb", action="store_true")
+    parser.add_argument('--frontier-snapshot-seconds', type=float, default=None,
+                        help='Copy native PySR frontiers at this wall-time interval during one uninterrupted fit.')
     parser.add_argument("--srbench2-exact-recovery", action="store_true",
                         help=argparse.SUPPRESS)
     parser.add_argument("--baseline-l1-loss", action="store_true",
@@ -648,6 +650,12 @@ def main(argv=None, *, force_srbench_2025=False):
         if not args.evolve_results:
             parser.error("--task-population-bundles requires --evolve-results")
         args.merge_run_frontiers = True
+    if args.frontier_snapshot_seconds is not None:
+        import math
+        if not math.isfinite(args.frontier_snapshot_seconds) or args.frontier_snapshot_seconds <= 0:
+            parser.error('--frontier-snapshot-seconds must be positive and finite')
+        if args.portfolio_time_limit is not None:
+            parser.error('--frontier-snapshot-seconds requires a single search, not a portfolio')
     if args.portfolio_time_limit is not None:
         if args.portfolio_time_limit <= 0:
             parser.error("--portfolio-time-limit must be positive")
@@ -744,6 +752,8 @@ def main(argv=None, *, force_srbench_2025=False):
             "slots": len(configs),
             "bundle_names": list(bundle_names.values()),
         }
+    if args.frontier_snapshot_seconds is not None and source.backend != 'pysr':
+        parser.error('--frontier-snapshot-seconds requires the PySR backend')
     if args.no_early_stop:
         if source.backend != "pysr":
             parser.error("--no-early-stop requires the PySR backend")
@@ -877,6 +887,7 @@ def main(argv=None, *, force_srbench_2025=False):
             portfolio_restart_count=args.portfolio_restart_count,
             portfolio_warmup=not args.no_portfolio_warmup,
             cpus_per_task=args.cpus_per_task,
+            frontier_snapshot_seconds=args.frontier_snapshot_seconds,
         )
 
     run = None
@@ -920,6 +931,8 @@ def main(argv=None, *, force_srbench_2025=False):
         "max_evals": args.max_evals,
         "timeout_in_seconds": source.soft_timeout,
         "no_early_stop": args.no_early_stop,
+        "frontier_snapshot_seconds": args.frontier_snapshot_seconds,
+        "frontier_snapshot_clock": 'fit_wall_time' if args.frontier_snapshot_seconds else None,
         "timeout_source": source.soft_timeout_source,
         "max_samples": args.max_samples,
         "cpus_per_task": args.cpus_per_task,
