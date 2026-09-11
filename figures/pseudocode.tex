@@ -5,10 +5,11 @@
 \usepackage{algpseudocode}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
+\usepackage{xcolor}
 \pagestyle{empty}
 \newcommand{\name}[1]{\textnormal{\texttt{#1}}}
 \newcommand{\score}[1]{\frac{1}{#1}\sum_{\text{seeds},\,\text{tasks}} F(x,\text{task},\text{seed})}
-\algrenewcommand\algorithmiccomment[1]{\hfill\textit{#1}}
+\algrenewcommand\algorithmiccomment[1]{\textcolor{gray}{\#\ #1}}
 % Typeset transcription of pseudocode.txt; algorithmic choices are preserved.
 \begin{document}
 \begin{algorithm}[H]
@@ -22,7 +23,7 @@ $N_{\mathrm{reeval}}$ reevaluation seeds; $F$ fitness metric.
 \begin{algorithmic}[1]
 \State $\name{population} \gets [\name{baseline}]$
 \For{$i = 0,\ldots,G_{\mathrm{total}}-1$}
-    \Statex \Comment{Generate offspring}
+    \Statex \hspace{\algorithmicindent}\Comment{Generate offspring}
     \For{$o = 0,\ldots,O-1$}
         \State $\name{sr\_operator} \gets \Call{RandomChoice}{[\name{mutation},\name{survival},\name{selection},\name{loss}]}$
         \If{$i = 0$}
@@ -42,25 +43,25 @@ $N_{\mathrm{reeval}}$ reevaluation seeds; $F$ fitness metric.
             \State $\name{offspring} \gets \name{LLM\_ensemble.sample().sample\_completion(prompt)}$
         \Until{$\Call{PassesValidation}{\name{offspring}}$}
     \EndFor
-    \Statex \Comment{Parallel evaluation of offspring and existing population}
+    \Statex \hspace{\algorithmicindent}\Comment{Parallel evaluation of offspring and existing population}
     \State $\name{evaluation\_batch} \gets \{x\!:\!N_{\mathrm{init}}\mid x\in\name{offspring}\}$
     \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}$\phantom{\name{evaluation\_batch} \gets {}}\cup\;\{x\!:\!N_{\mathrm{reeval}}-N_{\mathrm{init}}\mid x\in\name{reeval\_individuals}\}$
     \State $\Call{ParallelEvaluation}{\name{evaluation\_batch},\name{tasks},F}$
-    \Statex \Comment{Form archive of scores, averaged over seeds}
+    \Statex \hspace{\algorithmicindent}\Comment{Form archive of scores, averaged over seeds}
     \For{$x\in\name{offspring}$}
         \State $\name{archive}[x] \gets \score{N_{\mathrm{init}}}$
     \EndFor
     \For{$x\in\name{reeval\_individuals}$}
         \State $\name{archive}[x] \gets \score{N_{\mathrm{reeval}}}$
     \EndFor
-    \If{$G_{\mathrm{total}}-i < G_{\mathrm{simplify}}$} \Comment{Task-based population}
+    \If{$G_{\mathrm{total}}-i < G_{\mathrm{simplify}}$} \quad\Comment{Task-based population}
         \State For each task, add the individual with highest average score on that task to population.
         \State Fill remaining slots (up to $P$) with individuals selected by highest overall score.
-    \Else \Comment{LOC versus score population}
+    \Else \quad\Comment{LOC versus score population}
         \State Form the Pareto frontier of score versus LOC.
         \State Fill remaining slots (up to $P$) with individuals selected by highest overall score.
     \EndIf
-    \Statex \Comment{Reevaluate surviving offspring for $N_{\mathrm{reeval}}$ seeds total}
+    \Statex \hspace{\algorithmicindent}\Comment{Reevaluate surviving offspring for $N_{\mathrm{reeval}}$ seeds total}
     \State $\name{reeval\_individuals} \gets \{x\in\name{offspring}\mid x\in\name{new\_population}\}$
 \EndFor
 \Statex \Comment{Final reevaluation to ameliorate winner's curse}
