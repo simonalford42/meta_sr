@@ -94,6 +94,27 @@ def apply(t, midpoint, review, key):
     t['high' if positive else 'low'] = midpoint
 
 
+def known_exact_equations():
+    """An exact equation stays exact when it appears on a different frontier."""
+    known={}
+    audit=json.loads((ROOT/'analysis/benchmark_positive_audit_2026-09-08.json').read_text())
+    for r in audit['records']:
+        if r['setup'] in ('srb_base_port','srb_evo_port') and r['audited']=='exact':
+            known[r['dataset'],r['selected_equation']]='audited_final'
+    for path in (OUT/'rounds').glob('*/reviews.json'):
+        items=json.loads((path.parent/'items.json').read_text())
+        for key,r in json.loads(path.read_text()).items():
+            r={**r,**overrides().get(key,{})}
+            if r['classification']=='exact':
+                known[items[key]['dataset'],r['matching_equation']]=key
+    return known
+
+
+def overrides():
+    path=OUT/'review_overrides.json'
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
 def step(dry_run=False):
     initialize()
     state = json.loads((OUT/'state.json').read_text())
@@ -134,7 +155,14 @@ def step(dry_run=False):
         print(f"Round cost ${cost:.4f}; cumulative ${state['cost_usd']:.4f}",flush=True)
         write(OUT/'state.json',state)
         round_dir=OUT/'rounds'/f"{state['round']:02d}"
+    for key,correction in overrides().items():
+        state['cache'][key]={**state['cache'][key],**correction}
+    # Reconstruct the path from cached answers so an audited correction cannot
+    # leave a stale binary-search bound from an earlier round.
+    for t in state['trials']:
+        t.update(low=0,high=t['n_restarts'],history=[])
     items={}
+    known=known_exact_equations()
     for t in state['trials']:
         if not t['final_positive']: continue
         snapshots=json.loads((OUT/'snapshots'/f"{t['id']:03d}.json").read_text())
@@ -142,6 +170,16 @@ def step(dry_run=False):
             midpoint=(t['high']+t['low'])//2
             frontier=snapshots[midpoint-1]['frontier']
             key=digest([t['dataset'],frontier])
+            if key not in state['cache']:
+                matches=[r for r in frontier if (t['dataset'],r['equation']) in known]
+                if matches:
+                    row=matches[0]
+                    state['cache'][key]={
+                        'classification':'exact','matching_equation':row['equation'],
+                        'best_frontier_indices':[row['frontier_index']],
+                        'source':'known_exact_equation','cost_usd':0,
+                        'evidence':known[t['dataset'],row['equation']],
+                        'explanation':'This identical equation was already judged exact for this dataset.'}
             if key in state['cache']:
                 apply(t,midpoint,state['cache'][key],key)
                 continue
