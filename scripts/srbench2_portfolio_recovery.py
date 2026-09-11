@@ -101,10 +101,11 @@ def known_exact_equations():
     for r in audit['records']:
         if r['setup'] in ('srb_base_port','srb_evo_port') and r['audited']=='exact':
             known[r['dataset'],r['selected_equation']]='audited_final'
+    corrections=overrides()
     for path in (OUT/'rounds').glob('*/reviews.json'):
         items=json.loads((path.parent/'items.json').read_text())
         for key,r in json.loads(path.read_text()).items():
-            r={**r,**overrides().get(key,{})}
+            r={**r,**corrections.get(key,{})}
             if r['classification']=='exact':
                 known[items[key]['dataset'],r['matching_equation']]=key
     return known
@@ -242,22 +243,37 @@ def render(state):
             table.append({'method':method,'minutes':minute,'solved_trials':count,'total_trials':100,'mean_tasks_solved':count/10})
     ax.set(xlim=(0,60),ylim=(0,10),xlabel='Cumulative search time (minutes)',ylabel='Mean tasks solved out of 10',title='SRBench2 · one-hour portfolios · 10 seeds')
     ax.legend(frameon=False);ax.grid(alpha=.2)
-    fig.text(.5,.025,'Approximate binary search of cumulative native-loss frontiers; final negatives excluded.\nRestart-end timing; warm-up excluded; exact reference-family recovery only.',ha='center',fontsize=8)
+    fig.text(.5,.025,'Approximate binary search of cumulative native-loss frontiers; final-negative trials treated as unsolved.\nRestart-end timing; warm-up excluded; exact reference-family recovery only.',ha='center',fontsize=8)
     fig.tight_layout(rect=(0,.065,1,1))
     for ext in ['png','pdf']:fig.savefig(figdir/f'solve_rate.{ext}',dpi=180)
+    ax.set(xscale='log',xlim=(.05,60),xlabel='Cumulative search time (minutes, log scale)')
+    ax.set_xticks([.1,.5,1,5,15,60],labels=['0.1','0.5','1','5','15','60'])
+    for ext in ['png','pdf']:fig.savefig(figdir/f'solve_rate_log.{ext}',dpi=180)
+    plt.close(fig)
     with (figdir/'solve_rate.csv').open('w') as f:
         writer=csv.DictWriter(f,fieldnames=list(table[0]));writer.writeheader();writer.writerows(table)
+    with (OUT/'per_trial.csv').open('w') as f:
+        fields=['method','dataset','seed','final_classification','first_solve_seconds','first_solve_budget_seconds','high','low']
+        writer=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore');writer.writeheader();writer.writerows(records)
+    decisions={}
+    for path in (OUT/'rounds').glob('*/reviews.json'):
+        items=json.loads((path.parent/'items.json').read_text())
+        for key,r in json.loads(path.read_text()).items():
+            decisions[key]={'dataset':items[key]['dataset'],'original_review':r,'correction':overrides().get(key)}
+    write(OUT/'review_decisions.json',decisions)
     lines=['# SRBench2 approximate portfolio recovery over time','',
         'Binary search assumes cumulative-frontier recovery persists. Final-negative trials are treated as never solved; temporary recoveries may be missed. This is not exhaustive ever-recovered scoring.','',
         'Native training loss selects each cumulative complexity–loss frontier. Audited final labels initialize the search; midpoint reviews use the same exact-family rubric with explicit fixed-coefficient constraints. No raw-R² gate or calibration-based score is used. Absorption and Bode are excluded.','',
         'Timing uses cumulative recorded search seconds at restart completion, excluding warm-up/scoring. Final overshoot is mapped to 3600 seconds.','',
         f"New LLM usage-based cost at stored batch rates: ${state['cost_usd']:.4f}. Model: {MODEL}, medium reasoning. All 200 final frontiers were reconstructed and matched against the saved aggregate before reusing labels.",'',
+        f"{len(decisions)} new API reviews across {state['round']} rounds. Bounded algebra checks of selected exact equations are recorded in positive_check.json. One Newton false positive was corrected after checking its full 16-candidate frontier; corrected search bounds were rebuilt from cached decisions. See review_overrides.json and validation.json.",'',
         '| Task | Baseline exact / 10 | 709715 exact / 10 |','|---|---:|---:|']
     for ds in sorted({r['dataset'] for r in records}):
         counts=[sum(r['final_positive'] for r in records if r['dataset']==ds and r['method']==m) for m in RUNS]
         lines.append(f"| {ds} | {counts[0]} | {counts[1]} |")
     lines+=['','![Recovery curve](../../figures/srbench2_portfolio_solve_over_time/solve_rate.png)','',
-            'Reproduce/resume: `python scripts/srbench2_portfolio_recovery.py --step`. Requests, responses, frontier snapshots, decisions, and source fingerprints are retained in this directory.']
+            '[Log-scale plot](../../figures/srbench2_portfolio_solve_over_time/solve_rate_log.png). Trial timings are in per_trial.csv and first_recovery.json.','',
+            'Re-render without API calls: `python scripts/srbench2_portfolio_recovery.py --render-only`. Resume unfinished rounds with `--run`. Requests, responses, frontier snapshots, decisions, and source fingerprints are retained in this directory.']
     (OUT/'README.md').write_text('\n'.join(lines)+'\n')
 
 
@@ -266,8 +282,11 @@ if __name__=='__main__':
     parser.add_argument('--step',action='store_true')
     parser.add_argument('--dry-run',action='store_true')
     parser.add_argument('--run',action='store_true',help='Resume all rounds, polling every 30 seconds')
+    parser.add_argument('--render-only',action='store_true')
     args=parser.parse_args()
-    if args.run:
+    if args.render_only:
+        render(json.loads((OUT/'state.json').read_text()))
+    elif args.run:
         while not (OUT/'first_recovery.json').exists():
             try:
                 step()

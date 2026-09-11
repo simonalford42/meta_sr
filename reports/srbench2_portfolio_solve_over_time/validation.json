@@ -1,0 +1,13 @@
+{
+  "trials": 200,
+  "final_positives": {
+    "Baseline": 82,
+    "709715": 74
+  },
+  "new_review_cost_usd": 1.8678579999999998,
+  "selected_equations_checked": 431,
+  "corrected_false_positives": 1,
+  "rounds": 8,
+  "validated": "sources, unique trials, adjacent binary boundaries, equation membership, timing, costs, CSV",
+  "limitation": "Monotonicity is assumed, not verified; temporary recoveries can be missed."
+}

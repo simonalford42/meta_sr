@@ -38,6 +38,13 @@ def main():
     billed=sum(sum(r['cost_usd'] for r in json.loads(p.read_text()).values())
                for p in (OUT/'rounds').glob('*/reviews.json'))
     assert abs(billed-state['cost_usd'])<1e-9
+    checks=json.loads((OUT/'positive_check.json').read_text())
+    corrections=json.loads((OUT/'review_overrides.json').read_text())
+    for check in checks.values():
+        if check['verified'] is not True:
+            assert corrections[check['request']]['classification'] in ('near','miss')
+    for key,correction in corrections.items():
+        assert state['cache'][key]['classification']==correction['classification']
     table=list(csv.DictReader((ROOT/'figures/srbench2_portfolio_solve_over_time/solve_rate.csv').open()))
     assert len(table)==122
     for row in table:
@@ -46,6 +53,7 @@ def main():
         assert count==int(row['solved_trials'])
         assert float(row['mean_tasks_solved'])==count/10
     result={'trials':200,'final_positives':dict(totals),'new_review_cost_usd':billed,
+            'selected_equations_checked':len(checks),'corrected_false_positives':len(corrections),
             'rounds':state['round'],'validated':'sources, unique trials, adjacent binary boundaries, equation membership, timing, costs, CSV',
             'limitation':'Monotonicity is assumed, not verified; temporary recoveries can be missed.'}
     write(OUT/'validation.json',result)
