@@ -1,0 +1,34 @@
+\begin{algorithm}[H]
+\caption{Evolved mutation: duplicate and couple a reusable motif}
+\label{alg:evolved-mutation}
+\io{Input}{Expression tree $t$; available binary operators $\mathcal O_2$; maximum node
+count $L$; number of features $d$.}
+\begin{algorithmic}[1]
+\State $\mathcal O_a\gets\{+,\times\}\cap\mathcal O_2$
+\State $\delta\gets -$ if available, otherwise $+$ if available, otherwise $\varnothing$
+\State $r_{\rm ok}\gets[/\in\mathcal O_2]\land[\delta\ne\varnothing]\land[L-|t|-3\ge1]$
+\State $r\gets r_{\rm ok}\land(\mathcal O_a=\varnothing\ \lor\ \Unif(0,1)<0.35)$
+\State If $\neg r$ and $\mathcal O_a=\varnothing$, \Return $t$
+\State $b\gets L-|t|-(3\text{ if }r\text{ else }1)$ \quad\Comment{Node budget for the donor}
+\State $\mathcal D\gets\{u\text{ subtree of }t:|u|\le b,\ u\text{ contains a variable}\}$
+\State If $\mathcal D=\varnothing$, \Return $t$
+\State $\mathcal D_+\gets\{u\in\mathcal D:u\text{ is not a leaf}\}$
+\State $v\gets\fn{Copy}(\Unif(\mathcal D_+\text{ if nonempty, else }\mathcal D))$
+\State $u\gets$ a uniformly sampled target node of $t$
+\If{$d>1$ and $\Unif(0,1)<1/2$}
+  \State $h\gets\Unif\{1,\ldots,d-1\}$
+  \State In $v$, replace every feature $x_j$ by $x_{1+((j-1+h)\bmod d)}$
+\EndIf
+\If{$r$}
+  \State Replace $u$ by $\fn{Copy}(u)/(1\mathbin{\delta}v)$ \quad\Comment{Rational correction}
+\Else
+  \State $\circ\gets\Unif(\mathcal O_a)$; replace $u$ by $\fn{Copy}(u)\circ v$
+\EndIf
+\State \Return $t$
+\end{algorithmic}
+\algnotes{The donor is copied before editing the target, so the two may overlap in the
+original tree. Compound, variable-bearing donors are preferred; the cyclic shift reuses
+their structure across features. The $0.35$ rational probability applies when rational
+coupling is feasible and an accumulator exists. If rational coupling is the only option,
+it is always chosen. The outer PySR mutation machinery still checks all constraints.}
+\end{algorithm}

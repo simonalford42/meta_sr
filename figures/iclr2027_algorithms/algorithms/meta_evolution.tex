@@ -1,0 +1,56 @@
+\begin{algorithm}[H]
+\caption{Meta-evolution of symbolic-regression operators}
+\label{alg:meta}
+\io{Input}{Baseline bundle $B_0$; training tasks $\mathcal T$; fitness $F$; population target $M$;
+offspring count $O$; $G$ generations, including $G_s$ final simplification generations;
+initial and survivor seed counts $n_0\le n_1$.}
+\begin{algorithmic}[1]
+\State $\mathcal P\gets\{B_0\}\cup\fn{InitialExplore}(B_0,M-1)$
+\State $\mathcal A\gets\fn{Evaluate}(\mathcal P,\mathcal T,F,n_0)$ \quad\Comment{Store per-task, per-seed scores}
+\For{$g=1,\ldots,G$}
+  \State $s\gets[g>G-G_s]$ \quad\Comment{Switch from performance to simplification}
+  \If{$s$ and this is the first simplification generation}
+    \State $\mathcal P\gets\fn{SeedFrontier}(\mathcal A,M)$ \quad\Comment{Recover the archive's score--LOC tradeoffs}
+  \EndIf
+  \State Launch survivor top-ups to $n_1$ seeds; $\mathcal C\gets\varnothing$
+  \For{$j$ in a shuffled schedule of $O$ slots, balanced across operator types}
+    \State $B\gets\fn{Tournament}(\mathcal P,2)$ \quad\Comment{Higher mean fitness wins}
+    \State $m\gets\texttt{simplify}$ if $s$, otherwise a uniform feasible meta-mutation mode
+    \State $U\gets\fn{SourceOperators}(\mathcal P,B,j,m)$
+    \State $q\gets\fn{Prompt}(j,m,U,\fn{OptionalTraceFeedback}(B,\mathcal T))$
+    \State $u\gets\fn{ValidatedLLMCompletion}(q)$ \quad\Comment{Sample ensemble; retry invalid code}
+    \State $\mathcal C\gets\mathcal C\cup\{B[j\leftarrow u]\}$ \quad\Comment{Replace one slot; inherit the rest}
+  \EndFor
+  \State Evaluate $\mathcal C$ on $n_0$ seeds, overlapping survivor top-ups
+  \State Merge new observations into $\mathcal A$; update task means and overall fitness
+  \State $\mathcal P\gets\begin{cases}
+    \fn{ScoreLOCSurvivors}(\mathcal P\cup\mathcal C,M),&s,\\
+    \fn{TaskDiverseSurvivors}(\mathcal P\cup\mathcal C,M),&\text{otherwise}
+  \end{cases}$
+\EndFor
+\State Top up the last survivors to $n_1$ seeds
+\State $\mathcal Q\gets\fn{Finalists}(\mathcal A,\mathcal P)$; evaluate $\mathcal Q$ on fresh shared seeds
+\State \Return fresh scores and $\argmax_{B\in\mathcal Q}\widehat F_{\mathrm{fresh}}(B)$
+\end{algorithmic}
+\ifdefined\compactmeta
+\algnotes{Meta-mutation modes are explore, refine, crossover, and simplify. Task-diverse
+survival retains task champions; score--LOC survival retains nondominated LOC-bucket
+champions. Both backfill by fitness. Tournament selection uses task-and-seed means;
+code crossover samples two source operators uniformly. Final identification uses fresh
+shared seeds on a shortlist of archived bundles.}
+\else
+\algnotes{\textbf{Modes.} Explore, refine, crossover, simplify. Refine/simplify use the selected
+bundle's operator when available; crossover samples two source operators uniformly.
+Optional trace feedback concerns unsolved tasks. Failed or infeasible proposals use
+the implementation's bounded retries and fallbacks.}
+\algnotes{\textbf{Survivors.} Task diversity retains distinct best positive-rate solvers, then
+backfills to at least $M$ by overall fitness. Score--LOC selection takes a best candidate
+per LOC bucket, Pareto-filters these winners, then backfills to $M$ by fitness.
+The archive mean is $\widehat F(B)=|\mathcal T|^{-1}\sum_{t\in\mathcal T}
+n_B^{-1}\sum_{r=1}^{n_B}F(B,t,r)$.}
+\algnotes{\textbf{Scope.} The task-diverse, population-reevaluation variant is shown.
+Finalists may be the terminal population or an archive shortlist; the current identification
+pass uses the top $K$ code-distinct archive bundles by shrinkage-adjusted training score.
+Held-out validation and benchmark evaluation are separate.}
+\fi
+\end{algorithm}

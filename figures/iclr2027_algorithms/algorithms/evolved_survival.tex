@@ -1,0 +1,23 @@
+\begin{algorithm}[H]
+\caption{Evolved survival: replace an old, costly member}
+\label{alg:evolved-survival}
+\io{Input}{Population $P$ with birth indices $b_i$ and costs $c_i$;
+excluded replacement indices $E$. At least one index is eligible.}
+\begin{algorithmic}[1]
+\State $I\gets\{1,\ldots,|P|\}\setminus E$
+\State $b_-\gets\min_{i\in I}b_i$; $b_+\gets\max_{i\in I}b_i$
+\State $c_-\gets\min_{i\in I}c_i$; $c_+\gets\max_{i\in I}c_i$
+\For{$i\in I$}
+  \State $a_i\gets\begin{cases}(b_+-b_i)/(b_+-b_-),&b_+\ne b_-,\\1,&\text{otherwise}\end{cases}$
+  \State $q_i\gets\begin{cases}(c_i-c_-)/(c_+-c_-),&c_+\ne c_-,\\0,&\text{otherwise}\end{cases}$
+  \State $v_i\gets0.75\,a_i+0.25\,q_i$
+\EndFor
+\State \Return the first index in $\argmax_{i\in I}v_i$
+\end{algorithmic}
+\algnotes{Smaller birth indices denote older members. Both age and cost are normalized
+over the eligible population: old age and high cost increase replacement priority.
+This is a weighted tradeoff, rather than a strict age ordering with a cost tie-break.
+The returned index is replaced by PySR; the operator does not insert the child.}
+\algnotes{The equations describe the source's raw min--max arithmetic. It has no special
+handling for nonfinite costs.}
+\end{algorithm}

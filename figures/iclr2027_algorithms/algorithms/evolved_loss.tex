@@ -1,0 +1,33 @@
+\begin{algorithm}[H]
+\caption{Evolved loss: fit functional shape, then reward calibration}
+\label{alg:evolved-loss}
+\io{Input}{Expression $t$ and data $(X,y)$ with $n$ examples.}
+\begin{algorithmic}[1]
+\State $z\gets t(X)$; return $+\infty$ if evaluation fails, lengths disagree, or $n=0$
+\State Accumulate $\sum_i z_i,\sum_i y_i,\sum_i z_i^2,\sum_i y_i^2,\sum_i z_i y_i$
+\State $\bar z\gets n^{-1}\sum_i z_i$; $\bar y\gets n^{-1}\sum_i y_i$
+\State $V_z\gets\max(\sum_i z_i^2-n\bar z^2,0)$;
+       $V_y\gets\max(\sum_i y_i^2-n\bar y^2,0)$
+\State $C_{zy}\gets\sum_i z_i y_i-n\bar z\bar y$
+\State Return $+\infty$ if any centered moment is nonfinite
+\State $\sigma\gets\sqrt{V_y/n}$ if $V_y>0$, otherwise $\max(1,|\bar y|)$
+\State $a\gets C_{zy}/V_z$ if $V_z>0$, otherwise $0$; $b\gets\bar y-a\bar z$
+\State Return $+\infty$ if $a$ or $b$ is nonfinite
+\State $A\gets0$; $R\gets0$ \quad\Comment{Second pass: directly evaluate residuals}
+\For{$i=1,\ldots,n$}
+  \State $A\gets A+((a z_i+b-y_i)/\sigma)^2$
+  \State $R\gets R+((z_i-y_i)/\sigma)^2$
+\EndFor
+\State $q\gets R/n$; $h\gets q/(1+q)$ if $q$ is finite, otherwise $1$
+\State $\ell\gets\sqrt{\clip(A/n,0,1)}+h/256$
+\State \Return $\max(\ell,0)$ if finite, otherwise $+\infty$
+\end{algorithmic}
+\algnotes{For a nonconstant target, the principal term is the square root of the
+normalized MSE after the best affine fit $az+b$. The bounded raw-error term favors
+already calibrated expressions and contributes at most $1/256$. The fitted coefficients
+are used only to score the tree: this operator does not rewrite it as $at+b$.}
+\algnotes{The first pass uses plain power sums, with centered variances floored at zero.
+The second pass evaluates fitted residuals directly (the Julia source uses fused
+multiply-add) to reduce cancellation near a shape match. Constant predictions use a
+mean-only fit; constant targets use the magnitude scale $\max(1,|\bar y|)$.}
+\end{algorithm}

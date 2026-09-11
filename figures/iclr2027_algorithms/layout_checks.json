@@ -1,0 +1,58 @@
+[
+  {
+    "algorithm": "meta_evolution",
+    "page": 1,
+    "width_pt": 406.01,
+    "height_pt": 395.45,
+    "text_characters": 2274
+  },
+  {
+    "algorithm": "pysr",
+    "page": 2,
+    "width_pt": 406.01,
+    "height_pt": 422.36,
+    "text_characters": 2504
+  },
+  {
+    "algorithm": "basicsr",
+    "page": 3,
+    "width_pt": 406.0,
+    "height_pt": 453.35,
+    "text_characters": 2056
+  },
+  {
+    "algorithm": "evolved_mutation",
+    "page": 4,
+    "width_pt": 406.01,
+    "height_pt": 306.22,
+    "text_characters": 1270
+  },
+  {
+    "algorithm": "evolved_survival",
+    "page": 5,
+    "width_pt": 406.0,
+    "height_pt": 218.21,
+    "text_characters": 877
+  },
+  {
+    "algorithm": "evolved_selection",
+    "page": 6,
+    "width_pt": 406.01,
+    "height_pt": 327.68,
+    "text_characters": 1442
+  },
+  {
+    "algorithm": "evolved_loss",
+    "page": 7,
+    "width_pt": 406.0,
+    "height_pt": 293.31,
+    "text_characters": 1424
+  },
+  {
+    "algorithm": "meta_evolution_compact",
+    "page": 1,
+    "width_pt": 406.0,
+    "height_pt": 334.68,
+    "text_characters": 1749
+  }
+]

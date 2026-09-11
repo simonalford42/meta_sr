@@ -1,0 +1,39 @@
+\begin{algorithm}[H]
+\caption{Evolved selection: suppress clones and explore quality-gated niches}
+\label{alg:evolved-selection}
+\io{Input}{Population $P$; tournament size $k$; geometric parameter $p$; maximum
+complexity $L$; global normalized complexity frequencies $f_c$; parsimony scale $\lambda$.}
+\begin{algorithmic}[1]
+\State $S\gets$ uniformly sample $\min(k,|P|)$ members without replacement
+\For{$i\in S$}
+  \State $c_i\gets\fn{Complexity}(i)$; $\ell_i\gets\fn{Loss}(i)$
+  \State $s_i\gets\fn{Cost}(i)\exp(\lambda f_{c_i})$ if frequency weighting is enabled,
+  \Statex \hspace{\algorithmicindent}otherwise $s_i\gets\fn{Cost}(i)$; use $f_c=0$ outside $1\le c\le L$
+\EndFor
+\State $\pi\gets\fn{Argsort}(s)$; $\widetilde s\gets s$
+\For{$a=2,\ldots,|S|$}
+  \State $i\gets\pi_a$
+  \If{some $j\in\{\pi_1,\ldots,\pi_{a-1}\}$ satisfies
+    $c_i=c_j$ and $|\ell_i-\ell_j|\le10^{-6}\max(|\ell_i|,|\ell_j|,\epsilon)$}
+    \State $\widetilde s_i\gets\begin{cases}
+      1.35s_i,&s_i>0,\\s_i/1.35,&s_i<0,\\0,&s_i=0
+    \end{cases}$ \quad\Comment{One sign-safe penalty per clone}
+  \EndIf
+\EndFor
+\State $\rho\gets\fn{Argsort}(\widetilde s)$
+\If{$\Unif(0,1)<0.10$}
+  \State $H\gets$ first member of each valid complexity in $\rho$ order
+  \If{$H\ne\varnothing$}
+    \State $H_q\gets$ first $\lceil |H|/2\rceil$ members of $H$ \quad\Comment{Keep the better half}
+    \State \Return $\argmin_{i\in H_q}(f_{c_i},\widetilde s_i)$ \quad\Comment{Rarest niche; quality breaks ties}
+  \EndIf
+\EndIf
+\State Draw rank $r\in\{1,\ldots,|S|\}$ with $\Pr(r)\propto p(1-p)^{r-1}$
+\State \Return $S_{\rho_r}$ \quad\Comment{For $p=1$, choose the best adjusted score}
+\end{algorithmic}
+\algnotes{Clone detection uses complexity and nearly equal loss as a phenotype proxy;
+it does not compare expression strings. All earlier members in the \emph{original} ranking
+can establish a clone match, including earlier clones. Niche rarity uses global search
+frequencies, even when frequency weighting of tournament costs is disabled.
+If no valid niche exists, selection falls back to the geometric tournament.}
+\end{algorithm}

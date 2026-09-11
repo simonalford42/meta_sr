@@ -1,0 +1,57 @@
+\begin{algorithm}[H]
+\caption{BasicSR / FullSR seed: a search engine with eight policy slots}
+\label{alg:basicsr}
+\io{Input}{Data $D$; grammar; search budget; $J$ populations of size $N$;
+$K$ inner cycles per population pass.}
+\begin{algorithmic}[1]
+\State Initialize policy state $S$ and random populations $\mathcal P=(P_1,\ldots,P_J)$
+\State Score initial trees with $\slot{Loss}$; call $\slot{UpdateState}(\mathcal P,S)$
+\While{search budget and iteration allowance remain}
+  \For{each population $P_j$}
+    \For{$c=1,\ldots,K$}
+      \State $\slot{UpdateState}(\mathcal P,S)$
+      \For{$e=1,\ldots,\lceil |P_j|/15\rceil$}
+        \If{$\Unif(0,1)\le 0.0259$ and $|P_j|\ge2$}
+          \State $a,b\gets\slot{Select}(P_j,S),\slot{Select}(P_j,S)$
+          \State If $a=b$, use the next population member as $b$
+          \State $T\gets\slot{Crossover}(a,b,S)$ \quad\Comment{Up to two trees, with their parents}
+        \Else
+          \State $a\gets\slot{Select}(P_j,S)$; $T\gets\slot{Mutate}(a,S)$
+        \EndIf
+        \State $C\gets\varnothing$
+        \For{each proposed tree $t$ and corresponding parent $a$}
+          \State $u\gets\fn{MakeIndividual}(t,\slot{Loss}(t,D,S))$
+          \State If $\slot{Accept}(a,u,S)$, add $u$ to $C$
+        \EndFor
+        \State If $C\ne\varnothing$, set $P_j\gets\slot{Survive}(P_j,C,S)$
+      \EndFor
+    \EndFor
+    \State Run configured simplification and constant optimization on $P_j$
+    \State Mark the population pass complete; $\slot{UpdateState}(\mathcal P,S)$
+    \State $\mathcal P\gets\slot{UpdatePopulation}(\mathcal P,S)$
+  \EndFor
+\EndWhile
+\State \Return the policy archive, ordered by complexity (or the best member if empty)
+\end{algorithmic}
+\smallskip
+{\small\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+\textbf{Slot} & \textbf{Baseline policy}\\
+\midrule
+$\slot{Loss}$ & MSE; cost equals loss. Invalid or extreme predictions give $+\infty$.\\
+$\slot{Select}$ & Best of $\min(15,|P|)$ distinct uniformly sampled members.\\
+$\slot{Mutate}$ & Replace a uniform node by a terminal (probability $1/2$) or a shallow random operator.\\
+$\slot{Crossover}$ & Swap uniformly chosen subtrees; up to 10 constraint-validity attempts.\\
+$\slot{Accept}$ & Accept every constructed child.\\
+$\slot{Survive}$ & Keep the best $N$ from parents and children, ranked by cost.\\
+$\slot{UpdateState}$ & Keep 10 distinct finite-loss expressions; refresh after completed passes.\\
+$\slot{UpdatePopulation}$ & Identity: no migration.\\
+\bottomrule
+\end{tabularx}}
+\algnotes{\textbf{Implementation distinction.} BasicSR enables simplification and constant
+optimization (probability $0.14$). The current FullSR seed in \texttt{SRConfig.jl} lacks
+those state options, so the same engine's postprocessing hook is inactive.
+The eight baseline policy functions otherwise implement the same search choices.
+Mutation also allows up to 10 validity attempts; failed proposals produce no child.}
+\end{algorithm}
