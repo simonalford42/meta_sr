@@ -1,0 +1,74 @@
+\documentclass[10pt]{article}
+\usepackage[letterpaper,margin=0.6in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\pagestyle{empty}
+\newcommand{\name}[1]{\textnormal{\texttt{#1}}}
+\newcommand{\score}[1]{\frac{1}{#1}\sum_{\text{seeds},\,\text{tasks}} F(x,\text{task},\text{seed})}
+\algrenewcommand\algorithmiccomment[1]{\hfill\textit{#1}}
+% Typeset transcription of pseudocode.txt; algorithmic choices are preserved.
+\begin{document}
+\begin{algorithm}[H]
+\caption{Meta-evolve}
+\small
+\textbf{Inputs:} baseline; $G_{\mathrm{total}}$ total generations;
+$G_{\mathrm{simplify}}$ simplification generations;\\
+$O$ offspring; $P$ population size; $N_{\mathrm{init}}$ initial evaluation seeds;\\
+$N_{\mathrm{reeval}}$ reevaluation seeds; $F$ fitness metric.
+\medskip
+\begin{algorithmic}[1]
+\State $\name{population} \gets [\name{baseline}]$
+\For{$i = 0,\ldots,G_{\mathrm{total}}-1$}
+    \Statex \Comment{Generate offspring}
+    \For{$o = 0,\ldots,O-1$}
+        \State $\name{sr\_operator} \gets \Call{RandomChoice}{[\name{mutation},\name{survival},\name{selection},\name{loss}]}$
+        \If{$i = 0$}
+            \State $\name{mode} \gets \name{explore}$
+        \ElsIf{$G_{\mathrm{total}}-i < G_{\mathrm{simplify}}$}
+            \State $\name{mode} \gets \name{simplify}$
+        \Else
+            \State $\name{mode} \gets \Call{RandomChoice}{[\name{explore},\name{refine},\name{crossover},\name{simplify}]}$
+        \EndIf
+        \State $\name{parent} \gets \Call{TournamentSelection}{\name{population},n=2}$
+        \If{$\name{mode} = \name{crossover}$}
+            \State $\name{parent2} \gets \Call{TournamentSelection}{\name{population},n=2}$
+        \EndIf
+        \State $\name{feedback} \gets \Call{GenerateTraceFeedback}{\name{tasks},\name{parent}}$
+        \State $\name{prompt} \gets \Call{GeneratePrompt}{\name{sr\_operator},\name{mode},\name{parent},\name{feedback},\name{parent2}}$
+        \Repeat
+            \State $\name{offspring} \gets \name{LLM\_ensemble.sample().sample\_completion(prompt)}$
+        \Until{$\Call{PassesValidation}{\name{offspring}}$}
+    \EndFor
+    \Statex \Comment{Parallel evaluation of offspring and existing population}
+    \State $\name{evaluation\_batch} \gets \{x\!:\!N_{\mathrm{init}}\mid x\in\name{offspring}\}$
+    \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}$\phantom{\name{evaluation\_batch} \gets {}}\cup\;\{x\!:\!N_{\mathrm{reeval}}-N_{\mathrm{init}}\mid x\in\name{reeval\_individuals}\}$
+    \State $\Call{ParallelEvaluation}{\name{evaluation\_batch},\name{tasks},F}$
+    \Statex \Comment{Form archive of scores, averaged over seeds}
+    \For{$x\in\name{offspring}$}
+        \State $\name{archive}[x] \gets \score{N_{\mathrm{init}}}$
+    \EndFor
+    \For{$x\in\name{reeval\_individuals}$}
+        \State $\name{archive}[x] \gets \score{N_{\mathrm{reeval}}}$
+    \EndFor
+    \If{$G_{\mathrm{total}}-i < G_{\mathrm{simplify}}$} \Comment{Task-based population}
+        \State For each task, add the individual with highest average score on that task to population.
+        \State Fill remaining slots (up to $P$) with individuals selected by highest overall score.
+    \Else \Comment{LOC versus score population}
+        \State Form the Pareto frontier of score versus LOC.
+        \State Fill remaining slots (up to $P$) with individuals selected by highest overall score.
+    \EndIf
+    \Statex \Comment{Reevaluate surviving offspring for $N_{\mathrm{reeval}}$ seeds total}
+    \State $\name{reeval\_individuals} \gets \{x\in\name{offspring}\mid x\in\name{new\_population}\}$
+\EndFor
+\Statex \Comment{Final reevaluation to ameliorate winner's curse}
+\For{$x\in\name{population}$}
+    \State $\name{final\_eval}[x] \gets \score{N_{\mathrm{reeval}}}$
+\EndFor
+\State $\name{best\_individual} \gets \operatorname*{arg\,max}_{x\in\name{population}}\name{final\_eval}[x]$
+\State \Return $\name{final\_eval},\name{best\_individual}$
+\end{algorithmic}
+\end{algorithm}
+\end{document}
