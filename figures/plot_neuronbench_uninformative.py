@@ -215,7 +215,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
 
     ax.text(
         0.0,
-        1.135,
+        1.025,
         "training task",
         transform=ax.get_xaxis_transform(),
         ha="center",
@@ -224,7 +224,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
     )
     ax.text(
         3.0,
-        1.135,
+        1.025,
         "held-out tasks",
         transform=ax.get_xaxis_transform(),
         ha="center",
