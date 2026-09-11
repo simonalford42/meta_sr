@@ -43,7 +43,7 @@ EVOLVED_RESULTS = ROOT / "runs/708907/neuron_full_eval/neuron_results.json"
 EVOLUTION_RUN = ROOT / "runs/708907/run_data.json"
 
 # Overall size slider: use 0.8 for a smaller figure or 1.2 for a larger figure.
-FIGURE_SCALE = 1.0
+FIGURE_SCALE = 0.8
 
 WORLDS = (
     "z_rebound",
@@ -215,7 +215,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
 
     ax.text(
         0.0,
-        1.025,
+        1.135,
         "training task",
         transform=ax.get_xaxis_transform(),
         ha="center",
@@ -224,7 +224,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
     )
     ax.text(
         3.0,
-        1.025,
+        1.135,
         "held-out tasks",
         transform=ax.get_xaxis_transform(),
         ha="center",
@@ -249,6 +249,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
     ax.legend(
         handles=legend_handles,
         loc="lower right",
+        bbox_to_anchor=(1.0, 1.01),
         ncol=4,
         frameon=False,
         columnspacing=1.25,
@@ -256,7 +257,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
         borderaxespad=0.6,
     )
 
-    fig.tight_layout(rect=(0.02, 0.02, 0.995, 0.94))
+    fig.tight_layout(rect=(0.02, 0.02, 0.995, 0.88))
 
     output_stem.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_stem.with_suffix(".pdf"), bbox_inches="tight")
