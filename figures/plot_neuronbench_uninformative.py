@@ -42,6 +42,9 @@ BASELINE_RESULTS = ROOT / "runs/190178/neuron_results.json"
 EVOLVED_RESULTS = ROOT / "runs/708907/neuron_full_eval/neuron_results.json"
 EVOLUTION_RUN = ROOT / "runs/708907/run_data.json"
 
+# Overall size slider: use 0.8 for a smaller figure or 1.2 for a larger figure.
+FIGURE_SCALE = 1.0
+
 WORLDS = (
     "z_rebound",
     "h_sag",
@@ -153,7 +156,9 @@ def count_outcomes(values: dict[str, list[float]]) -> dict[str, int]:
     return counts
 
 
-def make_figure(output_stem: Path) -> None:
+def make_figure(output_stem: Path, scale: float) -> None:
+    if scale <= 0:
+        raise ValueError("Figure scale must be greater than zero")
     baseline = baseline_values()
     evolved = evolved_values()
 
@@ -166,7 +171,7 @@ def make_figure(output_stem: Path) -> None:
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
     })
-    fig, ax = plt.subplots(figsize=(8.2, 4.5))
+    fig, ax = plt.subplots(figsize=(8.2 * scale, 4.5 * scale))
 
     # Mark the boundary between the one evolution task and five transfer tasks.
     ax.axvline(0.50, color="#8A8A8A", linewidth=0.8, zorder=1)
@@ -196,7 +201,15 @@ def make_figure(output_stem: Path) -> None:
     ax.set_ylabel("Held-out NRMSE")
     ax.set_xticks(range(len(WORLDS)), [WORLD_LABELS[world] for world in WORLDS])
     ax.tick_params(axis="x", length=0, pad=7)
-    ax.grid(axis="y", which="major", color="#DDDDDD", linewidth=0.55)
+    ax.set_axisbelow(True)
+    ax.grid(
+        axis="y",
+        which="major",
+        color="#B8B8B8",
+        linestyle="-",
+        linewidth=0.55,
+        alpha=0.7,
+    )
     ax.grid(axis="x", visible=False)
     ax.spines[["top", "right"]].set_visible(False)
 
@@ -235,7 +248,7 @@ def make_figure(output_stem: Path) -> None:
     ]
     ax.legend(
         handles=legend_handles,
-        loc="lower left",
+        loc="lower right",
         ncol=4,
         frameon=False,
         columnspacing=1.25,
@@ -262,8 +275,14 @@ def main() -> None:
         default=FIGURE_DIR / "neuronbench_uninformative_all_fits",
         help="Output path without a file extension",
     )
+    parser.add_argument(
+        "--scale",
+        type=float,
+        default=FIGURE_SCALE,
+        help="Overall figure-size multiplier (also editable as FIGURE_SCALE)",
+    )
     args = parser.parse_args()
-    make_figure(args.output_stem)
+    make_figure(args.output_stem, args.scale)
 
 
 if __name__ == "__main__":
