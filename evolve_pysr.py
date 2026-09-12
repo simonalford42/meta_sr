@@ -1942,7 +1942,16 @@ def run_bundle_evolution(
             # retries for this slot so a failure doesn't silently shift the
             # type mix.
             current_type_name = target_types[slot_idx]
-            parent_bundle = select_parent(population, rng)
+            parent_bundle = select_parent(
+                population, rng,
+                population_type=generation_population_type,
+                mutation_mode=(
+                    "simplify"
+                    if generation_mutation_mode == "random"
+                    and allowed_mutation_modes == ["simplify"]
+                    else generation_mutation_mode
+                ),
+            )
             parent_op = parent_bundle.get_operator(current_type_name)
             task_info: Optional[Dict[str, str]] = None
 

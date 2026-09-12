@@ -371,8 +371,13 @@ def select_qualifying_bundles(
     qualifiers.sort(key=lambda be: int(getattr(be[0], "seeds_evaluated", 0) or 0))
     return qualifiers[: max_qualifiers_factor * population_size], n_eligible
 
-def select_parent(population: list, rng: random.Random):
-    """Select a parent using tournament selection (size 2)."""
+def select_parent(
+    population: list, rng: random.Random, *,
+    population_type: str = "topk", mutation_mode: str = "random",
+):
+    """Use uniform parents for complexity/simplify, otherwise a size-2 tournament."""
+    if population_type == "complexity" and mutation_mode == "simplify":
+        return rng.choice(population)
     candidates = rng.sample(population, min(2, len(population)))
     return max(candidates, key=lambda m: m.score if m.score is not None else -1)
 
@@ -993,9 +998,9 @@ def select_survivors_complexity(
     Buckets candidates by total bundle LOC into `population_size` equal-width
     buckets spanning [min_loc, max_loc]. Picks the top-fitness candidate in
     each non-empty bucket, then drops anything Pareto-dominated by a
-    smaller-LOC bucket-best with at-least-as-good fitness. Backfills with
-    top-scored remaining candidates if the Pareto front is smaller than
-    population_size (so the search doesn't collapse).
+    smaller-LOC bucket-best with at-least-as-good fitness. Backfills from
+    successive exact Pareto fronts of the remaining candidates, spreading
+    selections across LOC if the final front exceeds the available slots.
     """
     combined = population + offspring
     scored = [m for m in combined if m.score is not None]
@@ -1039,16 +1044,12 @@ def select_survivors_complexity(
             pareto_ids.add(id(b))
             best_fit_so_far = b.score
 
-    # Backfill with top-scored remaining candidates if the front is short of
-    # population_size, so the population doesn't collapse on flat fitness.
+    # Peel successive Pareto fronts instead of filling by fitness alone.
     if len(pareto) < population_size:
         remaining = [c for c in scored if id(c) not in pareto_ids]
-        remaining.sort(key=lambda m: m.score, reverse=True)
-        for c in remaining:
-            pareto.append(c)
-            pareto_ids.add(id(c))
-            if len(pareto) >= population_size:
-                break
+        pareto.extend(initialize_complexity_population(
+            remaining, population_size - len(pareto)
+        ))
 
     pareto.sort(key=lambda m: m.score, reverse=True)
 
@@ -1069,11 +1070,10 @@ def initialize_complexity_population(
 ) -> list:
     """Seed a complexity phase from the archive's exact score--LOC frontier.
 
-    Unlike :func:`select_survivors_complexity`, this first computes the exact
-    nondominated frontier without LOC bucketing.  If the frontier is smaller
-    than the requested population, complexity-aware survivor selection over
-    the remaining archive entries supplies the backfill.  If it is larger,
-    retain evenly spaced points in LOC order, including both endpoints.
+    Compute exact nondominated fronts without LOC bucketing, removing each
+    front before selecting the next until the population is full. If the last
+    front exceeds the available slots, retain evenly spaced points in LOC
+    order, including both endpoints (or the best score for a single slot).
 
     Callers should code-deduplicate ``archive`` before passing it here.
     """
@@ -1084,35 +1084,33 @@ def initialize_complexity_population(
     if not scored:
         return []
 
-    ordered = sorted(scored, key=lambda b: (_bundle_loc(b), -b.score))
-    frontier = []
-    frontier_ids = set()
-    best_score = float("-inf")
-    for bundle in ordered:
-        if bundle.score > best_score:
-            frontier.append(bundle)
-            frontier_ids.add(id(bundle))
-            best_score = bundle.score
+    remaining = scored
+    selected = []
+    while remaining and len(selected) < population_size:
+        ordered = sorted(remaining, key=lambda b: (_bundle_loc(b), -b.score))
+        frontier = []
+        best_score = float("-inf")
+        for bundle in ordered:
+            if bundle.score > best_score:
+                frontier.append(bundle)
+                best_score = bundle.score
 
-    if len(frontier) > population_size:
-        if population_size == 1:
-            selected = [max(frontier, key=lambda b: b.score)]
-        else:
-            # Cover the full tradeoff range rather than keeping only one end.
-            last = len(frontier) - 1
-            indices = [round(i * last / (population_size - 1))
-                       for i in range(population_size)]
-            selected = [frontier[i] for i in indices]
-    else:
-        selected = list(frontier)
-        remaining = [b for b in scored if id(b) not in frontier_ids]
-        n_backfill = population_size - len(selected)
-        if n_backfill > 0 and remaining:
-            selected.extend(select_survivors_complexity(
-                remaining, [], min(n_backfill, len(remaining))
-            ))
+        if not frontier:
+            break
+        slots = population_size - len(selected)
+        if len(frontier) > slots:
+            if slots == 1:
+                selected.append(max(frontier, key=lambda b: b.score))
+            else:
+                last = len(frontier) - 1
+                indices = [round(i * last / (slots - 1)) for i in range(slots)]
+                selected.extend(frontier[i] for i in indices)
+            break
 
-    # Parent selection expects the best-scoring member first.
+        selected.extend(frontier)
+        frontier_ids = {id(b) for b in frontier}
+        remaining = [b for b in remaining if id(b) not in frontier_ids]
+
     selected.sort(key=lambda b: (-b.score, _bundle_loc(b)))
     return selected
 
