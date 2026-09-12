@@ -73,7 +73,8 @@ def test_tables_group_order_subsets_budgets_and_missing(tmp_path):
     assert "n=1" in train and train.count("100.00%") == 2
     assert "n=1" in rest and rest.count("0.00%") == 2
     timed = next(line for line in table2.splitlines() if "90 seconds" in line)
-    assert "0.00%" in timed and "TBD" in timed
+    assert "0.00%" in timed and "49.37%* (79/80)" in timed
+    assert "missing and errored trials excluded" in output
     assert next(line for line in table2.splitlines() if "15 minutes" in line).count("TBD") == 2
 
 

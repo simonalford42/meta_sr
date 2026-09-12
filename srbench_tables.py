@@ -67,7 +67,7 @@ def _grid(groups, rows, *, subheaders=True):
     return "\n".join(lines)
 
 
-def _complete_gt(path, canonical):
+def _complete_gt(path, canonical, *, allow_incomplete=False):
     """Return a full ten-seed/four-noise grid, or None for unfinished/missing runs."""
     if path is None:
         return None
@@ -85,12 +85,14 @@ def _complete_gt(path, canonical):
             or any("n_searches" in entry for entry in keyed.values())):
         return None
     expected = srio.expected_keys(manifest, keyed)
-    if len(expected) != len(canonical)*40 or not all(
-        keyed.get(key, {}).get("present") and keyed[key].get("error") is None
-        for key in expected
-    ):
+    if len(expected) != len(canonical)*40:
         return None
-    return [keyed[key] for key in expected]
+    completed = [keyed[key] for key in expected if
+        keyed.get(key, {}).get("present") and keyed[key].get("error") is None
+    ]
+    if not allow_incomplete and len(completed) != len(expected):
+        return None
+    return completed
 
 
 def _rate(rows, datasets=None, noise=None):
@@ -137,7 +139,16 @@ def build_tables(runs_root="runs", project_root=None):
         ("15 minutes", runs_root / "srbench_gt_baseline_15m_single", evolved_dir / "srbench_gt_15m_single"),
         ("15m-portfolio", runs_root / "srbench_gt_baseline_15m_portfolio_1e6", evolved_dir / "srbench_gt_15m_portfolio_1e6"),
     ]
-    rows = [[label, _format(_rate(complete(base))), _format(_rate(complete(evo)))]
+    def budget_score(path):
+        result = complete(path)
+        if result is not None:
+            return _format(_rate(result))
+        result = _complete_gt(path, canonical, allow_incomplete=True)
+        if not result:
+            return "TBD"
+        return f"{_format(_rate(result))}* ({len(result)}/{len(canonical)*40})"
+
+    rows = [[label, budget_score(base), budget_score(evo)]
             for label, base, evo in budgets]
     base_rows, evo_rows = complete(baseline.get("gt_path")), complete(evolved.get("gt_path"))
     rows.append(None)
@@ -154,4 +165,5 @@ def build_tables(runs_root="runs", project_root=None):
             + "\nMDLFormer GT: supplied reference score (40.5%), without task-count rescaling; BB unavailable."
             + "\n\nTable 2: PySR vs PySR++ GT (evolved=" + evolved.get("training_id", "TBD") + ")\n"
             + table2 + "\nBreakdown below the divider uses 1M evaluations; 10 seeds."
+            + "\n* = provisional solve rate over successful trials only (completed/expected); missing and errored trials excluded."
             + "\nTBD = unavailable or incomplete local evaluation.")
