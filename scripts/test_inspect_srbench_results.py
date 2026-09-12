@@ -374,9 +374,11 @@ class OfficialTableTests(unittest.TestCase):
             self.assertEqual(column["gt_10m_completed"], 1)
             self.assertEqual(column["bb_r2"], 0.8)
             self.assertIn("GT completed", table)
-            self.assertIn("GT completed (10M)", table)
+            self.assertIn("GT completed (90s)", table)
+            self.assertIn("GT completed (15m)", table)
+            self.assertNotIn("10M", table)
             self.assertIn("3/5200", table)
-            self.assertIn("1/5200", table)
+            self.assertNotIn("1/5200", table)
             self.assertIn("1/1220", table)
 
     def test_official_table_omits_eval_slurm_and_split_rows(self):
@@ -432,11 +434,12 @@ class OfficialTableTests(unittest.TestCase):
             metric_rows,
         )
         self.assertLess(labels.index("test R2"), labels.index("SRBench GT solve (all)"))
-        self.assertLess(labels.index("SRBench GT solve (all, 10M)"),
+        self.assertLess(labels.index("SRBench GT solve (all, 15m)"),
                         labels.index("SRBench BB R2"))
 
     def test_official_table_marks_only_fully_completed_evaluations(self):
         column = {
+            "key": "pysr_baseline", "gt_15m_completed": GT_TOTAL - 1,
             "label": "method", "training_id": "1",
             "train_gt": None, "val_gt": None, "test_gt": None,
             "train_r2": None, "val_r2": None, "test_r2": None,

@@ -538,6 +538,18 @@ def build_official_columns(
             )
         else:
             values = dict(blank)
+        if key in {"pysr_baseline", "pysrpp_gt"}:
+            for budget in ("90s", "15m"):
+                suffix = "90s" if budget == "90s" else "15m_single"
+                path = (runs_root / f"srbench_gt_baseline_{suffix}"
+                        if key == "pysr_baseline" else
+                        runs_root / values["training_id"] / f"srbench_gt_{suffix}")
+                completed, rate, _ = (
+                    _ground_truth_stats(path, srio.load_manifest(path))
+                    if (path / "manifest.json").exists() else (0, None, None)
+                )
+                values[f"gt_{budget}_rate"] = rate
+                values[f"gt_{budget}_completed"] = completed
         columns.append({"key": key, "label": label, **values})
     return columns
 
@@ -574,12 +586,20 @@ def format_official_table(columns: list[dict]) -> str:
          lambda column: _fmt_rate(column["gt_any_seed_rate"])),
         ("SRBench GT solve (10 restarts)",
          lambda column: _fmt_rate(column.get("gt_10_restarts_rate"))),
-        ("SRBench GT solve (all, 10M)", lambda column: _fmt_rate(column["gt_10m_rate"])),
+        ("SRBench GT solve (all, 90s)", lambda column: (
+            _fmt_rate(column.get("gt_90s_rate"))
+            if column.get("key") in {"pysr_baseline", "pysrpp_gt"} else "--")),
+        ("SRBench GT solve (all, 15m)", lambda column: (
+            _fmt_rate(column.get("gt_15m_rate"))
+            if column.get("key") in {"pysr_baseline", "pysrpp_gt"} else "--")),
         ("SRBench BB R2", lambda column: _fmt_score(column["bb_r2"])),
         ("GT completed", lambda column: _fmt_completed(column["gt_completed"], GT_TOTAL)),
-        ("GT completed (10M)", lambda column: _fmt_completed(
-            column["gt_10m_completed"], GT_TOTAL
-        )),
+        ("GT completed (90s)", lambda column: (
+            _fmt_completed(column.get("gt_90s_completed", 0), GT_TOTAL)
+            if column.get("key") in {"pysr_baseline", "pysrpp_gt"} else "--")),
+        ("GT completed (15m)", lambda column: (
+            _fmt_completed(column.get("gt_15m_completed", 0), GT_TOTAL)
+            if column.get("key") in {"pysr_baseline", "pysrpp_gt"} else "--")),
         ("GT completed (10 restarts)", lambda column: _fmt_completed(
             column.get("gt_10_restarts_completed", 0), GT_MERGED_TOTAL
         )),

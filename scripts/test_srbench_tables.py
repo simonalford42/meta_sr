@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import srbench_tables as tables
-from srbench_official_results import build_official_columns
+from srbench_official_results import build_official_columns, format_official_table
 from inspect_srbench_results import main
 
 
@@ -99,3 +99,34 @@ def test_no_merged_portfolio_used_as_individual_searches(tmp_path):
     next(iter(payload["results"].values()))["n_searches"] = 10
     path.write_text(json.dumps(payload))
     assert tables._complete_gt(tmp_path / "run", {"train", "test"}) is None
+
+
+def test_official_runtime_rows_use_matching_single_search_runs(tmp_path):
+    write_splits(tmp_path)
+    runs = tmp_path / "runs"
+    source = runs / "709715"
+    source.mkdir(parents=True)
+    (source / "run_data.json").write_text(json.dumps({
+        "config": {"fitness_metric": "gt"}}))
+    write_run(runs / "base")
+    write_run(runs / "evolved", mode="evolve",
+              method_meta={"source": str(source)})
+    for suffix in ("90s", "15m_single"):
+        write_run(runs / f"srbench_gt_baseline_{suffix}", max_evals=10**9)
+        write_run(source / f"srbench_gt_{suffix}", max_evals=10**9,
+                  incomplete=True)
+    write_run(source / "srbench_gt_15m_portfolio_1e6", solved=False)
+    columns = build_official_columns(runs, tmp_path)
+    base = next(c for c in columns if c["key"] == "pysr_baseline")
+    evolved = next(c for c in columns if c["key"] == "pysrpp_gt")
+    for budget in ("90s", "15m"):
+        assert base[f"gt_{budget}_completed"] == 80
+        assert base[f"gt_{budget}_rate"] == .5
+        assert evolved[f"gt_{budget}_completed"] == 79
+        assert evolved[f"gt_{budget}_rate"] == 39 / 79
+    output = format_official_table(columns)
+    assert "10M" not in output
+    for line in output.splitlines():
+        if "90s)" in line or "15m)" in line:
+            assert line.count("--") == len(columns) - 2
+    assert "79/5200" in output
