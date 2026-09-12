@@ -289,13 +289,31 @@ def select_run_scores(
 
 def run_scores_for_metric(detail: Dict[str, Any], fitness_metric: str) -> List[float]:
     """Per-run fitness scores for one dataset's `result_details` entry."""
-    return select_run_scores(
+    scores = select_run_scores(
         detail.get("run_r2_scores", []) or [],
         detail.get("run_gt_scores", []) or [],
         detail.get("run_r2c_scores"),
         fitness_metric,
         run_acc=detail.get("run_acc_scores"),
     )
+    # Hybrid rewards must be applied BEFORE averaging over noise levels.
+    for i, levels in enumerate(detail.get("run_noise_results", []) or []):
+        if levels and i < len(scores):
+            values = []
+            for level in levels:
+                if level.get("error") is not None:
+                    values.append(metric_missing_fill(fitness_metric))
+                    continue
+                r2 = level.get("r2_score")
+                r2 = -1.0 if r2 is None or np.isnan(r2) else r2
+                r2c = level.get("r2_frontier_score")
+                r2c = r2 if r2c is None or np.isnan(r2c) else r2c
+                values.extend(select_run_scores(
+                    [r2], [level.get("gt_match_score") or 0.0], [r2c],
+                    fitness_metric, run_acc=[level.get("acc_score") or 0.0],
+                ))
+            scores[i] = float(np.mean(values))
+    return scores
 
 
 def _compute_fixed_grid_frontier_avg_r2(
@@ -735,6 +753,23 @@ def _combine_noise_level_results(
         execution_trace=(rep.get("execution_trace") if rep else None),
         noise_results=level_dicts,
     )
+
+
+def _group_noise_task_results(tasks, results):
+    """Average noise tasks within each seed before exposing seed-indexed details."""
+    groups = {}
+    for task, result in zip(tasks, results):
+        key = (task.config_id, task.dataset_name, task.run_index)
+        groups.setdefault(key, []).append((task, result))
+    combined = []
+    for entries in groups.values():
+        if len(entries) == 1:
+            combined.append(entries[0][1])
+            continue
+        levels = [dict(result.to_json_dict(), target_noise=task.target_noise)
+                  for task, result in entries]
+        combined.append(_combine_noise_level_results(entries[0][0], levels))
+    return combined
 
 
 def _effective_repo_root(repo_root: Optional[Path] = None) -> Path:
@@ -2181,10 +2216,21 @@ def _aggregate_pysr_results(
                     run_acc_scores = []
                 if not any_f1:
                     run_f1_scores = []
-                run_scores = select_run_scores(
-                    run_r2_scores, run_gt_scores, run_r2c_scores, fitness_metric,
-                    run_acc=run_acc_scores,
-                )
+                # Retain only scoring fields for future reeval merges.
+                run_noise_results = [
+                    [{k: level.get(k) for k in (
+                        "target_noise", "r2_score", "r2_frontier_score",
+                        "gt_match_score", "acc_score", "error",
+                    )} for level in r.noise_results] if r.noise_results else None
+                    for r in all_run_results
+                ]
+                run_scores = run_scores_for_metric({
+                    "run_r2_scores": run_r2_scores,
+                    "run_gt_scores": run_gt_scores,
+                    "run_r2c_scores": run_r2c_scores,
+                    "run_acc_scores": run_acc_scores,
+                    "run_noise_results": run_noise_results,
+                }, fitness_metric)
                 avg_score = float(np.mean(run_scores))
 
                 all_equations = [r.best_equation for r in good_runs if r.best_equation]
@@ -2211,6 +2257,7 @@ def _aggregate_pysr_results(
                     "run_gt_scores": run_gt_scores,
                     "run_acc_scores": run_acc_scores,
                     "run_f1_scores": run_f1_scores,
+                    "run_noise_results": run_noise_results,
                     "best_equations": all_equations,
                     # Per-seed best/matched equations aligned with run_r2_scores
                     # (None for errored seeds). best_equations above is the
@@ -2537,17 +2584,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         # default here; one-off callers can still override it in
         # submit_configs(black_box=...).
         self.black_box = black_box
-        # All-noise mode: when set, every task is evaluated at each of these noise
-        # levels sequentially in one worker and scored as the mean (see
-        # _evaluate_pysr_task). Each task then runs len(levels) PySR fits back to
-        # back, so the SLURM per-task wall and the Python job_timeout scale up to
-        # match (the per-fit pysr_wall_limit is unchanged — it guards each fit).
+        # Each noise level gets its own worker, with the same seed/run index.
         self.eval_noise_levels = list(eval_noise_levels) if eval_noise_levels else None
-        if self.eval_noise_levels:
-            n_lvls = len(self.eval_noise_levels)
-            self.time_limit = _scale_slurm_time(self.time_limit, n_lvls)
-            if self.job_timeout is not None:
-                self.job_timeout = self.job_timeout * n_lvls
         # Optional split label used by eval_log.log_bundle_eval (set by caller).
         self.split_label: Optional[str] = None
         # Set once the shared .juliapkg_env has been resolved in this process.
@@ -2750,6 +2788,23 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                         portfolio_warmup=self.portfolio_warmup,
                     ))
 
+        # Fan out noise levels before cache lookup and SLURM submission. Keep
+        # run_index unchanged: noise levels are tasks, not additional seeds.
+        expanded_tasks = []
+        for task in tasks:
+            if not task.target_noise_levels:
+                expanded_tasks.append(task)
+                continue
+            for level in task.target_noise_levels:
+                tag = ("%g" % level).replace(".", "p").replace("-", "m")
+                paths = [str(Path(path).with_name(
+                    f"{Path(path).stem}_noise{tag}{Path(path).suffix}"
+                )) for path in (task.hof_csv_paths or [])]
+                expanded_tasks.append(replace(
+                    task, target_noise=level, target_noise_levels=None,
+                    hof_csv_paths=paths,
+                ))
+        tasks = expanded_tasks
         n_tasks = len(tasks)
 
         # Pre-filter cached tasks
@@ -2922,7 +2977,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
 
         batch_id = batch_dir.name
         print(f"  PySR SLURM eval: {n_tasks} tasks in batch {batch_id} "
-              f"({len(configs)} configs x {len(dataset_names)} datasets x {n_runs} runs)")
+              f"({len(configs)} configs x {len(dataset_names)} datasets x {n_runs} runs"
+              f" x {len(self.eval_noise_levels or [self.target_noise])} noise levels)")
         if n_cached > 0:
             print(f"    Cache: {n_cached} tasks cached, {len(uncached_indices)} tasks to run")
 
@@ -3150,7 +3206,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             pass
 
         return _aggregate_pysr_results(
-            results,
+            _group_noise_task_results(handle.tasks, results),
             handle.dataset_names,
             num_configs=handle.num_configs,
             fitness_metric=handle.fitness_metric,
@@ -3326,7 +3382,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
             _write_json_atomic(combined_file, [r.to_json_dict() for r in results])
 
             all_results.append(_aggregate_pysr_results(
-                results,
+                _group_noise_task_results(h.tasks, results),
                 h.dataset_names,
                 num_configs=h.num_configs,
                 fitness_metric=h.fitness_metric,

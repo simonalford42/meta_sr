@@ -2763,10 +2763,10 @@ def main():
     parser.set_defaults(random_target_noise=False)
     parser.add_argument("--eval-all-noise-levels", action="store_true",
                         help=f"Evaluate every task at all noise levels {TARGET_NOISE_LEVELS} "
-                             "sequentially in one SLURM task and score as the mean across levels "
-                             "(~4x compute per eval). Overrides --random-target-noise. SLURM "
-                             "per-task wall and --job-timeout scale up automatically; the per-fit "
-                             "--pysr-wall-limit is unchanged.")
+                             "in separate SLURM tasks, using the same seed at each level, and "
+                             "average their scores (~4x tasks/compute per eval). --n-runs is "
+                             "the number of seeds per dataset/noise pair. Overrides "
+                             "--random-target-noise; per-fit time limits are unchanged.")
 
     parser.add_argument("--max-evals", type=int, default=1000000,
                         help="Maximum evaluations per PySR run (eval-budget mode; the default). "

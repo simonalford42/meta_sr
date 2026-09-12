@@ -159,6 +159,10 @@ def merge_result_details(
             "run_r2_scores": run_r2,
             "run_r2c_scores": run_r2c,
             "run_gt_scores": run_gt,
+            "run_noise_results": (
+                list(old_d.get("run_noise_results") or [None] * len(old_r2))
+                + list(new_d.get("run_noise_results") or [None] * len(new_r2))
+            ),
             "run_acc_scores": run_acc,
             "best_equations": all_eqs,
             "run_best_equations": run_best_equations,
