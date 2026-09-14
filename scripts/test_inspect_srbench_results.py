@@ -142,6 +142,31 @@ class FindRunsTests(unittest.TestCase):
                     json.dump({"srbench_edition": edition}, f)
             self.assertEqual(find_srbench2_runs(runs_root), [v2])
 
+    def test_v2_bounds_discovery_and_filters_recent_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = time.time()
+            for name, age in [("recent", 1), ("bundle/old", 10),
+                              ("bundle/deeper/custom", 2), ("archive/hidden", 0)]:
+                path = root / name / "manifest.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(json.dumps({"srbench_edition": 2025}))
+                os.utime(path, (now - age * 86400, now - age * 86400))
+            self.assertEqual(find_srbench2_runs(root),
+                             [root / "bundle/old", root / "recent"])
+            self.assertEqual(find_srbench2_runs(root, since_days=7), [root / "recent"])
+            self.assertEqual(find_srbench2_runs(root, latest=1), [root / "recent"])
+            self.assertEqual(find_srbench2_runs(root, latest=2, max_depth=3),
+                             [root / "recent", root / "bundle/deeper/custom"])
+            self.assertEqual(find_srbench2_runs(root / "missing"), [])
+            output = io.StringIO()
+            with patch.object(sys, "argv", ["inspect_srbench_results.py", "--v2",
+                              "--since", "7", "--latest", "1", "--runs-root", str(root)]):
+                with redirect_stdout(output):
+                    main()
+            self.assertIn(str(root / "recent"), output.getvalue())
+            self.assertNotIn(str(root / "bundle/old"), output.getvalue())
+
 
 class SRBench2TableTests(unittest.TestCase):
     def test_completion_and_manual_seed_codes(self):
@@ -184,6 +209,22 @@ class SRBench2TableTests(unittest.TestCase):
             line = next(line for line in table.splitlines()
                         if "first_principles_hubble" in line)
             self.assertEqual(line.split()[-1], "EEENM")
+
+            # API batch reviews fill unreviewed seeds; curated reviews win.
+            (run_dir / "manual_solve_check_results.json").write_text(json.dumps({
+                "reviews": [
+                    {"dataset": "first_principles_hubble", "seed": 10000,
+                     "classification": "miss"},
+                    {"dataset": "first_principles_hubble", "seed": 10005,
+                     "classification": "exact"},
+                ],
+            }))
+            manifest["seeds"].append(10005)
+            (run_dir / "manifest.json").write_text(json.dumps(manifest))
+            table = format_srbench2_runs([run_dir])
+            line = next(line for line in table.splitlines()
+                        if "first_principles_hubble" in line)
+            self.assertEqual(line.split()[-1], "EEENME")
 
 
 class SummaryTableTests(unittest.TestCase):

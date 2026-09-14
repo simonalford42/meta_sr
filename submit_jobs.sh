@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# 9/14/26
+sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-60m-review-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-11_baseline_1core_l1_60m_portfolio_90s --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-60m-review-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-11_1core_60m_portfolio_90s --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+
 # 9/11/26
 if [[ "${1:-}" == "srb2-minute-frontiers" ]]; then
     srb2_portfolio_base=$(sbatch --parsable -J srb2-60m-base-portfolio90s run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-11_baseline_1core_l1_60m_portfolio_90s --n-runs 10 --seed 10000 --noise-levels 0 --max-samples 1000 --portfolio-time-limit 3600 --portfolio-restart-timeout 90 --pysr-wall-limit 3900 --no-early-stop --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb) || exit

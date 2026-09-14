@@ -16,6 +16,7 @@ Usage:
     python inspect_srbench_results.py --official
     python inspect_srbench_results.py --tables
     python inspect_srbench_results.py --v2
+    python inspect_srbench_results.py --v2 --since 7 --latest 5
 
 SRBench 2021 scores and completion counts exclude the three inverse-trig
 tasks by default, including when reading historical 133-task evaluations.
@@ -119,17 +120,39 @@ def find_full_srbench_runs(
     return found
 
 
-def find_srbench2_runs(runs_root: "str | Path") -> "list[Path]":
-    """Find SRBench 2.0 runs, including runs nested under evolved bundles."""
+def find_srbench2_runs(
+    runs_root: "str | Path", since_days: "int | None" = None,
+    latest: "int | None" = None, max_depth: int = 2,
+) -> "list[Path]":
+    """Find evaluations without descending into their bulky task artifacts.
+
+    Depth 2 covers runs/<eval> and runs/<bundle>/<eval>. A custom root can
+    itself be an evaluation; increase max_depth for deeper custom layouts.
+    Recency uses manifest modification time, as with --see-all --since.
+    """
     found = []
-    for manifest_path in sorted(Path(runs_root).glob("**/manifest.json")):
+    root = Path(runs_root)
+    cutoff = time.time() - since_days * 86400 if since_days is not None else None
+    candidates = [root / "manifest.json"]
+    for depth in range(1, max_depth + 1):
+        candidates.extend(root.glob("*/" * depth + "manifest.json"))
+    for manifest_path in candidates:
+        if "archive" in manifest_path.relative_to(root).parts[:-1]:
+            continue
         try:
+            modified = manifest_path.stat().st_mtime
+            if cutoff is not None and modified < cutoff:
+                continue
             manifest = srio.load_manifest(manifest_path.parent)
         except Exception:
             continue
         if manifest.get("srbench_edition") == 2025:
-            found.append(manifest_path.parent)
-    return found
+            found.append((modified, manifest_path.parent))
+    if latest is not None or since_days is not None:
+        found.sort(reverse=True)
+    else:
+        found.sort(key=lambda item: item[1])
+    return [path for _, path in found[:latest]]
 
 
 def bundle_id(manifest: dict) -> str:
@@ -188,14 +211,21 @@ def _v2_review_strings(run_dir: Path, manifest: dict, keyed: dict) -> dict[str, 
     """Return compact per-seed manual-review codes for each GT dataset."""
     review_path = run_dir / "codex_frontier_review.json"
     reviewed = {}
+    api_review_path = run_dir / "manual_solve_check_results.json"
+    if api_review_path.exists():
+        with open(api_review_path) as f:
+            for item in json.load(f).get("reviews") or []:
+                reviewed.setdefault(item["dataset"], {})[int(item["seed"])] = (
+                    V2_REVIEW_CODES.get(item["classification"], "?")
+                )
     if review_path.exists():
         with open(review_path) as f:
             payload = json.load(f)
         for dataset in payload.get("datasets") or []:
-            reviewed[dataset["dataset"]] = {
+            reviewed.setdefault(dataset["dataset"], {}).update({
                 int(item["seed"]): V2_REVIEW_CODES.get(item["classification"], "?")
                 for item in dataset.get("reviews") or []
-            }
+            })
 
     strings = {}
     seeds = [int(seed) for seed in manifest.get("seeds") or []]
@@ -253,7 +283,7 @@ def format_srbench2_runs(run_dirs: "list[Path]") -> str:
         sections.append("")
     sections.extend([
         "Legend: E exact, N near, M miss, P phenomenological match,",
-        "        - not applicable, ? completed but not Codex-reviewed, ! error, . missing",
+        "        - not applicable, ? completed but not reviewed, ! error, . missing",
     ])
     return "\n".join(sections)
 
@@ -455,7 +485,11 @@ def main():
         help="Show SRBench 2.0 completion and per-problem frontier reviews.",
     )
     parser.add_argument("--since", type=int, metavar="NDAYS",
-                        help="With --see-all, only include runs from the past NDAYS days.")
+                        help="With --see-all or --v2, filter by manifest modification time.")
+    parser.add_argument("--latest", type=int, metavar="N",
+                        help="With --v2, show only the N most recent manifests, newest first.")
+    parser.add_argument("--discovery-depth", type=int, default=2, metavar="N",
+                        help="With --v2, search N directory levels below --runs-root.")
     parser.add_argument("--runs-root", type=str, default="runs")
     parser.add_argument("--show-missing", type=int, default=50,
                         help="Max number of missing (task,seed,noise) triples to print.")
@@ -467,8 +501,12 @@ def main():
 
     if args.since is not None and args.since < 0:
         parser.error("--since must be non-negative")
-    if args.since is not None and not args.see_all:
-        parser.error("--since requires --see-all")
+    if args.since is not None and not (args.see_all or args.v2):
+        parser.error("--since requires --see-all or --v2")
+    if args.latest is not None and (not args.v2 or args.latest < 1):
+        parser.error("--latest requires --v2 and a positive count")
+    if args.discovery_depth < 0:
+        parser.error("--discovery-depth must be non-negative")
 
     if args.official:
         from srbench_official_results import build_official_table
@@ -481,7 +519,8 @@ def main():
         return
 
     if args.v2:
-        run_dirs = find_srbench2_runs(args.runs_root)
+        run_dirs = find_srbench2_runs(args.runs_root, since_days=args.since,
+                                     latest=args.latest, max_depth=args.discovery_depth)
         if not run_dirs:
             print(f"No SRBench 2.0 runs found under {args.runs_root}")
             sys.exit(1)
