@@ -1289,6 +1289,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
     model_kwargs.pop("_cache_namespace", None)  # cache marker, not a PySR kwarg
     model_kwargs.pop("_data_split_seed", None)  # cache marker, not a PySR kwarg
     model_kwargs.pop("_portfolio_protocol", None)  # cache marker, not a PySR kwarg
+    model_kwargs.pop("_frontier_snapshot_seconds", None)  # observer/cache setting, not a PySR kwarg
 
     # Resolve the evaluation domain (dataset loading, sympy mappings, "solved"
     # check — see domains.py). Pre-domain-field boolean task JSONs carried a

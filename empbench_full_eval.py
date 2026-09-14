@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -161,6 +162,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-seed", type=int, default=42)
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--timeout", type=int, default=3600)
+    parser.add_argument("--frontier-snapshot-seconds", type=float, default=None,
+                        help="Save native frontiers during one uninterrupted fit at this wall-time interval.")
     parser.add_argument("--pysr-wall-limit", type=int, default=3900)
     parser.add_argument("--partition", default="default_partition")
     parser.add_argument("--time-limit", default="01:15:00")
@@ -183,6 +186,11 @@ def main() -> None:
         raise SystemExit("--timeout must be smaller than --pysr-wall-limit")
     if args.cpus_per_task <= 0:
         raise SystemExit("--cpus-per-task must be positive")
+    if args.frontier_snapshot_seconds is not None:
+        if not math.isfinite(args.frontier_snapshot_seconds) or args.frontier_snapshot_seconds <= 0:
+            raise SystemExit("--frontier-snapshot-seconds must be positive and finite")
+        if args.portfolio_time_limit is not None or args.task_population_bundles:
+            raise SystemExit("--frontier-snapshot-seconds requires a single search")
     if args.portfolio_time_limit is not None:
         if args.portfolio_time_limit <= 0:
             raise SystemExit("--portfolio-time-limit must be positive")
@@ -285,6 +293,7 @@ def main() -> None:
         cpus_per_task=args.cpus_per_task,
         portfolio_time_limit_seconds=args.portfolio_time_limit,
         portfolio_restart_max_evals=args.portfolio_restart_max_evals,
+        frontier_snapshot_seconds=args.frontier_snapshot_seconds,
     )
     print(
         f"EmpiricalBench full evaluation: {source.mode}; "
@@ -344,6 +353,9 @@ def main() -> None:
             "runtime_seconds": float(runtime),
             "num_evaluations": num_evals,
             "portfolio": portfolio,
+            "execution_trace": next((r.execution_trace for r in raw
+                                     if r.dataset_name == dataset and r.run_index == run_index), None)
+                               if not args.merge_run_frontiers else None,
             "official_recovered": any(row.get("solved") for row in frontier),
             "official_matched_equation": next((row.get("equation") for row in frontier if row.get("solved")), None),
             "robust_recovered": (
@@ -383,6 +395,8 @@ def main() -> None:
             "data_seed": args.data_seed,
             "max_evals": None,
             "timeout_seconds": args.timeout,
+            "frontier_snapshot_seconds": args.frontier_snapshot_seconds,
+            "frontier_snapshot_clock": "fit_wall_time" if args.frontier_snapshot_seconds else None,
             "pysr_wall_limit_seconds": args.pysr_wall_limit,
             "max_samples": args.max_samples,
             "cpus_per_task": args.cpus_per_task,

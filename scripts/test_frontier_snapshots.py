@@ -65,6 +65,35 @@ def test_snapshot_cache_identity_and_spec_roundtrip():
     assert restored.frontier_snapshot_seconds==60
 
 
+def test_worker_does_not_pass_snapshot_marker_to_pysr(tmp_path, monkeypatch):
+    import numpy as np
+    import domains
+    import parallel_eval_pysr as worker
+
+    class Domain:
+        def sympy_mappings(self):
+            return {}
+        def load_train_validation(self, *args, **kwargs):
+            x = np.arange(10.).reshape(-1, 1)
+            return x, x[:, 0], x, x[:, 0], 'x0'
+
+    received = []
+    def constructor(**kwargs):
+        received.append(kwargs)
+        raise RuntimeError('constructor reached')
+
+    monkeypatch.setattr(domains, 'get_domain', lambda _: Domain())
+    monkeypatch.setattr(worker, '_import_pysr_regressor', lambda: constructor)
+    monkeypatch.setattr(worker, '_load_dynamic_loss', lambda _: None)
+    spec = PySRTaskSpec(config_id=0, dataset_name='fake', pysr_kwargs={},
+                       mutation_weights={}, seed=1, data_seed=1,
+                       custom_loss_code='mock', frontier_snapshot_seconds=10,
+                       hof_csv_paths=[str(tmp_path/'hof.csv')])
+    worker._evaluate_pysr_task(spec, use_cache=False)
+    assert len(received) == 1
+    assert '_frontier_snapshot_seconds' not in received[0]
+
+
 def test_aggregate_retains_snapshot_trace(tmp_path):
     from srbench_results_io import build_keyed_results
     batch=tmp_path/'slurm_pysr/eval_0000'
@@ -75,3 +104,24 @@ def test_aggregate_retains_snapshot_trace(tmp_path):
     (batch/'results/task_000000.json').write_text(json.dumps({'execution_trace':trace,'gt_match_score':0}))
     results=build_keyed_results(tmp_path,{'batches':[{'batch_dir':'slurm_pysr/eval_0000'}]})
     assert results['first_principles_hubble|10000|0']['execution_trace']==trace
+
+
+def test_solve_timing_preserves_missing_reads_and_actual_times():
+    from scripts.summarize_frontier_snapshot_times import score_trace
+    calls = []
+    def check(equation):
+        calls.append(equation)
+        return {'match': equation == 'solved', 'error': None}
+    trace = [
+        {'elapsed_seconds': 10.1, 'scheduled_seconds': 10, 'status': 'unavailable', 'equations': []},
+        {'elapsed_seconds': 20.1, 'scheduled_seconds': 20, 'status': 'ok', 'equations': [{'equation': 'wrong'}]},
+        {'elapsed_seconds': 40.2, 'scheduled_seconds': 40, 'status': 'ok', 'equations': [{'equation': 'wrong'}, {'equation': 'solved'}]},
+        {'elapsed_seconds': 101, 'scheduled_seconds': 100, 'status': 'ok', 'equations': [{'equation': 'later'}]},
+        {'elapsed_seconds': 105, 'scheduled_seconds': None, 'final': True, 'status': 'ok', 'equations': [{'equation': 'solved'}]},
+    ]
+    result = score_trace(trace, check)
+    assert result['first_solve_seconds'] == 40.2
+    assert result['first_solve_scheduled_seconds'] == 40
+    assert result['observations'][0]['status'] == 'unavailable'
+    assert 30 in result['missing_scheduled_seconds']
+    assert calls == ['wrong', 'solved']
