@@ -1210,13 +1210,20 @@ def run_bundle_evolution(
         )
         print(f"\n[train reeval] submitted for gen {gen} best={bundle.display_name} (background)")
 
-    # Evaluate baseline (default operators)
+    # Compare against the supplied seed bundle, or default PySR without one.
     baseline_details: Optional[List[Dict]] = None
     if resume_state is None:
         print("=" * 60)
-        print("Evaluating baseline (default operators)...")
+        eval_baseline = (
+            copy.deepcopy(baseline_bundle)
+            if baseline_bundle is not None else OperatorBundle.create_default()
+        )
+        baseline_label = (
+            eval_baseline.display_name
+            if baseline_bundle is not None else "default operators"
+        )
+        print(f"Evaluating baseline ({baseline_label})...")
         print("=" * 60)
-        eval_baseline = OperatorBundle.create_default()
         baseline_config = eval_baseline.to_pysr_config(pysr_kwargs)
         baseline_results = _evaluate_configs_with_noise_map(
             evaluator=evaluator,
@@ -2901,7 +2908,7 @@ def main():
                              "Config flags should match the prior run; mismatches are warned, not enforced.")
 
     parser.add_argument("--baseline", type=str, default=None,
-                        help="Path to a baseline operator to seed the initial population. "
+                        help="Path to a baseline operator used for the baseline score and to seed the initial population. "
                              "Accepts: evolve_pysr output dir or run_data.json, "
                              "openevolve best_program.py, or a raw .jl file.")
 
