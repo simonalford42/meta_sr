@@ -1,0 +1,77 @@
+Baseline:
+
+Mutation
+	wrap a random subtree with addition of a random constant
+Survival
+	replace the oldest population member
+Selection
+	tournament selection with adaptive parsimony — tournament selection such that we select equally often among all complexity levels
+Loss
+	mean squared error
+
+Evolved:
+
+Mutation
+	Take a random subtree from the expression and shuffle its variables with probability 0.5, and return uniform over either expr + subtree, expr * subtree, or expr / (1 - subtree)
+
+Survival
+	Replace the population member with the highest combination of age (0.75 weight) and cost (0.25 weight), where cost is the expression's normalized loss plus a complexity penalty.
+
+Selection
+	Tournament selection with 50% larger candidate pool than default
+	10% chance of selecting member of rarest complexity in the candidate pool
+	Otherwise, conduct tournament selection with adaptive parsimony, with a small added penalty to candidates with near-identical complexity and loss to other candidates
+
+Loss
+	Fit the best scale and offset to the expression's predictions, then measure the normalized root mean squared error of these fitted predictions.
+	Add a small bounded error term (weight 1/256) for the original predictions, to favor expressions that already have the right scale and offset.
+
+
+Proposed paper version:
+
+The descriptions below summarize the supplied baseline bundle and evolved best_validation2.jl bundle. Mutation describes the bundle's custom mutation operator; the search also uses other mutation operators.
+
+Shared definitions
+	Loss measures prediction error; cost adds a complexity penalty to the baseline-normalized loss: cost = loss / B + parsimony * complexity. B is the backend's baseline loss when enabled and at least 0.01, and 0.01 otherwise. Lower loss and cost are better.
+	Adaptive parsimony multiplies cost by exp(alpha * frequency), where frequency is the running search frequency of the candidate's complexity. This discourages overrepresented complexities; it does not guarantee equal selection across complexity levels.
+	Tournament selection samples candidates without replacement, ranks them by increasing selection score, and samples rank r with probability proportional to p * (1-p)^(r-1). For p = 1, it selects the best candidate.
+
+Baseline:
+
+Mutation
+	Choose a random subtree t and replace it with t + c (or c + t, with equal probability), where c is a standard normal random constant.
+Survival
+	Replace the oldest eligible population member.
+Selection
+	Use tournament selection with adaptive parsimony.
+Loss
+	Mean squared error between the expression's predictions and the targets.
+
+Evolved:
+
+Mutation
+	Copy a variable-containing subtree m that fits the remaining size budget, preferring compound subtrees over single variables. Independently choose a random target subtree t to modify.
+	With probability 0.5, cyclically shift all variable indices in m by the same randomly chosen nonzero offset, when there is more than one input variable.
+	Replace t with t / (1 - m) with probability 0.35; otherwise choose t + m or t * m with equal probability. These probabilities apply when all templates are available and the rational template has sufficient size budget.
+	Respect the available operators and size budget: use 1 + m if subtraction is unavailable, use only feasible coupling modes, and leave the expression unchanged if no suitable donor or coupling is available.
+
+Survival
+	Min-max normalize age and cost across eligible members, with 1 denoting the oldest member or highest cost, respectively.
+	Replace the member maximizing 0.75 * normalized_age + 0.25 * normalized_cost. This trades off age and cost, with greater weight on age.
+
+Selection
+	Sample a candidate pool approximately 1.5 times the baseline tournament size, capped at the population size, and compute scores using adaptive parsimony.
+	With probability 0.10, select the candidate whose complexity has the lowest running search frequency, breaking frequency ties by lower score.
+	Otherwise, penalize candidates that share exactly the same complexity and nearly the same loss (relative tolerance 1e-6) with an earlier candidate in score order. Multiply positive scores by 1.5; add 0.1 to zero scores (negative scores are divided by 1.5).
+	Apply the baseline rank-based tournament rule to the resulting scores. Complexity and loss similarity serve as a proxy for redundancy; expressions need not be structurally identical.
+
+Loss
+	Fit a scale a and offset b by least squares so that a * prediction + b matches the targets as closely as possible.
+	Let E_affine be the normalized root mean squared error after this fit, and E_raw the same error using the original predictions. Normalize both by the target standard deviation, with a numerical floor for constant or nearly constant targets.
+	Return min(E_affine, 1) + (1/256) * E_raw / (1 + E_raw).
+	The main term rewards predictive shape up to scale and offset; the small bounded term favors expressions whose original predictions already match the target scale and offset. The affine fit is used to evaluate loss and does not rewrite the expression.
+
+Loss implementation details (for an appendix)
+	For n targets, the normalization is s = max(sqrt(sum((y - mean(y))^2) / n), sqrt(eps(L)) * max(1, abs(mean(y)))), where L is the loss numeric type. Each normalized error is RMSE / s.
+	The fitted slope is sum((prediction - mean(prediction)) * (y - mean(y))) / sum((prediction - mean(prediction))^2), and b = mean(y) - a * mean(prediction). Constant predictions use a = 0.
+	Invalid expression evaluations receive infinite loss. Overflow of the accumulated raw squared error saturates its bounded contribution at 1/256.
