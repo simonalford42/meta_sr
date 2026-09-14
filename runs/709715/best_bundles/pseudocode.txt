@@ -36,7 +36,7 @@ Mutation
 Survival
 	Replace the oldest population member.
 Selection
-	Tournament selection with adaptive parsimony: penalize common complexity levels to encourage a wider range of expression sizes.
+	Tournament selection with adaptive parsimony to encourage equally frequent selection across complexity levels.
 Loss
 	Mean squared error.
 
