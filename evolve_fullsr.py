@@ -441,6 +441,7 @@ def run_evolution(
     eval_all_noise_levels: bool,
     full_file_diff: bool,
     wandb_run: Optional[Any],
+    population_type: str = "topk",
     resume_state: Optional[Dict[str, Any]] = None,
     domain: str = "srbench",
     uninformative_prompts: bool = False,
@@ -449,6 +450,9 @@ def run_evolution(
 ) -> Tuple[SkeletonBundle, FullSRSlurmEvaluator, float]:
     rng = random.Random(seed)
     np.random.seed(seed)
+
+    if population_type not in ("topk", "complexity"):
+        raise ValueError(f"Unknown population type: {population_type!r}")
 
     if simplify_cooldown < 0 or simplify_cooldown > n_generations:
         raise ValueError(
@@ -520,6 +524,7 @@ def run_evolution(
         "uninformative_prompts": uninformative_prompts,
         "mutation_mode": mutation_mode,
         "simplify_cooldown": simplify_cooldown,
+        "population_type": population_type,
         "operator_slots": operator_slots,
         "target_noise": target_noise,
         "random_target_noise": random_target_noise,
@@ -970,13 +975,13 @@ def run_evolution(
                 n_generations,
                 simplify_cooldown,
                 mutation_mode,
-                "topk",
+                population_type,
             )
         )
         print("\n" + "=" * 60)
         print(f"Generation {gen}/{start_gen + n_generations - 1}")
         print("=" * 60)
-        if generation_population_type == "complexity":
+        if cooldown_active:
             print("  Simplify cooldown active: mode=simplify, population=complexity")
         _check_val_future(wait=False)
         _check_train_reeval_future(wait=False)
@@ -1002,7 +1007,11 @@ def run_evolution(
             wave_meta: List[Tuple[int, str, int, SkeletonBundle]] = []
             for slot_idx, slot_name, attempt in pending:
                 slot = SLOTS_BY_NAME[slot_name]
-                parent_bundle = select_parent(population, rng)
+                parent_bundle = select_parent(
+                    population, rng,
+                    population_type=generation_population_type,
+                    mutation_mode=generation_mutation_mode,
+                )
                 parent_fn = parent_bundle.functions[slot_name]
                 if generation_mutation_mode == "random":
                     mode = rng.choice(list(META_MUTATION_MODES))
@@ -1333,6 +1342,14 @@ def main():
              "for the final N generations (0 disables).",
     )
     parser.add_argument("--population", type=int, default=10)
+    parser.add_argument(
+        "--population-type", type=str, default="topk",
+        choices=["topk", "complexity"],
+        help="Survivor selection: 'topk' keeps the highest scores; 'complexity' "
+             "uses score vs total bundle LOC Pareto selection, with successive "
+             "fronts filling spare slots, as in evolve_pysr.py. Parents are "
+             "sampled uniformly when combined with --mutation-mode simplify.",
+    )
     parser.add_argument("--offspring", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=10)
@@ -1716,6 +1733,7 @@ def main():
         "no_cache": args.no_cache,
         "mutation_mode": args.mutation_mode,
         "simplify_cooldown": args.simplify_cooldown,
+        "population_type": args.population_type,
         "operator_type": args.operator_type,
         "target_noise": args.target_noise,
         "random_target_noise": args.random_target_noise,
@@ -1764,6 +1782,7 @@ def main():
         fitness_metric=args.fitness_metric,
         mutation_mode=args.mutation_mode,
         simplify_cooldown=args.simplify_cooldown,
+        population_type=args.population_type,
         operator_slots=operator_slots,
         target_noise=args.target_noise,
         random_target_noise=args.random_target_noise,

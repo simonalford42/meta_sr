@@ -29,6 +29,89 @@ def test_cheap_model_ensemble_matches_pysr():
     assert evolve_fullsr.MODEL_ENSEMBLE_PRESETS["cheap"] == presets["cheap"]
 
 
+@pytest.mark.parametrize(
+    "population_type,mutation_mode,cooldown,uniform",
+    [("complexity", "simplify", 0, True),
+     ("topk", "random", 2, True),
+     ("topk", "simplify", 0, False)],
+)
+def test_resumed_fullsr_parent_and_survivor_selection(
+    tmp_path, monkeypatch, population_type, mutation_mode, cooldown, uniform,
+):
+    """Run resumed generations without Julia, LLM requests, or SLURM jobs."""
+    from copy import deepcopy
+    from skeleton_operator_types import ALL_SLOT_NAMES, SkeletonBundle, SkeletonFunction
+
+    def bundle(name, score, loc):
+        return SkeletonBundle(
+            functions={slot: SkeletonFunction(
+                slot=slot, name=f"{name}_{slot}", code="\n".join([name] * loc),
+            ) for slot in ALL_SLOT_NAMES}, score=score, score_vector=[score],
+            raw_module_body="\n".join([name] * loc),
+        )
+
+    population = [bundle("large", 0.9, 10), bundle("small", 0.7, 2)]
+    # Serialize/load the checkpoint to exercise the actual continuation path.
+    prior = {"generation": 30, "population": [b.to_dict() for b in population]}
+    source = tmp_path / "prior.json"
+    source.write_text(json.dumps({"generations": [prior], "baseline": {"score": 0.1}}))
+    resume = evolve_fullsr.load_resume_state(str(source))
+
+    class Evaluator:
+        def __init__(self, **kwargs):
+            pass
+
+        def evaluate_configs(self, configs, *args, **kwargs):
+            return [(0.5, [0.5], []) for _ in configs]
+
+    monkeypatch.setattr(evolve_fullsr, "FullSRSlurmEvaluator", Evaluator)
+    monkeypatch.setattr(evolve_fullsr, "load_dataset_names_from_split", lambda _: ["dataset"])
+    monkeypatch.setattr(evolve_fullsr, "warn_on_dataset_domain_mismatch", lambda *args: None)
+    specs_seen = []
+
+    def generate(specs, **kwargs):
+        specs_seen.extend(specs)
+        return [("unused", "unused", "test") for _ in specs]
+
+    monkeypatch.setattr(evolve_fullsr, "generate_skeleton_code_batch", generate)
+    monkeypatch.setattr(
+        evolve_fullsr, "_build_offspring",
+        lambda code, name, model, parent, *args, **kwargs: deepcopy(parent),
+    )
+    survivor_calls = []
+    real_selector = evolve_fullsr.select_survivors_complexity
+
+    def select_complexity(*args):
+        survivor_calls.append(True)
+        return real_selector(*args)
+
+    monkeypatch.setattr(evolve_fullsr, "select_survivors_complexity", select_complexity)
+    output = tmp_path / "continued"
+    evolve_fullsr.run_evolution(
+        split="unused", val_split=None, n_generations=2, population_size=2,
+        n_offspring=20, seed=42, n_runs=3, val_n_runs=10, max_samples=1000,
+        max_evals=1000000, timeout=500, fullsr_wall_limit=600,
+        val_fullsr_wall_limit=1800, val_fullsr_timeout=1500,
+        output_dir=str(output), model="test", temperature=0, llm_max_workers=1,
+        model_ensemble=None, reasoning_effort=None, slurm_partition="unused",
+        slurm_time_limit="00:40:00", slurm_mem_per_cpu="1G", job_timeout=1800,
+        max_concurrent_jobs=1, repo_root=str(tmp_path), use_cache=False,
+        fitness_metric="gt-r2", mutation_mode=mutation_mode,
+        simplify_cooldown=cooldown, population_type=population_type,
+        operator_slots=["mutation"], target_noise=0, random_target_noise=False,
+        eval_all_noise_levels=False, full_file_diff=False, wandb_run=None,
+        resume_state=resume, execution_feedback_n=0,
+    )
+    assert {s.mode for s in specs_seen} == {"simplify"}
+    first_parents = {s.bundle.display_name for s in specs_seen[:20]}
+    assert len(first_parents) == (2 if uniform else 1)
+    assert len(survivor_calls) == (2 if uniform else 0)
+    data = json.loads((output / "run_data.json").read_text())
+    assert [g["generation"] for g in data["generations"]] == [30, 31, 32]
+    assert data["config"]["population_type"] == population_type
+    assert data["generations"][-1]["population_type"] == ("complexity" if uniform else "topk")
+
+
 def test_all_noise_aggregation_includes_every_level():
     results = [
         FullSRTaskResult(
