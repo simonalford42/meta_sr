@@ -43,8 +43,8 @@ Loss
 Evolved:
 
 Mutation
-	Copy a random variable-containing subtree m, preferring compound subtrees that fit the size limit. With probability 0.5, shift its variable indices cyclically.
-	Choose a random target subtree t and replace it with t + m, t * m, or t / (1 - m), with probabilities 32.5%, 32.5%, and 35% when all three forms are available and fit the size limit.
+	Copy a random variable-containing subtree m, preferring subtrees containing an operator that fit the size limit. With probability 0.5, shift its variable indices cyclically.
+	Choose a random target subtree t and replace it with t + m, t * m, or t / (1 - m), with probabilities 32.5%, 32.5%, and 35%.
 
 Survival
 	Scale age and cost to [0, 1] within the eligible population, then replace the member with the highest weighted sum: 0.75 * age + 0.25 * cost.
