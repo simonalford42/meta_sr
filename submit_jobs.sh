@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
 # 9/14/26
-sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-60m-review-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-11_baseline_1core_l1_60m_portfolio_90s --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
-sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-60m-review-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-11_1core_60m_portfolio_90s --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-first90s-review-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-11_baseline_1core_l1_first90s --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-first90s-review-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-11_1core_first90s --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+# sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-60m-review-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-11_baseline_1core_l1_60m_portfolio_90s --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+# sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-60m-review-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-11_1core_60m_portfolio_90s --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
 
 # 9/11/26
 if [[ "${1:-}" == "srb2-minute-frontiers" ]]; then
