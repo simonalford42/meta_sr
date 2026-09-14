@@ -19,6 +19,7 @@ Usage:
 import argparse
 import os
 import shutil
+import tempfile
 import sys
 import numpy as np
 import pandas as pd
@@ -211,8 +212,11 @@ def run_pysr_with_hof_checkpoints(
         return model
 
     # Only define a specific temp directory if we are doing milestone logging
+    pysr_output_dir = None
     if milestones:
-        pysr_output_dir = os.path.join(results_dir, f"pysr_tmp_{dataset_name}")
+        # Noise levels/retries for the same dataset can run concurrently and
+        # share results_dir. Each invocation must own its entire scratch tree.
+        pysr_output_dir = tempfile.mkdtemp(prefix=f"pysr_tmp_{dataset_name}_", dir=results_dir)
         model.output_directory = pysr_output_dir
         model.warm_start = True
         if os.path.exists(hof_path):
@@ -274,9 +278,9 @@ def run_pysr_with_hof_checkpoints(
                         df.to_csv(f, mode='a', index=False, header=not file_exists)
     finally:
         # Only attempt deletion if we explicitly created a directory
-        if milestones and model.output_directory and os.path.exists(model.output_directory):
-            print(f"Cleaning up temporary directory: {model.output_directory}")
-            shutil.rmtree(model.output_directory)
+        if pysr_output_dir is not None:
+            print(f"Cleaning up temporary directory: {pysr_output_dir}")
+            shutil.rmtree(pysr_output_dir, ignore_errors=True)
 
     return model
 
