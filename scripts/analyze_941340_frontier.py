@@ -114,6 +114,39 @@ def main():
                    dominated_final=[dict(loc=loc(b), score=b['score'], name=name(b)) for b in population if b not in front],
                    identification=data.get('identification'),
                    original_bundle_in_new_run=None)
+    # Fresh identification outcomes are stored separately from run_data's bundles.
+    # Join by explicit task-file index; combined.json does not retain noise labels.
+    fresh_dir = RUN / 'slurm_pysr/eval_0484'
+    tasks = json.loads((fresh_dir / 'tasks.json').read_text())
+    first_tasks = {t['config_id']: t for t in tasks}
+    for row, bundle in zip(rows, front):
+        ids = []
+        for config_id, task in first_tasks.items():
+            if all(bundle['operators'][k]['name'] in str(task[f'custom_{k}_code']) for k in KINDS):
+                ids.append(config_id)
+        if not ids:
+            row['fresh_identification'] = None
+            continue
+        assert len(ids) == 1
+        details = {}
+        for index, task in enumerate(tasks):
+            if task['config_id'] != ids[0]:
+                continue
+            result = json.loads((fresh_dir / 'results' / f'task_{index:06d}.json').read_text())
+            assert all(result[k] == task[k] for k in ('config_id', 'dataset_name', 'run_index'))
+            details.setdefault(task['dataset_name'], []).append([dict(
+                target_noise=task['target_noise'], gt_match_score=result['gt_match_score'], error=result['error'])])
+        stats, fresh_records = noise_stats({'result_details':[dict(dataset=ds,run_noise_results=levels) for ds,levels in details.items()]})
+        score = mean(v['score'] for v in stats.values())
+        record = next(r for r in data['identification']['records'] if r['bundle_name'] == row['name'])
+        assert abs(score-record['fresh_score']) < 1e-10
+        row['fresh_identification'] = dict(score=score, seeds=data['identification']['n_fresh_runs'], noise=stats,
+                                            source='runs/941340/slurm_pysr/eval_0484')
+        bad = {r['dataset'] for r in fresh_records if r['noise'] == 0 and r['error']}
+        good = sorted(set(stats['0.0']['task_means']) & set(old_train) - bad)
+        row['fresh_identification']['comparison_90s_error_free'] = dict(
+            tasks=good, n_tasks=len(good), old=mean(old_train[ds]['avg_gt'] for ds in good),
+            new=mean(stats['0.0']['task_means'][ds] for ds in good))
     if old_names in latest:
         b = latest[old_names]
         baseline_stats, baseline_records = noise_stats(b)
@@ -147,6 +180,18 @@ def main():
         zero = r['noise']['0.0']
         lines.append(f'| [{r["loc"]}]({r["filename"]}) | {r["seeds"]} | {100*r["score"]:.3f}% | '
                      + ' | '.join(values) + f' | {zero["errors"]}/{zero["observations"]} |')
+    lines += ['', '## Ten-seed fresh identification', '',
+              'Only these final-frontier bundles were included in the fresh identification pass. '
+              'The original frontier continues to use final-population scores.', '',
+              '| LOC | Fresh all-noise | Noise 0 | Noise 0.001 | Noise 0.01 | Noise 0.1 | Errors at noise 0 |',
+              '| ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
+    for r in rows:
+        fresh = r['fresh_identification']
+        if fresh:
+            zero = fresh['noise']['0.0']
+            values = [f'{100*fresh["noise"][n]["score"]:.2f}%' for n in ['0.0','0.001','0.01','0.1']]
+            lines.append(f'| {r["loc"]} | {100*fresh["score"]:.3f}% | ' + ' | '.join(values)
+                         + f' | {zero["errors"]}/{zero["observations"]} |')
     lines += ['', '## Matched zero-noise tasks without recorded errors', '',
               'Each row uses its own subset of the 20 training tasks: retain a task only '
               'if all recorded evaluations for both bundles are free of recorded errors. '

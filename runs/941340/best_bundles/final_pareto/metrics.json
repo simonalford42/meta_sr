@@ -344,6 +344,131 @@
         "Error: [Errno 2] No such file or directory: '/home/sca63/meta_sr/runs/941340/traces/eval_0419/config000_run00/pysr_tmp_feynman_III_15_14'": 1,
         "Error: [Errno 39] Directory not empty: '20260913_005414_HMImL7'": 1
       },
+      "fresh_identification": {
+        "score": 0.57,
+        "seeds": 10,
+        "noise": {
+          "0.0": {
+            "score": 0.575,
+            "observations": 200,
+            "errors": 45,
+            "task_means": {
+              "feynman_III_13_18": 0.5,
+              "feynman_III_14_14": 0.4,
+              "feynman_III_15_14": 0.6,
+              "feynman_III_19_51": 0.9,
+              "feynman_II_11_27": 0.5,
+              "feynman_II_13_17": 0.8,
+              "feynman_II_13_23": 0.0,
+              "feynman_II_21_32": 0.7,
+              "feynman_II_34_29b": 0.9,
+              "feynman_II_6_11": 0.8,
+              "feynman_I_13_4": 0.2,
+              "feynman_I_18_4": 0.4,
+              "feynman_I_30_3": 1.0,
+              "feynman_I_32_5": 0.5,
+              "feynman_I_34_1": 0.9,
+              "feynman_I_43_43": 0.7,
+              "feynman_I_44_4": 0.9,
+              "feynman_I_6_2a": 0.0,
+              "feynman_test_8": 0.0,
+              "strogatz_barmag1": 0.8
+            }
+          },
+          "0.001": {
+            "score": 0.615,
+            "observations": 200,
+            "errors": 37,
+            "task_means": {
+              "feynman_III_13_18": 0.8,
+              "feynman_III_14_14": 0.9,
+              "feynman_III_15_14": 0.9,
+              "feynman_III_19_51": 0.6,
+              "feynman_II_11_27": 0.5,
+              "feynman_II_13_17": 0.5,
+              "feynman_II_13_23": 0.0,
+              "feynman_II_21_32": 1.0,
+              "feynman_II_34_29b": 0.8,
+              "feynman_II_6_11": 0.8,
+              "feynman_I_13_4": 0.3,
+              "feynman_I_18_4": 0.5,
+              "feynman_I_30_3": 0.6,
+              "feynman_I_32_5": 0.6,
+              "feynman_I_34_1": 0.6,
+              "feynman_I_43_43": 0.7,
+              "feynman_I_44_4": 1.0,
+              "feynman_I_6_2a": 0.5,
+              "feynman_test_8": 0.0,
+              "strogatz_barmag1": 0.7
+            }
+          },
+          "0.01": {
+            "score": 0.63,
+            "observations": 200,
+            "errors": 29,
+            "task_means": {
+              "feynman_III_13_18": 0.9,
+              "feynman_III_14_14": 1.0,
+              "feynman_III_15_14": 0.7,
+              "feynman_III_19_51": 0.8,
+              "feynman_II_11_27": 0.6,
+              "feynman_II_13_17": 0.9,
+              "feynman_II_13_23": 0.0,
+              "feynman_II_21_32": 0.9,
+              "feynman_II_34_29b": 0.6,
+              "feynman_II_6_11": 0.9,
+              "feynman_I_13_4": 0.2,
+              "feynman_I_18_4": 0.5,
+              "feynman_I_30_3": 0.7,
+              "feynman_I_32_5": 0.6,
+              "feynman_I_34_1": 0.8,
+              "feynman_I_43_43": 0.8,
+              "feynman_I_44_4": 0.9,
+              "feynman_I_6_2a": 0.3,
+              "feynman_test_8": 0.0,
+              "strogatz_barmag1": 0.5
+            }
+          },
+          "0.1": {
+            "score": 0.46,
+            "observations": 200,
+            "errors": 44,
+            "task_means": {
+              "feynman_III_13_18": 1.0,
+              "feynman_III_14_14": 0.0,
+              "feynman_III_15_14": 0.7,
+              "feynman_III_19_51": 0.8,
+              "feynman_II_11_27": 0.0,
+              "feynman_II_13_17": 0.6,
+              "feynman_II_13_23": 0.0,
+              "feynman_II_21_32": 0.6,
+              "feynman_II_34_29b": 1.0,
+              "feynman_II_6_11": 0.7,
+              "feynman_I_13_4": 0.4,
+              "feynman_I_18_4": 0.1,
+              "feynman_I_30_3": 0.6,
+              "feynman_I_32_5": 0.7,
+              "feynman_I_34_1": 0.5,
+              "feynman_I_43_43": 0.4,
+              "feynman_I_44_4": 0.9,
+              "feynman_I_6_2a": 0.1,
+              "feynman_test_8": 0.0,
+              "strogatz_barmag1": 0.1
+            }
+          }
+        },
+        "source": "runs/941340/slurm_pysr/eval_0484",
+        "comparison_90s_error_free": {
+          "tasks": [
+            "feynman_I_30_3",
+            "feynman_I_34_1",
+            "feynman_test_8"
+          ],
+          "n_tasks": 3,
+          "old": 0.5666666666666667,
+          "new": 0.6333333333333333
+        }
+      },
       "same_run_error_free_comparison": {
         "task_noise_cells": 38,
         "old": 0.7894736842105263,
@@ -657,6 +782,137 @@
         "Error: [Errno 39] Directory not empty: '/home/sca63/meta_sr/runs/941340/traces/eval_0473/config000_run00/pysr_tmp_feynman_I_34_1'": 1,
         "Error: [Errno 39] Directory not empty: '20260913_014421_GveocI'": 1
       },
+      "fresh_identification": {
+        "score": 0.5337500000000001,
+        "seeds": 10,
+        "noise": {
+          "0.0": {
+            "score": 0.665,
+            "observations": 200,
+            "errors": 18,
+            "task_means": {
+              "feynman_III_13_18": 1.0,
+              "feynman_III_14_14": 0.9,
+              "feynman_III_15_14": 0.9,
+              "feynman_III_19_51": 1.0,
+              "feynman_II_11_27": 0.7,
+              "feynman_II_13_17": 0.7,
+              "feynman_II_13_23": 0.0,
+              "feynman_II_21_32": 0.9,
+              "feynman_II_34_29b": 0.8,
+              "feynman_II_6_11": 1.0,
+              "feynman_I_13_4": 0.1,
+              "feynman_I_18_4": 0.6,
+              "feynman_I_30_3": 0.7,
+              "feynman_I_32_5": 0.8,
+              "feynman_I_34_1": 0.9,
+              "feynman_I_43_43": 0.9,
+              "feynman_I_44_4": 0.6,
+              "feynman_I_6_2a": 0.4,
+              "feynman_test_8": 0.0,
+              "strogatz_barmag1": 0.4
+            }
+          },
+          "0.001": {
+            "score": 0.515,
+            "observations": 200,
+            "errors": 47,
+            "task_means": {
+              "feynman_III_13_18": 0.9,
+              "feynman_III_14_14": 0.8,
+              "feynman_III_15_14": 0.6,
+              "feynman_III_19_51": 0.6,
+              "feynman_II_11_27": 0.5,
+              "feynman_II_13_17": 0.7,
+              "feynman_II_13_23": 0.0,
+              "feynman_II_21_32": 0.8,
+              "feynman_II_34_29b": 1.0,
+              "feynman_II_6_11": 1.0,
+              "feynman_I_13_4": 0.0,
+              "feynman_I_18_4": 0.6,
+              "feynman_I_30_3": 0.3,
+              "feynman_I_32_5": 0.5,
+              "feynman_I_34_1": 0.4,
+              "feynman_I_43_43": 0.3,
+              "feynman_I_44_4": 0.9,
+              "feynman_I_6_2a": 0.2,
+              "feynman_test_8": 0.0,
+              "strogatz_barmag1": 0.2
+            }
+          },
+          "0.01": {
+            "score": 0.54,
+            "observations": 200,
+            "errors": 35,
+            "task_means": {
+              "feynman_III_13_18": 0.8,
+              "feynman_III_14_14": 0.7,
+              "feynman_III_15_14": 0.3,
+              "feynman_III_19_51": 0.8,
+              "feynman_II_11_27": 0.5,
+              "feynman_II_13_17": 0.7,
+              "feynman_II_13_23": 0.0,
+              "feynman_II_21_32": 0.8,
+              "feynman_II_34_29b": 1.0,
+              "feynman_II_6_11": 1.0,
+              "feynman_I_13_4": 0.1,
+              "feynman_I_18_4": 0.6,
+              "feynman_I_30_3": 0.5,
+              "feynman_I_32_5": 0.4,
+              "feynman_I_34_1": 0.9,
+              "feynman_I_43_43": 0.6,
+              "feynman_I_44_4": 0.8,
+              "feynman_I_6_2a": 0.3,
+              "feynman_test_8": 0.0,
+              "strogatz_barmag1": 0.0
+            }
+          },
+          "0.1": {
+            "score": 0.415,
+            "observations": 200,
+            "errors": 54,
+            "task_means": {
+              "feynman_III_13_18": 0.9,
+              "feynman_III_14_14": 0.5,
+              "feynman_III_15_14": 0.3,
+              "feynman_III_19_51": 0.9,
+              "feynman_II_11_27": 0.0,
+              "feynman_II_13_17": 0.4,
+              "feynman_II_13_23": 0.0,
+              "feynman_II_21_32": 0.6,
+              "feynman_II_34_29b": 1.0,
+              "feynman_II_6_11": 0.9,
+              "feynman_I_13_4": 0.1,
+              "feynman_I_18_4": 0.2,
+              "feynman_I_30_3": 0.4,
+              "feynman_I_32_5": 0.6,
+              "feynman_I_34_1": 0.3,
+              "feynman_I_43_43": 0.1,
+              "feynman_I_44_4": 0.8,
+              "feynman_I_6_2a": 0.1,
+              "feynman_test_8": 0.0,
+              "strogatz_barmag1": 0.2
+            }
+          }
+        },
+        "source": "runs/941340/slurm_pysr/eval_0484",
+        "comparison_90s_error_free": {
+          "tasks": [
+            "feynman_III_13_18",
+            "feynman_III_14_14",
+            "feynman_III_19_51",
+            "feynman_II_11_27",
+            "feynman_II_6_11",
+            "feynman_I_13_4",
+            "feynman_I_18_4",
+            "feynman_I_44_4",
+            "feynman_test_8"
+          ],
+          "n_tasks": 9,
+          "old": 0.7222222222222222,
+          "new": 0.6555555555555556
+        }
+      },
       "same_run_error_free_comparison": {
         "task_noise_cells": 38,
         "old": 0.7894736842105263,
@@ -963,6 +1219,7 @@
         "Error: SystemError: opening file \"/home/sca63/meta_sr/runs/941340/traces/eval_0472/config000_run00/pysr_tmp_feynman_I_34_1/20260913_014418_DofdkS/hall_of_fame.csv\": No such file or directory": 1,
         "Error: [Errno 39] Directory not empty: '20260913_014420_MsYSKN'": 1
       },
+      "fresh_identification": null,
       "same_run_error_free_comparison": {
         "task_noise_cells": 45,
         "old": 0.7,
@@ -1313,6 +1570,7 @@
         "Error: [Errno 39] Directory not empty: '20260913_002954_33XUI2'": 1,
         "Error: [Errno 39] Directory not empty: '/home/sca63/meta_sr/runs/941340/traces/eval_0413/config000_run01/pysr_tmp_feynman_II_13_17'": 1
       },
+      "fresh_identification": null,
       "same_run_error_free_comparison": {
         "task_noise_cells": 35,
         "old": 0.7142857142857143,
@@ -1624,6 +1882,7 @@
         "Error: SystemError: opening file \"/home/sca63/meta_sr/runs/941340/traces/eval_0454/config000_run00/pysr_tmp_feynman_III_15_14/20260913_013013_5xBOsB/hall_of_fame.csv\": No such file or directory": 1,
         "Error: SystemError: opening file \"/home/sca63/meta_sr/runs/941340/traces/eval_0465/config000_run01/pysr_tmp_feynman_III_15_14/20260913_013732_p6bJRK/hall_of_fame.csv\": No such file or directory": 1
       },
+      "fresh_identification": null,
       "same_run_error_free_comparison": {
         "task_noise_cells": 32,
         "old": 0.65625,
@@ -1924,6 +2183,7 @@
         "Error: [Errno 39] Directory not empty: '/home/sca63/meta_sr/runs/941340/traces/eval_0425/config000_run00/pysr_tmp_feynman_II_13_17'": 1,
         "Error: IOError: mkdir(\"/home/sca63/meta_sr/runs/941340/traces/eval_0425/config000_run00/pysr_tmp_feynman_III_15_14/20260913_003751_xzSusl\"; mode=0o777): no such file or directory (ENOENT)": 1
       },
+      "fresh_identification": null,
       "same_run_error_free_comparison": {
         "task_noise_cells": 34,
         "old": 0.6470588235294118,
@@ -2220,6 +2480,7 @@
         "Error: IOError: mkdir(\"/home/sca63/meta_sr/runs/941340/traces/eval_0357/config000_run00/pysr_tmp_feynman_I_34_1/20260912_233649_qlpQjX\"; mode=0o777): no such file or directory (ENOENT)": 1,
         "Error: [Errno 39] Directory not empty: '20260912_235558_SO24jf'": 1
       },
+      "fresh_identification": null,
       "same_run_error_free_comparison": {
         "task_noise_cells": 40,
         "old": 0.6875,
@@ -2536,6 +2797,7 @@
         "Error: SystemError: opening file \"/home/sca63/meta_sr/runs/941340/traces/eval_0467/config000_run01/pysr_tmp_feynman_I_43_43/20260913_013740_SsgKYR/hall_of_fame.csv\": No such file or directory": 1,
         "Error: [Errno 39] Directory not empty: '/home/sca63/meta_sr/runs/941340/traces/eval_0453/config000_run00/pysr_tmp_feynman_III_15_14'": 1
       },
+      "fresh_identification": null,
       "same_run_error_free_comparison": {
         "task_noise_cells": 44,
         "old": 0.7045454545454546,
@@ -2863,6 +3125,7 @@
         "Error: [Errno 39] Directory not empty: '20260913_014415_oKMv7Q'": 1,
         "Error: [Errno 39] Directory not empty: '20260913_014415_ULxbpD'": 1
       },
+      "fresh_identification": null,
       "same_run_error_free_comparison": {
         "task_noise_cells": 45,
         "old": 0.7,

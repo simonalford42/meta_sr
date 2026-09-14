@@ -14,6 +14,15 @@ Final generation 30 population, filtered for exact LOC/score nondominance. Score
 | [108](frontier_loc108.jl) | 2 | 8.125% | 7.50% | 15.00% | 2.50% | 7.50% | 3/40 |
 | [102](frontier_loc102.jl) | 1 | 0.000% | 0.00% | 0.00% | 0.00% | 0.00% | 6/20 |
 
+## Ten-seed fresh identification
+
+Only these final-frontier bundles were included in the fresh identification pass. The original frontier continues to use final-population scores.
+
+| LOC | Fresh all-noise | Noise 0 | Noise 0.001 | Noise 0.01 | Noise 0.1 | Errors at noise 0 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 234 | 57.000% | 57.50% | 61.50% | 63.00% | 46.00% | 45/200 |
+| 200 | 53.375% | 66.50% | 51.50% | 54.00% | 41.50% | 18/200 |
+
 ## Matched zero-noise tasks without recorded errors
 
 Each row uses its own subset of the 20 training tasks: retain a task only if all recorded evaluations for both bundles are free of recorded errors. The reference is the separate 709715 90-second, ten-seed evaluation. These subsets differ by row and are not a new ranking.

@@ -76,6 +76,23 @@ Adjacent points are alternative bundles; this ordering is not an ancestry chain
 or a controlled ablation, and changes cannot individually be credited with the
 score differences.
 
+The final identification pass reevaluated two of these frontier points on **ten
+fresh seeds**. The 234-LOC bundle dropped from 65.0% to **57.0%** all-noise GT,
+and the 200-LOC bundle dropped from 62.5% to **53.375%**. Their fresh zero-noise
+scores were 57.5% and 66.5%, with 45/200 and 18/200 recorded errors respectively.
+The other seven frontier points were not in this fresh identification pass.
+These additional results weaken any claim of gains inferred from the small
+evolution samples above.
+
+Comparing these fresh zero-noise results with the old 261-LOC bundle's ten-seed
+90-second evaluation, while retaining only shared tasks without any recorded
+error across all ten seeds, leaves just three tasks for 234 LOC (old 56.67%, new
+63.33%) and nine for 200 LOC (**old 72.22%, new 65.56%**). The three-task subset
+is especially uninformative. The nine-task comparison provides no evidence that
+the 200-LOC bundle improves on the original. Exact task lists and fresh per-noise
+results are in `metrics.json`; results were joined to the identification task
+manifest by explicit task-file index, preserving the correct noise labels.
+
 | Bundle | All-noise GT | Mutation / survival / selection / loss LOC | Change from the preceding larger point |
 | --- | ---: | --- | --- |
 | [234 LOC](frontier_loc234.jl) | 65.00% | 63 / 27 / 58 / 86 | Full motif reuse, elite-protected oldest replacement, epsilon-dominance-count tournament, original affine-profile loss. |
