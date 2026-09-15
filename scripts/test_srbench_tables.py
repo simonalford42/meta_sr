@@ -92,6 +92,32 @@ def test_table1_does_not_replace_1m_with_newer_portfolio(tmp_path):
     assert next(c for c in fixed if c["key"] == "pysr_baseline")["gt_path"] == str(base)
 
 
+def test_gt_excludes_both_train_and_validation_tasks(tmp_path):
+    write_splits(tmp_path)
+    (tmp_path / "splits/srbench_all.txt").write_text("train\nval\ntest\n")
+    runs = tmp_path / "runs"
+    base = runs / "base"
+    write_run(base, datasets=["train", "val", "test"])
+    path = base / "srbench_full_results.json"
+    payload = json.loads(path.read_text())
+    for row in payload["results"].values():
+        row["solved"] = row["dataset"] != "test" or row["seed"] == 0
+    path.write_text(json.dumps(payload))
+
+    # Train and val are fully solved; only 10% of held-out trials are solved.
+    columns = build_official_columns(runs, tmp_path)
+    official = format_official_table(columns)
+    row = next(line for line in official.splitlines() if "excluding train & val" in line)
+    assert row.split("│")[2].strip() == "10.0%"
+    output = tables.build_tables(runs, tmp_path)
+    rows = [line for line in output.splitlines() if "GT (excluding train & val" in line]
+    assert len(rows) == 2
+    for row in rows:
+        assert row.split("|")[2].strip() == "10.00%"
+        assert row.split("|")[-2].strip() == "TBD"
+    assert "n=1" in rows[1]
+
+
 def test_no_merged_portfolio_used_as_individual_searches(tmp_path):
     write_run(tmp_path / "run")
     path = tmp_path / "run/srbench_full_results.json"

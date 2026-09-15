@@ -3,7 +3,9 @@ import math
 from pathlib import Path
 
 import srbench_results_io as srio
-from srbench_official_results import build_official_columns, BLACK_BOX_TOTAL
+from srbench_official_results import (
+    build_official_columns, BLACK_BOX_TOTAL, OFFICIAL_TRAIN_SPLIT, OFFICIAL_VAL_SPLIT,
+)
 
 
 # User-supplied benchmark reference, not recomputed from the released trial snapshot.
@@ -108,7 +110,11 @@ def build_tables(runs_root="runs", project_root=None):
     project_root = Path(project_root) if project_root else Path(__file__).resolve().parent
     runs_root = Path(runs_root)
     canonical = _names(project_root / "splits/srbench_all.txt") - set(srio.UNSOLVABLE_TASKS)
-    train = _names(project_root / "splits/barely_unsolvable.txt") & canonical
+    train_names = _names(project_root / OFFICIAL_TRAIN_SPLIT)
+    val_names = _names(project_root / OFFICIAL_VAL_SPLIT)
+    train = train_names & canonical
+    held_out = canonical - train_names - val_names
+    have_splits = bool(train_names and val_names)
     columns = {column["key"]: column for column in build_official_columns(
         runs_root, project_root, single_search_only=True)}
     cache = {}
@@ -120,15 +126,18 @@ def build_tables(runs_root="runs", project_root=None):
         return cache[key]
 
     keys = [key for _, subs in GROUPS for _, key in subs]
-    bb, gt = [], []
+    bb, gt, gt_held_out = [], [], []
     for key in keys:
         column = columns.get(key, {})
         bb.append(_format(column.get("bb_r2") if column.get("bb_completed") == BLACK_BOX_TOTAL
                           else None, rate=False))
         gt.append(_format(MDLFORMER_REFERENCE_GT if key == "mdlformer"
                           else _rate(complete(column.get("gt_path")))))
+        gt_held_out.append(_format(
+            _rate(complete(column.get("gt_path")), held_out) if have_splits else None))
     table1 = _grid([("", [""])] + [(label, [sub for sub, _ in subs]) for label, subs in GROUPS],
-                   [["SRBench black box (R2)", *bb], ["SRBench ground truth", *gt]])
+                   [["SRBench black box (R2)", *bb], ["SRBench ground truth", *gt],
+                    ["GT (excluding train & val)", *gt_held_out]])
 
     baseline = columns.get("pysr_baseline", {})
     evolved = columns.get("pysrpp_gt", {})
@@ -152,6 +161,9 @@ def build_tables(runs_root="runs", project_root=None):
             for label, base, evo in budgets]
     base_rows, evo_rows = complete(baseline.get("gt_path")), complete(evolved.get("gt_path"))
     rows.append(None)
+    rows.append([f"GT (excluding train & val, n={len(held_out)})",
+                 _format(_rate(base_rows, held_out) if have_splits else None),
+                 _format(_rate(evo_rows, held_out) if have_splits else None)])
     for label, datasets, noise in [
         (f"Train tasks (n={len(train)})", train, None),
         (f"Excluding train tasks (n={len(canonical-train)})", canonical-train, None),
@@ -162,6 +174,8 @@ def build_tables(runs_root="runs", project_root=None):
     table2 = _grid([("", [""]), ("PySR", [""]), ("Evolved", [""])], rows, subheaders=False)
     return ("Table 1: 1M-evaluation method comparison\n" + table1
             + "\nBlack box: mean test R2. Local ground truth: solve rate over 130 tasks and four noise levels."
+            + "\nExcluding train & val: omit tasks in " + OFFICIAL_TRAIN_SPLIT
+            + " and " + OFFICIAL_VAL_SPLIT + "."
             + "\nMDLFormer GT: supplied reference score (40.5%), without task-count rescaling; BB unavailable."
             + "\n\nTable 2: PySR vs PySR++ GT (evolved=" + evolved.get("training_id", "TBD") + ")\n"
             + table2 + "\nBreakdown below the divider uses 1M evaluations; 10 seeds."

@@ -582,6 +582,8 @@ def format_official_table(columns: list[dict]) -> str:
         ("val R2", lambda column: _fmt_score(column.get("val_r2"))),
         ("test R2", lambda column: _fmt_score(column.get("test_r2"))),
         ("SRBench GT solve (all)", lambda column: _fmt_rate(column["gt_rate"])),
+        ("SRBench GT solve (excluding train & val)",
+         lambda column: _fmt_rate(column.get("test_gt"))),
         ("SRBench GT solve (any seed)",
          lambda column: _fmt_rate(column["gt_any_seed_rate"])),
         ("SRBench GT solve (10 restarts)",
