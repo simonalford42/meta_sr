@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# 9/15/26
+sbatch -J eval-140185-trainval-90s-seed202 run.sh evaluate_new_pysr.py --evolve-results runs/140185 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 202 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --output-dir runs/140185-train_val_90s_10seed_seed202
+sbatch -J eval-709715-trainval-90s-seed202 run.sh evaluate_new_pysr.py --evolve-results runs/709715 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 202 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --output-dir runs/709715-train_val_90s_10seed_seed202
+
 # 9/14/26
 # sbatch -J fullsr-150815-simplify run.sh evolve_fullsr.py --continue-from runs/150815 --output-dir runs/150815-simplify-30-best2 --generations 30 --mutation-mode simplify --population-type complexity --population 10 --offspring 10 --n-runs 3 --val-n-runs 10 --models best2 --fitness-metric gt-r2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --max-evals 1000000 --timeout 500 --fullsr-wall-limit 600 --val-fullsr-timeout 1500 --val-fullsr-wall-limit 1800
 # snapshot_emp=$(sbatch --parsable --partition=default_partition --time=02:00:00 --mem=20G -J emp-709715-90s-snap10 run.sh empbench_full_eval.py --evolve-results runs/709715 --output-dir runs/709715-empiricalbench_9-14_1seed_90s_snap10 --n-runs 1 --seed 10000 --timeout 90 --frontier-snapshot-seconds 10 --pysr-wall-limit 300 --no-maxsize-warmup --cpus-per-task 1 --time-limit 00:15:00 --job-timeout 3600 --mem-per-cpu 8G --max-concurrent-jobs 9 --no-cache) || exit
@@ -15,367 +19,99 @@
 # sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-60m-review-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-11_baseline_1core_l1_60m_portfolio_90s --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
 # sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-60m-review-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-11_1core_60m_portfolio_90s --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
 
-# 9/11/26
-if [[ "${1:-}" == "srb2-minute-frontiers" ]]; then
-    srb2_portfolio_base=$(sbatch --parsable -J srb2-60m-base-portfolio90s run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-11_baseline_1core_l1_60m_portfolio_90s --n-runs 10 --seed 10000 --noise-levels 0 --max-samples 1000 --portfolio-time-limit 3600 --portfolio-restart-timeout 90 --pysr-wall-limit 3900 --no-early-stop --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb) || exit
-    sbatch --dependency=afterany:"$srb2_portfolio_base" -J srb2-60m-709715-portfolio90s run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-11_1core_60m_portfolio_90s --n-runs 10 --seed 10000 --noise-levels 0 --max-samples 1000 --portfolio-time-limit 3600 --portfolio-restart-timeout 90 --pysr-wall-limit 3900 --no-early-stop --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb
-    exit $?
-fi
+# 9/13/26
+# sbatch -J srb-941339 run.sh srbench_full_eval.py --ground-truth --black-box --evolve-results runs/941339 --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
+# sbatch -J ft-gt3 run.sh evolve_pysr.py --operator-type all --population-type task --generations 20 --simplify-cooldown 5 --population 10 --offspring 10 --n-runs 1 --fitness-metric gt --reeval population --n-reevals 2 --models best3 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --val-n-runs 3 --identify-topk 10 --final-eval-runs 10 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270 --baseline runs/709715 --eval-all-noise-levels --no-cache
 
+# 9/11/26
+
+# chain_a=$(sbatch --parsable --dependency=afterany:937941 -J gt-r2-again run.sh evolve_pysr.py --operator-type all --population-type task --generations 45 --simplify-cooldown 15 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt-r2 --reeval population --n-reevals 10 --models best2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --val-n-runs 10 --identify-topk 10 --final-eval-runs 10 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270)
+# sbatch --dependency=afterany:"$chain_a" -J ft-gt run.sh evolve_pysr.py --operator-type all --population-type task --generations 30 --simplify-cooldown 15 --population 10 --offspring 10 --n-runs 1 --fitness-metric gt --reeval population --n-reevals 2 --models best2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --val-n-runs 10 --identify-topk 10 --final-eval-runs 10 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270 --baseline runs/709715 --eval-all-noise-levels
+
+# srb2_portfolio_base=$(sbatch --parsable -J srb2-60m-base-portfolio90s run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-11_baseline_1core_l1_60m_portfolio_90s --n-runs 10 --seed 10000 --noise-levels 0 --max-samples 1000 --portfolio-time-limit 3600 --portfolio-restart-timeout 90 --pysr-wall-limit 3900 --no-early-stop --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
+# sbatch --dependency=afterany:"$srb2_portfolio_base" -J srb2-60m-709715-portfolio90s run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-11_1core_60m_portfolio_90s --n-runs 10 --seed 10000 --noise-levels 0 --max-samples 1000 --portfolio-time-limit 3600 --portfolio-restart-timeout 90 --pysr-wall-limit 3900 --no-early-stop --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb
+
+# sbatch  -J srb-15m-709715-single run.sh srbench_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench_gt_15m_single --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000000 --timeout 900 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5
 
 # 9/10/26
-if [[ "${1:-}" == "portfolio-existing-interactive-20260910" ]]; then
-    srun --jobid=779095 --overlap --nodes=1 --ntasks=1 --cpus-per-task=8 --mem=50G --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 bash run.sh scripts/finish_portfolio_curve.py --workers 8
-    exit
-fi
+# srb_noearly_base=$(sbatch --parsable --dependency=afterany:750000 -J srb-1m-base-noearly run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_1m_noearly_1seed --seed 10000 --n-runs 1 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000 --no-early-stop --timeout 0 --pysr-wall-limit 1800 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:40:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache) || exit
+# srb_noearly_evolved=$(sbatch --parsable --dependency=afterany:750000 -J srb-1m-709715-noearly run.sh srbench_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench_gt_1m_noearly_1seed --seed 10000 --n-runs 1 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000 --no-early-stop --timeout 0 --pysr-wall-limit 1800 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:40:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache) || exit
+# sbatch --dependency=afterok:"$srb_noearly_base":"$srb_noearly_evolved" --partition=default_partition --cpus-per-task=1 --mem=2G --time=00:10:00 -J srb-1m-noearly-times run.sh scripts/summarize_srbench_search_time.py
 
-if [[ "${1:-}" == "portfolio-monitor-20260910-173300" ]]; then
-    sbatch --parsable --partition=default_partition --array=114,116,264,294%4 --cpus-per-task=1 --mem=16G --time=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-final8 run.sh scripts/analyze_portfolio_seed_shards.py --index-offset 320
-    sbatch --parsable --partition=default_partition --array=73,116,287,295%4 --cpus-per-task=1 --mem=16G --time=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-final8 run.sh scripts/analyze_portfolio_seed_shards.py --index-offset 870
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-164951" ]]; then
-    scontrol update JobId=774709_402,774709_403,774709_404,774709_405,774709_406,774709_407,774709_408,774709_409,774709_410,774709_411,774709_412,774709_413,774709_414,774709_415,774709_416,774709_417,774709_418,774709_419,774709_420,774709_421,774709_422,774709_423,774709_424,774709_425,774709_426,774709_427,774709_428,774709_429,774709_430,774709_431,774709_432,774709_433,774709_434,774709_435,774709_436,774709_437,774709_438,774709_439,774709_440,774709_441,774709_442,774709_443,774709_444,774709_445,774709_446,774709_447,774709_448,774709_449,774709_450,774709_451,774709_452,774709_453,774709_454,774709_455,774709_456,774709_457,774709_458,774709_459,774709_460,774709_461,774709_462,774709_463,774709_464,774709_465,774709_466,774709_467,774709_468,774709_469,774709_470,774709_471,774709_472,774709_473,774709_474,774709_475,774709_476,774709_477,774709_478,774709_479,774709_480,774709_481,774709_482,774709_483,774709_484,774709_485,774709_486,774709_487,774709_488,774709_489,774709_490,774709_491,774709_492,774709_493,774709_494,774709_495,774709_496,774709_497,774709_498,774709_499,774709_500,774709_501,774709_502,774709_503,774709_504,774709_505,774709_506,774709_507,774709_508,774709_509,774709_510,774709_511,774709_512,774709_513,774709_514,774709_515,774709_516,774709_517,774709_518,774709_519,774709_520,774709_521,774709_522,774709_523,774709_524,774709_525,774709_526,774709_527,774709_528,774709_529,774709_530,774709_531,774709_532,774709_533,774709_534,774709_535,774709_536,774709_537,774709_538,774709_539,774709_540,774709_541,774709_542,774709_543,774709_544,774709_545,774709_546,774709_547,774709_548,774709_549,774710_49,774710_50,774710_51,774710_52,774710_53,774710_54,774710_55,774710_56,774710_57,774710_58,774710_59,774710_60,774710_61,774710_62,774710_63,774710_64,774710_65,774710_66,774710_67,774710_68,774710_69,774710_70,774710_71,774710_72,774710_73,774710_74,774710_75,774710_76,774710_77,774710_78,774710_79,774710_80,774710_81,774710_82,774710_83,774710_84,774710_85,774710_86,774710_87,774710_88,774710_89,774710_90,774710_91,774710_92,774710_93,774710_94,774710_95,774710_96,774710_97,774710_98,774710_99,774710_100,774710_101,774710_102,774710_103,774710_104,774710_105,774710_106,774710_107,774710_108,774710_109,774710_110,774710_111,774710_112,774710_113,774710_114,774710_115,774710_116,774710_117,774710_118,774710_119,774710_120,774710_121,774710_122,774710_123,774710_124,774710_125,774710_126,774710_127,774710_128,774710_129,774710_130,774710_131,774710_132,774710_133,774710_134,774710_135,774710_136,774710_137,774710_138,774710_139,774710_140,774710_141,774710_142,774710_143,774710_144,774710_145,774710_146,774710_147,774710_148,774710_149,774710_150,774710_151,774710_152,774710_153,774710_154,774710_155,774710_156,774710_157,774710_158,774710_159,774710_160,774710_161,774710_162,774710_163,774710_164,774710_165,774710_166,774710_167,774710_168,774710_169,774710_170,774710_171,774710_172,774710_173,774710_174,774710_175,774710_176,774710_177,774710_178,774710_179,774710_180,774710_181,774710_182,774710_183,774710_184,774710_185,774710_186,774710_187,774710_188,774710_189,774710_190,774710_191,774710_192,774710_193,774710_194,774710_195,774710_196,774710_197,774710_198,774710_199,774710_200,774710_201,774710_202,774710_203,774710_204,774710_205,774710_206,774710_207,774710_208,774710_209,774710_210,774710_211,774710_212,774710_213,774710_214,774710_215,774710_216,774710_217,774710_218,774710_219,774710_220,774710_221,774710_222,774710_223,774710_224,774710_225,774710_226,774710_227,774710_228,774710_229,774710_230,774710_231,774710_232,774710_233,774710_234,774710_235,774710_236,774710_237,774710_238,774710_239,774710_240,774710_241,774710_242,774710_243,774710_244,774710_245,774710_246,774710_247,774710_248,774710_249,774710_250,774710_251,774710_252,774710_253,774710_254,774710_255,774710_256,774710_257,774710_258,774710_259,774710_260,774710_261,774710_262,774710_263,774710_264,774710_265,774710_266,774710_267,774710_268,774710_269,774710_270,774710_271,774710_272,774710_273,774710_274,774710_275,774710_276,774710_277,774710_278,774710_279,774710_280,774710_281,774710_282,774710_283,774710_284,774710_285,774710_286,774710_287,774710_288,774710_289,774710_290,774710_291,774710_292,774710_293,774710_294,774710_295,774710_296,774710_297,774710_298,774710_299,774710_300,774710_301,774710_302,774710_303,774710_304,774710_305,774710_306,774710_307,774710_308,774710_309,774710_310,774710_311,774710_312,774710_313,774710_314,774710_315,774710_316,774710_317,774710_318,774710_319,774710_320,774710_321,774710_322,774710_323,774710_324,774710_325,774710_326,774710_327,774710_328,774710_329,774710_330,774710_331,774710_332,774710_333,774710_334,774710_335,774710_336,774710_337,774710_338,774710_339,774710_340,774710_341,774710_342,774710_343,774710_344,774710_345,774710_346,774710_347,774710_348,774710_349,774710_350,774710_351,774710_352,774710_353,774710_354,774710_355,774710_356,774710_357,774710_358,774710_359,774710_360,774710_361,774710_362,774710_363,774710_364,774710_365,774710_366,774710_367,774710_368,774710_369,774710_370,774710_371,774710_372,774710_373,774710_374,774710_375,774710_376,774710_377,774710_378,774710_379,774710_380,774710_381,774710_382,774710_383,774710_384,774710_385,774710_386,774710_387,774710_388,774710_389,774710_390,774710_391,774710_392,774710_393,774710_394,774710_395,774710_396,774710_397,774710_398,774710_399,774710_400,774710_401,774710_402,774710_403,774710_404,774710_405,774710_406,774710_407,774710_408,774710_409,774710_410,774710_411,774710_412,774710_413,774710_414,774710_415,774710_416,774710_417,774710_418,774710_419,774710_420,774710_421,774710_422,774710_423,774710_424,774710_425,774710_426,774710_427,774710_428,774710_429,774710_430,774710_431,774710_432,774710_433,774710_434,774710_435,774710_436,774710_437,774710_438,774710_439,774710_440,774710_441,774710_442,774710_443,774710_444,774710_445,774710_446,774710_447,774710_448,774710_449,774710_450,774710_451,774710_452,774710_453,774710_454,774710_455,774710_456,774710_457,774710_458,774710_459,774710_460,774710_461,774710_462,774710_463,774710_464,774710_465,774710_466,774710_467,774710_468,774710_469,774710_470,774710_471,774710_472,774710_473,774710_474,774710_475,774710_476,774710_477,774710_478,774710_479,774710_480,774710_481,774710_482,774710_483,774710_484,774710_485,774710_486,774710_487,774710_488,774710_489,774710_490,774710_491,774710_492,774710_493,774710_494,774710_495,774710_496,774710_497,774710_498,774710_499,774710_500,774710_501,774710_502,774710_503,774710_504,774710_505,774710_506,774710_507,774710_508,774710_509,774710_510,774710_511,774710_512,774710_513,774710_514,774710_515,774710_516,774710_517,774710_518,774710_519,774710_520,774710_521,774710_522,774710_523,774710_524,774710_525,774710_526,774710_527,774710_528,774710_529,774710_530,774710_531,774710_532,774710_533,774710_534,774710_535,774710_536,774710_537,774710_538,774710_539,774710_540,774710_541,774710_542,774710_543,774710_544,774710_545,774710_546,774710_547,774710_548,774710_549,774709_241,774709_118 MinMemoryNode=2048
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-164001" ]]; then
-    scancel 759513_31 759513_74 759513_129 759513_130 759513_131 759513_162 759513_163 759513_177 759513_178 759513_179 759513_183 759513_187 759513_189 759513_195 759513_197 759513_199 759513_219 759513_227 759513_233 759513_234 759513_235 759513_250 759513_251 759513_257 759513_258 759513_259 759513_265 759513_267 759513_269 759513_270 759513_271 759513_290 759513_291 759513_298 759513_299 759513_321 759513_322 759513_323 759513_326 759513_337 759513_338 759513_353 759513_354 759513_355 759513_369 759513_370 759513_371 759513_377 759513_378 759513_379 759513_393 759513_394 759513_395 759513_400 759513_401 759513_402 759513_404 759513_405 759513_408 759513_409 759513_411 759513_419 759513_425 759513_427 759513_430 759513_432 759513_433 759513_434 759513_438 759513_439 759513_441 759513_443 759513_446 759513_447 759513_457 759513_459 759513_465 759513_466 759513_467 759513_472 759513_473 759513_474 759513_475 759513_477 759513_479 759513_480 759513_481 759513_482 759513_483 759513_486 759513_487 759513_488 759513_489 759513_490 759513_495 759513_498 759513_512 759513_513 759513_514 759513_515 759513_519 759513_520 759513_521 759513_522 759513_530 759513_610
-    sbatch --parsable --partition=default_partition --array=0-549%235 --cpus-per-task=1 --mem=4G --time=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-seeds run.sh scripts/analyze_portfolio_seed_shards.py --index-offset 320
-    sbatch --parsable --partition=default_partition --array=0-549%235 --cpus-per-task=1 --mem=4G --time=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-seeds run.sh scripts/analyze_portfolio_seed_shards.py --index-offset 870
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-163148" ]]; then
-    for portfolio_group_job in 759513_404 759513_405 759513_406 759513_408 759513_409 759513_411 759513_417 759513_419 759513_425 759513_427 759513_430 759513_431 759513_432 759513_433 759513_434 759513_438 759513_439 759513_441 759513_443 759513_446 759513_447 759513_457 759513_459; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-163051" ]]; then
-    for portfolio_group_job in 759513_162 759513_163 759513_165 759513_171 759513_177 759513_178 759513_179 759513_181 759513_182 759513_183 759513_187 759513_189 759513_195 759513_197 759513_199 759513_201 759513_219 759513_227 759513_233 759513_234 759513_235 759513_250 759513_251 759513_257 759513_258 759513_259 759513_265 759513_267 759513_269 759513_270 759513_271 759513_290 759513_291 759513_298 759513_299 759513_321 759513_323 759513_326 759513_327 759513_337 759513_338 759513_353 759513_354 759513_355 759513_369 759513_370 759513_371 759513_377 759513_378 759513_379 759513_393 759513_394 759513_395 759513_400 759513_401 759513_402; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-161945" ]]; then
-    for portfolio_group_job in 759513_113 759513_114 759513_117 759513_121 759513_122 759513_123 759513_129; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-161652" ]]; then
-    scancel 759513_185 759513_186 759513_191 759513_193 759513_194 759513_339 759513_403 759513_407 759513_435 759513_442 759513_458 759513_491 759513_496 759513_497 759513_499 759513_504 759513_505 759513_506 759513_507 759513_523 759513_528 759513_529 759513_531 759513_536 759513_537 759513_538 759513_539 759513_545 759513_546 759513_547 759513_603 759513_611
-    sbatch --parsable --partition=default_partition --array=0-319%320 --cpus-per-task=1 --mem=4G --time=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-seeds run.sh scripts/analyze_portfolio_seed_shards.py
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-161120" ]]; then
-    for portfolio_group_job in 759513_130 759513_131 759513_133 759513_476 759513_477 759513_478 759513_479 759513_480 759513_481; do scontrol update JobId="$portfolio_group_job" TimeLimit=00:30:00 TimeMin=00:30:00 || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-161102" ]]; then
-    for portfolio_group_job in 759513_130 759513_131 759513_133; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-160454" ]]; then
-    for portfolio_group_job in 759513_84; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-160350" ]]; then
-    for portfolio_group_job in 759513_35 759513_39 759513_41 759513_42 759513_43 759513_74 759513_75 759513_82 759513_83; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-160303" ]]; then
-    for portfolio_group_job in 759513_635 759513_31; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-160152" ]]; then
-    for portfolio_group_job in 759513_498 759513_499 759513_503 759513_504 759513_505 759513_506 759513_507 759513_512 759513_513 759513_514 759513_515 759513_516 759513_517 759513_519 759513_520 759513_521 759513_522 759513_523 759513_528 759513_529 759513_530 759513_531 759513_536 759513_537 759513_538 759513_539 759513_545 759513_546 759513_547 759513_550 759513_554 759513_587 759513_602 759513_603 759513_608 759513_609 759513_610 759513_611 759513_615; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-160046" ]]; then
-    for portfolio_group_job in 759513_495 759513_496 759513_497; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155941" ]]; then
-    for portfolio_group_job in 759513_484 759513_485 759513_486 759513_487 759513_488 759513_489 759513_490 759513_491 759513_494; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155858" ]]; then
-    scontrol release 759513_130 759513_131 759513_132 759513_133
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155844" ]]; then
-    scontrol hold 759513_130 759513_131 759513_132 759513_133
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155750" ]]; then
-    for portfolio_group_job in 759513_482 759513_483; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155610" ]]; then
-    for portfolio_group_job in 759513_481 759513_480 759513_479 759513_478 759513_477 759513_476 759513_130 759513_131 759513_132 759513_133 759513_134 759513_135; do scontrol update JobId="$portfolio_group_job" TimeLimit=00:10:00 TimeMin=00:10:00 || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155542" ]]; then
-    for portfolio_group_job in 759513_479 759513_480 759513_481; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155438" ]]; then
-    for portfolio_group_job in 759513_476 759513_477 759513_478; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155350" ]]; then
-    for portfolio_group_job in 759513_474 759513_475; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155247" ]]; then
-    for portfolio_group_job in 759513_468 759513_469 759513_470 759513_471 759513_472 759513_473; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155142" ]]; then
-    for portfolio_group_job in 759513_464 759513_465 759513_466 759513_467; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-155038" ]]; then
-    for portfolio_group_job in 759513_456 759513_457 759513_458 759513_459; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-154934" ]]; then
-    for portfolio_group_job in 759513_435 759513_436 759513_437 759513_438 759513_439 759513_440 759513_441 759513_442 759513_443 759513_446 759513_447 759513_451; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-154834" ]]; then
-    for portfolio_group_job in 759513_225 759513_226 759513_227 759513_229 759513_230 759513_231 759513_232 759513_233 759513_234 759513_235 759513_243 759513_249 759513_250 759513_251 759513_253 759513_254 759513_255 759513_256 759513_257 759513_258 759513_259 759513_264 759513_265 759513_266 759513_267 759513_268 759513_269 759513_270 759513_271 759513_273 759513_274 759513_275 759513_289 759513_290 759513_291 759513_296 759513_297 759513_298 759513_299 759513_300 759513_301 759513_302 759513_303 759513_320 759513_321 759513_322 759513_323 759513_324 759513_325 759513_326 759513_327 759513_329 759513_330 759513_331 759513_334 759513_335 759513_336 759513_337 759513_338 759513_339 759513_340 759513_342 759513_347 759513_352 759513_353 759513_354 759513_355 759513_356 759513_361 759513_368 759513_369 759513_370 759513_371 759513_373 759513_374 759513_376 759513_377 759513_378 759513_379 759513_381 759513_383 759513_384 759513_386 759513_387 759513_391 759513_392 759513_393 759513_394 759513_395 759513_400 759513_401 759513_402 759513_403 759513_404 759513_405 759513_406 759513_407 759513_408 759513_409 759513_410 759513_411 759513_415 759513_417 759513_418 759513_419 759513_422 759513_423 759513_424 759513_425 759513_426 759513_427 759513_428 759513_429 759513_430 759513_431 759513_432 759513_433 759513_434; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-154748" ]]; then
-    for portfolio_group_job in 759513_218 759513_219; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-154309" ]]; then
-    for portfolio_group_job in 759513_130 759513_131 759513_132 759513_133 759513_134 759513_135 759513_143 759513_153 759513_154 759513_157 759513_161 759513_162 759513_163 759513_165 759513_166 759513_167 759513_171 759513_177 759513_178 759513_179 759513_180 759513_181 759513_182 759513_183 759513_184 759513_185 759513_186 759513_187 759513_188 759513_189 759513_190 759513_191 759513_192 759513_193 759513_194 759513_195 759513_196 759513_197 759513_198 759513_199 759513_201 759513_203; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-154006" ]]; then
-    for portfolio_group_job in 759513_129; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-153919" ]]; then
-    for portfolio_group_job in 759513_113 759513_114 759513_115 759513_116 759513_117 759513_118 759513_119 759513_121 759513_122 759513_123 759513_128; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-153530" ]]; then
-    for portfolio_group_job in 759513_86 759513_87; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-153055" ]]; then
-    for portfolio_group_job in 759513_85; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-153008" ]]; then
-    for portfolio_group_job in 759513_84; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-152911" ]]; then
-    scontrol update JobId=759513 ArrayTaskThrottle=500
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-152750" ]]; then
-    for portfolio_group_job in 759513_80 759513_81 759513_82 759513_83; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-152216" ]]; then
-    scontrol release 759513_1
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-152056" ]]; then
-    for portfolio_group_job in 759513_78 759513_79; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-152012" ]]; then
-    scontrol release 759513_2
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-151751" ]]; then
-    for portfolio_group_job in 759513_77; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-curve-idle-capacity" ]]; then
-    scontrol update JobId=759513 ArrayTaskThrottle=298
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-151532" ]]; then
-    for portfolio_group_job in 759513_75 759513_76; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-monitor-20260910-151054" ]]; then
-    for portfolio_group_job in 759513_65 759513_66 759513_67 759513_70 759513_71 759513_73 759513_74; do scontrol requeue "$portfolio_group_job" || exit; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-curve-expand" ]]; then
-    scontrol update JobId=759513 ArrayTaskThrottle=98
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-curve-requeue-2" ]]; then
-    scontrol release 759513_0 759513_3
-    scontrol update JobId=759513 ArrayTaskThrottle=48
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-curve-requeue-1" ]]; then
-    scancel 759514
-    for portfolio_group_job in 759513_4 759513_5 759513_7 759513_23 759513_25 759513_26 759513_27 759513_28 759513_29 759513_30 759513_33 759513_34 759513_35 759513_36 759513_37 759513_38 759513_39 759513_40 759513_41 759513_42 759513_43; do scontrol requeue "$portfolio_group_job"; done
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-curve-local-slots" ]]; then
-    scontrol hold 759513_0 759513_1 759513_2 759513_3
-    scontrol update JobId=759513 ArrayTaskThrottle=46
-    exit
-fi
-
-# scontrol update JobId=759513 TimeLimit=00:30:00
-if [[ "${1:-}" == "portfolio-curve-groups" ]]; then
-    portfolio_groups=$(sbatch --parsable --partition=default_partition --array=0-647%50 --cpus-per-task=1 --mem=4G --time=04:00:00 --time-min=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-groups run.sh scripts/analyze_portfolio_solve_over_time.py --group-task) || exit
-    sbatch --dependency=afterok:"$portfolio_groups" --partition=default_partition --cpus-per-task=1 --mem=4G --time=00:15:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-plot run.sh scripts/analyze_portfolio_solve_over_time.py --collect-groups --render-only
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-curve-group-prepare" ]]; then
-    scancel 753564 757119
-    python scripts/analyze_portfolio_solve_over_time.py --prepare-groups
-    exit
-fi
-
-# scontrol update JobId=757119 ArrayTaskThrottle=16
-# scontrol update JobId=757119 ArrayTaskThrottle=12
-if [[ "${1:-}" == "portfolio-curve-release-retry-1" ]]; then
-    scontrol update JobId=757119 ArrayTaskThrottle=8 || exit
-    scontrol release 757119
-    exit
-fi
-
-if [[ "${1:-}" == "portfolio-curve-retry-1" ]]; then
-    # scontrol update JobId=753564 ArrayTaskThrottle=25
-    scancel 753565
-    sbatch --hold --parsable --partition=default_partition --array=0,2,3,7,8,9,10,11,13,14,15,17,18,21,22,23,24,25,26,35,36,38,39,44,48%25 --cpus-per-task=1 --mem=4G --time=04:00:00 --time-min=00:30:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-retry1 run.sh scripts/analyze_portfolio_solve_over_time.py --array-task
-    exit
-fi
-
-# scontrol update JobId=753564 TimeLimit=00:30:00
-if [[ "${1:-}" == "portfolio-curve" ]]; then
-    portfolio_curve=$(sbatch --parsable --partition=default_partition --array=0-132%50 --cpus-per-task=1 --mem=4G --time=04:00:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-curve run.sh scripts/analyze_portfolio_solve_over_time.py --array-task) || exit
-    sbatch --dependency=afterok:"$portfolio_curve" --partition=default_partition --cpus-per-task=1 --mem=4G --time=00:15:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 -J srb-portfolio-plot run.sh scripts/analyze_portfolio_solve_over_time.py --render-only
-    exit
-fi
-
-srb_noearly_base=$(sbatch --parsable --dependency=afterany:750000 -J srb-1m-base-noearly run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_1m_noearly_1seed --seed 10000 --n-runs 1 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000 --no-early-stop --timeout 0 --pysr-wall-limit 1800 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:40:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache) || exit
-srb_noearly_evolved=$(sbatch --parsable --dependency=afterany:750000 -J srb-1m-709715-noearly run.sh srbench_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench_gt_1m_noearly_1seed --seed 10000 --n-runs 1 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000 --no-early-stop --timeout 0 --pysr-wall-limit 1800 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:40:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache) || exit
-sbatch --dependency=afterok:"$srb_noearly_base":"$srb_noearly_evolved" --partition=default_partition --cpus-per-task=1 --mem=2G --time=00:10:00 -J srb-1m-noearly-times run.sh scripts/summarize_srbench_search_time.py
-
-sbatch -J srb-bb-autoresearch run.sh srbench_full_eval.py --autoresearch e425e7ed5894b0ebd7718fed0d77a252df2fa443 --black-box --results-dir runs/srbench_bb_autoresearch_10seed --max-evals 1000000 --seed 10000 --n-runs 10 --black-box-max-samples 10000 --black-box-timeout 1500 --black-box-wall-limit 1800 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --job-timeout 7200 --mem-per-cpu 8G --max-retries 5
-sbatch -J neuron-eval-709715 run.sh neuron_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/neuron_full_eval_5seed --n-runs 5 --seed 10000 --max-evals 1000000 --max-samples 1024 --partition default_partition --max-concurrent-jobs 30 --time-limit 00:15:00 --mem-per-cpu 8G --timeout 500 --pysr-wall-limit 600 --job-timeout 1800
+# sbatch -J srb-bb-autoresearch run.sh srbench_full_eval.py --autoresearch e425e7ed5894b0ebd7718fed0d77a252df2fa443 --black-box --results-dir runs/srbench_bb_autoresearch_10seed --max-evals 1000000 --seed 10000 --n-runs 10 --black-box-max-samples 10000 --black-box-timeout 1500 --black-box-wall-limit 1800 --partition default_partition --max-concurrent-jobs 100 --time-limit 01:00:00 --job-timeout 7200 --mem-per-cpu 8G --max-retries 5
+# sbatch --dependency=afterany:749071 -J srb-15m-709715-single run.sh srbench_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench_gt_15m_single --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000000 --timeout 900 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5
+# sbatch -J neuron-eval-709715 run.sh neuron_full_eval.py --evolve-results runs/709715 --output-dir runs/709715/neuron_full_eval_5seed --n-runs 5 --seed 10000 --max-evals 1000000 --max-samples 1024 --partition default_partition --max-concurrent-jobs 30 --time-limit 00:15:00 --mem-per-cpu 8G --timeout 500 --pysr-wall-limit 600 --job-timeout 1800
 
 # 9/9/26
-sbatch -J srb-15m-base-single run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_15m_single --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000000 --timeout 900 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache
+# sbatch -J srb-15m-base-single run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_15m_single --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000000 --timeout 900 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache
 
 # 9/8/26
-sbatch -J srb-merge-709715-taskpop run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_taskpop_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --task-population-bundles 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
+# sbatch --dependency=afterany:582543 -J srb-merge-709715-taskpop run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_taskpop_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --task-population-bundles 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
 
-srb_15m_base=$(sbatch --parsable -J srb-15m-base-portfolio run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_15m_portfolio_1e6 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 900 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache)
-sbatch --dependency=afterany:"$srb_15m_base" -J srb-15m-709715-portfolio run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_15m_portfolio_1e6 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 900 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache
+# srb_15m_base=$(sbatch --parsable -J srb-15m-base-portfolio run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_15m_portfolio_1e6 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 900 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache)
+# sbatch --dependency=afterany:"$srb_15m_base" -J srb-15m-709715-portfolio run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_15m_portfolio_1e6 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 900 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 1200 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:30:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 8G --max-retries 5 --no-cache
 
-sbatch -J eval-273201-trainval-90s-noearly run.sh evaluate_new_pysr.py --evolve-results runs/273201 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --no-early-stop --output-dir runs/273201/train_val_90s_10seed_no_early_stop
+# sbatch -J eval-273201-trainval-90s-noearly run.sh evaluate_new_pysr.py --evolve-results runs/273201 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --no-early-stop --output-dir runs/273201/train_val_90s_10seed_no_early_stop
 
-no_warmup_9_8=$(sbatch --parsable -J emp-9-8-base-8c-l1-nowarm run.sh empbench_full_eval.py --output-dir runs/empiricalbench_9-8_baseline_8core_l1_60m_no_warmup --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 2G --max-concurrent-jobs 45 --no-cache)
-no_warmup_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" -J srb2-9-8-base-8c-l1-nowarm run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-8_gt_baseline_8core_l1_60m_no_warmup --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 45 --no-cache --no-wandb)
-no_warmup_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" -J srb2-9-8-base-1c-l1-nowarm run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-8_gt_baseline_1core_l1_60m_no_warmup --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
-no_warmup_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" -J srb2-9-8-base-portfolio-nowarm run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-8_gt_baseline_1core_l1_portfolio_1m_no_warmup --n-runs 10 --seed 10000 --noise-levels 0 --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
-no_warmup_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" -J srb2-9-8-709715-1c-nowarm run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-8_ground_truth_1core_60m_no_warmup --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
-no_warmup_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" -J srb2-9-8-709715-portfolio-nowarm run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-8_ground_truth_1core_portfolio_1m_no_warmup --n-runs 10 --seed 10000 --noise-levels 0 --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
+# no_warmup_9_8=$(sbatch --parsable -J emp-9-8-base-8c-l1-nowarm run.sh empbench_full_eval.py --output-dir runs/empiricalbench_9-8_baseline_8core_l1_60m_no_warmup --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 2G --max-concurrent-jobs 45 --no-cache)
+# no_warmup_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" -J srb2-9-8-base-8c-l1-nowarm run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-8_gt_baseline_8core_l1_60m_no_warmup --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 45 --no-cache --no-wandb)
+# no_warmup_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" -J srb2-9-8-base-1c-l1-nowarm run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-8_gt_baseline_1core_l1_60m_no_warmup --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
+# no_warmup_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" -J srb2-9-8-base-portfolio-nowarm run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-8_gt_baseline_1core_l1_portfolio_1m_no_warmup --n-runs 10 --seed 10000 --noise-levels 0 --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
+# no_warmup_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" -J srb2-9-8-709715-1c-nowarm run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-8_ground_truth_1core_60m_no_warmup --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
+# no_warmup_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" -J srb2-9-8-709715-portfolio-nowarm run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-8_ground_truth_1core_portfolio_1m_no_warmup --n-runs 10 --seed 10000 --noise-levels 0 --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 3900 --no-maxsize-warmup --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
 
-no_warmup_review_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J emp-9-8-review-base-8c-l1-nowarm run.sh scripts/review_srbench2_frontiers.py runs/empiricalbench_9-8_baseline_8core_l1_60m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 5)
-no_warmup_review_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-base-8c-l1-nowarm run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-8_gt_baseline_8core_l1_60m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
-no_warmup_review_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-base-1c-l1-nowarm run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-8_gt_baseline_1core_l1_60m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
-no_warmup_review_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-base-portfolio-nowarm run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-8_gt_baseline_1core_l1_portfolio_1m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
-no_warmup_review_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-709715-1c-nowarm run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-8_ground_truth_1core_60m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
-sbatch --dependency=afterany:"$no_warmup_review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-709715-portfolio-nowarm run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-8_ground_truth_1core_portfolio_1m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+# no_warmup_review_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J emp-9-8-review-base-8c-l1-nowarm run.sh scripts/review_srbench2_frontiers.py runs/empiricalbench_9-8_baseline_8core_l1_60m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 5)
+# no_warmup_review_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-base-8c-l1-nowarm run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-8_gt_baseline_8core_l1_60m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
+# no_warmup_review_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-base-1c-l1-nowarm run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-8_gt_baseline_1core_l1_60m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
+# no_warmup_review_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-base-portfolio-nowarm run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-8_gt_baseline_1core_l1_portfolio_1m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
+# no_warmup_review_9_8=$(sbatch --parsable --dependency=afterany:"$no_warmup_review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-709715-1c-nowarm run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-8_ground_truth_1core_60m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
+# sbatch --dependency=afterany:"$no_warmup_review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-709715-portfolio-nowarm run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-8_ground_truth_1core_portfolio_1m_no_warmup --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
 
-trainval_90s=$(sbatch --parsable -J eval-709715-trainval-90s run.sh evaluate_new_pysr.py --evolve-results runs/709715 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --output-dir runs/709715/train_val_90s_10seed)
-sbatch --dependency=afterany:"$trainval_90s" -J eval-273201-trainval-90s run.sh evaluate_new_pysr.py --evolve-results runs/273201 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --output-dir runs/273201/train_val_90s_10seed
+# trainval_90s=$(sbatch --parsable -J eval-709715-trainval-90s run.sh evaluate_new_pysr.py --evolve-results runs/709715 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --output-dir runs/709715/train_val_90s_10seed)
+# sbatch -J eval-273201-trainval-90s run.sh evaluate_new_pysr.py --evolve-results runs/273201 --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt --n-runs 10 --seed 192 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:20:00 --job-timeout 7200 --mem-per-cpu 8G --no-cache --output-dir runs/273201/train_val_90s_10seed
 
-retry_9_8=$(sbatch --parsable -J srb2-9-8-retry-base-8c-l1 run.sh scripts/retry_pysr_errors.py runs/srbench2_9-4_gt_baseline_8core_l1 --cpus-per-task 8 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --max-retries 5)
-retry_9_8=$(sbatch --parsable --dependency=afterany:"$retry_9_8" -J srb2-9-8-retry-709715-8c run.sh scripts/retry_pysr_errors.py runs/709715/srbench2_9-4_ground_truth_8core --cpus-per-task 8 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --max-retries 5)
-retry_9_8=$(sbatch --parsable --dependency=afterany:"$retry_9_8" -J emp-9-8-retry-709715-8c run.sh scripts/retry_pysr_errors.py runs/709715/empiricalbench_paper/evolved --cpus-per-task 8 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 2G --max-concurrent-jobs 45 --max-retries 5)
-retry_9_8=$(sbatch --parsable --dependency=afterany:"$retry_9_8" -J srb2-9-8-709715-portfolio run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-8_ground_truth_1core_portfolio_1m --n-runs 10 --seed 10000 --noise-levels 0 --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
-review_9_8=$(sbatch --parsable --dependency=afterany:"$retry_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-base-8c-l1 run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline_8core_l1 --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10 --force)
-review_9_8=$(sbatch --parsable --dependency=afterany:"$review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-709715-8c run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-4_ground_truth_8core --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10 --force)
-review_9_8=$(sbatch --parsable --dependency=afterany:"$review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J emp-9-8-review-709715-8c run.sh scripts/review_srbench2_frontiers.py runs/709715/empiricalbench_paper/evolved --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 5 --force)
-sbatch --dependency=afterany:"$review_9_8" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-8-review-709715-portfolio run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-8_ground_truth_1core_portfolio_1m --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+# New frontier recomputation. submitted 9/8 actually
+# srb_merge=$(sbatch --parsable -J srb-merge-autores run.sh srbench_full_eval.py --autoresearch best --ground-truth --results-dir runs/srbench_gt_autoresearch_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
+# srb_merge=$(sbatch --parsable --dependency=afterany:"$srb_merge" -J srb-merge-basic-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --results-dir runs/srbench_gt_basicsr_baseline_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --fullsr-wall-limit 600 --partition default_partition --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
+# srb_merge=$(sbatch --parsable --dependency=afterany:"$srb_merge" -J srb-merge-hpo-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --ground-truth --results-dir runs/srbench_gt_hpo_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
+# srb_merge=$(sbatch --parsable --dependency=afterany:"$srb_merge" -J srb-merge-basicpp-gt run.sh srbench_full_eval.py --evolve-results runs/225437 --ground-truth --results-dir runs/225437/srbench_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --fullsr-wall-limit 600 --partition default_partition --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
+# srb_merge=$(sbatch --parsable --dependency=afterany:"$srb_merge" -J srb-merge-hpo-gtr2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_190637_506162 --ground-truth --results-dir runs/srbench_gt_hpo_gtr2_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
+# srb_merge=$(sbatch --parsable --dependency=afterany:"$srb_merge" -J srb-merge-pysrpp-gtr2 run.sh srbench_full_eval.py --evolve-results runs/120459 --ground-truth --results-dir runs/120459/srbench_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
+# srb_merge=$(sbatch --parsable --dependency=afterany:"$srb_merge" -J srb-merge-basicpp-gtr2 run.sh srbench_full_eval.py --evolve-results runs/150815 --ground-truth --results-dir runs/150815/srbench_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --fullsr-wall-limit 600 --partition default_partition --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
+# srb_merge=$(sbatch --parsable --dependency=afterany:"$srb_merge" -J srb-merge-hpo-r2 run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_183759_524347 --ground-truth --results-dir runs/srbench_gt_hpo_r2_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
+# srb_merge=$(sbatch --parsable --dependency=afterany:"$srb_merge" -J srb-merge-pysrpp-r2 run.sh srbench_full_eval.py --evolve-results runs/120458 --ground-truth --results-dir runs/120458/srbench_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
+# sbatch --dependency=afterany:"$srb_merge" -J srb-merge-basicpp-r2 run.sh srbench_full_eval.py --evolve-results runs/150812 --ground-truth --results-dir runs/150812/srbench_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --fullsr-wall-limit 600 --partition default_partition --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
 
 # 9/4/26
 
-srb2_protocol=$(sbatch --parsable --dependency=afterany:273201 -J srb2-9-4-base-8c-l1 run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-4_gt_baseline_8core_l1 --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
-srb2_protocol=$(sbatch --parsable --dependency=afterany:"$srb2_protocol" -J srb2-9-4-base-1c-l1 run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-4_gt_baseline_1core_l1 --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
-srb2_protocol=$(sbatch --parsable --dependency=afterany:"$srb2_protocol" -J srb2-9-4-709715-8c run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-4_ground_truth_8core --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
-srb2_protocol=$(sbatch --parsable --dependency=afterany:"$srb2_protocol" -J srb2-9-4-base-portfolio run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-4_gt_baseline_1core_portfolio_1m --n-runs 10 --seed 10000 --noise-levels 0 --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
-srb2_protocol=$(sbatch --parsable --dependency=afterany:"$srb2_protocol" -J emp-9-4-base-portfolio run.sh empbench_full_eval.py --output-dir runs/empiricalbench_9-4_baseline_1core_portfolio_1m --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 45 --no-cache)
-srb2_review=$(sbatch --parsable --dependency=afterany:"$srb2_protocol" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-base-8c-l1 run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline_8core_l1 --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
-srb2_review=$(sbatch --parsable --dependency=afterany:"$srb2_review" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-base-1c-l1 run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline_1core_l1 --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
-srb2_review=$(sbatch --parsable --dependency=afterany:"$srb2_review" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-709715-8c run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-4_ground_truth_8core --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
-srb2_review=$(sbatch --parsable --dependency=afterany:"$srb2_review" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-portfolio run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline_1core_portfolio_1m --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
-sbatch --dependency=afterany:"$srb2_review" --export=ALL --time=1-02:00:00 --mem=2G -J emp-9-4-review-portfolio run.sh scripts/review_srbench2_frontiers.py runs/empiricalbench_9-4_baseline_1core_portfolio_1m --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 5
+# srb2_protocol=$(sbatch --parsable --dependency=afterany:273201 -J srb2-9-4-base-8c-l1 run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-4_gt_baseline_8core_l1 --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
+# srb2_protocol=$(sbatch --parsable --dependency=afterany:"$srb2_protocol" -J srb2-9-4-base-1c-l1 run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-4_gt_baseline_1core_l1 --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --baseline-l1-loss --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
+# srb2_protocol=$(sbatch --parsable --dependency=afterany:"$srb2_protocol" -J srb2-9-4-709715-8c run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-4_ground_truth_8core --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 8 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
 
-sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 1000 --max-cost 2
-sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-4_ground_truth --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 1000 --max-cost 2
-srb_90s_base=$(sbatch --parsable --dependency=afterany:273895:273896 -J srb-90s-base run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_90s --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:20:00 --mem-per-cpu 8G --max-retries 5)
-sbatch --dependency=afterany:"$srb_90s_base" -J srb-90s-709715 run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_90s --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:20:00 --mem-per-cpu 8G --max-retries 5
-sbatch -J evolve-srbench-90s run.sh evolve_pysr.py --operator-type all --population-type task --generations 45 --simplify-cooldown 15 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models best2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --val-n-runs 10 --identify-topk 10 --final-eval-runs 10 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270
+# srb2_protocol=$(sbatch --parsable --dependency=afterany:"$srb2_protocol" -J srb2-9-4-base-portfolio run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-4_gt_baseline_1core_portfolio_1m --n-runs 10 --seed 10000 --noise-levels 0 --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb)
+# srb2_protocol=$(sbatch --parsable --dependency=afterany:"$srb2_protocol" -J emp-9-4-base-portfolio run.sh empbench_full_eval.py --output-dir runs/empiricalbench_9-4_baseline_1core_portfolio_1m --n-runs 5 --seed 10000 --timeout 3600 --pysr-wall-limit 3900 --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 --time-limit 01:15:00 --job-timeout 7200 --cpus-per-task 1 --mem-per-cpu 10G --max-concurrent-jobs 45 --no-cache)
 
-srb_aggregate=$(sbatch --parsable -J srb-aggregate-base run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
-sbatch --dependency=afterany:"$srb_aggregate" -J srb-aggregate-709715 run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
+# srb2_review=$(sbatch --parsable --dependency=afterany:"$srb2_protocol" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-base-8c-l1 run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline_8core_l1 --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
+# srb2_review=$(sbatch --parsable --dependency=afterany:"$srb2_review" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-base-1c-l1 run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline_1core_l1 --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
+# srb2_review=$(sbatch --parsable --dependency=afterany:"$srb2_review" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-709715-8c run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-4_ground_truth_8core --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
+# srb2_review=$(sbatch --parsable --dependency=afterany:"$srb2_review" --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-portfolio run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline_1core_portfolio_1m --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10)
+# sbatch --dependency=afterany:"$srb2_review" --export=ALL --time=1-02:00:00 --mem=2G -J emp-9-4-review-portfolio run.sh scripts/review_srbench2_frontiers.py runs/empiricalbench_9-4_baseline_1core_portfolio_1m --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 5
+
+# sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-base run.sh scripts/review_srbench2_frontiers.py runs/srbench2_9-4_gt_baseline --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+# sbatch --export=ALL --time=1-02:00:00 --mem=2G -J srb2-9-4-review-709715 run.sh scripts/review_srbench2_frontiers.py runs/709715/srbench2_9-4_ground_truth --model openai/gpt-5.6-terra --reasoning-effort medium --max-output-tokens 10000 --max-cost 10
+
+# srb_90s_base=$(sbatch --parsable --dependency=afterany:273895:273896 -J srb-90s-base run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_90s --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:20:00 --mem-per-cpu 8G --max-retries 5)
+# sbatch --dependency=afterany:"$srb_90s_base" -J srb-90s-709715 run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_90s --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --portfolio-time-limit 90 --portfolio-restart-timeout 90 --portfolio-restart-count 1 --pysr-wall-limit 270 --partition default_partition --max-concurrent-jobs 100 --time-limit 00:20:00 --mem-per-cpu 8G --max-retries 5
+
+# sbatch -J evolve-srbench-90s run.sh evolve_pysr.py --operator-type all --population-type task --generations 45 --simplify-cooldown 15 --population 10 --offspring 10 --n-runs 3 --fitness-metric gt --reeval population --n-reevals 10 --models best2 --split splits/barely_unsolvable.txt --val-split splits/barely_unsolvable_val2.txt --val-n-runs 10 --identify-topk 10 --final-eval-runs 10 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270
+
+# srb_aggregate=$(sbatch --parsable -J srb-aggregate-base run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
+# sbatch --dependency=afterany:"$srb_aggregate" -J srb-aggregate-709715 run.sh srbench_full_eval.py --evolve-results runs/709715 --ground-truth --results-dir runs/709715/srbench_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
 
 # sbatch -J srb2-9-4-base run.sh srbench2_full_eval.py --ground-truth --results-dir runs/srbench2_9-4_gt_baseline --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb
 # sbatch -J srb2-9-4-709715 run.sh srbench2_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715/srbench2_9-4_ground_truth --n-runs 10 --seed 10000 --noise-levels 0 --max-evals 1000000000 --timeout 3600 --pysr-wall-limit 3900 --time-limit 01:15:00 --job-timeout 7200 --mem-per-cpu 10G --max-concurrent-jobs 60 --no-cache --no-wandb
 
-# New frontier recomputation.
+# New frontier recomputation. submitted 9/8 actually
 # srb_merge=$(sbatch --parsable -J srb-merge-autores run.sh srbench_full_eval.py --autoresearch best --ground-truth --results-dir runs/srbench_gt_autoresearch_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
 # srb_merge=$(sbatch --parsable --dependency=afterany:"$srb_merge" -J srb-merge-basic-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --results-dir runs/srbench_gt_basicsr_baseline_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --fullsr-wall-limit 600 --partition default_partition --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
 # srb_merge=$(sbatch --parsable --dependency=afterany:"$srb_merge" -J srb-merge-hpo-gt run.sh srbench_full_eval.py --hpo-results outputs/hpo_pysr_20260824_180547_120309 --ground-truth --results-dir runs/srbench_gt_hpo_gt_10seed_merged --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --merge-run-frontiers --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5)
