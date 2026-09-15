@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render fixed-axis population Pareto frames from FullSR generation snapshots."""
+"""Render fixed-axis population Pareto frames from FullSR or PySR snapshots."""
 
 import argparse
 import csv
@@ -20,8 +20,11 @@ from evolution_helpers import code_loc
 def bundle_loc(bundle):
     if bundle.get("raw_module_body"):
         return code_loc(bundle["raw_module_body"])
+    components = bundle.get("functions", bundle.get("operators"))
+    if components is None:
+        raise ValueError("Bundle contains neither functions nor operators")
     return sum(code_loc(fn.get("code", ""))
-               for fn in bundle["functions"].values() if fn)
+               for fn in components.values() if fn)
 
 
 def frontier(points):
@@ -41,7 +44,7 @@ def limits(values, minimum_pad):
     return [low - pad, high + pad]
 
 
-def render_sequence(out, populations, run_name, simplify_start):
+def render_sequence(out, populations, run_name, simplify_start, fitness_metric):
     out.mkdir(parents=True, exist_ok=True)
     all_points = [p for points in populations.values() for p in points]
     xlim = limits([p[0] for p in all_points], 5)
@@ -55,7 +58,7 @@ def render_sequence(out, populations, run_name, simplify_start):
         ax.plot(*zip(*front), "o-", color="#d64c3b", linewidth=2,
                 markersize=5, label="Population Pareto frontier", zorder=4)
         ax.set(xlim=xlim, ylim=ylim, xlabel="LOC (excluding blanks, comments, and docstrings)",
-               ylabel="Training score (gt-r2; higher is better)")
+               ylabel=f"Training score ({fitness_metric}; higher is better)")
         ax.set_title(f"Generation {gen:03d}  |  " +
                      ("Simplification" if gen >= simplify_start else "Original run"), pad=12)
         fig.suptitle(run_name, fontsize=14, y=0.96)
@@ -78,6 +81,7 @@ def main():
     title = args.title or args.run.name
     out = args.out_dir or Path(__file__).resolve().parent / f"{args.run.name}_population_pareto"
     data = json.loads((args.run / "run_data.json").read_text())
+    fitness_metric = data.get("config", {}).get("fitness_metric", "saved fitness")
     populations = {}
     for generation in data["generations"]:
         points = [(bundle_loc(b), float(b["score"])) for b in generation["population"]
@@ -86,13 +90,14 @@ def main():
             raise ValueError(f"Empty population at generation {generation['generation']}")
         populations[int(generation["generation"])] = points
     populations = dict(sorted(populations.items()))
-    metadata = {"source": str(args.run / "run_data.json"), "title": title, "sequences": {}}
+    metadata = {"source": str(args.run / "run_data.json"), "title": title,
+                "fitness_metric": fitness_metric, "sequences": {}}
     metadata["sequences"]["full_history"] = render_sequence(
-        out / "full_history", populations, title, args.simplify_start)
+        out / "full_history", populations, title, args.simplify_start, fitness_metric)
     simplify = {g: p for g, p in populations.items() if g >= args.simplify_start - 1}
     if simplify:
         metadata["sequences"]["simplification_zoom"] = render_sequence(
-            out / "simplification_zoom", simplify, title, args.simplify_start)
+            out / "simplification_zoom", simplify, title, args.simplify_start, fitness_metric)
     (out / "axis_limits.json").write_text(json.dumps(metadata, indent=2) + "\n")
     with (out / "population.csv").open("w", newline="") as handle:
         writer = csv.writer(handle)
@@ -113,9 +118,9 @@ def main():
         "are its Pareto frontier (minimize LOC, maximize score), with lines as visual "
         "guides. This is not a cumulative archive frontier. Overlapping coordinates "
         "may hide duplicate individuals. Scores are saved training `score` values "
-        "(fitness metric `gt-r2`), not held-out validation scores. LOC uses the project's "
+        f"(fitness metric `{fitness_metric}`), not held-out validation scores. LOC uses the project's "
         "`evolution_helpers.code_loc`: excludes blanks, comments, and docstrings, "
-        "counting raw module body when present, otherwise all policy functions.\n\n"
+        "counting raw module body when present, otherwise all policy functions or operators.\n\n"
         "`population.csv` contains all plotted points; `axis_limits.json` records limits.\n\n"
         "Regenerate from the repository root:\n\n```bash\n"
         f"python figures/plot_fullsr_population_pareto.py {args.run}"
