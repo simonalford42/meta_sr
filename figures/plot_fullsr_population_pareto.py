@@ -72,8 +72,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run", type=Path)
     parser.add_argument("--out-dir", type=Path)
+    parser.add_argument("--title", help="Display name for a continuation stored under a job ID")
     parser.add_argument("--simplify-start", type=int, default=31)
     args = parser.parse_args()
+    title = args.title or args.run.name
     out = args.out_dir or Path(__file__).resolve().parent / f"{args.run.name}_population_pareto"
     data = json.loads((args.run / "run_data.json").read_text())
     populations = {}
@@ -84,13 +86,13 @@ def main():
             raise ValueError(f"Empty population at generation {generation['generation']}")
         populations[int(generation["generation"])] = points
     populations = dict(sorted(populations.items()))
-    metadata = {"source": str(args.run / "run_data.json"), "sequences": {}}
+    metadata = {"source": str(args.run / "run_data.json"), "title": title, "sequences": {}}
     metadata["sequences"]["full_history"] = render_sequence(
-        out / "full_history", populations, args.run.name, args.simplify_start)
+        out / "full_history", populations, title, args.simplify_start)
     simplify = {g: p for g, p in populations.items() if g >= args.simplify_start - 1}
     if simplify:
         metadata["sequences"]["simplification_zoom"] = render_sequence(
-            out / "simplification_zoom", simplify, args.run.name, args.simplify_start)
+            out / "simplification_zoom", simplify, title, args.simplify_start)
     (out / "axis_limits.json").write_text(json.dumps(metadata, indent=2) + "\n")
     with (out / "population.csv").open("w", newline="") as handle:
         writer = csv.writer(handle)
@@ -100,7 +102,9 @@ def main():
             for i, (loc, score) in enumerate(points):
                 writer.writerow([gen, i, loc, score, (loc, score) in front])
     (out / "README.md").write_text(
-        f"# {args.run.name}: population Pareto evolution\n\n"
+        f"# {title}: population Pareto evolution\n\n"
+        f"Source: `{args.run / 'run_data.json'}`. "
+        f"Saved generations {min(populations)}–{max(populations)}.\n\n"
         "`full_history/` contains every saved generation. `simplification_zoom/` starts "
         "with the generation preceding simplification. Each sequence has fixed x and y "
         "limits across every image; the zoom sequence uses tighter limits. Images sort "
@@ -114,7 +118,9 @@ def main():
         "counting raw module body when present, otherwise all policy functions.\n\n"
         "`population.csv` contains all plotted points; `axis_limits.json` records limits.\n\n"
         "Regenerate from the repository root:\n\n```bash\n"
-        f"python figures/plot_fullsr_population_pareto.py {args.run}\n```\n")
+        f"python figures/plot_fullsr_population_pareto.py {args.run}"
+        f" --out-dir {out} --simplify-start {args.simplify_start}"
+        f" --title '{title}'\n```\n")
     archive = out.with_suffix(".zip")
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(out.rglob("*")):

@@ -1,4 +1,6 @@
-# 150815-simplify-30-best2: population Pareto evolution
+# 150815-simplify-more (229869): population Pareto evolution
+
+Source: `runs/229869/run_data.json`. Saved generations 1–71.
 
 `full_history/` contains every saved generation. `simplification_zoom/` starts with the generation preceding simplification. Each sequence has fixed x and y limits across every image; the zoom sequence uses tighter limits. Images sort chronologically by filename.
 
@@ -9,5 +11,5 @@ Blue points are the selected population after survival selection. Red points are
 Regenerate from the repository root:
 
 ```bash
-python figures/plot_fullsr_population_pareto.py runs/150815-simplify-30-best2
+python figures/plot_fullsr_population_pareto.py runs/229869 --out-dir figures/150815-simplify-30-best2_population_pareto --simplify-start 31 --title '150815-simplify-more (229869)'
 ```
