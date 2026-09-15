@@ -1,0 +1,59 @@
+define meta-evolve:
+    baseline
+    G_total: number of total generations
+    G_simplify: number of simplification generations
+    O: number of offspring
+    P: population size
+    N_init: init evaluation seeds
+    N_reeval: reevaluation seeds
+    F: fitness metric
+
+    # generate initial population
+    population = [baseline]
+    for i in range(G_total):
+        # generate offspring
+        for o in range(O):
+            sr_operator = random_choice([mutation, survival, selection, loss])
+            if i == 0:
+                meta-mutation-mode = explore
+            else if (G_total - i) < G_simplify:
+                meta-mutation-mode = simplify
+            else:
+                meta-mutation-mode = random_choice([explore, refine, crossover, simplify])
+            parent = tournament_selection(population, n=2)
+            if meta-mutation-mode = crossover:
+                parent2 = tournament_selection(population, n=2)
+            execution_feedback = generate_trace_feedback(tasks, parent)
+            prompt = generate_prompt(sr_operator, meta-mutation-mode, parent, execution_feedback, parent2)
+            do
+                offspring = LLM_ensemble.sample().sample_completion(prompt)
+            until passes_validation(offspring)
+
+        # parallel evaluation of offspring and existing population
+        evaluation_batch = {x: N_init for x in offspring} U {x: N_reeval - N_init for x in reeval_indivduals}
+        parallel_evaluation(evaluation_batch, tasks, F)
+
+        # form archive of scores, averaged over seeds
+        for x in offspring:
+            archive[x] = \frac{1}{N_init} sum_{seeds, tasks} F(x, task, seed)
+        for x in reeval_individuals:
+            archive[x] = \frac{1}{N_reeval} sum_{seeds, tasks} F(x, task, seed)
+
+        if (G_total - i) < G_simplify:
+            # task-based population
+            for each task, add individual with highest avg score on that task to population
+            fill remaining population slots with individuals selected by highest overall score
+        else:
+            # LOC vs score population
+            form pareto frontier of score vs LOC
+            fill remaining population slots with individuals selected by highest overall score
+
+        # reevaluate offspring included in population for N_reeval seeds total
+        reeval_individuals = {x for x in offspring if x in new_population}
+
+    # final reevaluation to ameliorate winner's curse
+    for x in population:
+        final_eval[x] = \frac{1}{N_reeval} sum_{seeds, tasks} F(x, task, seed)
+
+    best_individual = argmax_{population} final_eval[x]
+    return final_eval, best_individual
