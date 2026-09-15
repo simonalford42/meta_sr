@@ -9,6 +9,7 @@ import argparse
 from concurrent.futures import ProcessPoolExecutor
 import csv
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -17,6 +18,8 @@ sys.path.insert(0, str(ROOT))
 
 
 def score_trace(trace, check, interval=10, budget=90):
+    if not math.isfinite(interval) or interval <= 0:
+        raise ValueError('Snapshot interval must be positive and finite')
     cache = {}
     observations = []
     first = None
@@ -61,7 +64,8 @@ def score_trace(trace, check, interval=10, budget=90):
         'first_solve_equation': first['matched_equation'] if first else None,
         'first_robust_solve_seconds': first_robust['elapsed_seconds'] if first_robust else None,
         'first_robust_solve_equation': first_robust['robust_matched_equation'] if first_robust else None,
-        'missing_scheduled_seconds': [s for s in range(interval, budget + 1, interval) if s not in present],
+        'missing_scheduled_seconds': [i * interval for i in range(1, math.floor(budget / interval) + 1)
+                                      if i * interval not in present],
         'observations': observations, 'equation_checks': cache,
     }
 
@@ -94,7 +98,7 @@ def score_task(item):
         return result
 
     trace = raw.get('execution_trace') or []
-    summary = score_trace(trace, check)
+    summary = score_trace(trace, check, interval=task.get('frontier_snapshot_seconds') or 10)
     return dict(record, status='error' if raw.get('error') else ('complete' if trace else 'missing_trace'),
                 error=raw.get('error'), **summary)
 
