@@ -78,7 +78,7 @@ def test_ft_gt_has_80_tasks_one_seed(evaluator):
     assert all(d["n_total_runs"] == 1 for d in details)
 
 
-@pytest.mark.parametrize("metric,expected", [("gt", .25), ("r2", -.1), ("gt-r2", .35)])
+@pytest.mark.parametrize("metric,expected", [("gt", .25), ("r2", -.1), ("gt-r2", .35), ("gt-r2-v2", .9)])
 def test_multi_batch_averages_failures_and_hybrid_rewards(evaluator, metric, expected):
     handle = submit(evaluator, ["dataset"], metric=metric)
     write_results(handle, fail_last=True)

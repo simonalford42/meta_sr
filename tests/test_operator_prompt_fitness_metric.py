@@ -10,6 +10,7 @@ from operator_types import (
 
 
 OBJECTIVE_MARKERS = {
+    "gt-r2-v2": "maximize reward 3 * GT + R²",
     "gt": "ability to discover the ground-truth expression across SRBench",
     "r2": "strong held-out R²–complexity tradeoff across SRBench",
     "gt-r2": "when it does not, the goal is to discover accurate expressions",

@@ -196,6 +196,7 @@ def _spec_expects_execution_trace(task: "PySRTaskSpec") -> bool:
 #             _compute_frontier_avg_r2). NOTE: as of the frontier-R² change this
 #             is the *whole-frontier* average, not PySR's single best equation.
 #   "gt-r2" — 1.0 if the task is solved (gt match), else frontier-avg R².
+#   "gt-r2-v2" — 3.0 * solved + frontier-avg R², including solved runs.
 #   "acc"   — validation accuracy of the equation PySR's model_selection="best"
 #             picked. Boolean domain only (bit-wise accuracy over {0,1}); needs
 #             a domain with supports_accuracy=True. Unlike "r2" this is a single
@@ -203,13 +204,13 @@ def _spec_expects_execution_trace(task: "PySRTaskSpec") -> bool:
 #             balanced Boolean task with R²=0 can still separate on accuracy
 #             anywhere in 0.5..0.75.
 #   "gt-acc" — 1.0 if the task is solved (gt match), else that accuracy.
-PYSR_FITNESS_METRICS = ("gt", "r2", "gt-r2", "acc", "gt-acc")
+PYSR_FITNESS_METRICS = ("gt", "r2", "gt-r2", "gt-r2-v2", "acc", "gt-acc")
 
 # Metrics that require per-frontier R² (run_r2c / r2_frontier_score) to be present
 # in a cached result before it can be reused. Cache entries written before the
 # r2_frontier column existed lack it, so they are re-run when one of these metrics
 # is active (the "gt" metric reuses them unchanged).
-_FRONTIER_R2_METRICS = ("r2", "gt-r2")
+_FRONTIER_R2_METRICS = ("r2", "gt-r2", "gt-r2-v2")
 
 # Metrics that require the domain accuracy (run_acc / acc_score) to be present in
 # a cached result before it can be reused. Cache entries written before the
@@ -284,6 +285,12 @@ def select_run_scores(
         return list(base)
     if fitness_metric == "gt-r2":
         return _blend_gt_r2(base, run_gt)
+    if fitness_metric == "gt-r2-v2":
+        return [
+            3.0 * float(i < len(run_gt) and run_gt[i] is not None and run_gt[i] >= 1.0)
+            + max(r2, 0.0)
+            for i, r2 in enumerate(base)
+        ]
     raise ValueError(f"Unknown fitness_metric: {fitness_metric!r}")
 
 

@@ -915,6 +915,7 @@ def run_bundle_evolution(
         "r2": "frontier R²",
         "gt": "GT match rate",
         "gt-r2": "GT+R² reward",
+        "gt-r2-v2": "3×GT + frontier R² reward",
         "acc": "accuracy",
         "gt-acc": "GT+accuracy reward",
     }.get(fitness_metric, "GT match rate")
@@ -2705,7 +2706,7 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n-runs", type=int, default=10)
     parser.add_argument("--fitness-metric", type=str, default=None,
-                        choices=["r2", "gt", "gt-r2", "acc", "gt-acc"],
+                        choices=["r2", "gt", "gt-r2", "gt-r2-v2", "acc", "gt-acc"],
                         help="Meta-evolution fitness metric: "
                              "'gt' = domain-defined whole-frontier ground-truth recovery "
                              "rate (symbolic match for SRBench; NRMSE <= 1e-6 for neuron); "
@@ -2713,6 +2714,7 @@ def main():
                              "1..maxsize (frontier-averaged R²); "
                              "'gt-r2' = 1.0 if the task is solved (gt match), else "
                              "the frontier-averaged R²; "
+                             "'gt-r2-v2' = 3 * solved + frontier-averaged R²; "
                              "'acc' = validation accuracy of the model_selection='best' "
                              "equation (bit-wise for Boolean domains; exact-integer for MIPS); "
                              "'gt-acc' = 1.0 if solved, else that accuracy. "

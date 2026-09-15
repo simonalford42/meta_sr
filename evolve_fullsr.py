@@ -1358,10 +1358,11 @@ def main():
         "--fitness-metric",
         type=str,
         default="gt",
-        choices=["r2", "gt", "gt-r2", "acc", "gt-acc"],
+        choices=["r2", "gt", "gt-r2", "gt-r2-v2", "acc", "gt-acc"],
         help=(
-            "Evolution objective: 'gt' = symbolic match rate; 'r2' = validation "
-            "R²; 'gt-r2' = 1.0 for a symbolic match, otherwise validation R²; "
+            "Evolution objective: 'gt' = symbolic match rate; 'r2' = frontier-averaged "
+            "validation R²; 'gt-r2' = 1.0 for a symbolic match, otherwise that R²; "
+            "'gt-r2-v2' = 3 * symbolic match + frontier-averaged R²; "
             "'acc' = validation accuracy of the best-loss equation (Boolean "
             "domain only); 'gt-acc' = 1.0 if solved, otherwise that accuracy."
         ),

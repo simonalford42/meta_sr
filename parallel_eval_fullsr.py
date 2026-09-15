@@ -268,7 +268,7 @@ def _cached_fullsr_result(
         return None
     if (
         not spec.black_box
-        and spec.fitness_metric in ("r2", "gt-r2")
+        and spec.fitness_metric in ("r2", "gt-r2", "gt-r2-v2")
         and payload.get("r2_frontier_score") is None
     ):
         return None
@@ -904,7 +904,7 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
             best_equation=None,
             best_loss=float("inf"),
             gt_match_score=(
-                0.0 if spec.fitness_metric in ("gt", "gt-r2", "gt-acc") else None
+                0.0 if spec.fitness_metric in ("gt", "gt-r2", "gt-r2-v2", "gt-acc") else None
             ),
             error=f"Error: {_summarize_error(str(e))}",
             run_index=spec.run_index,

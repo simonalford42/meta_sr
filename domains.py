@@ -124,6 +124,14 @@ class Domain:
             body = f"improve the algorithm's ability to {self.prompt_recovery_criterion}"
         elif fitness_metric in ("r2", "acc"):
             body = f"improve the algorithm's ability to {self.prompt_quality_criterion}"
+        elif fitness_metric == "gt-r2-v2":
+            body = (
+                "maximize reward 3 * GT + R², where GT is 1 when the algorithm "
+                f"can {self.prompt_recovery_criterion} and 0 otherwise. "
+                "R² is the held-out Pareto/archive R² envelope averaged over "
+                "the fixed complexity grid 1..maxsize, with negative R² clipped "
+                "to zero. The R² term contributes even when GT is 1"
+            )
         elif fitness_metric in ("gt-r2", "gt-acc"):
             body = (
                 f"improve the algorithm's ability to {self.prompt_recovery_criterion}; "
@@ -132,7 +140,7 @@ class Domain:
         else:
             raise ValueError(
                 f"Unknown fitness_metric={fitness_metric!r}; expected one of "
-                "('gt', 'r2', 'gt-r2', 'acc', 'gt-acc')"
+                "('gt', 'r2', 'gt-r2', 'gt-r2-v2', 'acc', 'gt-acc')"
             )
         if not self.prompt_task_summary:
             return f"Our objective is to {body}.\n"
@@ -1000,10 +1008,10 @@ class UninformativePromptDomain(Domain):
     prompt_task_summary = ""
 
     def objective_text(self, fitness_metric: str) -> str:
-        if fitness_metric not in ("gt", "r2", "gt-r2", "acc", "gt-acc"):
+        if fitness_metric not in ("gt", "r2", "gt-r2", "gt-r2-v2", "acc", "gt-acc"):
             raise ValueError(
                 f"Unknown fitness_metric={fitness_metric!r}; expected one of "
-                "('gt', 'r2', 'gt-r2', 'acc', 'gt-acc')"
+                "('gt', 'r2', 'gt-r2', 'gt-r2-v2', 'acc', 'gt-acc')"
             )
         return (
             "Our objective is to improve the algorithm's ability to discover "
