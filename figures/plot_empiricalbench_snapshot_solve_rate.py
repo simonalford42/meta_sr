@@ -53,7 +53,7 @@ def main():
         fig.savefig(OUT / f'solve_rate.{ext}', dpi=200)
     plt.close(fig)
     with (OUT / 'solve_rate.csv').open('w') as f:
-        writer = csv.DictWriter(f, fieldnames=list(table[0]))
+        writer = csv.DictWriter(f, fieldnames=list(table[0]), lineterminator="\n")
         writer.writeheader()
         writer.writerows(table)
     (OUT / 'README.md').write_text('# EmpiricalBench 90-second snapshot comparison\n\n'
