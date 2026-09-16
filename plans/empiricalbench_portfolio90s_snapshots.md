@@ -14,9 +14,15 @@ Prepared September 16; not submitted. Commands are commented under 9/16/26 in `s
 
 ## Scoring
 
-The two prepared dependent Terra jobs review the final cumulative frontiers, using EmpiricalBench-specific family references in `manual_solve_check.py`. Use those classifications rather than the evaluator's automatic symbolic counts (which have known Planck false positives).
+One dependent Terra binary-search job reviews both methods and all nine EmpiricalBench problems, including Bode, Planck, and Rydberg. It replaces the two final-only review jobs.
 
-The saved intermediate frontiers support later Terra review at each checkpoint and a cumulative recovery curve. The prepared final-frontier review commands do not themselves score the intermediate checkpoints. No API calls or review jobs have been launched.
+The searchable sequence consists of each available first-restart five-second snapshot through 90 seconds, followed by every saved cumulative restart endpoint through the hour. Review each final frontier first, then binary-search final-positive trials to adjacent available checkpoints. Cache identical frontiers and reuse exact equations already accepted for the same dataset. Use EmpiricalBench family references with fixed-coefficient clarifications; do not use automatic symbolic solve counts.
+
+This is the same approximate monotonicity assumption as the older analysis: a final-negative trial is not searched for transient earlier recovery, and Pareto pruning can remove a correct expression. Missing/unavailable snapshots are reported explicitly, not labeled unsolved. The result includes raw capture times, the adjacent negative/positive bounds, per-trial classifications, and a solve-rate CSV.
+
+Prepared reviewer: `scripts/empbench_portfolio_recovery.py`, Terra medium reasoning, maximum 3000 output tokens per request, $15 cumulative cost guard at the repository's archived batch prices. Without `--run`, it prepares the next batch offline; `--run` enables paid requests and resumes rounds. All review commands remain commented out. No API calls or jobs have been submitted.
+
+See [review cost estimate](empiricalbench_portfolio_review_cost.md).
 
 ## Earlier result provenance
 
