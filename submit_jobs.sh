@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
 # 9/16/26
+# snapshot_scores=$(sbatch --parsable --partition=default_partition --array=0-129%60 --cpus-per-task=1 --mem=4G --time=08:00:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 --output=out/%A_%a.out -J srb-snapshot-score --wrap='bash run.sh scripts/compare_srbench_snapshots.py --dataset-index "$SLURM_ARRAY_TASK_ID"') || exit
+# sbatch --dependency=afterok:"$snapshot_scores" --partition=default_partition --cpus-per-task=1 --mem=4G --time=00:10:00 -J srb-snapshot-tables run.sh scripts/compare_srbench_snapshots.py --aggregate-only
+
 # sbatch --partition=default_partition --time=08:00:00 --mem=20G -J srb-base-10seed-allnoise-snap10 run.sh srbench_full_eval.py --ground-truth --results-dir runs/srbench_gt_baseline_9-16_10seed_allnoise_90s_snap10 --n-runs 10 --seed 10000 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000000 --timeout 90 --frontier-snapshot-seconds 10 --pysr-wall-limit 300 --no-early-stop --no-maxsize-warmup --cpus-per-task 1 --partition default_partition --time-limit 00:15:00 --job-timeout 21600 --mem-per-cpu 8G --max-concurrent-jobs 60 --no-cache --no-wandb
 # sbatch --partition=default_partition --time=08:00:00 --mem=20G -J srb-709715-10seed-allnoise-snap10 run.sh srbench_full_eval.py --ground-truth --evolve-results runs/709715 --results-dir runs/709715-srbench_gt_9-16_10seed_allnoise_90s_snap10 --n-runs 10 --seed 10000 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --max-evals 1000000000 --timeout 90 --frontier-snapshot-seconds 10 --pysr-wall-limit 300 --no-early-stop --no-maxsize-warmup --cpus-per-task 1 --partition default_partition --time-limit 00:15:00 --job-timeout 21600 --mem-per-cpu 8G --max-concurrent-jobs 60 --no-cache --no-wandb
 
