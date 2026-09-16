@@ -1491,12 +1491,18 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             keep_model: bool = False,
             path_suffix: Optional[str] = None,
             hard_wall_limit: Optional[int] = None,
+            snapshot_interval: Optional[float] = None,
         ) -> Dict[str, Any]:
             """Fit + score PySR at a single noise level. Reuses the shared dataset,
             PySR import, and compiled operators above (the costly part); only the
             fit itself is per-level. Returns a per-level result dict; a per-level
             crash / wall-limit is captured as `error` so the other levels survive."""
             level_start = _time.time()
+            # A portfolio captures the first real restart only, never warm-up.
+            local_snapshot_interval = (
+                spec.frontier_snapshot_seconds if spec.portfolio_time_limit_seconds is None
+                else snapshot_interval
+            )
             active_model_kwargs = (
                 dict(model_kwargs_override)
                 if model_kwargs_override is not None else dict(model_kwargs)
@@ -1537,7 +1543,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 # (the milestone path in run_pysr_with_hof_checkpoints overrides and
                 # cleans its own dir, so this only bites the no-milestone fit).
                 # Preserve an explicit caller override (any non-default value).
-                if (spec.frontier_snapshot_seconds is not None
+                if (local_snapshot_interval is not None
                         or getattr(model, "output_directory", None) in (None, "pysr_outputs")):
                     _tmp_base = os.environ.get("TMPDIR") or None
                     _tmp_output_dir = tempfile.mkdtemp(prefix="pysr_out_", dir=_tmp_base)
@@ -1573,7 +1579,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                                 active_model_kwargs.get("timeout_in_seconds")
                                 if local_hof_milestones else None
                             ),
-                            frontier_snapshot_seconds=spec.frontier_snapshot_seconds,
+                            frontier_snapshot_seconds=local_snapshot_interval,
                         )
                     except PySRWallLimitExceeded:
                         # A soft shared deadline should normally return first.
@@ -1746,7 +1752,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
                 # Load this level's execution trace from the HOF CSV.
                 execution_trace = None
-                if spec.frontier_snapshot_seconds is not None:
+                if local_snapshot_interval is not None:
                     execution_trace = _load_execution_trace([hof_csv_out+'.snapshots.jsonl'])
                 elif spec.hof_n_steps > 0:
                     execution_trace = _load_execution_trace([hof_csv_out])
@@ -1891,6 +1897,7 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     check_solved=False,
                     keep_model=True,
                     path_suffix=f"portfolio_restart{restart_index:04d}",
+                    snapshot_interval=spec.frontier_snapshot_seconds if restart_index == 0 else None,
                 )
                 consumed_search_seconds += max(
                     0.0, float(item.get("search_runtime_seconds") or 0.0)
@@ -2059,6 +2066,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                     "warmup_excluded_from_budget": bool(spec.portfolio_warmup),
                     "restart_max_evals": spec.portfolio_restart_max_evals,
                     "restart_timeout_seconds": spec.portfolio_restart_timeout_seconds,
+                    "first_restart_snapshot_seconds": spec.frontier_snapshot_seconds,
+                    "snapshot_clock": "search_seconds_since_first_restart_fit" if spec.frontier_snapshot_seconds else None,
                     "restart_count_requested": spec.portfolio_restart_count,
                     "restart_count_started": len(restart_results),
                     "restart_count_successful": len(successful_indices),
@@ -2530,8 +2539,8 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
         if frontier_snapshot_seconds is not None:
             if not math.isfinite(frontier_snapshot_seconds) or frontier_snapshot_seconds <= 0:
                 raise ValueError('frontier_snapshot_seconds must be positive and finite')
-            if hof_n_steps or portfolio_time_limit_seconds is not None:
-                raise ValueError('Continuous frontier snapshots require a single uninterrupted fit')
+            if hof_n_steps:
+                raise ValueError('Continuous frontier snapshots cannot be combined with HOF milestones')
         self.pysr_wall_limit = pysr_wall_limit
         # Run-level evaluation domain, stamped onto every spec submit_configs
         # builds (one evolution/HPO run is one domain). See domains.py.

@@ -156,6 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-population-bundles", type=int, default=None, metavar="N")
     parser.add_argument("--portfolio-time-limit", type=float, default=None, metavar="SECONDS")
     parser.add_argument("--portfolio-restart-max-evals", type=int, default=None, metavar="N")
+    parser.add_argument("--portfolio-restart-timeout", type=float, default=None, metavar="SECONDS")
     parser.add_argument("--no-maxsize-warmup", action="store_true",
                         help="Disable PySR's gradual max-size warm-up.")
     parser.add_argument("--seed", type=int, default=10_000)
@@ -163,7 +164,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--timeout", type=int, default=3600)
     parser.add_argument("--frontier-snapshot-seconds", type=float, default=None,
-                        help="Save native frontiers during one uninterrupted fit at this wall-time interval.")
+                        help="Save native frontiers at this interval; in portfolios, only during the first restart after warm-up.")
     parser.add_argument("--pysr-wall-limit", type=int, default=3900)
     parser.add_argument("--partition", default="default_partition")
     parser.add_argument("--time-limit", default="01:15:00")
@@ -189,23 +190,30 @@ def main() -> None:
     if args.frontier_snapshot_seconds is not None:
         if not math.isfinite(args.frontier_snapshot_seconds) or args.frontier_snapshot_seconds <= 0:
             raise SystemExit("--frontier-snapshot-seconds must be positive and finite")
-        if args.portfolio_time_limit is not None or args.task_population_bundles:
+        if args.task_population_bundles:
             raise SystemExit("--frontier-snapshot-seconds requires a single search")
     if args.portfolio_time_limit is not None:
         if args.portfolio_time_limit <= 0:
             raise SystemExit("--portfolio-time-limit must be positive")
-        if not args.portfolio_restart_max_evals or args.portfolio_restart_max_evals <= 0:
+        if ((args.portfolio_restart_max_evals is None)
+                == (args.portfolio_restart_timeout is None)):
             raise SystemExit(
-                "--portfolio-time-limit requires positive --portfolio-restart-max-evals"
+                "--portfolio-time-limit requires exactly one restart limit: max-evals or timeout"
             )
+        if args.portfolio_restart_max_evals is not None and args.portfolio_restart_max_evals <= 0:
+            raise SystemExit("--portfolio-restart-max-evals must be positive")
+        if args.portfolio_restart_timeout is not None and (
+                not math.isfinite(args.portfolio_restart_timeout)
+                or not 0 < args.portfolio_restart_timeout < args.pysr_wall_limit):
+            raise SystemExit("--portfolio-restart-timeout must be positive, finite, and below --pysr-wall-limit")
         if args.cpus_per_task != 1:
             raise SystemExit("restart portfolios require --cpus-per-task 1")
         if args.merge_run_frontiers or args.task_population_bundles:
             raise SystemExit(
                 "restart portfolios cannot be combined with cross-run or task-population merging"
             )
-    elif args.portfolio_restart_max_evals is not None:
-        raise SystemExit("--portfolio-restart-max-evals requires --portfolio-time-limit")
+    elif args.portfolio_restart_max_evals is not None or args.portfolio_restart_timeout is not None:
+        raise SystemExit("portfolio restart limits require --portfolio-time-limit")
 
     datasets = [name.strip() for name in args.datasets.split(",") if name.strip()]
     unknown = sorted(set(datasets) - set(DATASETS))
@@ -293,6 +301,7 @@ def main() -> None:
         cpus_per_task=args.cpus_per_task,
         portfolio_time_limit_seconds=args.portfolio_time_limit,
         portfolio_restart_max_evals=args.portfolio_restart_max_evals,
+        portfolio_restart_timeout_seconds=args.portfolio_restart_timeout,
         frontier_snapshot_seconds=args.frontier_snapshot_seconds,
     )
     print(
@@ -402,12 +411,18 @@ def main() -> None:
             "cpus_per_task": args.cpus_per_task,
             "portfolio_time_limit_seconds": args.portfolio_time_limit,
             "portfolio_restart_max_evals": args.portfolio_restart_max_evals,
+            "portfolio_restart_timeout_seconds": args.portfolio_restart_timeout,
+            "portfolio_warmup_excluded_from_budget": args.portfolio_time_limit is not None,
+            "frontier_snapshot_scope": (
+                "first_restart_after_warmup" if args.portfolio_time_limit is not None
+                else "single_fit"
+            ) if args.frontier_snapshot_seconds else None,
             "maxsize_warmup": not args.no_maxsize_warmup,
             "train_rows": "all",
             "pysr_kwargs": pysr_kwargs,
             "target_noise_added": 0.0,
             "stopping_rule": (
-                "serial max-evals restart portfolio under shared wall clock"
+                "serial restart portfolio under shared search-time budget"
                 if args.portfolio_time_limit is not None
                 else "wall-clock-only timeout_seconds"
             ),
