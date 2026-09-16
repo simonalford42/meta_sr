@@ -646,5 +646,133 @@
       "train_reeval": 30,
       "val": 30
     }
+  },
+  {
+    "model": "243304 gen 24",
+    "engine": "PySR",
+    "snapshot_latest_generation": 24,
+    "run_finished_at_snapshot": false,
+    "reeval_generations": {
+      "val": 23,
+      "train_reeval": 23
+    },
+    "live_score": 3.3748185227294685,
+    "loc": 345,
+    "matches": [
+      {
+        "kind": "val",
+        "source": "runs/243304/slurm_pysr/eval_0282",
+        "n": 200,
+        "datasets": [
+          "feynman_II_11_28",
+          "feynman_II_13_34",
+          "feynman_II_15_5",
+          "feynman_II_24_17",
+          "feynman_II_27_16",
+          "feynman_I_12_11",
+          "feynman_I_12_4",
+          "feynman_I_18_12",
+          "feynman_I_18_14",
+          "feynman_I_24_6",
+          "feynman_I_34_27",
+          "feynman_I_41_16",
+          "feynman_I_43_16",
+          "feynman_I_47_23",
+          "feynman_I_50_26",
+          "feynman_I_6_2b",
+          "feynman_I_8_14",
+          "feynman_I_9_18",
+          "strogatz_shearflow1",
+          "strogatz_shearflow2"
+        ],
+        "gt": 0.535,
+        "frontier_r2": 0.8776172090911818,
+        "best_equation_r2": 0.9931681294357908,
+        "combined_score": 2.482617209091182,
+        "errors": 0,
+        "timing": {
+          "search_n": 200,
+          "search_mean_s": 53.47262892127037,
+          "search_median_s": 31.82774257659912,
+          "task_total_mean_s": 86.74349135875701
+        },
+        "settings": {
+          "fitness_metric": "gt-r2-v2",
+          "timeout": 90,
+          "max_evals": null,
+          "seed": 42,
+          "data_seed": 42,
+          "run_indices": [
+            200230,
+            200231,
+            200232,
+            200233,
+            200234,
+            200235,
+            200236,
+            200237,
+            200238,
+            200239
+          ]
+        }
+      },
+      {
+        "kind": "train_reeval",
+        "source": "runs/243304/slurm_pysr/eval_0283",
+        "n": 200,
+        "datasets": [
+          "feynman_III_13_18",
+          "feynman_III_14_14",
+          "feynman_III_15_14",
+          "feynman_III_19_51",
+          "feynman_II_11_27",
+          "feynman_II_13_17",
+          "feynman_II_13_23",
+          "feynman_II_21_32",
+          "feynman_II_34_29b",
+          "feynman_II_6_11",
+          "feynman_I_13_4",
+          "feynman_I_18_4",
+          "feynman_I_30_3",
+          "feynman_I_32_5",
+          "feynman_I_34_1",
+          "feynman_I_43_43",
+          "feynman_I_44_4",
+          "feynman_I_6_2a",
+          "feynman_test_8",
+          "strogatz_barmag1"
+        ],
+        "gt": 0.7,
+        "frontier_r2": 0.8756322097118627,
+        "best_equation_r2": 0.9991846308548714,
+        "combined_score": 2.9756322097118626,
+        "errors": 0,
+        "timing": {
+          "search_n": 200,
+          "search_mean_s": 55.55406687259674,
+          "search_median_s": 43.1747111082077,
+          "task_total_mean_s": 78.91905381202697
+        },
+        "settings": {
+          "fitness_metric": "gt-r2-v2",
+          "timeout": 90,
+          "max_evals": null,
+          "seed": 42,
+          "data_seed": 42,
+          "run_indices": [
+            100230,
+            100231,
+            100232,
+            100233,
+            100234,
+            100235,
+            100236,
+            100237,
+            100238,
+            100239
+          ]
+        }
+      }
+    ]
   }
 ]
