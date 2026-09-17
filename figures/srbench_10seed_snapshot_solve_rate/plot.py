@@ -13,8 +13,8 @@ from matplotlib.ticker import FixedLocator, ScalarFormatter, NullLocator
 import numpy as np
 
 OUT = Path(__file__).resolve().parent
-METHODS = [("baseline", "Baseline", "#3975b7"),
-           ("evolved", "Evolved 709715", "#db7825")]
+METHODS = [("baseline", "PySR", "#3975b7"),
+           ("evolved", "Evolved PySR", "#db7825")]
 
 
 def panel(ax, table, scale):
@@ -32,7 +32,7 @@ def panel(ax, table, scale):
     ax.xaxis.set_major_locator(FixedLocator(ticks))
     ax.xaxis.set_major_formatter(ScalarFormatter())
     ax.xaxis.set_minor_locator(NullLocator())
-    ax.set(xlim=(9, 95), ylim=(0, 68), yticks=range(0, 70, 10))
+    ax.set(xlim=(9, 95), ylim=(0, 100), yticks=range(0, 101, 20))
     ax.spines[["top", "right"]].set_visible(False)
     ax.grid(axis="y", alpha=.2)
     ax.set_axisbelow(True)
@@ -42,20 +42,13 @@ def main():
     data = json.loads((OUT / "data.json").read_text())
     plt.rcParams.update({"font.size": 11, "axes.titlesize": 13,
                          "axes.labelsize": 11, "savefig.facecolor": "white"})
-    n = len(data["included"])
-    approximate = len(data["approximate_datasets"])
-    coverage_note = (f"Excludes {', '.join(data['omitted'])} · " if data["omitted"] else "")
-    footer = (f"{n}/130 datasets · 10 seeds · shaded bands: ±1 seed SD\n"
-              f"{coverage_note}{approximate} datasets use approximate binary search")
     for scale in ["linear", "log"]:
         xlabel = "Time from fit startup (seconds)" + (" — log scale" if scale == "log" else "")
         fig, ax = plt.subplots(figsize=(7.6, 5))
         panel(ax, data["tables"]["all"], scale)
-        ax.set(title="SRBench: overall solve rate", xlabel=xlabel,
-               ylabel="Cumulative solve rate (%)")
+        ax.set(xlabel=xlabel, ylabel="Cumulative solve rate (%)")
         ax.legend(frameon=False, loc="upper left")
-        fig.text(.5, .025, footer, ha="center", fontsize=9, color="#555555", linespacing=1.6)
-        fig.tight_layout(rect=(0, .10, 1, 1))
+        fig.tight_layout()
         save(fig, f"overall_{scale}")
 
         fig, axes = plt.subplots(2, 2, figsize=(10.4, 7.8), sharex=True, sharey=True)
@@ -63,13 +56,11 @@ def main():
             panel(ax, data["tables"][noise], scale)
             ax.set_title(f"Noise = {noise}")
         handles, labels = axes[0, 0].get_legend_handles_labels()
-        fig.suptitle("SRBench: solve rate by noise level", y=.985, fontsize=16)
-        fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(.5, .955),
+        fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(.5, 1),
                    ncol=2, frameon=False)
-        fig.supxlabel(xlabel, y=.10)
+        fig.supxlabel(xlabel, y=.015)
         fig.supylabel("Cumulative solve rate (%)", x=.015)
-        fig.text(.5, .02, footer, ha="center", fontsize=9, color="#555555", linespacing=1.6)
-        fig.tight_layout(rect=(.025, .135, 1, .91), h_pad=1.8)
+        fig.tight_layout(rect=(.025, .04, 1, .95), h_pad=1.8)
         save(fig, f"noise_levels_{scale}")
 
 
