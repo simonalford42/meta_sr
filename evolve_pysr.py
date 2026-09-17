@@ -2771,6 +2771,10 @@ def main():
                              "mean, instead of trusting the curse-inflated live argmax. "
                              "0 disables.")
     parser.add_argument("--max-samples", type=int, default=1000)
+    parser.add_argument("--maxsize", type=int, default=None,
+                        help="Override the domain's maximum PySR expression complexity.")
+    parser.add_argument("--maxdepth", type=int, default=None,
+                        help="Override the domain's maximum PySR expression depth.")
     parser.add_argument("--target-noise", type=float, default=0.0)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--random-target-noise", action="store_true")
@@ -2961,6 +2965,10 @@ def main():
 
     args = parser.parse_args()
 
+    if args.maxsize is not None and args.maxsize < 7:
+        parser.error("--maxsize must be at least 7 (PySR minimum)")
+    if args.maxdepth is not None and args.maxdepth < 1:
+        parser.error("--maxdepth must be positive")
     if args.simplify_cooldown < 0 or args.simplify_cooldown > args.generations:
         parser.error(
             "--simplify-cooldown must be between 0 and --generations "
@@ -3180,6 +3188,10 @@ def main():
     # The domain owns the base PySR config (operators, loss, size limits);
     # budget fields layer on top only where they apply.
     pysr_kwargs = domain_obj.base_pysr_kwargs()
+    for key in ("maxsize", "maxdepth"):
+        value = getattr(args, key)
+        if value is not None:
+            pysr_kwargs[key] = value
     if domain_obj.uses_run_budget:
         pysr_kwargs["max_evals"] = budget["max_evals"]
         pysr_kwargs["timeout_in_seconds"] = budget["timeout_in_seconds"]
