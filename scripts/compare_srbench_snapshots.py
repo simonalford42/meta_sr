@@ -8,9 +8,11 @@ import argparse
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import json
+import multiprocessing
 from pathlib import Path
 import statistics
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -38,12 +40,52 @@ def seed_stats(rows, field="solved"):
             "seed_rates": rates, "n": len(rows)}
 
 
-def score_dataset(item):
+def _check_child(send, equation, target, variables):
+    from evaluation import check_pysr_symbolic_match
+    try:
+        decision = check_pysr_symbolic_match(equation, target, var_names=variables, timeout_seconds=3)
+        send.send({"match": bool(decision.get("match")), "error": decision.get("error")})
+    finally:
+        send.close()
+
+
+def bounded_check(equation, target, variables, wall_seconds=4):
+    """Enforce a wall deadline even if symbolic code catches the SIGALRM exception."""
+    ctx = multiprocessing.get_context("fork")
+    receive, send = ctx.Pipe(duplex=False)
+    child = ctx.Process(target=_check_child, args=(send, equation, target, variables))
+    child.start()
+    send.close()
+    try:
+        if receive.poll(wall_seconds):
+            try:
+                return receive.recv()
+            except EOFError:
+                return {"match": False, "error": "checker exited without result"}
+        return {"match": False, "error": "hard wall timeout"}
+    finally:
+        if child.is_alive():
+            child.terminate()
+        child.join(timeout=.25)
+        if child.is_alive():
+            child.kill()
+            child.join()
+        receive.close()
+
+
+def score_dataset(item, shard=None, shards=1):
     dataset, records, cache, out = item
     path = Path(out) / f"{dataset}.json"
     if path.exists():
         return json.loads(path.read_text())
-    from evaluation import check_pysr_symbolic_match, get_dataset_var_names
+    if shard is not None:
+        assert 0 <= shard < shards
+        records = records[shard::shards]
+        path = Path(out).parent / "shards" / f"{dataset}.{shard:03d}.json"
+        path.parent.mkdir(exist_ok=True)
+        if path.exists():
+            return json.loads(path.read_text())
+    from evaluation import get_dataset_var_names
     from parallel_eval_pysr import _remap_formula_variables
     from utils import get_dataset_gt_formula
     names = get_dataset_var_names(dataset)
@@ -52,7 +94,20 @@ def score_dataset(item):
     if not target:
         raise ValueError(f"Missing target for {dataset}")
     results = []
-    for record in records:
+    progress = Path(out).parent / "progress" / path.name
+    progress.parent.mkdir(exist_ok=True)
+    if progress.exists():
+        saved = json.loads(progress.read_text())
+        results = saved["records"]
+        cache.update(saved["equation_checks"])
+    last_save = time.monotonic()
+
+    def save_progress():
+        tmp = progress.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"dataset": dataset, "records": results, "equation_checks": cache}) + "\n")
+        tmp.replace(progress)
+
+    for record in records[len(results):]:
         result = {k: v for k, v in record.items() if k != "trace"}
         result.update(first_scheduled=None, first_elapsed=None, unresolved_checks=0,
                       missing_snapshots=[], unavailable_snapshots=[])
@@ -69,8 +124,10 @@ def score_dataset(item):
             for row in equations:
                 eq = row["equation"]
                 if eq not in cache:
-                    decision = check_pysr_symbolic_match(eq, target, var_names=variables, timeout_seconds=3)
-                    cache[eq] = {"match": bool(decision.get("match")), "error": decision.get("error")}
+                    cache[eq] = bounded_check(eq, target, variables)
+                    if time.monotonic() - last_save >= 60:
+                        save_progress()
+                        last_save = time.monotonic()
                 decision = cache[eq]
                 result["unresolved_checks"] += bool(decision.get("error"))
                 if decision["match"]:
@@ -80,6 +137,8 @@ def score_dataset(item):
             if result["first_scheduled"] is not None:
                 break
         results.append(result)
+        save_progress()
+        print(f"{dataset} shard={shard}: {len(results)}/{len(records)} trials, {len(cache)} cached equations", flush=True)
     payload = {"dataset": dataset, "records": results, "equation_checks": cache}
     path.write_text(json.dumps(payload) + "\n")
     return payload
@@ -94,10 +153,21 @@ def main():
     parser.add_argument("--prepare", action="store_true", help="Write per-dataset inputs without scoring")
     parser.add_argument("--dataset-index", type=int, help="Score one prepared dataset (0 through 129)")
     parser.add_argument("--aggregate-only", action="store_true", help="Require all dataset scores and write tables")
+    parser.add_argument("--dataset-indices", type=int, nargs="+", help="Dataset indices for a sharded retry array")
+    parser.add_argument("--work-index", type=int, help="Array index into dataset-indices × record-shards")
+    parser.add_argument("--record-shards", type=int, default=1)
+    parser.add_argument("--merge-shards", action="store_true")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     inputs_dir = args.output_dir / "inputs"
     checkpoints = args.output_dir / "datasets"
+    if args.work_index is not None:
+        if not args.dataset_indices or args.record_shards < 1 or not 0 <= args.work_index < len(args.dataset_indices) * args.record_shards:
+            parser.error("work-index must be within dataset-indices × record-shards")
+        index = args.dataset_indices[args.work_index // args.record_shards]
+        item = json.loads((inputs_dir / f"{index:03d}.json").read_text())
+        score_dataset(item, args.work_index % args.record_shards, args.record_shards)
+        return
     if args.dataset_index is not None:
         item = json.loads((inputs_dir / f"{args.dataset_index:03d}.json").read_text())
         result = score_dataset(item)
@@ -107,7 +177,16 @@ def main():
         records = []
         for i in range(130):
             dataset = json.loads((inputs_dir / f"{i:03d}.json").read_text())[0]
-            records.extend(json.loads((checkpoints / f"{dataset}.json").read_text())["records"])
+            path = checkpoints / f"{dataset}.json"
+            if not path.exists() and args.merge_shards:
+                merged = {"dataset": dataset, "records": [], "equation_checks": {}}
+                for shard in range(args.record_shards):
+                    part = json.loads((args.output_dir / "shards" / f"{dataset}.{shard:03d}.json").read_text())
+                    merged["records"].extend(part["records"])
+                    merged["equation_checks"].update(part["equation_checks"])
+                assert len(merged["records"]) == 80
+                path.write_text(json.dumps(merged) + "\n")
+            records.extend(json.loads(path.read_text())["records"])
         write_tables(records, args.output_dir)
         return
     grouped = defaultdict(list)
