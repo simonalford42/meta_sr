@@ -120,3 +120,39 @@ def test_cost_guard_prevents_submission(tmp_path, monkeypatch):
     monkeypatch.setattr(curve, 'OpenRouterHTTPClient', lambda *_: pytest.fail('Unexpected submission'))
     with pytest.raises(AssertionError, match='budget'):
         curve.step(dry_run=False)
+
+
+def test_empirical_family_label_normalization_preserves_evidence():
+    item = {'dataset': 'empirical_leavitt', 'frontier': curve.compact([row('log(x0)')])}
+    raw = {'classification': 'phenomenological_match', 'matching_equation': 'log(x0)',
+           'best_frontier_indices': [0]}
+    normalized = curve.normalize_review(raw, item)
+    assert normalized['classification'] == 'exact'
+    assert normalized['original_classification'] == raw['classification']
+    assert raw['classification'] == 'phenomenological_match'
+    assert curve.normalize_review({**raw, 'classification': 'near'}, item)['classification'] == 'near'
+    with pytest.raises(ValueError, match='Unexpected'):
+        curve.normalize_review(raw, {**item, 'dataset': 'empirical_planck'})
+    with pytest.raises(ValueError, match='saved equation'):
+        curve.normalize_review({**raw, 'matching_equation': 'other'}, item)
+
+
+def test_saved_completed_batch_resumes_offline_and_charges_once(tmp_path, monkeypatch):
+    snapshots = prepare_state(tmp_path, monkeypatch, lambda _: {})
+    key = curve.digest(['empirical_bode', snapshots[-1]['frontier']])
+    item = {'dataset': 'empirical_bode', 'frontier': snapshots[-1]['frontier']}
+    review = {'classification': 'phenomenological_match', 'matching_equation': '18',
+              'best_frontier_indices': [0], 'explanation': 'Accepted family.'}
+    curve.write(tmp_path/'rounds/00/items.json', {key: item})
+    curve.write(tmp_path/'rounds/00/batch.json', {'id': 'already-paid'})
+    curve.write(tmp_path/'rounds/00/responses.json', {'status': 'completed', 'results': [
+        {'custom_id': key, 'response': {'status_code': 200, 'body': {
+            'choices': [{'message': {'content': json.dumps(review)}}],
+            'usage': {'prompt_tokens': 100, 'completion_tokens': 10}}}}]})
+    monkeypatch.setattr(curve, 'OpenRouterHTTPClient', lambda *_: pytest.fail('Unexpected network access'))
+    curve.step(dry_run=True)
+    state = json.loads((tmp_path/'state.json').read_text())
+    assert state['round'] == 1 and state['cost_usd'] > 0
+    assert state['cache'][key]['original_classification'] == 'phenomenological_match'
+    curve.step(dry_run=True)
+    assert json.loads((tmp_path/'state.json').read_text())['cost_usd'] == state['cost_usd']

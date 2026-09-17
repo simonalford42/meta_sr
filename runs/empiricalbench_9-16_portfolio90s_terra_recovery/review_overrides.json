@@ -1,0 +1,7 @@
+{
+  "14278e64bfddbd6166d81a99eb43146a5af10b94e88783d20d67a3f345bfc837": {
+    "matching_equation": "((log(x0) * -1.23256187723782) + -1.793850236405427) + (x0 * -3.9727543886450755e-9)",
+    "original_matching_equation": "((-1.23256187723782) + -1.793850236405427) + (x0 * -3.9727543886450755e-9)",
+    "audit_note": "Terra correctly selected frontier index 6 and described its log term, but omitted log(x0) when copying the equation. Restored the verbatim saved expression; it is c0+c1*log(x0)+c2*x0, the accepted Schechter family."
+  }
+}
