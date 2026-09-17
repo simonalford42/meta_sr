@@ -33,8 +33,10 @@ def panel(ax, table, scale):
     ax.xaxis.set_major_formatter(ScalarFormatter())
     ax.xaxis.set_minor_locator(NullLocator())
     ax.set(xlim=(9, 95), ylim=(0, 100), yticks=range(0, 101, 20))
+    ax.yaxis.set_minor_locator(FixedLocator(range(10, 100, 20)))
+    ax.tick_params(axis="y", which="minor", length=0)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.grid(axis="y", alpha=.2)
+    ax.grid(axis="y", which="both", alpha=.2)
     ax.set_axisbelow(True)
 
 
@@ -43,7 +45,7 @@ def main():
     plt.rcParams.update({"font.size": 11, "axes.titlesize": 13,
                          "axes.labelsize": 11, "savefig.facecolor": "white"})
     for scale in ["linear", "log"]:
-        xlabel = "Time from fit startup (seconds)" + (" — log scale" if scale == "log" else "")
+        xlabel = "Search time (sec)"
         fig, ax = plt.subplots(figsize=(7.6, 5))
         panel(ax, data["tables"]["all"], scale)
         ax.set(xlabel=xlabel, ylabel="Cumulative solve rate (%)")
