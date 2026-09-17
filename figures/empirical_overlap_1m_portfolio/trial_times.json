@@ -1,0 +1,1262 @@
+[
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_hubble",
+    "seed": 10000,
+    "first_solve_budget_seconds": 12.216596841812134,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_hubble",
+    "seed": 10001,
+    "first_solve_budget_seconds": 12.072406530380249,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_hubble",
+    "seed": 10002,
+    "first_solve_budget_seconds": 12.095035791397095,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_hubble",
+    "seed": 10003,
+    "first_solve_budget_seconds": 11.189143657684326,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_hubble",
+    "seed": 10004,
+    "first_solve_budget_seconds": 11.969551086425781,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_hubble",
+    "seed": 10005,
+    "first_solve_budget_seconds": 12.62043046951294,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_hubble",
+    "seed": 10006,
+    "first_solve_budget_seconds": 12.298604488372803,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_hubble",
+    "seed": 10007,
+    "first_solve_budget_seconds": 12.007735967636108,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_hubble",
+    "seed": 10008,
+    "first_solve_budget_seconds": 12.03074336051941,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_hubble",
+    "seed": 10009,
+    "first_solve_budget_seconds": 12.253265619277954,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10000,
+    "first_solve_budget_seconds": 40.249513387680054,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10001,
+    "first_solve_budget_seconds": 12.78917670249939,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10002,
+    "first_solve_budget_seconds": 14.040585041046143,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10003,
+    "first_solve_budget_seconds": 13.279859781265259,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10004,
+    "first_solve_budget_seconds": 12.214444875717163,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10005,
+    "first_solve_budget_seconds": 13.914011716842651,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10006,
+    "first_solve_budget_seconds": 13.28824758529663,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10007,
+    "first_solve_budget_seconds": 12.143646955490112,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10008,
+    "first_solve_budget_seconds": 39.86037564277649,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10009,
+    "first_solve_budget_seconds": 14.110784530639648,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_kepler",
+    "seed": 10000,
+    "first_solve_budget_seconds": 21.593806982040405,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_kepler",
+    "seed": 10001,
+    "first_solve_budget_seconds": 11.190575122833252,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_kepler",
+    "seed": 10002,
+    "first_solve_budget_seconds": 10.556535720825195,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_kepler",
+    "seed": 10003,
+    "first_solve_budget_seconds": 11.098600387573242,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_kepler",
+    "seed": 10004,
+    "first_solve_budget_seconds": 10.66086483001709,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_kepler",
+    "seed": 10005,
+    "first_solve_budget_seconds": 11.713762044906616,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_kepler",
+    "seed": 10006,
+    "first_solve_budget_seconds": 10.6978440284729,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_kepler",
+    "seed": 10007,
+    "first_solve_budget_seconds": 12.593031406402588,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_kepler",
+    "seed": 10008,
+    "first_solve_budget_seconds": 12.947843790054321,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_kepler",
+    "seed": 10009,
+    "first_solve_budget_seconds": 11.820066452026367,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_leavitt",
+    "seed": 10000,
+    "first_solve_budget_seconds": 14.340524673461914,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_leavitt",
+    "seed": 10001,
+    "first_solve_budget_seconds": 14.823101282119751,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_leavitt",
+    "seed": 10002,
+    "first_solve_budget_seconds": 14.467400789260864,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_leavitt",
+    "seed": 10003,
+    "first_solve_budget_seconds": 14.06987977027893,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_leavitt",
+    "seed": 10004,
+    "first_solve_budget_seconds": 13.801831722259521,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_leavitt",
+    "seed": 10005,
+    "first_solve_budget_seconds": 14.3862886428833,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_leavitt",
+    "seed": 10006,
+    "first_solve_budget_seconds": 12.60524320602417,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_leavitt",
+    "seed": 10007,
+    "first_solve_budget_seconds": 12.624961853027344,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_leavitt",
+    "seed": 10008,
+    "first_solve_budget_seconds": 11.97927474975586,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_leavitt",
+    "seed": 10009,
+    "first_solve_budget_seconds": 12.246045589447021,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_newton",
+    "seed": 10000,
+    "first_solve_budget_seconds": 31.493290901184082,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_newton",
+    "seed": 10001,
+    "first_solve_budget_seconds": 167.22519445419312,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_newton",
+    "seed": 10002,
+    "first_solve_budget_seconds": 121.08722805976868,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_newton",
+    "seed": 10003,
+    "first_solve_budget_seconds": 14.272627353668213,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_newton",
+    "seed": 10004,
+    "first_solve_budget_seconds": 42.45655083656311,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_newton",
+    "seed": 10005,
+    "first_solve_budget_seconds": 29.917247772216797,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_newton",
+    "seed": 10006,
+    "first_solve_budget_seconds": 46.609333992004395,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_newton",
+    "seed": 10007,
+    "first_solve_budget_seconds": 15.663840293884277,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_newton",
+    "seed": 10008,
+    "first_solve_budget_seconds": 30.557331562042236,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_newton",
+    "seed": 10009,
+    "first_solve_budget_seconds": 1852.2196881771088,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_planck",
+    "seed": 10000,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_planck",
+    "seed": 10001,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_planck",
+    "seed": 10002,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_planck",
+    "seed": 10003,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_planck",
+    "seed": 10004,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_planck",
+    "seed": 10005,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_planck",
+    "seed": 10006,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_planck",
+    "seed": 10007,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_planck",
+    "seed": 10008,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_planck",
+    "seed": 10009,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_rydberg",
+    "seed": 10000,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_rydberg",
+    "seed": 10001,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_rydberg",
+    "seed": 10002,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_rydberg",
+    "seed": 10003,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_rydberg",
+    "seed": 10004,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_rydberg",
+    "seed": 10005,
+    "first_solve_budget_seconds": 318.346004486084,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_rydberg",
+    "seed": 10006,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_rydberg",
+    "seed": 10007,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_rydberg",
+    "seed": 10008,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_rydberg",
+    "seed": 10009,
+    "first_solve_budget_seconds": 1991.2019090652466,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_schechter",
+    "seed": 10000,
+    "first_solve_budget_seconds": 20.457444190979004,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_schechter",
+    "seed": 10001,
+    "first_solve_budget_seconds": 18.594410181045532,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_schechter",
+    "seed": 10002,
+    "first_solve_budget_seconds": 36.892627477645874,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_schechter",
+    "seed": 10003,
+    "first_solve_budget_seconds": 19.55304193496704,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_schechter",
+    "seed": 10004,
+    "first_solve_budget_seconds": 61.3952202796936,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_schechter",
+    "seed": 10005,
+    "first_solve_budget_seconds": 165.71345376968384,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_schechter",
+    "seed": 10006,
+    "first_solve_budget_seconds": 18.996992826461792,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_schechter",
+    "seed": 10007,
+    "first_solve_budget_seconds": 19.089338064193726,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_schechter",
+    "seed": 10008,
+    "first_solve_budget_seconds": 17.56088638305664,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_schechter",
+    "seed": 10009,
+    "first_solve_budget_seconds": 62.92215418815613,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_hubble",
+    "seed": 10000,
+    "first_solve_budget_seconds": 26.03347134590149,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_hubble",
+    "seed": 10001,
+    "first_solve_budget_seconds": 24.432908535003662,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_hubble",
+    "seed": 10002,
+    "first_solve_budget_seconds": 26.08636236190796,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_hubble",
+    "seed": 10003,
+    "first_solve_budget_seconds": 31.672338008880615,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_hubble",
+    "seed": 10004,
+    "first_solve_budget_seconds": 30.6383695602417,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_hubble",
+    "seed": 10005,
+    "first_solve_budget_seconds": 31.052464723587036,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_hubble",
+    "seed": 10006,
+    "first_solve_budget_seconds": 31.287535190582275,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_hubble",
+    "seed": 10007,
+    "first_solve_budget_seconds": 31.86192274093628,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_hubble",
+    "seed": 10008,
+    "first_solve_budget_seconds": 31.899646997451782,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_hubble",
+    "seed": 10009,
+    "first_solve_budget_seconds": 30.514448404312134,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10000,
+    "first_solve_budget_seconds": 33.46841645240784,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10001,
+    "first_solve_budget_seconds": 34.84707522392273,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10002,
+    "first_solve_budget_seconds": 32.807281732559204,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10003,
+    "first_solve_budget_seconds": 27.209701538085938,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10004,
+    "first_solve_budget_seconds": 28.07412886619568,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10005,
+    "first_solve_budget_seconds": 27.924728631973267,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10006,
+    "first_solve_budget_seconds": 29.486343145370483,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10007,
+    "first_solve_budget_seconds": 28.2972674369812,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10008,
+    "first_solve_budget_seconds": 27.945597648620605,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_ideal_gas",
+    "seed": 10009,
+    "first_solve_budget_seconds": 27.673887491226196,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_kepler",
+    "seed": 10000,
+    "first_solve_budget_seconds": 24.117412567138672,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_kepler",
+    "seed": 10001,
+    "first_solve_budget_seconds": 25.08060050010681,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_kepler",
+    "seed": 10002,
+    "first_solve_budget_seconds": 25.114010334014893,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_kepler",
+    "seed": 10003,
+    "first_solve_budget_seconds": 24.53907799720764,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_kepler",
+    "seed": 10004,
+    "first_solve_budget_seconds": 24.552605867385864,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_kepler",
+    "seed": 10005,
+    "first_solve_budget_seconds": 26.11201810836792,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_kepler",
+    "seed": 10006,
+    "first_solve_budget_seconds": 25.338216304779053,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_kepler",
+    "seed": 10007,
+    "first_solve_budget_seconds": 24.34454345703125,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_kepler",
+    "seed": 10008,
+    "first_solve_budget_seconds": 25.686161279678345,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_kepler",
+    "seed": 10009,
+    "first_solve_budget_seconds": 23.26030206680298,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_leavitt",
+    "seed": 10000,
+    "first_solve_budget_seconds": 26.2170512676239,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_leavitt",
+    "seed": 10001,
+    "first_solve_budget_seconds": 31.84527564048767,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_leavitt",
+    "seed": 10002,
+    "first_solve_budget_seconds": 32.27665615081787,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_leavitt",
+    "seed": 10003,
+    "first_solve_budget_seconds": 33.70724129676819,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_leavitt",
+    "seed": 10004,
+    "first_solve_budget_seconds": 32.574742794036865,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_leavitt",
+    "seed": 10005,
+    "first_solve_budget_seconds": 32.97134757041931,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_leavitt",
+    "seed": 10006,
+    "first_solve_budget_seconds": 31.780768632888794,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_leavitt",
+    "seed": 10007,
+    "first_solve_budget_seconds": 31.08695960044861,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_leavitt",
+    "seed": 10008,
+    "first_solve_budget_seconds": 31.31779718399048,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_leavitt",
+    "seed": 10009,
+    "first_solve_budget_seconds": 32.100624799728394,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_newton",
+    "seed": 10000,
+    "first_solve_budget_seconds": 52.50780773162842,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_newton",
+    "seed": 10001,
+    "first_solve_budget_seconds": 51.59147620201111,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_newton",
+    "seed": 10002,
+    "first_solve_budget_seconds": 47.72352576255798,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_newton",
+    "seed": 10003,
+    "first_solve_budget_seconds": 46.71455788612366,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_newton",
+    "seed": 10004,
+    "first_solve_budget_seconds": 41.88053250312805,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_newton",
+    "seed": 10005,
+    "first_solve_budget_seconds": 40.2861008644104,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_newton",
+    "seed": 10006,
+    "first_solve_budget_seconds": 43.07505822181702,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_newton",
+    "seed": 10007,
+    "first_solve_budget_seconds": 45.13646650314331,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_newton",
+    "seed": 10008,
+    "first_solve_budget_seconds": 40.250332832336426,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_newton",
+    "seed": 10009,
+    "first_solve_budget_seconds": 43.72873401641846,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_planck",
+    "seed": 10000,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_planck",
+    "seed": 10001,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_planck",
+    "seed": 10002,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_planck",
+    "seed": 10003,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_planck",
+    "seed": 10004,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_planck",
+    "seed": 10005,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_planck",
+    "seed": 10006,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_planck",
+    "seed": 10007,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_planck",
+    "seed": 10008,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_planck",
+    "seed": 10009,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_rydberg",
+    "seed": 10000,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_rydberg",
+    "seed": 10001,
+    "first_solve_budget_seconds": 289.4085566997528,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_rydberg",
+    "seed": 10002,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_rydberg",
+    "seed": 10003,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_rydberg",
+    "seed": 10004,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_rydberg",
+    "seed": 10005,
+    "first_solve_budget_seconds": 368.88136434555054,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_rydberg",
+    "seed": 10006,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_rydberg",
+    "seed": 10007,
+    "first_solve_budget_seconds": null,
+    "final_positive": false
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_rydberg",
+    "seed": 10008,
+    "first_solve_budget_seconds": 823.7690172195435,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_rydberg",
+    "seed": 10009,
+    "first_solve_budget_seconds": 3257.8331916332245,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_schechter",
+    "seed": 10000,
+    "first_solve_budget_seconds": 57.2408287525177,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_schechter",
+    "seed": 10001,
+    "first_solve_budget_seconds": 30.06618094444275,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_schechter",
+    "seed": 10002,
+    "first_solve_budget_seconds": 32.03156900405884,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_schechter",
+    "seed": 10003,
+    "first_solve_budget_seconds": 32.41384029388428,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_schechter",
+    "seed": 10004,
+    "first_solve_budget_seconds": 32.87620568275452,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_schechter",
+    "seed": 10005,
+    "first_solve_budget_seconds": 64.38845229148865,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_schechter",
+    "seed": 10006,
+    "first_solve_budget_seconds": 28.49769926071167,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_schechter",
+    "seed": 10007,
+    "first_solve_budget_seconds": 77.63245558738708,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_schechter",
+    "seed": 10008,
+    "first_solve_budget_seconds": 26.836378574371338,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_schechter",
+    "seed": 10009,
+    "first_solve_budget_seconds": 27.44327735900879,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10000,
+    "first_solve_budget_seconds": 11.103481769561768,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10001,
+    "first_solve_budget_seconds": 10.958137512207031,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10002,
+    "first_solve_budget_seconds": 11.189368486404419,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10003,
+    "first_solve_budget_seconds": 11.897109508514404,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10004,
+    "first_solve_budget_seconds": 11.167243480682373,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10005,
+    "first_solve_budget_seconds": 11.126513242721558,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10006,
+    "first_solve_budget_seconds": 11.083542585372925,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10007,
+    "first_solve_budget_seconds": 11.323872566223145,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10008,
+    "first_solve_budget_seconds": 10.535598993301392,
+    "final_positive": true
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10009,
+    "first_solve_budget_seconds": 11.371355772018433,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10000,
+    "first_solve_budget_seconds": 62.63599181175232,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10001,
+    "first_solve_budget_seconds": 63.0038046836853,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10002,
+    "first_solve_budget_seconds": 39.45036816596985,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10003,
+    "first_solve_budget_seconds": 39.058388233184814,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10004,
+    "first_solve_budget_seconds": 39.62709188461304,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10005,
+    "first_solve_budget_seconds": 40.238521337509155,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10006,
+    "first_solve_budget_seconds": 40.91203236579895,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10007,
+    "first_solve_budget_seconds": 40.16007709503174,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10008,
+    "first_solve_budget_seconds": 24.52726459503174,
+    "final_positive": true
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10009,
+    "first_solve_budget_seconds": 25.559040307998657,
+    "final_positive": true
+  }
+]
