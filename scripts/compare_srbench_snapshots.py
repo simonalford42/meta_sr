@@ -73,7 +73,32 @@ def bounded_check(equation, target, variables, wall_seconds=4):
         receive.close()
 
 
-def score_dataset(item, shard=None, shards=1):
+def first_matching_snapshot(trace, check, binary_search=False):
+    """Binary mode assumes monotone recovery; a negative last snapshot ends the search."""
+    if not binary_search:
+        for i, snapshot in enumerate(trace):
+            equation = check(snapshot)
+            if equation:
+                return i, equation
+        return None
+    if not trace:
+        return None
+    hi = len(trace) - 1
+    equation = check(trace[hi])
+    if not equation:
+        return None
+    lo = 0
+    while lo < hi:
+        mid = (lo + hi) // 2
+        candidate = check(trace[mid])
+        if candidate:
+            hi, equation = mid, candidate
+        else:
+            lo = mid + 1
+    return hi, equation
+
+
+def score_dataset(item, shard=None, shards=1, binary_search=False):
     dataset, records, cache, out = item
     path = Path(out) / f"{dataset}.json"
     if path.exists():
@@ -81,7 +106,7 @@ def score_dataset(item, shard=None, shards=1):
     if shard is not None:
         assert 0 <= shard < shards
         records = records[shard::shards]
-        path = Path(out).parent / "shards" / f"{dataset}.{shard:03d}.json"
+        path = Path(out).parent / ("binary_shards" if binary_search else "shards") / f"{dataset}.{shard:03d}.json"
         path.parent.mkdir(exist_ok=True)
         if path.exists():
             return json.loads(path.read_text())
@@ -94,7 +119,7 @@ def score_dataset(item, shard=None, shards=1):
     if not target:
         raise ValueError(f"Missing target for {dataset}")
     results = []
-    progress = Path(out).parent / "progress" / path.name
+    progress = Path(out).parent / ("binary_progress" if binary_search else "progress") / path.name
     progress.parent.mkdir(exist_ok=True)
     if progress.exists():
         saved = json.loads(progress.read_text())
@@ -110,14 +135,17 @@ def score_dataset(item, shard=None, shards=1):
     for record in records[len(results):]:
         result = {k: v for k, v in record.items() if k != "trace"}
         result.update(first_scheduled=None, first_elapsed=None, unresolved_checks=0,
-                      missing_snapshots=[], unavailable_snapshots=[])
+                      missing_snapshots=[], unavailable_snapshots=[], checked_snapshots=[],
+                      scoring_method="binary_search_final_gate" if binary_search else "linear")
         trace = sorted(record["trace"], key=lambda o: o["elapsed_seconds"])
         present = {o.get("scheduled_seconds") for o in trace}
         result["missing_snapshots"] = [t for t in range(10, 91, 10) if t not in present]
         result["unavailable_snapshots"] = [o["scheduled_seconds"] for o in trace if o.get("status") != "ok"]
-        for snapshot in trace:
+        def check_snapshot(snapshot):
+            nonlocal last_save
+            result["checked_snapshots"].append(snapshot["scheduled_seconds"])
             if snapshot.get("status") != "ok":
-                continue
+                return None
             # Check cached matches first; a positive suffices to score a snapshot.
             equations = sorted(snapshot.get("equations", []),
                                key=lambda row: not cache.get(row["equation"], {}).get("match"))
@@ -131,11 +159,18 @@ def score_dataset(item, shard=None, shards=1):
                 decision = cache[eq]
                 result["unresolved_checks"] += bool(decision.get("error"))
                 if decision["match"]:
-                    result.update(first_scheduled=snapshot["scheduled_seconds"],
-                                  first_elapsed=snapshot["elapsed_seconds"], equation=eq)
-                    break
-            if result["first_scheduled"] is not None:
-                break
+                    return eq
+            return None
+
+        if binary_search and "final_solved" not in record:
+            raise ValueError("Binary mode requires prepared final_solved labels; rerun --prepare")
+        match = (first_matching_snapshot(trace, check_snapshot, binary_search)
+                 if not binary_search or record["final_solved"] else None)
+        if match is not None:
+            index, eq = match
+            snapshot = trace[index]
+            result.update(first_scheduled=snapshot["scheduled_seconds"],
+                          first_elapsed=snapshot["elapsed_seconds"], equation=eq)
         results.append(result)
         save_progress()
         print(f"{dataset} shard={shard}: {len(results)}/{len(records)} trials, {len(cache)} cached equations", flush=True)
@@ -157,6 +192,8 @@ def main():
     parser.add_argument("--work-index", type=int, help="Array index into dataset-indices × record-shards")
     parser.add_argument("--record-shards", type=int, default=1)
     parser.add_argument("--merge-shards", action="store_true")
+    parser.add_argument("--binary-search", action="store_true",
+                        help="Approximate monotone recovery; skip final-unsolved trials, then binary-search snapshots")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     inputs_dir = args.output_dir / "inputs"
@@ -166,11 +203,11 @@ def main():
             parser.error("work-index must be within dataset-indices × record-shards")
         index = args.dataset_indices[args.work_index // args.record_shards]
         item = json.loads((inputs_dir / f"{index:03d}.json").read_text())
-        score_dataset(item, args.work_index % args.record_shards, args.record_shards)
+        score_dataset(item, args.work_index % args.record_shards, args.record_shards, args.binary_search)
         return
     if args.dataset_index is not None:
         item = json.loads((inputs_dir / f"{args.dataset_index:03d}.json").read_text())
-        result = score_dataset(item)
+        result = score_dataset(item, binary_search=args.binary_search)
         print(f"Scored {result['dataset']}: {len(result['records'])} trials", flush=True)
         return
     if args.aggregate_only:
@@ -181,7 +218,8 @@ def main():
             if not path.exists() and args.merge_shards:
                 merged = {"dataset": dataset, "records": [], "equation_checks": {}}
                 for shard in range(args.record_shards):
-                    part = json.loads((args.output_dir / "shards" / f"{dataset}.{shard:03d}.json").read_text())
+                    shard_dir = "binary_shards" if args.binary_search else "shards"
+                    part = json.loads((args.output_dir / shard_dir / f"{dataset}.{shard:03d}.json").read_text())
                     merged["records"].extend(part["records"])
                     merged["equation_checks"].update(part["equation_checks"])
                 assert len(merged["records"]) == 80
@@ -206,6 +244,7 @@ def main():
         for r in rows:
             grouped[r["dataset"]].append({
                 "method": label, "dataset": r["dataset"], "seed": r["seed"], "noise": r["noise"],
+                "final_solved": bool(r["solved"]),
                 "trace": [o for o in r["execution_trace"] if not o.get("final")
                           and o.get("scheduled_seconds") is not None and o["scheduled_seconds"] <= 90],
             })
@@ -227,7 +266,7 @@ def main():
         return
     records = []
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        futures = [pool.submit(score_dataset, item) for item in inputs]
+        futures = [pool.submit(score_dataset, item, binary_search=args.binary_search) for item in inputs]
         for i, future in enumerate(as_completed(futures), 1):
             payload = future.result()
             records.extend(payload["records"])
@@ -241,6 +280,9 @@ def write_tables(records, output_dir):
     tables = {}
     lines = ["Cumulative observed symbolic recovery; scheduled fit-wall snapshots.\n",
              "All rates are percentages; SD is across ten seed-level rates.\n"]
+    approximate = [r for r in records if r.get("scoring_method") == "binary_search_final_gate"]
+    if approximate:
+        lines.append(f"Approximation: {len(approximate)} trials across {len({r['dataset'] for r in approximate})} datasets use binary search assuming monotone recovery, with final-unsolved trials set to zero. Other datasets retain linear snapshot scoring.\n")
     for noise in ["all", 0, .001, .01, .1]:
         tables[str(noise)] = {}
         lines += [f"\nNoise: {noise}\n", "| Seconds | Baseline mean ± SD | Evolved mean ± SD |",
@@ -255,6 +297,7 @@ def write_tables(records, output_dir):
             b, e = stats["baseline"], stats["evolved"]
             lines.append(f"| {t} | {b['mean']:.2f} ± {b['sd']:.2f} | {e['mean']:.2f} ± {e['sd']:.2f} |")
     output = {"tables": tables, "records": records,
+              "approximate_trials": len(approximate),
               "unresolved_checks": sum(r["unresolved_checks"] for r in records),
               "records_with_missing_snapshots": sum(bool(r["missing_snapshots"]) for r in records)}
     (output_dir / "snapshot_comparison.json").write_text(json.dumps(output, indent=2) + "\n")

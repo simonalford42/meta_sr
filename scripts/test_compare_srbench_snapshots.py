@@ -48,9 +48,37 @@ def test_shards_resume_and_keep_noise(tmp_path):
     assert scorer.score_dataset(item, 0, 2)["records"] == first["records"]
 
 
+def test_binary_search():
+    for threshold in range(10):
+        checked = []
+        def check(index):
+            checked.append(index)
+            return "match" if index >= threshold else None
+        result = scorer.first_matching_snapshot(list(range(9)), check, True)
+        assert result == ((threshold, "match") if threshold < 9 else None)
+        assert len(checked) <= 5
+    # The accepted approximation intentionally misses transient early matches.
+    assert scorer.first_matching_snapshot(list(range(9)), lambda i: "match" if i == 2 else None, True) is None
+
+
+def test_binary_final_gate(tmp_path):
+    out = tmp_path / "datasets"
+    out.mkdir()
+    row = dict(method="baseline", dataset="feynman_I_12_1", seed=10000, noise=0,
+               final_solved=False, trace=[dict(status="ok", scheduled_seconds=20, elapsed_seconds=20.1,
+                                             equations=[{"equation": "x0*x1"}])])
+    payload = scorer.score_dataset((row['dataset'], [row], {}, str(out)), binary_search=True)
+    result = payload["records"][0]
+    assert result["checked_snapshots"] == [] and result["first_scheduled"] is None
+    assert result["scoring_method"] == "binary_search_final_gate"
+
+
 if __name__ == "__main__":
     test_bounded_check_matches()
     test_hard_timeout_kills_stuck_checker()
+    test_binary_search()
     with tempfile.TemporaryDirectory(prefix="srbench_snapshot_test_") as directory:
         test_shards_resume_and_keep_noise(Path(directory))
-    print("All three snapshot scorer checks passed")
+    with tempfile.TemporaryDirectory(prefix="srbench_snapshot_test_") as directory:
+        test_binary_final_gate(Path(directory))
+    print("All five snapshot scorer checks passed")

@@ -3,8 +3,8 @@
 # 9/17/26
 if [[ "${1:-}" == "--retry-srbench-snapshots" ]]; then
     scancel 340585_92 340585_97 340587
-    snapshot_retry=$(sbatch --parsable --partition=default_partition --array=0-29%30 --requeue --cpus-per-task=1 --mem=4G --time=04:00:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 --output=out/%A_%a.out -J srb-snapshot-retry --wrap='bash run.sh scripts/compare_srbench_snapshots.py --dataset-indices 92 97 118 --record-shards 10 --work-index "$SLURM_ARRAY_TASK_ID"') || exit
-    sbatch --dependency=afterok:"$snapshot_retry" --partition=default_partition --cpus-per-task=1 --mem=4G --time=00:10:00 -J srb-snapshot-tables run.sh scripts/compare_srbench_snapshots.py --aggregate-only --merge-shards --record-shards 10
+    snapshot_retry=$(sbatch --parsable --partition=default_partition --array=0-29%30 --requeue --cpus-per-task=1 --mem=4G --time=04:00:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 --output=out/%A_%a.out -J srb-snapshot-retry --wrap='bash run.sh scripts/compare_srbench_snapshots.py --dataset-indices 92 97 118 --record-shards 10 --binary-search --work-index "$SLURM_ARRAY_TASK_ID"') || exit
+    sbatch --dependency=afterok:"$snapshot_retry" --partition=default_partition --cpus-per-task=1 --mem=4G --time=00:10:00 -J srb-snapshot-tables run.sh scripts/compare_srbench_snapshots.py --aggregate-only --merge-shards --record-shards 10 --binary-search
     exit
 fi
 
