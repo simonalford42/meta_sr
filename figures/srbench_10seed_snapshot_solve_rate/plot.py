@@ -48,7 +48,7 @@ def main():
         xlabel = "Search time (sec)"
         fig, ax = plt.subplots(figsize=(7.6, 5))
         panel(ax, data["tables"]["all"], scale)
-        ax.set(xlabel=xlabel, ylabel="Cumulative solve rate (%)")
+        ax.set(xlabel=xlabel, ylabel="Cumulative recovery rate (%)")
         ax.legend(frameon=False, loc="upper left")
         fig.tight_layout()
         save(fig, f"overall_{scale}")
@@ -61,7 +61,7 @@ def main():
         fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(.5, 1),
                    ncol=2, frameon=False)
         fig.supxlabel(xlabel, y=.015)
-        fig.supylabel("Cumulative solve rate (%)", x=.015)
+        fig.supylabel("Cumulative recovery rate (%)", x=.015)
         fig.tight_layout(rect=(.025, .04, 1, .95), h_pad=1.8)
         save(fig, f"noise_levels_{scale}")
 
