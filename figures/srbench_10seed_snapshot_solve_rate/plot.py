@@ -25,7 +25,8 @@ def panel(ax, table, scale):
         assert np.all(sd >= 0) and np.all(np.diff(mean) >= -1e-9)
         ax.fill_between(times, np.maximum(0, mean - sd), np.minimum(100, mean + sd),
                         color=color, alpha=.18, linewidth=0)
-        ax.plot(times, mean, color=color, linewidth=2.2, label=label)
+        ax.plot(times, mean, color=color, marker="o", markersize=4.2,
+                linewidth=2.2, label=label)
     ax.set_xscale(scale)
     ticks = times if scale == "linear" else [10, 20, 30, 60, 90]
     ax.xaxis.set_major_locator(FixedLocator(ticks))
