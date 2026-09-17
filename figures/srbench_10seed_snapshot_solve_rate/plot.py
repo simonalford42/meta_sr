@@ -1,4 +1,4 @@
-"""Plot the 129-dataset partial snapshot comparison with seed SD bands.
+"""Plot the complete snapshot comparison with seed SD bands.
 
 The adjacent data.json freezes the exact table used for these figures.
 Run: python figures/srbench_10seed_snapshot_solve_rate/plot.py
@@ -43,8 +43,10 @@ def main():
     plt.rcParams.update({"font.size": 11, "axes.titlesize": 13,
                          "axes.labelsize": 11, "savefig.facecolor": "white"})
     n = len(data["included"])
+    approximate = len(data["approximate_datasets"])
+    coverage_note = (f"Excludes {', '.join(data['omitted'])} · " if data["omitted"] else "")
     footer = (f"{n}/130 datasets · 10 seeds · shaded bands: ±1 seed SD\n"
-              "Excludes strogatz_barmag1 · 2 datasets use approximate binary search")
+              f"{coverage_note}{approximate} datasets use approximate binary search")
     for scale in ["linear", "log"]:
         xlabel = "Time from fit startup (seconds)" + (" — log scale" if scale == "log" else "")
         fig, ax = plt.subplots(figsize=(7.6, 5))
