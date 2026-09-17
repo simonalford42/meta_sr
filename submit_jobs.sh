@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 
 # 9/17/26
+if [[ "${1:-}" == "--resume-spliced-terra" ]]; then
+    splice_review_retry=$(sbatch --parsable --export=ALL --partition=default_partition --time=12:00:00 --mem=12G -J srb2-splice1m-terra-retry run.sh scripts/review_srbench2_spliced_portfolio.py --baseline runs/srbench2_baseline_9-17_60m_1m_spliced_snap5 --evolved runs/709715-srbench2_9-17_60m_1m_spliced_snap5 --output-dir runs/srbench2_9-17_1m_spliced_terra_recovery --max-cost 20 --run) || exit
+    sbatch --dependency=afterok:"$splice_review_retry" --partition=default_partition --time=00:10:00 --mem=4G -J srb2-splice1m-plot run.sh figures/plot_srbench2_spliced_portfolio.py runs/srbench2_9-17_1m_spliced_terra_recovery --output-dir figures/srbench2_1m_spliced_snap5 || exit
+    scancel 344306
+    exit
+fi
+
 if [[ "${1:-}" == "--retry-srbench-snapshots" ]]; then
     scancel 340585_92 340585_97 340587
     snapshot_retry=$(sbatch --parsable --partition=default_partition --array=0-29%30 --requeue --cpus-per-task=1 --mem=4G --time=04:00:00 --export=ALL,OPENBLAS_NUM_THREADS=1,OMP_NUM_THREADS=1 --output=out/%A_%a.out -J srb-snapshot-retry --wrap='bash run.sh scripts/compare_srbench_snapshots.py --dataset-indices 92 97 118 --record-shards 10 --binary-search --work-index "$SLURM_ARRAY_TASK_ID"') || exit

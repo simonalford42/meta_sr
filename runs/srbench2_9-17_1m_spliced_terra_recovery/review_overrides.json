@@ -1,0 +1,6 @@
+{
+  "b9416375b6ad0ed5082b35c9e971d389d97cc079beeb5a0f25b5cb4e5ec75870": {
+    "matching_equation": "(((((x0 * -0.0008423279597560678) / (x0 * 887.6220201840035)) / (-10.773955111450947 / ((0.5855624159174347 - x0) / 26.375797916123194))) - x0) - log(x0)) + x0",
+    "correction_note": "Removed one extraneous trailing closing parenthesis; exact saved equation at Terra-selected frontier index 15. Original response preserved in rounds/03/responses.json."
+  }
+}

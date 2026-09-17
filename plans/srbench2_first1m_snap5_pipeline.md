@@ -28,3 +28,11 @@ All SLURM commands are in `submit_jobs.sh`. The stages invoke:
 - `figures/plot_srbench2_spliced_portfolio.py REVIEW --output-dir figures/srbench2_1m_spliced_snap5`
 
 The review adapter shares the checkpointed batch engine with the previous EmpiricalBench timing analysis, but supplies the SRBench2 target definitions and the complete first-restart snapshot sequence (including captures beyond 90 seconds).
+
+## Resume after the Schechter equation-copy error (9/17/26)
+
+Run `bash submit_jobs.sh --resume-spliced-terra` to submit only the resumed review and its dependent plot, then cancel obsolete blocked plot job 344306. This flag exits before other active submission commands.
+
+Round 03 returned one extra trailing closing parenthesis for Schechter seed 10001, frontier index 15. `review_overrides.json` records the exact saved equation; `review_override_audit.json` preserves the original text, selected index, and response-file SHA256. The original batch response remains unchanged.
+
+Offline validation accepted all 85 responses and advanced the checkpoint to round 04, preparing 73 requests without submitting them. Recorded cumulative cost is $1.4872; the next batch's conservative maximum estimate is $1.5493. The existing $20 total guard remains in effect.
