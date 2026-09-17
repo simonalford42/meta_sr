@@ -2,11 +2,13 @@
 import json
 from pathlib import Path
 import sys
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-def test_first_restart_only_and_warmup_exclusion(tmp_path, monkeypatch):
+@pytest.mark.parametrize("eval_cap", [None, 1000000])
+def test_first_restart_only_and_warmup_exclusion(tmp_path, monkeypatch, eval_cap):
     import numpy as np
     import pandas as pd
     import domains
@@ -51,7 +53,8 @@ def test_first_restart_only_and_warmup_exclusion(tmp_path, monkeypatch):
     spec = worker.PySRTaskSpec(config_id=0, dataset_name='fake', pysr_kwargs={},
         mutation_weights={}, seed=10000, data_seed=42, custom_loss_code='mock',
         frontier_snapshot_seconds=5, retain_pareto_frontier=True, portfolio_time_limit_seconds=3600,
-        portfolio_restart_timeout_seconds=90, portfolio_restart_count=2,
+        portfolio_restart_timeout_seconds=90 if eval_cap is None else None,
+        portfolio_restart_max_evals=eval_cap, portfolio_restart_count=2,
         hof_csv_paths=[str(tmp_path/'hof.csv')])
     result = worker._evaluate_pysr_task(spec, use_cache=False)
     assert calls == [None, 5, None]  # Warm-up, first restart, second restart.

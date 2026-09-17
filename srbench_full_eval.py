@@ -632,7 +632,7 @@ def main(argv=None, *, force_srbench_2025=False):
                         help="Run directory (default: runs/<SLURM_JOB_ID> or local_*).")
     parser.add_argument("--no-wandb", action="store_true")
     parser.add_argument('--frontier-snapshot-seconds', type=float, default=None,
-                        help='Copy native PySR frontiers at this wall-time interval during one uninterrupted fit.')
+                        help='Copy native PySR frontiers at this wall-time interval; portfolios capture the first real restart only.')
     parser.add_argument("--srbench2-exact-recovery", action="store_true",
                         help=argparse.SUPPRESS)
     parser.add_argument("--baseline-l1-loss", action="store_true",
@@ -654,8 +654,6 @@ def main(argv=None, *, force_srbench_2025=False):
         import math
         if not math.isfinite(args.frontier_snapshot_seconds) or args.frontier_snapshot_seconds <= 0:
             parser.error('--frontier-snapshot-seconds must be positive and finite')
-        if args.portfolio_time_limit is not None:
-            parser.error('--frontier-snapshot-seconds requires a single search, not a portfolio')
     if args.portfolio_time_limit is not None:
         if args.portfolio_time_limit <= 0:
             parser.error("--portfolio-time-limit must be positive")
