@@ -49,7 +49,7 @@ def main():
         n = len(times)
         ys = [sum(t <= checkpoint for t in times)/90*100 for checkpoint in xs]
         assert len(xs) == len(set(xs)) and ys[-1] == n/90*100
-        ax.plot([t/60 for t in xs], ys, marker="o", markersize=3.5, color=color, linestyle="none",
+        ax.plot([t/60 for t in xs], ys, color=color, linestyle="-", linewidth=2.3,
                 label=f'{label} ({n}/90)')
         table.extend(dict(method=method, seconds=t, solve_rate_percent=y) for t,y in zip(xs,ys))
     ax.set(xscale='log', xlim=(1/60,60), ylim=(0,100), xlabel='Search time (min)',
@@ -71,7 +71,7 @@ def main():
         w=csv.DictWriter(f,fieldnames=list(table[0])); w.writeheader(); w.writerows(table)
     (a.output_dir/'README.md').write_text(f'# Synthetic SRBench2 portfolio plot\n\nSource: `{a.review_dir}`.\n\n'
         'New first restarts replace archived first restarts; later fits are reused and timestamps shifted. '
-        'One dot per method per checkpoint shows cumulative recovery, including checkpoints with no increase. Five-second captures use their scheduled times (5, 10, 15 seconds, etc.), not the slightly delayed actual read times. The common checkpoint grid combines scheduled captures and recorded restart-end recovery times, plus the one-hour endpoint. Raw review timings remain unchanged. The logarithmic axis is in minutes; CSV times are in seconds. '
+        'Solid lines connect cumulative recovery values at the shared checkpoints, including checkpoints with no increase. Five-second captures use their scheduled times (5, 10, 15 seconds, etc.), not the slightly delayed actual read times. The common checkpoint grid combines scheduled captures and recorded restart-end recovery times, plus the one-hour endpoint. Raw review timings remain unchanged. The logarithmic axis is in minutes; CSV times are in seconds. '
         'Final totals are computed, never fixed to historical counts. See the review README for scoring and timing caveats.\n')
     print(a.output_dir/'solve_rate.png')
 
