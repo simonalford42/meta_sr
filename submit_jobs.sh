@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 # 9/17/26
+sbatch --partition=default_partition --time=3-00:00:00 --cpus-per-task=1 --mem=32G --job-name=mips-ft-709714-acc-size70 --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" run.sh evolve_pysr.py --domain mips --operator-type all --baseline runs/709714 --generations 30 --population 10 --offspring 10 --n-runs 2 --seed 42 --fitness-metric acc --population-type task --reeval none --identify-topk 0 --exec-feedback-n 0 --models best2 --split splits/mips_unsolved_sr_targets_plus_refined.txt --val-split "" --maxsize 70 --maxdepth 32 --max-samples 1000 --max-time-in-seconds 300 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 14400 --no-random-target-noise --output-dir runs/709714-mips-ft-acc-size70-9-17
 chain_a=$(sbatch --parsable run.sh evolve_pysr.py --operator-type all --population-type task --generations 20 --population 10 --offspring 10 --n-runs 1 --reeval none --models best2)
 chain_b=$(sbatch --parsable run.sh evolve_pysr.py --operator-type all --population-type task --generations 20 --population 10 --offspring 10 --n-runs 3 --reeval none --models best2)
 chain_a=$(sbatch --parsable --dependency=afterany:$chain_a run.sh evolve_pysr.py --operator-type all --population-type task --generations 20 --population 10 --offspring 10 --n-runs 10 --reeval none --models best2)

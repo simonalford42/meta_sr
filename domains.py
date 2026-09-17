@@ -149,6 +149,26 @@ class Domain:
             f"across {self.prompt_task_summary}.\n"
         )
 
+    def frontier_accuracy(self, *, equations_df, predict_fn, y_val) -> Optional[float]:
+        """Maximum validation accuracy attained by a single frontier expression.
+
+        Invalid expressions contribute zero; they must not hide other valid rows.
+        This is not an ensemble that chooses a different expression for each row.
+        """
+        if not self.supports_accuracy:
+            return None
+        best = 0.0
+        for idx in equations_df.index:
+            try:
+                score = self.accuracy_score(y_val, predict_fn(idx))
+            except Exception:
+                continue
+            if score is not None and np.isfinite(score):
+                best = max(best, float(score))
+            if best == 1.0:
+                break
+        return best
+
     def check_solved(
         self,
         *,

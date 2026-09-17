@@ -1662,11 +1662,14 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
                 r2 = 1 - (ss_res / (ss_tot + 1e-10))
                 r2 = max(r2, 0)  # Clip negative R^2 to 0
 
-                # Domain accuracy of the SAME equation PySR's model_selection
-                # picked (y_pred above), so this costs no extra prediction.
-                # None for domains without a discrete target.
+                # Accuracy rewards the best single expression on the frontier,
+                # independently of PySR's loss-based model selection.
                 try:
-                    acc_score = domain.accuracy_score(y_val, y_pred)
+                    acc_score = domain.frontier_accuracy(
+                        equations_df=model.equations_,
+                        predict_fn=lambda idx: model.predict(X_val, index=int(idx)),
+                        y_val=y_val,
+                    )
                 except Exception as _e:
                     print(f"[{spec.dataset_name}] accuracy scoring failed: {_e}",
                           flush=True)

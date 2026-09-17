@@ -2715,8 +2715,8 @@ def main():
                              "'gt-r2' = 1.0 if the task is solved (gt match), else "
                              "the frontier-averaged R²; "
                              "'gt-r2-v2' = 3 * solved + frontier-averaged R²; "
-                             "'acc' = validation accuracy of the model_selection='best' "
-                             "equation (bit-wise for Boolean domains; exact-integer for MIPS); "
+                             "'acc' = maximum validation accuracy across frontier "
+                             "equations (bit-wise for Boolean domains; exact-integer for MIPS); "
                              "'gt-acc' = 1.0 if solved, else that accuracy. "
                              "Defaults to gt-acc for Boolean/MIPS, r2 for canonical SRBench "
                              "black-box splits, otherwise gt.")

@@ -60,7 +60,7 @@ _WATCHDOG_MARGIN_S = 900
 # way that makes old successful results incomparable.  The SkeletonSR git
 # revision is also part of every config identity, so committed Julia engine or
 # policy changes invalidate the cache automatically.
-FULLSR_CACHE_PROTOCOL_VERSION = 2
+FULLSR_CACHE_PROTOCOL_VERSION = 3
 
 # The eight policy functions that SkeletonSRPolicy carries. Used by the worker
 # to splice in custom Julia code when policy_code is set.
@@ -865,10 +865,13 @@ def _evaluate_fullsr_task(spec: FullSRTaskSpec) -> FullSRTaskResult:
                         })
                 except Exception:
                     continue
-        # Domain accuracy of the SAME best-loss equation scored for R² above.
-        # None for domains without a discrete target.
+        # Match PySR: accuracy is the best single expression on the frontier.
         try:
-            acc_score = domain.accuracy_score(y_val, y_pred)
+            acc_score = domain.frontier_accuracy(
+                equations_df=equations_df,
+                predict_fn=lambda idx: _predict_row(int(idx)),
+                y_val=y_val,
+            )
         except Exception as e:
             _log(f"Accuracy scoring failed ({e})")
             acc_score = None
