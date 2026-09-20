@@ -1,0 +1,6 @@
+run,label,Train,Train generation,Train points,Train reevaluation,Train reevaluation generation,Train reevaluation points,Validation,Validation generation,Validation points
+373691,"1 run, no reevaluation",0.75,20,21,0.555,20,19,0.545,18,15
+373692,"3 runs, no reevaluation",0.9666666666666666,20,21,0.905,20,18,0.655,20,13
+373693,"10 runs, no reevaluation",0.68,20,21,0.61,20,21,0.53,20,21
+373694,Population reevaluation: 1 → 3,0.75,20,21,0.625,20,21,0.555,20,18
+373695,"TTTS, budget 20 (top-k)",0.7,20,21,0.73,20,20,0.55,20,18

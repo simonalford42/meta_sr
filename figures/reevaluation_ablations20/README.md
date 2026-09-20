@@ -1,0 +1,19 @@
+# September 17, 2026 reevaluation ablations
+
+Reproduce: `python figures/plot_reevaluation_ablations20.py`.
+
+`per_run.png` / `.pdf` shows train, fresh-seed train reevaluation, and validation for each run. `comparison.png` / `.pdf` compares runs separately for each metric. `scores.csv` contains plotted observations; `final_scores.csv` contains endpoints and coverage; `metadata.json` preserves run configurations.
+
+Train is the current best bundle's selection score, read from `best_bundles/best_genN.jl`; generation zero comes from `Best initial bundle` in `run.log`. Train reevaluation and validation come from completed evaluation lines in `run.log`, aligned by submitted generation, not completion time. Log scores have four-decimal precision. Reevaluation uses 10 fresh seeds on the 20 train tasks; validation uses 10 seeds on 20 validation tasks. Scores are GT match rates. Lines connect observed points; missing evaluations are not imputed. These trajectories precede the separate final identification/evaluation procedure.
+
+| Setting (run) | Train, gen 20 | Train reevaluation, gen 20 | Last validation | Validation generation |
+|---|---:|---:|---:|---:|
+| 1 run, none (373691) | 75.0% | 55.5% | 54.5% | 18 |
+| 3 runs, none (373692) | 96.7% | 90.5% | 65.5% | 20 |
+| 10 runs, none (373693) | 68.0% | 61.0% | 53.0% | 20 |
+| Population 1 → 3 (373694) | 75.0% | 62.5% | 55.5% | 20 |
+| TTTS budget 20, top-k (373695) | 70.0% | 73.0% | 55.0% | 20 |
+
+The 3-run setting leads on fresh-seed train and validation scores. Its 25-point fresh-train-to-validation gap nevertheless suggests substantial specialization to the training tasks. The 1-run setting has a 19.5-point train optimism gap; population reevaluation reduces that gap to 12.5 points and improves fresh-train performance by 7 points. Ten runs reduces the optimism gap to 7 points but does not yield the best evolved solution in this trial. TTTS has no positive endpoint optimism gap (fresh train is 3 points higher), but validation remains around 55%.
+
+These are single evolution trials, not replicated estimates of strategy performance; n-runs is the number of evaluator seeds, not independent evolution trials. The settings also use different evaluation budgets. TTTS changes population selection from task to top-k, so its effect cannot be isolated. The 1-run validation endpoint is generation 18; its selected bundle is unchanged through generation 20, but no generation-20 background validation observation is available. Validation can use a different per-task timeout than train, as configured by the evolution program.
