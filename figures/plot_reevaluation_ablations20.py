@@ -64,6 +64,24 @@ def main():
                              and r['generation'] == reeval_gen)
         summary['Winners curse'] = matched_train - summary['Train reevaluation']
         summaries.append(summary)
+    # Table-only comparator: use the validation evaluation of the exact gen-20 bundle.
+    reference = ROOT / 'runs/709715'
+    bundle = (reference / 'best_bundles/best_gen20.jl').read_text()
+    train = float(re.search(r'^# Bundle score: (.+)$', bundle, re.M)[1])
+    name = re.search(r'^# Operators: (.+)$', bundle, re.M)[1]
+    log = (reference / 'run.log').read_text()
+    reevaluation = re.search(r'\[train reeval\] gen 20 ' + re.escape(name) +
+                            r': reeval GT match rate=([\d.]+)', log)
+    validation = re.search(r'\[val eval\] gen (\d+) ' + re.escape(name) +
+                          r': avg GT match rate=([\d.]+)', log)
+    assert reevaluation is not None and validation is not None
+    fresh = float(reevaluation[1])
+    summaries.append({'run': '709715', 'label': '709715 after 20 gens',
+                      'Train': train, 'Train generation': 20, 'Train points': 1,
+                      'Train reevaluation': fresh, 'Train reevaluation generation': 20,
+                      'Train reevaluation points': 1, 'Validation': float(validation[2]),
+                      'Validation generation': int(validation[1]), 'Validation points': 1,
+                      'Winners curse': train - fresh})
     rows.sort(key=lambda r:(r['run'], SPLITS.index(r['split']), r['generation']))
     for name, data in [('scores.csv', rows), ('final_scores.csv', summaries)]:
         with (OUT / name).open('w') as f:
@@ -80,7 +98,12 @@ def main():
     (OUT / 'endpoint_table.md').write_text(table_text +
         '\nTrain and train reevaluation are generation 20. Winner’s curse = train selection score '
         'minus fresh-seed train reevaluation at the same generation, in percentage points. '
-        'Negative means fresh-seed reevaluation scored higher.\n')
+        'Negative means fresh-seed reevaluation scored higher.\n\n'
+        '709715 has no generation-20 validation observation. Its 67.0% validation score was logged '
+        'at generation 22 for the exact same operator bundle selected at generation 20. '
+        'The last validation observation before generation 20 was 65.5% at generation 18, '
+        'for a different bundle. The 709715 row is a table-only comparison; its three selected '
+        'observations are counted in final_scores.csv, not added to the five-run plots or scores.csv.\n')
     readme = OUT / 'README.md'
     if readme.exists():
         text = readme.read_text()

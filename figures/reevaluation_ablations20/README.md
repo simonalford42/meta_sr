@@ -13,6 +13,9 @@ Train is the current best bundle's selection score, read from `best_bundles/best
 | 10 runs, no reevaluation (373693) | 68.0% | 61.0% | +7.0 | 53.0% | 20 |
 | Population reevaluation: 1 → 3 (373694) | 75.0% | 62.5% | +12.5 | 55.5% | 20 |
 | TTTS, budget 20 (top-k) (373695) | 70.0% | 73.0% | -3.0 | 55.0% | 20 |
+| 709715 after 20 gens (709715) | 85.0% | 79.5% | +5.5 | 67.0% | 22 |
+
+For **709715 after 20 gens**, the train and train-reevaluation scores are from generation 20. Validation (67.0%) was logged at generation 22 for the exact same operator bundle; no generation-20 validation observation exists. The last validation observation before generation 20 was 65.5% at generation 18 for a different bundle. This comparison row is included only in the table and final_scores.csv, not in the five-ablation plots or scores.csv.
 
 Winner’s curse is the generation-20 train selection score minus the generation-20 fresh-seed train reevaluation, in percentage points. Negative means reevaluation scored higher; it is a noisy observed gap, not proof of absence of selection bias. See `endpoint_table.md` for the standalone table.
 

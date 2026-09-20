@@ -4,3 +4,4 @@ run,label,Train,Train generation,Train points,Train reevaluation,Train reevaluat
 373693,"10 runs, no reevaluation",0.68,20,21,0.61,20,21,0.53,20,21,0.07000000000000006
 373694,Population reevaluation: 1 → 3,0.75,20,21,0.625,20,21,0.555,20,18,0.125
 373695,"TTTS, budget 20 (top-k)",0.7,20,21,0.73,20,20,0.55,20,18,-0.030000000000000027
+709715,709715 after 20 gens,0.85,20,1,0.795,20,1,0.67,22,1,0.05499999999999994
