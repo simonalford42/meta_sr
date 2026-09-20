@@ -58,6 +58,11 @@ def main():
             summary[split] = series[-1]['score']
             summary[split + ' generation'] = series[-1]['generation']
             summary[split + ' points'] = len(series)
+        reeval_gen = summary['Train reevaluation generation']
+        matched_train = next(r['score'] for r in rows
+                             if r['run'] == run and r['split'] == 'Train'
+                             and r['generation'] == reeval_gen)
+        summary['Winners curse'] = matched_train - summary['Train reevaluation']
         summaries.append(summary)
     rows.sort(key=lambda r:(r['run'], SPLITS.index(r['split']), r['generation']))
     for name, data in [('scores.csv', rows), ('final_scores.csv', summaries)]:
@@ -65,6 +70,22 @@ def main():
             writer = csv.DictWriter(f, fieldnames=list(data[0]))
             writer.writeheader()
             writer.writerows(data)
+    table = ['| Setting (run) | Train | Train reevaluation | Winner’s curse (pp) | Last validation | Val generation |',
+             '|---|---:|---:|---:|---:|---:|']
+    for row in summaries:
+        table.append(f"| {row['label']} ({row['run']}) | {row['Train']:.1%} | "
+                     f"{row['Train reevaluation']:.1%} | {100*row['Winners curse']:+.1f} | "
+                     f"{row['Validation']:.1%} | {row['Validation generation']} |")
+    table_text = '\n'.join(table) + '\n'
+    (OUT / 'endpoint_table.md').write_text(table_text +
+        '\nTrain and train reevaluation are generation 20. Winner’s curse = train selection score '
+        'minus fresh-seed train reevaluation at the same generation, in percentage points. '
+        'Negative means fresh-seed reevaluation scored higher.\n')
+    readme = OUT / 'README.md'
+    if readme.exists():
+        text = readme.read_text()
+        text = re.sub(r'\| Setting \(run\).*?(?=\n\n)', table_text.rstrip(), text, flags=re.S)
+        readme.write_text(text)
     (OUT / 'metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
     plt.rcParams.update({'font.size': 10, 'axes.spines.top': False, 'axes.spines.right': False, 'pdf.fonttype': 42})
     def finish(fig, name):
