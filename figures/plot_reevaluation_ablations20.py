@@ -95,7 +95,7 @@ def main():
         style(ax)
         ax.set_title(f'{label}\nRun {run}')
     axes.flat[-1].axis('off')
-    axes.flat[-1].legend(*axes.flat[0].get_legend_handles_labels(),loc='center',frameon=False)
+    axes.flat[-1].legend(*axes.flat[0].get_legend_handles_labels(),loc='center',bbox_to_anchor=(.5,.65),frameon=False)
     axes.flat[-1].text(.5,.25,'Markers = observed evaluations\nLines connect available generations\nFresh-seed reevaluation: 10 runs\nValidation: 10 runs',ha='center',transform=axes.flat[-1].transAxes)
     fig.tight_layout()
     finish(fig,'per_run')
