@@ -67,7 +67,7 @@ def main():
     rows.sort(key=lambda r:(r['run'], SPLITS.index(r['split']), r['generation']))
     for name, data in [('scores.csv', rows), ('final_scores.csv', summaries)]:
         with (OUT / name).open('w') as f:
-            writer = csv.DictWriter(f, fieldnames=list(data[0]))
+            writer = csv.DictWriter(f, fieldnames=list(data[0]), lineterminator="\n")
             writer.writeheader()
             writer.writerows(data)
     table = ['| Setting (run) | Train | Train reevaluation | Winner’s curse (pp) | Last validation | Val generation |',

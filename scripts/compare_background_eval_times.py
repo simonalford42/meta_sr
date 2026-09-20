@@ -86,7 +86,7 @@ def main():
             assert all(old_positions[k] == len(old_logs[k]) for k in old_positions)
     for name, rows in [('task_times.csv', records), ('batches.csv', batches)]:
         with (OUT / name).open('w') as f:
-            w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
+            w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n"); w.writeheader(); w.writerows(rows)
     summaries = []
     for run in ['709715', '373692']:
         for split in ['train_reeval', 'validation']:
