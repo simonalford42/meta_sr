@@ -51,10 +51,8 @@ for label, (cat, legend, short) in POL.items():
 ax.set_xscale("log")
 ax.set_xticks([300, 500, 700, 1000, 1500, 2000, 3000])
 ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-ax.set_xlabel("seeds spent (total PySR evaluations, log scale)")
-ax.set_ylabel("parent fitness  E[oracle fitness of selected parent]")
-ax.set_title("Reevaluation policies: fitness vs eval budget\n"
-             "(oracle replay, runs 568245+568246 avg, final generation)", fontsize=11)
+ax.set_xlabel("Total eval/reeval seeds spent")
+ax.set_ylabel("Expected true parent fitness")
 ax.grid(alpha=0.25)
 for sp in ("top", "right"):
     ax.spines[sp].set_visible(False)
