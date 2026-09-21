@@ -22,29 +22,37 @@ CATS = {
 POLICY_CAT = {
     "n1": "fixed n", "n3": "fixed n", "n10": "fixed n",
     "n1->n3": "promote", "n3->n10": "promote",
-    "TTTS B=15": "TTTS (n1 base)", "TTTS B=30": "TTTS (n1 base)",
-    "TTTS n3 B=30": "TTTS (n3 base)",
+    "TTTS n1 B=20": "TTTS (n1 base)", "TTTS n1 B=40": "TTTS (n1 base)", "TTTS n1 B=60": "TTTS (n1 base)",
+    "TTTS n3 B=20": "TTTS (n3 base)", "TTTS n3 B=40": "TTTS (n3 base)", "TTTS n3 B=60": "TTTS (n3 base)",
     "TTTS B*": "TTTS dynamic B*",
-    "KG B=20": "KG",
+    "KG B=20": "KG", "KG B=40": "KG", "KG B=60": "KG",
 }
-OFFSETS = {"TTTS B*": (-8, -12), "n1->n3": (-8, 6), "TTTS B=15": (7, -12),
-           "KG B=20": (7, 4), "n3": (7, -12), "n10": (-8, -12)}
+CAT_OFF = {"TTTS (n1 base)": (-6, 6), "TTTS (n3 base)": (6, 5), "KG": (5, -12)}
+OFFSETS = {"TTTS B*": (-8, -12), "n1->n3": (-8, 6), "n3": (7, -12), "n10": (-8, -12),
+           "TTTS n3 B=20": (-6, -13), "TTTS n3 B=40": (2, -13), "TTTS n3 B=60": (7, 3),
+           "n3->n10": (-8, 5)}
 PRETTY = {"n1->n3": "n1→n3", "n3->n10": "n3→n10"}
 
-fig, ax = plt.subplots(figsize=(7.5, 5))
+fig, ax = plt.subplots(figsize=(8.5, 5.5))
 for label, d in data.items():
     cat = POLICY_CAT[label]
     color, marker = CATS[cat]
     ax.scatter(d["seeds"], d["metric"], c=color, marker=marker, s=80, zorder=3,
                edgecolor="white", linewidth=0.8,
                label=f"{PRETTY.get(label, label)}  [{cat}]")
-    off = OFFSETS.get(label, (7, 4))
-    ax.annotate(PRETTY.get(label, label), (d["seeds"], d["metric"]),
+    off = OFFSETS.get(label, CAT_OFF.get(cat, (7, 4)))
+    txt = PRETTY.get(label, label)
+    if " B=" in label and label != "TTTS B*":
+        txt = "B=" + label.split("B=")[1]  # sweeps: legend carries the family
+    ax.annotate(txt, (d["seeds"], d["metric"]),
                 textcoords="offset points", xytext=off, fontsize=8.5, color="#333",
                 ha="right" if off[0] < 0 else "left")
 
 # connect fixed-n and promote chains as faint guides
-for chain, cat in ((["n1", "n3", "n10"], "fixed n"), (["n1", "n1->n3", "n3", "n3->n10", "n10"], "promote")):
+for chain, cat in ((["n1", "n3", "n10"], "fixed n"), (["n1", "n1->n3", "n3", "n3->n10", "n10"], "promote"),
+                   (["n1", "TTTS n1 B=20", "TTTS n1 B=40", "TTTS n1 B=60"], "TTTS (n1 base)"),
+                   (["n3", "TTTS n3 B=20", "TTTS n3 B=40", "TTTS n3 B=60"], "TTTS (n3 base)"),
+                   (["n1", "KG B=20", "KG B=40", "KG B=60"], "KG")):
     xs = [data[c]["seeds"] for c in chain]; ys = [data[c]["metric"] for c in chain]
     ax.plot(xs, ys, color=CATS[cat][0], lw=1, alpha=0.35, zorder=1)
 
@@ -57,7 +65,7 @@ ax.set_title("Reevaluation policies: fitness vs eval budget\n(oracle replay, run
 ax.grid(alpha=0.25)
 for s in ("top", "right"):
     ax.spines[s].set_visible(False)
-ax.legend(fontsize=8, loc="lower right", frameon=False, ncol=1)
+ax.legend(fontsize=7.5, loc="lower right", frameon=False, ncol=2)
 fig.tight_layout()
 out = REPO / "figures/reeval_fitness_vs_seeds.pdf"
 fig.savefig(out); fig.savefig(out.with_suffix(".png"), dpi=150)

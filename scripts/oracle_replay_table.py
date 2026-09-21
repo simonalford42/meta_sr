@@ -13,11 +13,16 @@ POLICIES = [
     ("n3",          {"n_base": 3, "reeval": "none"}, False),
     ("n3->n10",     {"n_base": 3, "reeval": "promote", "n_to": 10}, False),
     ("n10",         {"n_base": 10, "reeval": "none"}, False),
-    ("TTTS B=15",   {"n_base": 1, "reeval": "ttts", "B": 15}, True),
-    ("TTTS B=30",   {"n_base": 1, "reeval": "ttts", "B": 30}, True),
-    ("TTTS n3 B=30", {"n_base": 3, "reeval": "ttts", "B": 30}, True),
+    ("TTTS n1 B=20", {"n_base": 1, "reeval": "ttts", "B": 20}, True),
+    ("TTTS n1 B=40", {"n_base": 1, "reeval": "ttts", "B": 40}, True),
+    ("TTTS n1 B=60", {"n_base": 1, "reeval": "ttts", "B": 60}, True),
+    ("TTTS n3 B=20", {"n_base": 3, "reeval": "ttts", "B": 20}, True),
+    ("TTTS n3 B=40", {"n_base": 3, "reeval": "ttts", "B": 40}, True),
+    ("TTTS n3 B=60", {"n_base": 3, "reeval": "ttts", "B": 60}, True),
     ("TTTS B*",     {"n_base": 1, "reeval": "ttts_dyn"}, True),
     ("KG B=20",     {"n_base": 1, "reeval": "kg", "B": 20}, False),
+    ("KG B=40",     {"n_base": 1, "reeval": "kg", "B": 40}, False),
+    ("KG B=60",     {"n_base": 1, "reeval": "kg", "B": 60}, False),
 ]
 
 
