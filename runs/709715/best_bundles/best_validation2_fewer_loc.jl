@@ -1,5 +1,4 @@
-# Best bundle from generation 43
-# Bundle score: 0.85
+# Evolved operator set
 # Operators: motif_duplication_simple_rational_gen27_9 | age_and_cost_regularized_survival_simple_gen28_8 | streamlined_niche_clone_tournament_gen43_3 | simplified_affine_profile_loss_gen34_7
 
 # === mutation: motif_duplication_simple_rational_gen27_9 ===

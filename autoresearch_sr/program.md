@@ -48,7 +48,7 @@ the harness evaluates a detached worktree at that commit.
 - Do not modify files in `src/` that are not listed (e.g., `SymbolicRegression.jl`, `Options.jl`).
 - Do not inspect, evaluate, or optimize against any validation, test, or remaining official SRBench tasks.
 
-**The goal is simple: get the highest score.** The metric is `gt` (ground-truth match rate — fraction of datasets where the discovered equation matches the true formula). Higher is better. Current baseline (unmodified PySR): 0.40.
+**The goal is simple: get the highest score.** The metric is `gt` (ground-truth match rate — fraction of datasets where the discovered equation matches the true formula). Higher is better.
 
 **Evaluation is noisy.** To guard against noise, `evaluate.py` already runs multiple seeds internally (see `n_runs` in the output) and reports the averaged score. On top of that, every apparent improvement is re-evaluated with a different seed before being accepted (see the loop below).
 
@@ -62,7 +62,7 @@ Once the evaluation finishes it prints a summary like this:
 
 ```
 ---
-barely_unsolvable score:         0.423000
+score:         0.423000
 datasets:      12
 datasets_ok:   12
 datasets_fail: 0
@@ -73,7 +73,7 @@ n_runs:        3
 
 You can extract the key metric from the log file:
 ```
-grep "^barely_unsolvable score:" run.log
+grep "^score:" run.log
 ```
 
 ## Dataset health check

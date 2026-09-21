@@ -5,7 +5,7 @@ Mutation
 Survival
 	Replace the oldest population member.
 Selection
-	Tournament selection with adaptive parsimony that encourages equally frequent selection across complexity levels.
+	Tournament selection with adaptive parsimony that encourages equally frequent selection across complexity levels, with running search statistics to track the frequency of selection at different complexity levels.
 Loss
 	Mean squared error.
 
@@ -13,7 +13,7 @@ Evolved:
 
 Mutation
 	Copy a random variable-containing subtree m, preferring subtrees containing an operator.
-	With probability 0.5, shuffle its variables.
+	With probability 0.5, cyclically shift its variable indices by a random offset.
 	Choose a random target subtree t and replace it with t + m, t * m, or t / (1 - m), chosen randomly.
 
 Survival
@@ -32,16 +32,16 @@ Loss
 for BasicSR evolution:
 
 
-Loss:
-	Mean squared error.
+Loss/cost:
+	Mean squared error for both loss and cost:
 Survival:
-	Replace the population member with the lowest loss.
+	Replace the population members with the highest cost.
 Selection:
 	Tournament selection with k=15.
 Mutation:
 	With probability 0.5, replace a random subtree with a random variable or constant.
-	Otherwise, insert a random unary or binary operator with random variables or constants as its inputs.
-Accceptance:
+	Otherwise, replace a random subtree with a random unary or binary operator with random variables or constants as its inputs.
+Acceptance:
 	Always accept the child.
 Crossover:
 	Swap a random subtree from each parent to produce two children.
@@ -50,71 +50,18 @@ Update population:
 Update state:
 	Store in the archive the ten expressions with the lowest loss.
 
-Evolved:
 
-Loss:
-	Calculate a loss term and a cost term and return both.
-	Loss is used for final archive selection, while cost is used to guide search.
+Evolved (runs/150815-simplify-30-best2/best_bundles/best_final.jl):
+
+Loss/cost:
 	Loss is mean squared error.
-	Cost is calculated as one minus squared correlation between predictions and targets, plus a bounded robust error term (weight 0.5) and a small complexity penalty (weight 1e-6).
-	The robust term is one minus exp(-mean(log(1 + squared error / target variance))), favoring accurate predictions while limiting the influence of large errors.
-
-Survival:
-	Combine the population and children and merge expressions that are identical up to operator commutativity or associativity.
-	Keep successive Pareto fronts trading off lower cost against lower complexity.
-	When a front does not fit, favor members spread out in cost, complexity, and age, with different tree structures, while mildly favoring lower cost, simplicity, and youth.
-	Restore a few competitive best-at-complexity members if they were omitted, and a competitive member from the cost-age frontier if none survived.
-
-Selection:
-	With 45% probability, choose a complexity band, favoring simpler bands. Sample up to seven members, keep those close to the best cost, and randomly select from the younger half of those remaining.
-	With 25% probability, run a tournament of up to eight members, adding a cost penalty for age.
-	With 15% probability, sample up to ten members and select the one with the rarest combination of root operator, tree depth, and complexity, breaking ties by lower cost.
-	Otherwise, sample up to twelve members and select from their cost-complexity Pareto frontier, favoring simpler expressions.
-
-Mutation:
-	With 35% probability, choose a random leaf: perturb a constant with multiplicative and additive Gaussian noise, or replace a variable with a random variable or constant.
-	With 45% probability, replace a random subtree with either a random variable or constant, or a random unary or binary operator with terminal inputs, with equal probability.
-	Otherwise, wrap a random subtree in a random unary or binary operator, using a random variable or constant as the other input for binary operators.
-	Retry invalid proposals up to ten times, choosing a new strategy and starting from the original parent each time.
-
-Acceptance:
-	Reject invalid children and children equivalent to their parent without a cost improvement.
-	Accept improvements in cost plus a complexity penalty (0.02 * complexity / maximum size), or simpler children with only a small cost increase.
-	For remaining children, reject duplicates already represented by an equally good or better member in the population or archive.
-	Accept useful cost-complexity tradeoffs, including new Pareto points and competitive new best-at-complexity expressions.
-	Otherwise, accept probabilistically, rewarding new operators, unusual structures, and rare complexity levels while penalizing worse cost, growth, and domination by existing members.
-	Reduce exploration as the search progresses, with extra exploration based on completed population cycles and the gap between parent cost and the archive's best loss.
-
-Crossover:
-	Find subtrees in one parent whose predictions correlate with the other parent's residual errors.
-	Match promising donor subtrees to structurally compatible sites in the recipient parent.
-	Try subtree replacement, left or right child import, operator replacement, and additive, subtractive, multiplicative, or divisive combinations where available.
-	Keep the valid child with the best sampled correlation-and-error score plus a complexity penalty, provided it is not too much worse than the recipient parent.
-	Repeat in the opposite direction for a possible second child; if the first direction fails, fall back to swapping subtrees with similar sizes and operator arities.
-
-Update population:
-	Periodically migrate between populations arranged in a ring, trying each source's three best distinct expressions until one can replace the next population's worst member.
-	Require migrants to be new to the destination and offer better quality, a competitive simpler expression, or a competitive missing root-operator or complexity niche.
-	Migrate less often when global structural diversity is high, and more often when the archive remains small after several completed cycles.
-	Every second migration period, also try an archive expression in the weakest population if its structural diversity is low.
-
-Update state:
-	Store in the archive a Pareto frontier with the lowest-loss expression at each complexity.
-
-
-Simplified BasicSR evolution (runs/150815-simplify-30-best2/best_bundles/best_final.jl):
-
-Loss:
-	Report mean squared error as loss, and use a separate cost to guide search.
 	Cost is one minus squared correlation between predictions and targets, plus a bounded robust error term (weight 0.5) and a small complexity penalty (weight 1e-6).
-	The robust term is one minus exp(-mean(log(1 + squared error / target variance))), with target variance floored at 1e-12.
+	The robust term is one minus exp(-mean(log(1 + squared error / target variance))).
 
 Survival:
-	Combine the population and children and merge expressions that are identical up to swapping inputs of commutative operators, rounding constants slightly when checking for duplicates.
-	Group expressions by complexity and rank each group by lower cost, then lower loss, then younger age.
-	Keep the best expression at each complexity on the cost-complexity Pareto frontier first, then the best expressions at other complexities, visiting simpler levels first.
-	Fill remaining slots with the second-best expression at each complexity, then the third-best, and so on.
-	If too few distinct expressions remain, refill from unused original members and then copies of the best survivor.
+	From the merged set of population and children, keep the best (lowest cost) expression at each complexity on the cost-complexity Pareto frontier first.
+	Fill remaining slots with the best expression at each complexity level not on the frontier, visiting simpler levels first.
+	Repeat with the second-best expression at each complexity, then the third-best, and so on until all slots are filled.
 
 Selection:
 	With 50% probability, choose a complexity level with probability inversely proportional to its rank from simplest to most complex. Sample up to seven members at that level and select the youngest whose cost is close to the sample's best.
@@ -126,27 +73,22 @@ Mutation:
 	With 35% probability, perturb a random constant with multiplicative and additive Gaussian noise, choosing a coarse or ten-times-finer step with equal probability. If there are no constants, replace a random leaf with a random variable or constant.
 	With 45% probability, replace a random subtree with either a random variable or constant, or a random unary or binary operator with terminal inputs, with equal probability.
 	Otherwise, wrap a random subtree in a random unary or binary operator, using a random variable or constant as the other input for binary operators.
-	Try up to eight proposals, choosing a new strategy and starting from the original parent each time, and return the first valid expression.
 
 Acceptance:
-	Reject invalid children, and accept valid children when the parent's loss or cost is nonfinite.
 	Accept a child if it improves cost plus a complexity penalty (0.02 * complexity / maximum size).
-	Also accept it if no member of the current population has both equal or lower cost and equal or lower complexity, allowing for numerical tolerance.
+	Also accept if if no current population member has both equal or lower cost and equal or lower complexity.
 	Otherwise, accept probabilistically, penalizing increased cost and complexity relative to the parent and reducing exploration as the search progresses.
 
 Crossover:
-	On up to 64 randomly sampled data points, find subtrees in one parent whose predictions correlate with the other parent's residual errors.
+	Find subtrees in one parent whose predictions correlate with the other parent's residual errors.
 	Match promising donor subtrees to structurally compatible sites in the recipient parent.
-	Try subtree replacement, left or right child import, operator replacement, and additive, subtractive, multiplicative, or divisive combinations where available.
+	Try subtree replacement, left or right child import, operator replacement, and arithmetic combinations where available.
 	Keep the valid child with the best sampled correlation-and-error score plus a complexity penalty, provided it is not too much worse than the recipient parent.
-	Repeat in the opposite direction for a possible second child; if the first direction fails, fall back to swapping subtrees with similar sizes and operator arities.
+	Repeat in the opposite direction for a possible second child.
 
 Update population:
-	Every two completed population sweeps, or three when there are at least eight populations, send each population's best member to the next population in a ring.
-	Replace the destination's worst member only if the migrant is valid, is not an exact duplicate already present, and has lower cost or equal cost with lower complexity.
-	Every second migration period, also try a rotating archive member in the population whose best member is worst, using the same replacement rule.
+	Every two or three completed population sweeps, send each population's best (lowest cost) member to the next population in a ring to replace the destination's worst member.
+	Every second migration period, also send an expression from the archive to the population whose best member is worst.
 
 Update state:
-	Merge the archive with populations whose newest member has a later birth time than at the previous archive update.
-	Keep the lowest-loss expression at each complexity, breaking ties by lower cost and then earlier birth.
-	Store only expressions that improve loss over every simpler expression, allowing for numerical tolerance, to maintain a historical loss-complexity Pareto frontier.
+	Store in the archive a Pareto frontier over expression loss and complexity.

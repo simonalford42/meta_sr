@@ -1,5 +1,3 @@
-# Validation-selected winner: generation 43; validation GT match rate 0.70.
-# Exact copy of best_gen43.jl below. See operator_comparison.md.
 # Best bundle from generation 43
 # Bundle score: 0.85
 # Operators: motif_duplication_simple_rational_gen27_9 | age_and_cost_regularized_survival_simple_gen28_8 | streamlined_niche_clone_tournament_gen43_3 | simplified_affine_profile_loss_gen34_7

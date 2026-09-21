@@ -40,8 +40,10 @@ $N_{\mathrm{reeval}}$ reevaluation seeds; $F$ fitness metric.
         \State $\name{feedback} \gets \Call{GenerateTraceFeedback}{\name{tasks},\name{parent}}$
         \State $\name{prompt} \gets \Call{GeneratePrompt}{\name{sr\_operator},\name{mode},\name{parent},\name{feedback},\name{parent2}}$
         \Repeat
-            \State $\name{offspring} \gets \name{LLM\_ensemble.sample().sample\_completion(prompt)}$
-        \Until{$\Call{PassesValidation}{\name{offspring}}$}
+            \State $\name{x} \gets \name{LLM\_ensemble.sample().sample\_completion(prompt)}$
+        \Until{$\Call{PassesValidation}{\name{x}}$}
+        \State $\name{offspring} \gets \name{x}$
+
     \EndFor
     \Statex \Comment{Parallel evaluation of offspring and existing population}
     \State $\name{evaluation\_batch} \gets \{x\!:\!N_{\mathrm{init}}\mid x\in\name{offspring}\}$

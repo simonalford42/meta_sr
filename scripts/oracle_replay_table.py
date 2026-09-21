@@ -16,6 +16,7 @@ POLICIES = [
     ("TTTS B=10",   {"n_base": 1, "reeval": "ttts", "B": 10}, True),
     ("TTTS B=20",   {"n_base": 1, "reeval": "ttts", "B": 20}, True),
     ("TTTS B=30",   {"n_base": 1, "reeval": "ttts", "B": 30}, True),
+    ("TTTS n3 B=30", {"n_base": 3, "reeval": "ttts", "B": 30}, True),
     ("TTTS B*",     {"n_base": 1, "reeval": "ttts_dyn"}, True),
     ("KG B=20",     {"n_base": 1, "reeval": "kg", "B": 20}, False),
 ]
@@ -39,7 +40,7 @@ def main():
                 seeds=np.mean([r["cum_seeds"][-1] for r in runs]),
                 regret=np.mean([r["best_oracle"] - r["obs_argmax_oracle"] for r in runs]),
             )
-            print(f"  [{rid}] {label:10s} fit={res[label]['metric']:.4f} "
+            print(f"  [{rid}] {label:13s} fit={res[label]['metric']:.4f} "
                   f"seeds={res[label]['seeds']:.0f} regret={res[label]['regret']:.4f} "
                   f"({time.time()-t0:.1f}s)", flush=True)
         per_run.append(res)
@@ -47,7 +48,8 @@ def main():
     print("\nPair average (568245+568246), final generation\n")
     print("| policy | parent fitness | seeds spent | final-selection regret |")
     print("|---|---|---|---|")
-    for label, _, _ in POLICIES:
+    rows = sorted(POLICIES, key=lambda p: -np.mean([r[p[0]]["metric"] for r in per_run]))
+    for label, _, _ in rows:
         m = np.mean([r[label]["metric"] for r in per_run])
         sd = np.mean([r[label]["seeds"] for r in per_run])
         rg = np.mean([r[label]["regret"] for r in per_run])

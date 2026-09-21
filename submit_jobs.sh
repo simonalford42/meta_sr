@@ -2,8 +2,8 @@
 
 # 9/21/26
 ablation_flags=(
-    --operator-type all --population-type topk --generations 20 --population 10 --offspring 10
-    --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270
+    --operator-type all --population-type topk --generations 15 --population 10 --offspring 10
+    --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270 --population-reeval-runs 3
 )
 
 a=$(sbatch --parsable --job-name=n1-s1 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval none --seed 1) || exit 1

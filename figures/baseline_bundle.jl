@@ -1,31 +1,9 @@
-# Baseline bundle for evolve_pysr.py
+# Baseline operator set
 # Operators: add_constant_offset | age_regularized_survival | tournament_selection | mse_loss
 
 # === mutation: add_constant_offset ===
-# Custom Mutation: add_constant_offset
-# =====================================
-# This mutation selects a random subtree and wraps it with an addition
-# of a random constant: `subtree` -> `subtree + c`
-#
-# This is different from built-in mutations:
-# - mutate_constant: only perturbs EXISTING constants
-# - add_node: adds operators at LEAF nodes only
-# - insert_node: inserts operator but uses random leaves, not the subtree
-#
-# This mutation introduces a new constant offset to any part of the tree,
-# which can help discover formulas with additive terms.
-
-# Note: This file is `include`d into CustomMutationsModule, so it has access
-# to: AbstractExpressionNode, NodeSampler, constructorof, set_node!, etc.
-
 """
-    add_constant_offset(tree, dataset, options, nfeatures, rng)
-
 Wrap a random subtree with addition of a random constant.
-`subtree` becomes `subtree + c` where `c` is sampled from normal distribution.
-
-`dataset` is accepted for signature compatibility with data-aware mutations
-but is unused here.
 """
 function add_constant_offset(
     tree::N,
@@ -64,14 +42,9 @@ function add_constant_offset(
 end
 
 # === survival: age_regularized_survival ===
-# Custom Survival: age_regularized_survival
-# ==========================================
-# Default survival strategy: replace the oldest population member, mirroring
-# the age-regularized evolution strategy from the original SymbolicRegression.jl.
-# Behavior is identical to `default_survival` in CustomSurvival.jl; exposed here
-# as a named custom operator so the meta-evolution loop has a concrete parent
-# to refine from.
-
+"""
+Default survival strategy: replace the oldest population member.
+"""
 function age_regularized_survival(
     pop::Population{T,L,N},
     options::AbstractOptions;
@@ -84,14 +57,9 @@ function age_regularized_survival(
 end
 
 # === selection: tournament_selection ===
-# Custom Selection: tournament_selection
-# =======================================
-# Default selection strategy: tournament selection with adaptive parsimony,
-# mirroring `default_selection` in CustomSelection.jl (which is itself a
-# self-contained reimplementation of `best_of_sample` from Population.jl).
-# Exposed here as a named custom operator so the meta-evolution loop has a
-# concrete parent to refine from.
-
+"""
+Default selection strategy: tournament selection with adaptive parsimony.
+"""
 function tournament_selection(
     pop::Population{T,L,N},
     running_search_statistics::RunningSearchStatistics,
@@ -137,18 +105,9 @@ function tournament_selection(
 end
 
 # === loss: mse_loss ===
-# Custom Loss: mse_loss
-# =====================
-# Default loss: per-sample mean squared error. Behavior matches the built-in
-# `_eval_loss` path on unweighted, unitless datasets, exposed as a named
-# operator so the meta-evolution loop has a concrete parent to refine.
-#
-# For weighted datasets or unit-bearing data, the in-module `default_loss`
-# (used when no operator is loaded) handles `dataset.weights` and
-# `dimensional_regularization` via `_eval_loss`. This baseline assumes
-# unweighted, unitless data, which matches every SRBench dataset on the
-# PySR pipeline.
-
+"""
+Default loss: per-sample MSE.
+"""
 function mse_loss(
     tree::Union{AbstractExpression{T},AbstractExpressionNode{T}},
     dataset::Dataset{T,L},
