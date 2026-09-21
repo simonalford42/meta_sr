@@ -141,6 +141,19 @@ def resolve_reasoning_effort(effort_arg: str, models_arg: str) -> str:
     return MODEL_ENSEMBLE_PRESET_EFFORT.get(models_arg, "high")
 
 
+from population_reevaluation import PopulationReevaluation, POPULATION_REEVAL_SEED_OFFSET
+
+
+def _wandb_log_at_eval_step(data, step, *, commit=None):
+    """Keep W&B history monotonic when asynchronous diagnostics commit extra rows.
+
+    eval_idx retains the true evolution seed count; W&B's internal row index
+    may advance beyond it while diagnostics drain after the final generation.
+    """
+    import wandb
+    wandb.log({"eval_idx": step, **data}, step=max(step, wandb.run.step), commit=commit)
+
+
 from evolution_helpers import (
     TARGET_NOISE_LEVELS,
     _build_target_noise_map,
@@ -490,7 +503,7 @@ def _finalize_smart_reeval(
             log["smart/offspring_EI"] = offspring_EI
         if reeval_actual_improvement is not None:
             log["smart/reeval_actual_improvement"] = reeval_actual_improvement
-        wandb.log(log, step=eval_log_state["idx"])
+        _wandb_log_at_eval_step(log, step=eval_log_state["idx"])
 
 
 def evaluate_baseline(
@@ -773,6 +786,7 @@ def run_bundle_evolution(
     val_split: Optional[str] = None,
     test_split: Optional[str] = None,
     val_n_runs: int = 10,
+    population_reeval_runs: int = 3,
     identify_topk: int = 10,
     pysr_wall_limit: int = 600,
     val_pysr_wall_limit: Optional[int] = None,
@@ -845,7 +859,7 @@ def run_bundle_evolution(
         score = bundle.score if bundle.score is not None else float("nan")
         if score == score and score > _eval_log_state["best"]:  # score == score: NaN guard
             _eval_log_state["best"] = score
-        wandb.log({
+        _wandb_log_at_eval_step({
             "eval_idx": _eval_log_state["idx"],
             "eval_score": score,
             "eval_running_best": _eval_log_state["best"],
@@ -903,6 +917,7 @@ def run_bundle_evolution(
         "reeval_topk": reeval_topk,
         "smart_sigma": smart_sigma,
         "identify_topk": identify_topk,
+        "population_reeval_runs": population_reeval_runs,
         "llm_max_workers": llm_max_workers,
         "execution_feedback_n": execution_feedback_n,
         "execution_feedback_prob": execution_feedback_prob,
@@ -986,6 +1001,9 @@ def run_bundle_evolution(
             f"per-bundle cap={n_runs_max}*λ. "
             f"Survivors selected from all-time archive."
         )
+
+    if population_reeval_runs < 0:
+        raise ValueError("--population-reeval-runs must be nonnegative")
 
     # All-time archive of every bundle ever evaluated. Survivor selection draws
     # from this archive when racing is on (HoF default); otherwise it's used
@@ -1105,7 +1123,7 @@ def run_bundle_evolution(
         )
         if wandb_run is not None:
             import wandb
-            wandb.log({
+            _wandb_log_at_eval_step({
                 "val_eval/avg_score": avg,
                 "val_eval/gen_submitted": info["gen_submitted"],
             }, step=_eval_log_state["idx"])
@@ -1191,7 +1209,7 @@ def run_bundle_evolution(
                 log["val_eval/train_score_at_submit"] = live
             if delta is not None:
                 log["val_eval/train_winners_curse_delta"] = delta
-            wandb.log(log, step=_eval_log_state["idx"])
+            _wandb_log_at_eval_step(log, step=_eval_log_state["idx"])
 
     def _check_train_reeval_future(wait: bool = False) -> None:
         fut = train_reeval_state["pending_future"]
@@ -1216,6 +1234,91 @@ def run_bundle_evolution(
             _run_train_reeval, bundle, gen, train_score_at_submit,
         )
         print(f"\n[train reeval] submitted for gen {gen} best={bundle.display_name} (background)")
+
+    # Diagnostic-only estimates for every population entrant. One worker queues
+    # ALL generations; unlike best-only diagnostics no generation is skipped.
+    population_diagnostic = None
+    population_diagnostic_executor = None
+    population_diagnostic_futures = []
+    if population_reeval_runs:
+        last_generation = (resume_state["start_gen"] if resume_state else 1) + n_generations
+        if max(_max_train_run_index, VAL_REEVAL_SEED_OFFSET + (last_generation + 1) * val_n_runs) >= POPULATION_REEVAL_SEED_OFFSET:
+            raise ValueError("Population diagnostic seed range would overlap another evaluation")
+        resume_diagnostic = (
+            Path(resume_state["source_path"]).parent / "population_reeval.json"
+            if resume_state else None
+        )
+        population_diagnostic = PopulationReevaluation(
+            Path(output_dir) / "population_reeval.json",
+            n_runs=population_reeval_runs, resume_path=resume_diagnostic,
+            context={"seed": seed, "dataset_names": dataset_names,
+                     "fitness_metric": fitness_metric, "domain": domain,
+                     "black_box": black_box, "max_samples": max_samples,
+                     "target_noise": target_noise, "target_noise_map": target_noise_map,
+                     "eval_noise_levels": eval_noise_levels, "pysr_kwargs": pysr_kwargs,
+                     "pysr_wall_limit": pysr_wall_limit},
+        )
+        population_diagnostic_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="population-reeval")
+        if wandb_run is not None:
+            import wandb
+            for metric in ("eval_score", "eval_running_best", "eval_bundle_loc"):
+                wandb.define_metric(metric, step_metric="eval_idx")
+            wandb.define_metric("population_reeval/generation")
+            wandb.define_metric("population_reeval/*", step_metric="population_reeval/generation")
+        print(f"Population diagnostic: {population_reeval_runs} fresh train seeds per new member")
+
+    def _evaluate_population_diagnostic(configs, starts, diagnostic_n_runs):
+        handle = evaluator.submit_configs(
+            configs, dataset_names, seed=seed, n_runs=diagnostic_n_runs,
+            target_noise_map=target_noise_map, fitness_metric=fitness_metric,
+            run_index_start_per_config=starts,
+        )
+        return evaluator.collect_batches([handle])[0]
+
+    def _queue_population_diagnostic(gen, pop_type, mode):
+        if population_diagnostic is None:
+            return
+        effective_mode = (
+            "simplify" if mode == "random" and allowed_mutation_modes == ["simplify"] else mode
+        )
+        snapshot = population_diagnostic.snapshot(
+            population, pysr_kwargs, generation=gen,
+            population_type=pop_type, mutation_mode=effective_mode,
+        )
+        future = population_diagnostic_executor.submit(
+            population_diagnostic.observe, snapshot, _evaluate_population_diagnostic)
+        population_diagnostic_futures.append((gen, future))
+
+    def _check_population_diagnostics(wait=False):
+        while population_diagnostic_futures:
+            gen, future = population_diagnostic_futures[0]
+            if not wait and not future.done():
+                break
+            population_diagnostic_futures.pop(0)
+            try:
+                result = future.result()
+            except Exception as exc:
+                print(f"\n[population reeval] gen {gen} failed: {exc}")
+                # Never publish a partial-population average as a complete estimate.
+                if wandb_run is not None:
+                    import wandb
+                    _wandb_log_at_eval_step({"population_reeval/generation": gen,
+                               "population_reeval/failed": 1}, step=_eval_log_state["idx"], commit=True)
+                continue
+            print(f"\n[population reeval] gen {gen}: mean={result['avg_score']:.4f} "
+                  f"expected parent={result['expected_parent_score']:.4f} "
+                  f"new members={result['new_members']} seeds={result['new_seed_runs']}")
+            if wandb_run is not None:
+                import wandb
+                _wandb_log_at_eval_step({"population_reeval/generation": gen,
+                           "population_reeval/failed": 0,
+                           "population_reeval/avg_score": result["avg_score"],
+                           "population_reeval/expected_parent_score": result["expected_parent_score"],
+                           "population_reeval/new_members": result["new_members"],
+                           "population_reeval/new_seed_runs": result["new_seed_runs"],
+                           "population_reeval/population_size": len(result["members"])},
+                          step=_eval_log_state["idx"], commit=True)
 
     # Compare against the supplied seed bundle, or default PySR without one.
     baseline_details: Optional[List[Dict]] = None
@@ -1289,7 +1392,7 @@ def run_bundle_evolution(
 
     if wandb_run is not None:
         import wandb
-        wandb.log({"baseline_score": baseline_score, "generation": 0}, step=_eval_log_state["idx"])
+        _wandb_log_at_eval_step({"baseline_score": baseline_score, "generation": 0}, step=_eval_log_state["idx"])
         log_cpu_usage(wandb_run)
 
     if resume_state is not None:
@@ -1318,7 +1421,7 @@ def run_bundle_evolution(
         print("=" * 60)
         if wandb_run is not None:
             import wandb
-            wandb.log({"best_score": best.score, "generation": start_gen - 1}, step=_eval_log_state["idx"])
+            _wandb_log_at_eval_step({"best_score": best.score, "generation": start_gen - 1}, step=_eval_log_state["idx"])
     else:
         start_gen = 1
         init_pop_start = time.perf_counter()
@@ -1596,10 +1699,12 @@ def run_bundle_evolution(
 
         if wandb_run is not None:
             import wandb
-            wandb.log({"best_score": best.score, "generation": 0}, step=_eval_log_state["idx"])
+            _wandb_log_at_eval_step({"best_score": best.score, "generation": 0}, step=_eval_log_state["idx"])
 
         _maybe_submit_val(best, gen=0)
         _maybe_submit_train_reeval(best, gen=0)
+
+    _queue_population_diagnostic(start_gen - 1, population_type, mutation_mode)
 
     # Smart-reeval state. Offspring posterior means from the last K generations
     # form the empirical distribution for offspring EI. Plots go under
@@ -2515,13 +2620,20 @@ def run_bundle_evolution(
                 frac = sum(pop_meta_counts[c][m] for c in META_COMPONENTS) / denom
                 log_data[f"meta_mix/by_type/{m}"] = frac
             log_data["meta_mix/total_count"] = meta_total
-            wandb.log(log_data, step=_eval_log_state["idx"])
+            _wandb_log_at_eval_step(log_data, step=_eval_log_state["idx"])
             log_cpu_usage(wandb_run)
 
+        _check_population_diagnostics(wait=False)
+        _queue_population_diagnostic(gen, generation_population_type, generation_mutation_mode)
         _check_val_future(wait=False)
         _maybe_submit_val(best, gen=gen)
         _check_train_reeval_future(wait=False)
         _maybe_submit_train_reeval(best, gen=gen)
+
+    if population_diagnostic_executor is not None:
+        print("\nWaiting for population diagnostics to complete...")
+        _check_population_diagnostics(wait=True)
+        population_diagnostic_executor.shutdown(wait=True)
 
     if val_state["enabled"]:
         if val_state["pending_future"] is not None:
@@ -2655,7 +2767,7 @@ def run_bundle_evolution(
             best = winner
             if wandb_run is not None:
                 import wandb
-                wandb.log({
+                _wandb_log_at_eval_step({
                     "identification/best_fresh_score": float(fresh[order[0]]),
                     "identification/live_argmax_fresh_score": float(
                         fresh[int(np.argmax([b.score for b in candidates]))]
@@ -2704,6 +2816,10 @@ def main():
                         help="Offspring per generation. Default 20, except under "
                              "--reeval smart* where it defaults to --population // 2.")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--population-reeval-runs", type=int, default=3,
+                        help="Diagnostic fresh train seeds per new population member (default 3; "
+                             "0 disables). Cached across generations, never used for selection. "
+                             "Logs population mean and selection-weighted parent fitness.")
     parser.add_argument("--n-runs", type=int, default=10)
     parser.add_argument("--fitness-metric", type=str, default=None,
                         choices=["r2", "gt", "gt-r2", "gt-r2-v2", "acc", "gt-acc"],
@@ -2964,6 +3080,8 @@ def main():
                         help="Per-fit evaluation budget for automatic NeuronBench full evaluation")
 
     args = parser.parse_args()
+    if args.population_reeval_runs < 0:
+        parser.error("--population-reeval-runs must be nonnegative")
 
     if args.maxsize is not None and args.maxsize < 7:
         parser.error("--maxsize must be at least 7 (PySR minimum)")
@@ -3265,6 +3383,7 @@ def main():
         val_split=args.val_split,
         test_split=args.test_split,
         val_n_runs=args.val_n_runs,
+        population_reeval_runs=args.population_reeval_runs,
         identify_topk=args.identify_topk,
         reeval_budget=args.reeval_budget,
         n_reevals=args.n_reevals,
@@ -3324,6 +3443,7 @@ def main():
         "baseline": args.baseline,
         "no_cache": args.no_cache,
         "population_type": args.population_type,
+        "population_reeval_runs": args.population_reeval_runs,
         "reeval": args.reeval,
         "n_extra_runs": args.n_extra_runs,
         "n_runs_max": args.n_runs_max,
