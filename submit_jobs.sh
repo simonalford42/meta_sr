@@ -6,36 +6,24 @@ ablation_flags=(
     --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270
 )
 
-chain_a=$(sbatch --parsable --job-name=ab90-n1-s42 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval none --seed 42) || exit 1
-chain_b=$(sbatch --parsable --job-name=ab90-n1-reeval-s42 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval population --n-reevals 3 --seed 42) || exit 1
-chain_c=$(sbatch --parsable --job-name=ab90-n3-s42 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval none --seed 42) || exit 1
-chain_a=$(sbatch --parsable --dependency="afterany:$chain_a" --job-name=ab90-n3-reeval-s42 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval population --n-reevals 10 --seed 42) || exit 1
-chain_b=$(sbatch --parsable --dependency="afterany:$chain_b" --job-name=ab90-n1-s43 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval none --seed 43) || exit 1
-chain_c=$(sbatch --parsable --dependency="afterany:$chain_c" --job-name=ab90-n1-reeval-s43 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval population --n-reevals 3 --seed 43) || exit 1
-chain_a=$(sbatch --parsable --dependency="afterany:$chain_a" --job-name=ab90-n3-s43 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval none --seed 43) || exit 1
-chain_b=$(sbatch --parsable --dependency="afterany:$chain_b" --job-name=ab90-n3-reeval-s43 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval population --n-reevals 10 --seed 43) || exit 1
-chain_c=$(sbatch --parsable --dependency="afterany:$chain_c" --job-name=ab90-n1-s44 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval none --seed 44) || exit 1
-chain_a=$(sbatch --parsable --dependency="afterany:$chain_a" --job-name=ab90-n1-reeval-s44 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval population --n-reevals 3 --seed 44) || exit 1
-chain_b=$(sbatch --parsable --dependency="afterany:$chain_b" --job-name=ab90-n3-s44 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval none --seed 44) || exit 1
-chain_c=$(sbatch --parsable --dependency="afterany:$chain_c" --job-name=ab90-n3-reeval-s44 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval population --n-reevals 10 --seed 44) || exit 1
-chain_a=$(sbatch --parsable --dependency="afterany:$chain_a" --job-name=ab90-n1-s45 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval none --seed 45) || exit 1
-chain_b=$(sbatch --parsable --dependency="afterany:$chain_b" --job-name=ab90-n1-reeval-s45 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval population --n-reevals 3 --seed 45) || exit 1
-chain_c=$(sbatch --parsable --dependency="afterany:$chain_c" --job-name=ab90-n3-s45 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval none --seed 45) || exit 1
-chain_a=$(sbatch --parsable --dependency="afterany:$chain_a" --job-name=ab90-n3-reeval-s45 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval population --n-reevals 10 --seed 45) || exit 1
-chain_b=$(sbatch --parsable --dependency="afterany:$chain_b" --job-name=ab90-n1-s46 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval none --seed 46) || exit 1
-chain_c=$(sbatch --parsable --dependency="afterany:$chain_c" --job-name=ab90-n1-reeval-s46 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval population --n-reevals 3 --seed 46) || exit 1
-chain_a=$(sbatch --parsable --dependency="afterany:$chain_a" --job-name=ab90-n3-s46 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval none --seed 46) || exit 1
-chain_b=$(sbatch --parsable --dependency="afterany:$chain_b" --job-name=ab90-n3-reeval-s46 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval population --n-reevals 10 --seed 46) || exit 1
-chain_c=$(sbatch --parsable --dependency="afterany:$chain_c" --job-name=ab90-n1-ttts-s42 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 42) || exit 1
-chain_a=$(sbatch --parsable --dependency="afterany:$chain_a" --job-name=ab90-n3-ttts-s42 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval TTTS --reeval-budget 30 --seed 42) || exit 1
-chain_b=$(sbatch --parsable --dependency="afterany:$chain_b" --job-name=ab90-n1-ttts-s43 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 43) || exit 1
-chain_c=$(sbatch --parsable --dependency="afterany:$chain_c" --job-name=ab90-n3-ttts-s43 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval TTTS --reeval-budget 30 --seed 43) || exit 1
-chain_a=$(sbatch --parsable --dependency="afterany:$chain_a" --job-name=ab90-n1-ttts-s44 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 44) || exit 1
-chain_b=$(sbatch --parsable --dependency="afterany:$chain_b" --job-name=ab90-n3-ttts-s44 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval TTTS --reeval-budget 30 --seed 44) || exit 1
-chain_c=$(sbatch --parsable --dependency="afterany:$chain_c" --job-name=ab90-n1-ttts-s45 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 45) || exit 1
-chain_a=$(sbatch --parsable --dependency="afterany:$chain_a" --job-name=ab90-n3-ttts-s45 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval TTTS --reeval-budget 30 --seed 45) || exit 1
-chain_b=$(sbatch --parsable --dependency="afterany:$chain_b" --job-name=ab90-n1-ttts-s46 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 46) || exit 1
-chain_c=$(sbatch --parsable --dependency="afterany:$chain_c" --job-name=ab90-n3-ttts-s46 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval TTTS --reeval-budget 30 --seed 46) || exit 1
+a=$(sbatch --parsable --job-name=n1-s1 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval none --seed 1) || exit 1
+b=$(sbatch --parsable --job-name=n1-reeval-s1 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval population --n-reevals 3 --seed 1) || exit 1
+c=$(sbatch --parsable --job-name=n3-s1 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval none --seed 1) || exit 1
+a=$(sbatch --parsable --dependency="afterany:$a" --job-name=n3-reeval-s1 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval population --n-reevals 10 --seed 1) || exit 1
+b=$(sbatch --parsable --dependency="afterany:$b" --job-name=n1-ttts-s1 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 1) || exit 1
+c=$(sbatch --parsable --dependency="afterany:$c" --job-name=n3-ttts-s1 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval TTTS --reeval-budget 30 --seed 1) || exit 1
+a=$(sbatch --parsable --dependency="afterany:$a" --job-name=n1-s2 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval none --seed 2) || exit 1
+b=$(sbatch --parsable --dependency="afterany:$b" --job-name=n1-reeval-s2 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval population --n-reevals 3 --seed 2) || exit 1
+c=$(sbatch --parsable --dependency="afterany:$c" --job-name=n3-s2 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval none --seed 2) || exit 1
+a=$(sbatch --parsable --dependency="afterany:$a" --job-name=n3-reeval-s2 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval population --n-reevals 10 --seed 2) || exit 1
+b=$(sbatch --parsable --dependency="afterany:$b" --job-name=n1-ttts-s2 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 2) || exit 1
+c=$(sbatch --parsable --dependency="afterany:$c" --job-name=n3-ttts-s2 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval TTTS --reeval-budget 30 --seed 2) || exit 1
+a=$(sbatch --parsable --dependency="afterany:$a" --job-name=n1-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval none --seed 3) || exit 1
+b=$(sbatch --parsable --dependency="afterany:$b" --job-name=n1-reeval-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval population --n-reevals 3 --seed 3) || exit 1
+c=$(sbatch --parsable --dependency="afterany:$c" --job-name=n3-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval none --seed 3) || exit 1
+a=$(sbatch --parsable --dependency="afterany:$a" --job-name=n3-reeval-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval population --n-reevals 10 --seed 3) || exit 1
+b=$(sbatch --parsable --dependency="afterany:$b" --job-name=n1-ttts-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 3) || exit 1
+c=$(sbatch --parsable --dependency="afterany:$c" --job-name=n3-ttts-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval TTTS --reeval-budget 30 --seed 3) || exit 1
 
 # 9/17/26
 # sbatch --partition=default_partition --time=3-00:00:00 --cpus-per-task=1 --mem=32G --job-name=mips-ft-709714-acc-size70 --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" run.sh evolve_pysr.py --domain mips --operator-type all --baseline runs/709714 --generations 30 --population 10 --offspring 10 --n-runs 2 --seed 42 --fitness-metric acc --population-type task --reeval none --identify-topk 0 --exec-feedback-n 0 --models best2 --split splits/mips_unsolved_sr_targets_plus_refined.txt --val-split "" --maxsize 70 --maxdepth 32 --max-samples 1000 --max-time-in-seconds 300 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 14400 --no-random-target-noise --output-dir runs/709714-mips-ft-acc-size70-9-17
