@@ -53,7 +53,7 @@ def main():
                        for k in ("metric", "seeds", "regret")}
                for label, _, _ in POLICIES}, open(out, "w"), indent=1)
     print(f"saved {out}")
-    rows = sorted(POLICIES, key=lambda p: -np.mean([r[p[0]]["metric"] for r in per_run]))
+    rows = sorted(POLICIES, key=lambda p: np.mean([r[p[0]]["metric"] for r in per_run]))
     for label, _, _ in rows:
         m = np.mean([r[label]["metric"] for r in per_run])
         sd = np.mean([r[label]["seeds"] for r in per_run])
