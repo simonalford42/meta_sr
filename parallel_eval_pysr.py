@@ -3445,9 +3445,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 len(list(rd.glob("task_*.json"))) for rd in results_dirs
             )
             now = _time.time()
-            terminal, statuses = self._poll_jobs_terminal(
-                job_ids, unknown_streaks
-            )
+            if completed >= n_tasks_total:
+                terminal, statuses = False, []
+            else:
+                terminal, statuses = self._poll_jobs_terminal(
+                    job_ids, unknown_streaks
+                )
             start_time, last_progress_time, previous_poll_time = (
                 _credit_pending_watchdog_time(
                     statuses, now, previous_poll_time,
@@ -3556,9 +3559,12 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                 if (bd / "results" / f"task_{i:06d}.json").exists()
             )
             now = _time.time()
-            terminal, statuses = self._poll_jobs_terminal(
-                job_ids, unknown_streaks
-            )
+            if completed >= n_total:
+                terminal, statuses = False, []
+            else:
+                terminal, statuses = self._poll_jobs_terminal(
+                    job_ids, unknown_streaks
+                )
             start_time, last_progress_time, previous_poll_time = (
                 _credit_pending_watchdog_time(
                     statuses, now, previous_poll_time,
@@ -3970,9 +3976,12 @@ python -u -m parallel_eval_pysr --worker \\
         while True:
             completed = len(list(results_dir.glob("task_*.json")))
             now = _time.time()
-            terminal, statuses = self._poll_jobs_terminal(
-                job_ids, unknown_streaks
-            )
+            if completed >= n_tasks:
+                terminal, statuses = False, []
+            else:
+                terminal, statuses = self._poll_jobs_terminal(
+                    job_ids, unknown_streaks
+                )
             start_time, last_progress_time, previous_poll_time = (
                 _credit_pending_watchdog_time(
                     statuses, now, previous_poll_time,

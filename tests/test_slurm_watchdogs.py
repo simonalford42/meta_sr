@@ -47,10 +47,11 @@ def test_active_or_uncertain_time_is_not_credited(statuses):
 def test_array_status_prefers_running_over_pending(monkeypatch):
     result = SimpleNamespace(
         returncode=0,
-        stdout="PENDING\nRUNNING\n",
+        stdout="123|PENDING\n123|RUNNING\n",
         stderr="",
     )
     monkeypatch.setattr(slurm_eval.subprocess, "run", lambda *args, **kwargs: result)
+    monkeypatch.setattr(slurm_eval, "_SLURM_STATUS_CACHE", slurm_eval._SlurmStatusCache())
     evaluator = SimpleNamespace(_get_slurm_env=lambda: {})
 
     status = slurm_eval.BaseSlurmEvaluator._get_job_status(evaluator, "123")
