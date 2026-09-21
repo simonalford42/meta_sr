@@ -45,8 +45,8 @@ def main():
         per_run.append(res)
 
     print("\nPair average (568245+568246), final generation\n")
-    print("| policy | parent fitness | seeds spent | final-selection regret |")
-    print("|---|---|---|---|")
+    print("| policy | parent fitness | seeds spent |")
+    print("|---|---|---|")
     import json
     out = orr.OUT_DIR / "oracle_replay_table.json"
     json.dump({label: {k: float(np.mean([r[label][k] for r in per_run]))
@@ -58,7 +58,7 @@ def main():
         m = np.mean([r[label]["metric"] for r in per_run])
         sd = np.mean([r[label]["seeds"] for r in per_run])
         rg = np.mean([r[label]["regret"] for r in per_run])
-        print(f"| {label} | {m:.3f} | {sd:.0f} | {rg:.3f} |")
+        print(f"| {label} | {m:.3f} | {sd:.0f} |")
 
 
 if __name__ == "__main__":
