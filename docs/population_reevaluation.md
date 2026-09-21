@@ -6,14 +6,14 @@ Every initial member gets an estimate. After each generation, only new evaluatio
 
 Snapshots include the population's selection scores, evaluation configs and parent probabilities as of generation completion. A single background worker processes every snapshot in order, so queued generations are not skipped and unchanged members are not resubmitted while earlier diagnostics are pending. The end of evolution waits for this queue. Snapshots and estimates never modify the live bundles, selection scores, offspring budget, or evolution RNG. Diagnostic values are never put in LLM feedback.
 
-Two W&B curves use `population_reeval/generation` as their x axis:
+Two W&B curves use `val_eval/pop_reeval_gen_submitted` as their x axis:
 
-- `population_reeval/avg_score`: unweighted mean of cached estimates for current population entries.
-- `population_reeval/expected_parent_score`: sum of each entry's cached estimate times its parent-selection probability.
+- `val_eval/pop_avg_score`: unweighted mean of cached estimates for current population entries.
+- `val_eval/expected_parent_score`: sum of each entry's cached estimate times its parent-selection probability.
 
 The latter uses the actual meta-evolution parent selector: size-two tournament **without replacement**, with equal tie probabilities; complexity populations in simplify mode use uniform parents. Probabilities depend on the original selection scores, never the diagnostic scores. They describe selecting from the recorded population snapshot, not the realized offspring parents or a counterfactual population after subsequent reevaluation/phase changes. Crossover operator fallback and second-parent sampling are not represented by this first-bundle-parent metric.
 
-Additional W&B metrics: `new_members`, `new_seed_runs`, `population_size`, and `failed`, under `population_reeval/`. Each completed diagnostic gets its own committed history row even if several generations finish late. `eval_idx` remains the evolution seed-count axis; the internal W&B history step can advance separately when late diagnostics drain.
+Additional W&B metrics: `pop_reeval_new_members`, `pop_reeval_new_seed_runs`, `pop_reeval_population_size`, and `pop_reeval_failed`, all under `val_eval/`. Existing best-bundle validation metrics retain their own generation axes. Each completed diagnostic gets its own committed history row even if several generations finish late. `eval_idx` remains the evolution seed-count axis; the internal W&B history step can advance separately when late diagnostics drain.
 
 `runs/<job-id>/population_reeval.json` persists the evaluation context, reserved seed ranges, cache (including task-level results), and generation snapshots. `--continue-from` reuses this file beside the source run_data.json when available. The existing best-bundle validation and train reevaluation remain in place. A failed diagnostic batch does not publish a partial-population mean; failed members may be retried when a later snapshot needs them. Worker task failures follow the evaluator's usual fitness aggregation and are retained in the cached task details.
 

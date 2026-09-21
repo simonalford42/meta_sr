@@ -140,10 +140,10 @@ def test_delayed_wandb_rows_do_not_overwrite_each_other_or_drop_later_metrics(mo
     monkeypatch.setitem(sys.modules, 'wandb', SimpleNamespace(run=run, log=log))
     _wandb_log_at_eval_step({'best_score': .8}, step=50)
     for gen in [18, 19, 20]:
-        _wandb_log_at_eval_step({'population_reeval/generation': gen,
-                                'population_reeval/avg_score': gen/100}, step=50, commit=True)
+        _wandb_log_at_eval_step({'val_eval/pop_reeval_gen_submitted': gen,
+                                'val_eval/pop_avg_score': gen/100}, step=50, commit=True)
     _wandb_log_at_eval_step({'best_score': .9}, step=51, commit=True)
-    assert [r['population_reeval/generation'] for r in committed[:3]] == [18, 19, 20]
+    assert [r['val_eval/pop_reeval_gen_submitted'] for r in committed[:3]] == [18, 19, 20]
     assert [r['eval_idx'] for r in committed] == [50, 50, 50, 51]
     assert committed[-1]['best_score'] == .9
 

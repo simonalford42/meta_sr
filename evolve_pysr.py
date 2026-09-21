@@ -1264,8 +1264,13 @@ def run_bundle_evolution(
             import wandb
             for metric in ("eval_score", "eval_running_best", "eval_bundle_loc"):
                 wandb.define_metric(metric, step_metric="eval_idx")
-            wandb.define_metric("population_reeval/generation")
-            wandb.define_metric("population_reeval/*", step_metric="population_reeval/generation")
+            wandb.define_metric("val_eval/pop_reeval_gen_submitted")
+            for metric in (
+                "val_eval/pop_avg_score", "val_eval/expected_parent_score",
+                "val_eval/pop_reeval_failed", "val_eval/pop_reeval_new_members",
+                "val_eval/pop_reeval_new_seed_runs", "val_eval/pop_reeval_population_size",
+            ):
+                wandb.define_metric(metric, step_metric="val_eval/pop_reeval_gen_submitted")
         print(f"Population diagnostic: {population_reeval_runs} fresh train seeds per new member")
 
     def _evaluate_population_diagnostic(configs, starts, diagnostic_n_runs):
@@ -1303,21 +1308,21 @@ def run_bundle_evolution(
                 # Never publish a partial-population average as a complete estimate.
                 if wandb_run is not None:
                     import wandb
-                    _wandb_log_at_eval_step({"population_reeval/generation": gen,
-                               "population_reeval/failed": 1}, step=_eval_log_state["idx"], commit=True)
+                    _wandb_log_at_eval_step({"val_eval/pop_reeval_gen_submitted": gen,
+                               "val_eval/pop_reeval_failed": 1}, step=_eval_log_state["idx"], commit=True)
                 continue
             print(f"\n[population reeval] gen {gen}: mean={result['avg_score']:.4f} "
                   f"expected parent={result['expected_parent_score']:.4f} "
                   f"new members={result['new_members']} seeds={result['new_seed_runs']}")
             if wandb_run is not None:
                 import wandb
-                _wandb_log_at_eval_step({"population_reeval/generation": gen,
-                           "population_reeval/failed": 0,
-                           "population_reeval/avg_score": result["avg_score"],
-                           "population_reeval/expected_parent_score": result["expected_parent_score"],
-                           "population_reeval/new_members": result["new_members"],
-                           "population_reeval/new_seed_runs": result["new_seed_runs"],
-                           "population_reeval/population_size": len(result["members"])},
+                _wandb_log_at_eval_step({"val_eval/pop_reeval_gen_submitted": gen,
+                           "val_eval/pop_reeval_failed": 0,
+                           "val_eval/pop_avg_score": result["avg_score"],
+                           "val_eval/expected_parent_score": result["expected_parent_score"],
+                           "val_eval/pop_reeval_new_members": result["new_members"],
+                           "val_eval/pop_reeval_new_seed_runs": result["new_seed_runs"],
+                           "val_eval/pop_reeval_population_size": len(result["members"])},
                           step=_eval_log_state["idx"], commit=True)
 
     # Compare against the supplied seed bundle, or default PySR without one.
