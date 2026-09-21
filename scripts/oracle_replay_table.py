@@ -18,9 +18,6 @@ POLICIES = [
     ("TTTS n1 B=60", {"n_base": 1, "reeval": "ttts", "B": 60}, True),
     ("TTTS n3 B=20", {"n_base": 3, "reeval": "ttts", "B": 20}, True),
     ("TTTS n3 B=60", {"n_base": 3, "reeval": "ttts", "B": 60}, True),
-    ("TTTS B*",     {"n_base": 1, "reeval": "ttts_dyn"}, True),
-    ("KG B=20",     {"n_base": 1, "reeval": "kg", "B": 20}, False),
-    ("KG B=60",     {"n_base": 1, "reeval": "kg", "B": 60}, False),
 ]
 
 

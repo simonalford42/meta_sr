@@ -16,8 +16,6 @@ CATS = {
     "promote": ("#dd8452", "s"),
     "ttts1":   ("#55a868", "^"),
     "ttts3":   ("#8172b3", "v"),
-    "dyn":     ("#c44e52", "D"),
-    "kg":      ("#937860", "P"),
 }
 # label -> (category, legend text, short on-plot text)
 POL = {
@@ -31,29 +29,15 @@ POL = {
     "TTTS n1 B=60": ("ttts1", r"TTTS $N_{init}=1,\ B=60$", r"$B{=}60$"),
     "TTTS n3 B=20": ("ttts3", r"TTTS $N_{init}=3,\ B=20$", r"$B{=}20$"),
     "TTTS n3 B=60": ("ttts3", r"TTTS $N_{init}=3,\ B=60$", r"$B{=}60$"),
-    "TTTS B*": ("dyn", r"TTTS dynamic $B^*$", r"dyn $B^*$"),
-    "KG B=20": ("kg", r"KG $B=20$", r"$B{=}20$"),
-    "KG B=60": ("kg", r"KG $B=60$", r"$B{=}60$"),
 }
 OFF = {  # per-point annotation offsets (points)
     "n1": (7, 4), "n3": (7, -12), "n10": (-8, -12),
     "n1->n3": (-8, 6), "n2->n6": (-8, -12), "n3->n10": (-8, 6),
     "TTTS n1 B=20": (-6, 6), "TTTS n1 B=60": (-6, 6),
     "TTTS n3 B=20": (6, -12), "TTTS n3 B=60": (6, -12),
-    "TTTS B*": (-8, -12), "KG B=20": (6, -12), "KG B=60": (6, -12),
 }
-CHAINS = [
-    (["n1", "n3", "n10"], "fixed"),
-    (["n1", "n1->n3", "n2->n6", "n3->n10", "n10"], "promote"),
-    (["n1", "TTTS n1 B=20", "TTTS n1 B=60"], "ttts1"),
-    (["n3", "TTTS n3 B=20", "TTTS n3 B=60"], "ttts3"),
-    (["n1", "KG B=20", "KG B=60"], "kg"),
-]
 
 fig, ax = plt.subplots(figsize=(8, 5.5))
-for chain, cat in CHAINS:
-    ax.plot([data[c]["seeds"] for c in chain], [data[c]["metric"] for c in chain],
-            color=CATS[cat][0], lw=1.2, alpha=0.5, zorder=1)
 for label, (cat, legend, short) in POL.items():
     d = data[label]
     color, marker = CATS[cat]
