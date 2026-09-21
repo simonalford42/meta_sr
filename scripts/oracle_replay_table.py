@@ -10,6 +10,7 @@ import oracle_replay as orr
 POLICIES = [
     ("n1",          {"n_base": 1, "reeval": "none"}, False),
     ("n1->n3",      {"n_base": 1, "reeval": "promote", "n_to": 3}, False),
+    ("n2->n6",      {"n_base": 2, "reeval": "promote", "n_to": 6}, False),
     ("n3",          {"n_base": 3, "reeval": "none"}, False),
     ("n3->n10",     {"n_base": 3, "reeval": "promote", "n_to": 10}, False),
     ("n10",         {"n_base": 10, "reeval": "none"}, False),

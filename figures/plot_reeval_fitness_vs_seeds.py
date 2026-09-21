@@ -22,7 +22,7 @@ CATS = {
 }
 POLICY_CAT = {
     "n1": "fixed n", "n3": "fixed n", "n10": "fixed n",
-    "n1->n3": "promote", "n3->n10": "promote",
+    "n1->n3": "promote", "n2->n6": "promote", "n3->n10": "promote",
     "TTTS n1 B=10": "TTTS (n1 base)", "TTTS n1 B=20": "TTTS (n1 base)", "TTTS n1 B=40": "TTTS (n1 base)", "TTTS n1 B=60": "TTTS (n1 base)",
     "TTTS n2 B=10": "TTTS (n2 base)", "TTTS n2 B=20": "TTTS (n2 base)", "TTTS n2 B=40": "TTTS (n2 base)", "TTTS n2 B=60": "TTTS (n2 base)",
     "TTTS n3 B=10": "TTTS (n3 base)", "TTTS n3 B=20": "TTTS (n3 base)", "TTTS n3 B=40": "TTTS (n3 base)", "TTTS n3 B=60": "TTTS (n3 base)",
@@ -32,8 +32,8 @@ POLICY_CAT = {
 CAT_OFF = {"TTTS (n1 base)": (-6, 6), "TTTS (n2 base)": (4, -13), "TTTS (n3 base)": (6, 5), "KG": (5, -12)}
 OFFSETS = {"TTTS B*": (-8, -12), "n1->n3": (-8, 6), "n3": (7, -12), "n10": (-8, -12),
            "TTTS n3 B=20": (-6, -13), "TTTS n3 B=40": (2, -13), "TTTS n3 B=60": (7, 3),
-           "n3->n10": (-8, 5)}
-PRETTY = {"n1->n3": "n1→n3", "n3->n10": "n3→n10"}
+           "n3->n10": (-8, 5), "n2->n6": (-8, 5)}
+PRETTY = {"n1->n3": "n1→n3", "n2->n6": "n2→n6", "n3->n10": "n3→n10"}
 
 fig, ax = plt.subplots(figsize=(9, 6))
 for label, d in data.items():
@@ -51,7 +51,7 @@ for label, d in data.items():
                 ha="right" if off[0] < 0 else "left")
 
 # connect fixed-n and promote chains as faint guides
-for chain, cat in ((["n1", "n3", "n10"], "fixed n"), (["n1", "n1->n3", "n3", "n3->n10", "n10"], "promote"),
+for chain, cat in ((["n1", "n3", "n10"], "fixed n"), (["n1", "n1->n3", "n2->n6", "n3->n10", "n10"], "promote"),
                    (["n1", "TTTS n1 B=10", "TTTS n1 B=20", "TTTS n1 B=40", "TTTS n1 B=60"], "TTTS (n1 base)"),
                    (["TTTS n2 B=10", "TTTS n2 B=20", "TTTS n2 B=40", "TTTS n2 B=60"], "TTTS (n2 base)"),
                    (["n3", "TTTS n3 B=10", "TTTS n3 B=20", "TTTS n3 B=40", "TTTS n3 B=60"], "TTTS (n3 base)"),
