@@ -13,8 +13,7 @@ POLICIES = [
     ("n3",          {"n_base": 3, "reeval": "none"}, False),
     ("n3->n10",     {"n_base": 3, "reeval": "promote", "n_to": 10}, False),
     ("n10",         {"n_base": 10, "reeval": "none"}, False),
-    ("TTTS B=10",   {"n_base": 1, "reeval": "ttts", "B": 10}, True),
-    ("TTTS B=20",   {"n_base": 1, "reeval": "ttts", "B": 20}, True),
+    ("TTTS B=15",   {"n_base": 1, "reeval": "ttts", "B": 15}, True),
     ("TTTS B=30",   {"n_base": 1, "reeval": "ttts", "B": 30}, True),
     ("TTTS n3 B=30", {"n_base": 3, "reeval": "ttts", "B": 30}, True),
     ("TTTS B*",     {"n_base": 1, "reeval": "ttts_dyn"}, True),
@@ -48,6 +47,12 @@ def main():
     print("\nPair average (568245+568246), final generation\n")
     print("| policy | parent fitness | seeds spent | final-selection regret |")
     print("|---|---|---|---|")
+    import json
+    out = orr.OUT_DIR / "oracle_replay_table.json"
+    json.dump({label: {k: float(np.mean([r[label][k] for r in per_run]))
+                       for k in ("metric", "seeds", "regret")}
+               for label, _, _ in POLICIES}, open(out, "w"), indent=1)
+    print(f"saved {out}")
     rows = sorted(POLICIES, key=lambda p: -np.mean([r[p[0]]["metric"] for r in per_run]))
     for label, _, _ in rows:
         m = np.mean([r[label]["metric"] for r in per_run])
