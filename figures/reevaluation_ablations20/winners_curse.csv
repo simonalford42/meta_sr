@@ -1,0 +1,118 @@
+run,label,generation,train,train_reevaluation,winners_curse_pp,bundle
+373691,"n=1, no reevaluation",0,0.6,0.52,8.0,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373691,"n=1, no reevaluation",1,0.6,0.555,4.5,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373691,"n=1, no reevaluation",2,0.6,0.55,5.0,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373691,"n=1, no reevaluation",3,0.6,0.58,2.0,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373691,"n=1, no reevaluation",4,0.65,0.49,16.0,residual_guided_additive_term_gen4_6 | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373691,"n=1, no reevaluation",5,0.65,0.45,20.0,residual_guided_additive_term_gen4_6 | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373691,"n=1, no reevaluation",8,0.7,0.545,15.5,add_constant_offset | age_regularized_survival | tournament_selection | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",9,0.7,0.51,19.0,add_constant_offset | age_regularized_survival | tournament_selection | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",10,0.7,0.57,13.0,add_constant_offset | age_regularized_survival | tournament_selection | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",11,0.7,0.49,21.0,add_constant_offset | age_regularized_survival | tournament_selection | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",12,0.7,0.48,22.0,add_constant_offset | age_regularized_survival | tournament_selection | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",13,0.7,0.555,14.499999999999998,add_constant_offset | age_regularized_survival | tournament_selection | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",14,0.7,0.535,16.5,add_constant_offset | age_regularized_survival | tournament_selection | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",15,0.7,0.53,17.0,add_constant_offset | age_regularized_survival | tournament_selection | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",16,0.7,0.58,12.0,add_constant_offset | age_regularized_survival | tournament_selection | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",17,0.75,0.5,25.0,add_constant_offset | pareto_guarded_age_regularized_survival_gen9_3 | simple_tournament_selection_gen17_6 | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",18,0.75,0.535,21.5,add_constant_offset | pareto_guarded_age_regularized_survival_gen9_3 | simple_tournament_selection_gen17_6 | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",19,0.75,0.56,19.0,add_constant_offset | pareto_guarded_age_regularized_survival_gen9_3 | simple_tournament_selection_gen17_6 | hierarchical_gain_affine_continuation_loss_gen8_1
+373691,"n=1, no reevaluation",20,0.75,0.555,19.5,add_constant_offset | pareto_guarded_age_regularized_survival_gen9_3 | simple_tournament_selection_gen17_6 | hierarchical_gain_affine_continuation_loss_gen8_1
+373692,"n=3, no reevaluation",0,0.55,0.52,3.0,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373692,"n=3, no reevaluation",1,0.6333,0.635,-0.16999999999999998,semantic_backpropagation_retarget_mutation_gen1_2 | age_regularized_survival | tournament_selection | mse_loss
+373692,"n=3, no reevaluation",3,0.7833,0.75,3.3300000000000005,semantic_backpropagation_retarget_mutation_gen1_2 | age_regularized_survival | frontier_gap_niching_selection_gen3_1 | mse_loss
+373692,"n=3, no reevaluation",4,0.7833,0.735,4.83,semantic_backpropagation_retarget_mutation_gen1_2 | age_regularized_survival | frontier_gap_niching_selection_gen3_1 | mse_loss
+373692,"n=3, no reevaluation",5,0.8667,0.835,3.17,semantic_backprop_beam_retarget_mutation_gen2_gen4_3 | pareto_crowding_age_survival_gen3_9 | tournament_selection | mean_absolute_error_loss_gen5_7
+373692,"n=3, no reevaluation",6,0.8833,0.84,4.33,semantic_backprop_beam_retarget_slim_gen6_3 | pareto_crowding_age_survival_gen3_9 | tournament_selection | mean_absolute_error_loss_gen5_7
+373692,"n=3, no reevaluation",8,0.8833,0.83,5.33,semantic_backprop_beam_retarget_slim_gen6_3 | pareto_crowding_age_survival_gen3_9 | tournament_selection | mean_absolute_error_loss_gen5_7
+373692,"n=3, no reevaluation",10,0.9167,0.82,9.67,semantic_backprop_beam_dualhole_context_mutation_gen9_0 | crowded_age_survival_gen10_1 | tournament_selection | mean_absolute_error_loss_gen5_7
+373692,"n=3, no reevaluation",11,0.9167,0.845,7.17,semantic_backprop_beam_dualhole_context_mutation_gen9_0 | pareto_density_age_survival_simple_gen11_8 | tournament_selection | relative_mean_absolute_error_loss_gen5_8_gen10_6
+373692,"n=3, no reevaluation",12,0.9167,0.82,9.67,semantic_backprop_beam_dualhole_context_mutation_gen9_0 | pareto_density_age_survival_simple_gen11_8 | tournament_selection | relative_mean_absolute_error_loss_gen5_8_gen10_6
+373692,"n=3, no reevaluation",13,0.9167,0.825,9.17,semantic_backprop_beam_dualhole_context_mutation_gen9_0 | pareto_density_age_survival_simple_gen11_8 | tournament_selection | relative_mean_absolute_error_loss_gen5_8_gen10_6
+373692,"n=3, no reevaluation",14,0.9167,0.85,6.67,semantic_backprop_beam_dualhole_context_mutation_gen9_0 | pareto_density_age_survival_simple_gen11_8 | tournament_selection | relative_mean_absolute_error_loss_gen5_8_gen10_6
+373692,"n=3, no reevaluation",15,0.9167,0.845,7.17,semantic_backprop_beam_dualhole_context_mutation_gen9_0 | pareto_density_age_survival_simple_gen11_8 | tournament_selection | relative_mean_absolute_error_loss_gen5_8_gen10_6
+373692,"n=3, no reevaluation",16,0.9167,0.855,6.17,semantic_backprop_beam_dualhole_context_mutation_gen9_0 | pareto_density_age_survival_simple_gen11_8 | tournament_selection | relative_mean_absolute_error_loss_gen5_8_gen10_6
+373692,"n=3, no reevaluation",17,0.95,0.88,7.000000000000001,semantic_backprop_rational_beam_gen7_gen17_0 | pareto_crowding_age_survival_gen3_9 | tournament_selection | adaptive_winsorized_mae_loss_gen12_5
+373692,"n=3, no reevaluation",18,0.95,0.835,11.5,semantic_backprop_rational_beam_gen7_gen17_0 | pareto_crowding_age_survival_gen3_9 | tournament_selection | adaptive_winsorized_mae_loss_gen12_5
+373692,"n=3, no reevaluation",19,0.95,0.835,11.5,semantic_backprop_rational_beam_gen7_gen17_0 | pareto_crowding_age_survival_gen3_9 | tournament_selection | adaptive_winsorized_mae_loss_gen12_5
+373692,"n=3, no reevaluation",20,0.9667,0.905,6.17,semantic_backprop_beam_retarget_slim_gen6_3 | protected_pareto_clone_niche_survival_gen20_7 | simple_parsimony_tournament_gen13_0 | adaptive_winsorized_mae_loss_simple_gen18_2
+373693,"n=10, no reevaluation",0,0.55,0.52,3.0,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373693,"n=10, no reevaluation",1,0.55,0.555,-0.5,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373693,"n=10, no reevaluation",2,0.55,0.55,0.0,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373693,"n=10, no reevaluation",3,0.605,0.57,3.5000000000000004,symmetric_motif_graft_init_2_gen1_9 | age_regularized_survival | tournament_selection | affine_invariant_blended_mse_gen3_7
+373693,"n=10, no reevaluation",4,0.61,0.585,2.5,symmetric_motif_graft_init_2_gen1_9 | age_regularized_survival | elite_niche_tournament_gen4_5 | affine_invariant_blended_mse_gen3_7
+373693,"n=10, no reevaluation",5,0.61,0.515,9.5,symmetric_motif_graft_init_2_gen1_9 | age_regularized_survival | elite_niche_tournament_gen4_5 | affine_invariant_blended_mse_gen3_7
+373693,"n=10, no reevaluation",6,0.61,0.565,4.5,symmetric_motif_graft_init_2_gen1_9 | age_regularized_survival | elite_niche_tournament_gen4_5 | affine_invariant_blended_mse_gen3_7
+373693,"n=10, no reevaluation",7,0.615,0.59,2.5,factor_distribute_mutation_gen3_0 | crowded_age_survival_gen4_6 | tournament_selection | crossfit_affine_shape_loss_gen7_9
+373693,"n=10, no reevaluation",8,0.63,0.59,4.0,residual_guided_leaf_mutation_gen5_8 | crowded_age_survival_gen4_6 | tournament_selection | affine_scaffold_loss_gen7_simplified_gen8_1
+373693,"n=10, no reevaluation",9,0.64,0.625,1.5,residual_guided_leaf_or_graft_mutation_gen9_4 | crowded_age_survival_gen4_6 | tournament_selection | shape_continuation_loss_quad_calibration_gen7_5
+373693,"n=10, no reevaluation",10,0.64,0.64,0.0,residual_guided_leaf_or_graft_mutation_gen9_4 | crowded_age_survival_gen4_6 | tournament_selection | shape_continuation_loss_quad_calibration_gen7_5
+373693,"n=10, no reevaluation",11,0.64,0.58,6.0,residual_guided_leaf_or_graft_mutation_gen9_4 | crowded_age_survival_gen4_6 | tournament_selection | shape_continuation_loss_quad_calibration_gen7_5
+373693,"n=10, no reevaluation",12,0.65,0.595,5.5,residual_guided_leaf_or_graft_mutation_gen9_4 | crowded_age_survival_gen4_6 | rank_blended_niching_tournament_selection_gen12_3 | shape_continuation_loss_quad_calibration_gen7_5
+373693,"n=10, no reevaluation",13,0.65,0.65,0.0,residual_guided_leaf_or_graft_mutation_gen9_4 | crowded_age_survival_gen4_6 | rank_blended_niching_tournament_selection_gen12_3 | shape_continuation_loss_quad_calibration_gen7_5
+373693,"n=10, no reevaluation",14,0.65,0.605,4.5,residual_guided_leaf_or_graft_mutation_gen9_4 | crowded_age_survival_gen4_6 | rank_blended_niching_tournament_selection_gen12_3 | shape_continuation_loss_quad_calibration_gen7_5
+373693,"n=10, no reevaluation",15,0.67,0.64,3.0,algebraic_refactor_mutation_gen8_2 | age_regularized_survival | tournament_selection | affine_blend_loss_simple_gen15_8
+373693,"n=10, no reevaluation",16,0.675,0.58,9.5,residual_guided_motif_anchor_mutation_gen8_9 | two_oldest_crowding_survival_gen16_2 | tournament_selection | shape_continuation_loss_quad_calibration_gen7_5
+373693,"n=10, no reevaluation",17,0.675,0.625,5.0,residual_guided_motif_anchor_mutation_gen8_9 | two_oldest_crowding_survival_gen16_2 | tournament_selection | shape_continuation_loss_quad_calibration_gen7_5
+373693,"n=10, no reevaluation",18,0.675,0.59,8.5,residual_guided_motif_anchor_mutation_gen8_9 | two_oldest_crowding_survival_gen16_2 | tournament_selection | shape_continuation_loss_quad_calibration_gen7_5
+373693,"n=10, no reevaluation",19,0.675,0.625,5.0,residual_guided_motif_anchor_mutation_gen8_9 | two_oldest_crowding_survival_gen16_2 | tournament_selection | shape_continuation_loss_quad_calibration_gen7_5
+373693,"n=10, no reevaluation",20,0.68,0.61,7.000000000000001,algebraic_refactor_mutation_gen8_2 | age_regularized_survival | lazy_elite_niche_tournament_gen20_9 | affine_blend_loss_simple_gen15_8
+373694,Population reevaluation: 1 → 3,0,0.6,0.52,8.0,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373694,Population reevaluation: 1 → 3,1,0.55,0.555,-0.5,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373694,Population reevaluation: 1 → 3,2,0.6,0.425,17.5,add_constant_offset | oldest_in_random_subset_survival_gen2_2 | pareto_dominance_niched_tournament_init_2 | mse_loss
+373694,Population reevaluation: 1 → 3,3,0.7,0.57,13.0,add_global_constant_offset_gen3_0 | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373694,Population reevaluation: 1 → 3,4,0.65,0.52,13.0,mutate_motif_transposition_gen4_1 | pareto_niche_regularized_survival_init_5 | tournament_selection | dynamic_range_balanced_mse_loss_gen3_8
+373694,Population reevaluation: 1 → 3,5,0.7,0.63,7.000000000000001,add_global_constant_offset_gen3_0 | age_regularized_survival | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,6,0.8,0.595,20.5,add_global_constant_offset_gen3_0 | age_regularized_survival | tournament_selection | affine_relative_rms_continuation_loss_v10_gen6_9
+373694,Population reevaluation: 1 → 3,7,0.7,0.6,10.0,add_global_constant_offset_gen3_0 | crowded_niche_pareto_age_survival_gen7_1 | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,8,0.7,0.525,17.5,add_global_constant_offset_gen4_0_gen8_5 | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373694,Population reevaluation: 1 → 3,9,0.7,0.615,8.5,add_global_constant_offset_gen4_0_gen9_9 | age_regularized_survival | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,10,0.6667,0.64,2.67,add_global_constant_offset_gen4_0_gen9_9 | age_regularized_survival | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,11,0.6667,0.59,7.670000000000001,add_global_constant_offset_gen4_0_gen9_9 | age_regularized_survival | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,12,0.7,0.655,4.5,add_global_constant_offset_gen3_0 | pareto_protected_age_pool_survival_gen12_5 | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,13,0.7,0.595,10.5,add_global_constant_offset_gen3_0 | age_regularized_survival | tournament_selection | confidence_gated_affine_anchor_loss_gen13_5
+373694,Population reevaluation: 1 → 3,14,0.6667,0.635,3.17,add_global_constant_offset_gen4_0_gen9_9 | age_regularized_survival | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,15,0.75,0.62,13.0,add_global_constant_offset_gen4_0_gen9_9 | elitist_age_survival_gen15_3 | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,16,0.7,0.615,8.5,add_global_constant_offset_gen4_0_gen9_9 | elitist_age_survival_gen15_3 | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,17,0.7,0.615,8.5,add_global_constant_offset_gen4_0_gen9_9 | elitist_age_survival_gen15_3 | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,18,0.7,0.59,11.0,add_global_constant_offset_gen4_0_gen9_9 | elitist_age_survival_gen15_3 | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,19,0.7,0.595,10.5,add_global_constant_offset_gen4_0_gen9_9 | elitist_age_survival_gen15_3 | tournament_selection | affine_profiled_anchor_loss_gen5_5
+373694,Population reevaluation: 1 → 3,20,0.75,0.625,12.5,add_global_constant_offset_prefer_plus_gen17_8 | frontier_compression_lineage_survival_gen20_3 | tournament_selection | shape_first_correlation_anchor_loss_gen15_8
+373695,"TTTS, top-k (budget 20)",0,0.6,0.52,8.0,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373695,"TTTS, top-k (budget 20)",1,0.5333,0.555,-2.17,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+373695,"TTTS, top-k (budget 20)",2,0.6,0.515,8.5,symmetric_motif_graft_init_1 | age_regularized_survival | pareto_tiebreak_tournament_selection_gen2_gen2_5 | mse_loss
+373695,"TTTS, top-k (budget 20)",3,0.6,0.58,2.0,add_constant_offset | age_regularized_survival | tournament_selection | dynamic_range_affine_continuation_loss_gen3_6
+373695,"TTTS, top-k (budget 20)",4,0.5591,0.56,-0.09,add_constant_offset | age_regularized_survival | tournament_selection | dynamic_range_affine_continuation_loss_gen3_6
+373695,"TTTS, top-k (budget 20)",5,0.5667,0.565,0.16999999999999998,symmetric_motif_graft_init_1 | age_regularized_survival | pareto_tiebreak_tournament_selection_gen2_gen2_5 | shape_and_scale_robust_loss_gen3_5
+373695,"TTTS, top-k (budget 20)",6,0.7,0.435,26.5,add_constant_offset | age_regularized_survival | structural_novelty_niche_tournament_gen6_3 | dynamic_range_balanced_pseudohuber_loss_gen4_0_gen4_0
+373695,"TTTS, top-k (budget 20)",7,0.65,0.55,10.0,add_constant_offset | age_regularized_survival | crowding_aware_niche_tournament_gen7_1 | affine_continuation_loss_init_8
+373695,"TTTS, top-k (budget 20)",9,0.75,0.6,15.0,residual_gradient_splice_gen9_2 | age_regularized_survival | pareto_age_density_tournament_selection_gen4_9 | affine_continuation_loss_init_8
+373695,"TTTS, top-k (budget 20)",10,0.7,0.61,9.0,data_aware_symmetric_motif_graft_gen2_1 | simple_age_survival_gen10_5 | phenotype_diverse_epsilon_tournament_gen3_9 | bounded_affine_shape_scale_loss_gen9_7
+373695,"TTTS, top-k (budget 20)",11,0.6833,0.625,5.83,data_aware_symmetric_motif_graft_gen2_1 | age_regularized_survival | lineage_aware_pareto_epsilon_tournament_gen4_gen10_9 | bounded_affine_shape_scale_loss_gen9_7
+373695,"TTTS, top-k (budget 20)",12,0.7,0.58,12.0,data_aware_symmetric_motif_graft_gen2_1 | age_regularized_survival | lineage_aware_pareto_epsilon_tournament_gen4_gen10_9 | bounded_affine_shape_scale_loss_gen9_7
+373695,"TTTS, top-k (budget 20)",13,0.8,0.62,18.0,data_aware_symmetric_motif_graft_gen2_1 | diversity_niche_survival_gen13_9 | phenotype_diverse_epsilon_tournament_gen3_9 | bounded_affine_shape_scale_loss_gen9_7
+373695,"TTTS, top-k (budget 20)",14,0.675,0.605,7.000000000000001,residual_guided_compact_motif_graft_gen12_9 | simple_age_survival_gen10_5 | phenotype_diverse_epsilon_tournament_gen3_9 | bounded_affine_shape_scale_loss_gen9_7
+373695,"TTTS, top-k (budget 20)",15,0.7,0.59,11.0,residual_guided_compact_motif_graft_gen12_9 | pareto_niche_crowding_survival_gen15_1 | phenotype_diverse_epsilon_tournament_gen3_9 | bounded_affine_shape_scale_loss_gen9_7
+373695,"TTTS, top-k (budget 20)",16,0.7083,0.68,2.83,data_aware_rational_motif_graft_1_gen14_7 | bounded_age_cohort_survival_gen12_7 | phenotype_diverse_epsilon_tournament_gen3_9 | bounded_affine_shape_scale_loss_gen9_7
+373695,"TTTS, top-k (budget 20)",17,0.7,0.595,10.5,streamlined_symmetric_motif_graft_gen15_9 | simple_age_survival_gen10_5 | pareto_gap_stalled_stratified_epsilon_tournament_gen15_1_gen17_4 | bounded_affine_shape_scale_loss_gen9_7
+373695,"TTTS, top-k (budget 20)",18,0.7,0.69,1.0,data_aware_compact_denominator_motif_graft_gen17_5 | oldest_cohort_worst_cost_survival_gen18_0 | phenotype_diverse_epsilon_tournament_gen3_9 | bounded_affine_shape_scale_loss_gen9_7
+373695,"TTTS, top-k (budget 20)",19,0.675,0.625,5.0,data_aware_compact_denominator_motif_graft_gen17_5 | bounded_age_cohort_survival_gen12_7 | phenotype_diverse_epsilon_tournament_gen3_9 | bounded_affine_shape_scale_loss_gen9_7
+373695,"TTTS, top-k (budget 20)",20,0.7,0.73,-3.0,data_aware_rational_motif_graft_1_gen14_7 | bounded_age_cohort_survival_gen12_7 | age_fitness_pareto_selection_gen18_8 | bounded_affine_shape_scale_loss_gen9_7
+709715,709715 (first 20 generations),0,0.55,0.585,-3.5000000000000004,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+709715,709715 (first 20 generations),2,0.5667,0.5,6.67,adaptive_constant_offset_gen2_5 | elite_protected_age_survival_gen1_6 | tournament_selection | affine_continuation_loss_init_8
+709715,709715 (first 20 generations),3,0.5833,0.525,5.83,add_constant_offset | age_regularized_survival | balanced_rank_tournament_selection_gen3_2 | affine_continuation_loss_init_8
+709715,709715 (first 20 generations),4,0.6667,0.64,2.67,symmetric_motif_duplication_gen4_9 | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+709715,709715 (first 20 generations),6,0.6,0.565,3.5000000000000004,algebraic_refactor_mutation_init_1_gen1_9 | crowded_niche_pareto_survival_gen6_1 | lineage_guarded_pareto_breakthrough_selection_gen2_4 | shape_guided_log_nmse_loss_gen3_3
+709715,709715 (first 20 generations),7,0.7,0.625,7.5,motif_aware_algebraic_refactor_mutation_gen7_4 | age_regularized_survival | lineage_guarded_pareto_breakthrough_selection_gen2_4 | shape_guided_log_nmse_loss_gen3_3
+709715,709715 (first 20 generations),8,0.7667,0.795,-2.83,symmetric_motif_duplication_gen4_9 | age_regularized_survival | tournament_selection | affine_angular_profile_loss_2pass_gen8_1
+709715,709715 (first 20 generations),9,0.8,0.765,3.5000000000000004,symmetric_motif_duplication_gen4_9 | age_and_cost_regularized_survival_gen9_3 | tournament_selection | affine_angular_profile_loss_2pass_gen8_1
+709715,709715 (first 20 generations),10,0.8333,0.76,7.33,symmetric_motif_duplication_gen4_9 | age_regularized_survival | tournament_selection | affine_shape_nrmse_loss_simplified_gen10_7
+709715,709715 (first 20 generations),11,0.8167,0.745,7.17,symmetric_motif_duplication_gen9_6 | age_tournament_survival_gen11_2 | crowding_suppressed_niche_tournament_gen10_4 | affine_angular_profile_loss_2pass_gen8_1
+709715,709715 (first 20 generations),12,0.8167,0.795,2.17,symmetric_motif_duplication_gen9_6 | age_tournament_survival_gen11_2 | crowding_suppressed_niche_tournament_gen10_4 | affine_shape_relative_uniformity_loss_gen12_5
+709715,709715 (first 20 generations),13,0.8167,0.76,5.67,symmetric_motif_duplication_gen4_9 | quality_aware_pareto_niche_survival_gen13_1_gen13_1 | tournament_selection | affine_angular_profile_loss_2pass_gen8_1
+709715,709715 (first 20 generations),14,0.8333,0.77,6.329999999999999,symmetry_aware_motif_coupling_gen14_8 | age_tournament_survival_gen11_2 | crowding_suppressed_niche_tournament_gen10_4 | affine_shape_relative_uniformity_loss_gen12_5
+709715,709715 (first 20 generations),15,0.805,0.795,1.0,symmetric_motif_duplication_gen9_6 | age_tournament_survival_gen11_2 | crowding_suppressed_niche_tournament_gen10_4 | affine_shape_relative_uniformity_loss_gen12_5
+709715,709715 (first 20 generations),17,0.85,0.75,10.0,symmetric_motif_duplication_gen9_6 | age_tournament_survival_gen11_2 | crowding_suppressed_niche_tournament_gen11_gen17_7 | affine_shape_relative_uniformity_loss_gen12_5
+709715,709715 (first 20 generations),18,0.8167,0.77,4.67,symmetric_motif_duplication_gen10_1_gen11_9 | age_regularized_survival | crowding_suppressed_niche_tournament_gen10_4 | centered_affine_profile_loss_gen18_2
+709715,709715 (first 20 generations),19,0.805,0.795,1.0,symmetric_motif_duplication_gen9_6 | age_tournament_survival_gen11_2 | crowding_suppressed_niche_tournament_gen10_4 | affine_shape_relative_uniformity_loss_gen12_5
+709715,709715 (first 20 generations),20,0.85,0.795,5.5,motif_duplication_with_rational_coupling_gen12_gen20_5 | age_and_cost_regularized_survival_gen19_0 | novelty_weighted_quality_gated_niche_tournament_gen18_4 | affine_angular_profile_loss_2pass_gen8_1
