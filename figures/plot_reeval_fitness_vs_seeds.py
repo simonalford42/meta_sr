@@ -27,6 +27,8 @@ POLICY_CAT = {
     "TTTS B*": "TTTS dynamic B*",
     "KG B=20": "KG",
 }
+OFFSETS = {"TTTS B*": (-8, -12), "n1->n3": (-8, 6), "TTTS B=15": (7, -12),
+           "KG B=20": (7, 4), "n3": (7, -12), "n10": (-8, -12)}
 PRETTY = {"n1->n3": "n1→n3", "n3->n10": "n3→n10"}
 
 fig, ax = plt.subplots(figsize=(7.5, 5))
@@ -36,15 +38,20 @@ for label, d in data.items():
     ax.scatter(d["seeds"], d["metric"], c=color, marker=marker, s=80, zorder=3,
                edgecolor="white", linewidth=0.8,
                label=f"{PRETTY.get(label, label)}  [{cat}]")
+    off = OFFSETS.get(label, (7, 4))
     ax.annotate(PRETTY.get(label, label), (d["seeds"], d["metric"]),
-                textcoords="offset points", xytext=(7, 4), fontsize=8.5, color="#333")
+                textcoords="offset points", xytext=off, fontsize=8.5, color="#333",
+                ha="right" if off[0] < 0 else "left")
 
 # connect fixed-n and promote chains as faint guides
 for chain, cat in ((["n1", "n3", "n10"], "fixed n"), (["n1", "n1->n3", "n3", "n3->n10", "n10"], "promote")):
     xs = [data[c]["seeds"] for c in chain]; ys = [data[c]["metric"] for c in chain]
     ax.plot(xs, ys, color=CATS[cat][0], lw=1, alpha=0.35, zorder=1)
 
-ax.set_xlabel("seeds spent (total PySR evaluations)")
+ax.set_xscale("log")
+ax.set_xticks([300, 500, 700, 1000, 1500, 2000, 3000])
+ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+ax.set_xlabel("seeds spent (total PySR evaluations, log scale)")
 ax.set_ylabel("parent fitness  E[oracle fitness of selected parent]")
 ax.set_title("Reevaluation policies: fitness vs eval budget\n(oracle replay, runs 568245+568246 avg, final generation)", fontsize=11)
 ax.grid(alpha=0.25)
