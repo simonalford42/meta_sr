@@ -12,64 +12,69 @@ data = json.load(open(REPO / "plots/oracle_replay/oracle_replay_table.json"))
 
 # category -> (color, marker)
 CATS = {
-    "fixed n":        ("#4c72b0", "o"),
-    "promote":        ("#dd8452", "s"),
-    "TTTS (n1 base)": ("#55a868", "^"),
-    "TTTS (n2 base)": ("#64b5cd", "<"),
-    "TTTS (n3 base)": ("#8172b3", "v"),
-    "TTTS dynamic B*": ("#c44e52", "D"),
-    "KG":             ("#937860", "P"),
+    "fixed":   ("#4c72b0", "o"),
+    "promote": ("#dd8452", "s"),
+    "ttts1":   ("#55a868", "^"),
+    "ttts3":   ("#8172b3", "v"),
+    "dyn":     ("#c44e52", "D"),
+    "kg":      ("#937860", "P"),
 }
-POLICY_CAT = {
-    "n1": "fixed n", "n3": "fixed n", "n10": "fixed n",
-    "n1->n3": "promote", "n2->n6": "promote", "n3->n10": "promote",
-    "TTTS n1 B=10": "TTTS (n1 base)", "TTTS n1 B=20": "TTTS (n1 base)", "TTTS n1 B=40": "TTTS (n1 base)", "TTTS n1 B=60": "TTTS (n1 base)",
-    "TTTS n2 B=10": "TTTS (n2 base)", "TTTS n2 B=20": "TTTS (n2 base)", "TTTS n2 B=40": "TTTS (n2 base)", "TTTS n2 B=60": "TTTS (n2 base)",
-    "TTTS n3 B=10": "TTTS (n3 base)", "TTTS n3 B=20": "TTTS (n3 base)", "TTTS n3 B=40": "TTTS (n3 base)", "TTTS n3 B=60": "TTTS (n3 base)",
-    "TTTS B*": "TTTS dynamic B*",
-    "KG B=20": "KG", "KG B=40": "KG", "KG B=60": "KG",
+# label -> (category, legend text, short on-plot text)
+POL = {
+    "n1":   ("fixed", r"$N_{init}=1$", r"$N_{init}=1$"),
+    "n3":   ("fixed", r"$N_{init}=3$", r"$N_{init}=3$"),
+    "n10":  ("fixed", r"$N_{init}=10$", r"$N_{init}=10$"),
+    "n1->n3":  ("promote", r"$N_{init}=1,\ N_{reeval}=2$", r"$1{+}2$"),
+    "n2->n6":  ("promote", r"$N_{init}=2,\ N_{reeval}=4$", r"$2{+}4$"),
+    "n3->n10": ("promote", r"$N_{init}=3,\ N_{reeval}=7$", r"$3{+}7$"),
+    "TTTS n1 B=20": ("ttts1", r"TTTS $N_{init}=1,\ B=20$", r"$B{=}20$"),
+    "TTTS n1 B=60": ("ttts1", r"TTTS $N_{init}=1,\ B=60$", r"$B{=}60$"),
+    "TTTS n3 B=20": ("ttts3", r"TTTS $N_{init}=3,\ B=20$", r"$B{=}20$"),
+    "TTTS n3 B=60": ("ttts3", r"TTTS $N_{init}=3,\ B=60$", r"$B{=}60$"),
+    "TTTS B*": ("dyn", r"TTTS dynamic $B^*$", r"dyn $B^*$"),
+    "KG B=20": ("kg", r"KG $B=20$", r"$B{=}20$"),
+    "KG B=60": ("kg", r"KG $B=60$", r"$B{=}60$"),
 }
-CAT_OFF = {"TTTS (n1 base)": (-6, 6), "TTTS (n2 base)": (4, -13), "TTTS (n3 base)": (6, 5), "KG": (5, -12)}
-OFFSETS = {"TTTS B*": (-8, -12), "n1->n3": (-8, 6), "n3": (7, -12), "n10": (-8, -12),
-           "TTTS n3 B=20": (-6, -13), "TTTS n3 B=40": (2, -13), "TTTS n3 B=60": (7, 3),
-           "n3->n10": (-8, 5), "n2->n6": (-8, 5)}
-PRETTY = {"n1->n3": "n1→n3", "n2->n6": "n2→n6", "n3->n10": "n3→n10"}
+OFF = {  # per-point annotation offsets (points)
+    "n1": (7, 4), "n3": (7, -12), "n10": (-8, -12),
+    "n1->n3": (-8, 6), "n2->n6": (-8, -12), "n3->n10": (-8, 6),
+    "TTTS n1 B=20": (-6, 6), "TTTS n1 B=60": (-6, 6),
+    "TTTS n3 B=20": (6, -12), "TTTS n3 B=60": (6, -12),
+    "TTTS B*": (-8, -12), "KG B=20": (6, -12), "KG B=60": (6, -12),
+}
+CHAINS = [
+    (["n1", "n3", "n10"], "fixed"),
+    (["n1", "n1->n3", "n2->n6", "n3->n10", "n10"], "promote"),
+    (["n1", "TTTS n1 B=20", "TTTS n1 B=60"], "ttts1"),
+    (["n3", "TTTS n3 B=20", "TTTS n3 B=60"], "ttts3"),
+    (["n1", "KG B=20", "KG B=60"], "kg"),
+]
 
-fig, ax = plt.subplots(figsize=(9, 6))
-for label, d in data.items():
-    cat = POLICY_CAT[label]
+fig, ax = plt.subplots(figsize=(8, 5.5))
+for chain, cat in CHAINS:
+    ax.plot([data[c]["seeds"] for c in chain], [data[c]["metric"] for c in chain],
+            color=CATS[cat][0], lw=1.2, alpha=0.5, zorder=1)
+for label, (cat, legend, short) in POL.items():
+    d = data[label]
     color, marker = CATS[cat]
     ax.scatter(d["seeds"], d["metric"], c=color, marker=marker, s=80, zorder=3,
-               edgecolor="white", linewidth=0.8,
-               label=f"{PRETTY.get(label, label)}  [{cat}]")
-    off = OFFSETS.get(label, CAT_OFF.get(cat, (7, 4)))
-    txt = PRETTY.get(label, label)
-    if " B=" in label and label != "TTTS B*":
-        continue  # sweeps: legend + chain line carry identity (B ascends left to right)
-    ax.annotate(txt, (d["seeds"], d["metric"]),
-                textcoords="offset points", xytext=off, fontsize=8.5, color="#333",
+               edgecolor="white", linewidth=0.8, label=legend)
+    off = OFF[label]
+    ax.annotate(short, (d["seeds"], d["metric"]), textcoords="offset points",
+                xytext=off, fontsize=8.5, color="#333",
                 ha="right" if off[0] < 0 else "left")
-
-# connect fixed-n and promote chains as faint guides
-for chain, cat in ((["n1", "n3", "n10"], "fixed n"), (["n1", "n1->n3", "n2->n6", "n3->n10", "n10"], "promote"),
-                   (["n1", "TTTS n1 B=10", "TTTS n1 B=20", "TTTS n1 B=40", "TTTS n1 B=60"], "TTTS (n1 base)"),
-                   (["TTTS n2 B=10", "TTTS n2 B=20", "TTTS n2 B=40", "TTTS n2 B=60"], "TTTS (n2 base)"),
-                   (["n3", "TTTS n3 B=10", "TTTS n3 B=20", "TTTS n3 B=40", "TTTS n3 B=60"], "TTTS (n3 base)"),
-                   (["n1", "KG B=20", "KG B=40", "KG B=60"], "KG")):
-    xs = [data[c]["seeds"] for c in chain]; ys = [data[c]["metric"] for c in chain]
-    ax.plot(xs, ys, color=CATS[cat][0], lw=1.2, alpha=0.5, zorder=1)
 
 ax.set_xscale("log")
 ax.set_xticks([300, 500, 700, 1000, 1500, 2000, 3000])
 ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
 ax.set_xlabel("seeds spent (total PySR evaluations, log scale)")
 ax.set_ylabel("parent fitness  E[oracle fitness of selected parent]")
-ax.set_title("Reevaluation policies: fitness vs eval budget\n(oracle replay, runs 568245+568246 avg, final generation)\n"
-             "TTTS / KG sweeps: points along each line are B=10, 20, 40, 60 left to right", fontsize=10)
+ax.set_title("Reevaluation policies: fitness vs eval budget\n"
+             "(oracle replay, runs 568245+568246 avg, final generation)", fontsize=11)
 ax.grid(alpha=0.25)
-for s in ("top", "right"):
-    ax.spines[s].set_visible(False)
-ax.legend(fontsize=7.5, loc="lower right", frameon=False, ncol=2)
+for sp in ("top", "right"):
+    ax.spines[sp].set_visible(False)
+ax.legend(fontsize=8.5, loc="lower right", frameon=False)
 fig.tight_layout()
 out = REPO / "figures/reeval_fitness_vs_seeds.pdf"
 fig.savefig(out); fig.savefig(out.with_suffix(".png"), dpi=150)
