@@ -11,6 +11,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 from matplotlib.ticker import MultipleLocator
 
 ROOT = Path(__file__).resolve().parent
@@ -22,6 +23,9 @@ COLORS = dict(mutation='#d62728', loss='#2878c8', selection='#e4bc24', survival=
 
 def draw_ancestry_legend(ax):
     """Right-align category labels beside the operator markers."""
+    ax.add_patch(Rectangle((0.73, 0.025), 0.24, 0.27,
+                           transform=ax.transAxes, facecolor='white',
+                           edgecolor='black', linewidth=0.8, alpha=1, zorder=5))
     for i, (label, color) in enumerate(COLORS.items()):
         y = 0.255 - i * 0.045
         ax.scatter([0.86], [y], s=46, c=color, edgecolors='none',
