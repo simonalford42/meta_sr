@@ -25,7 +25,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 import plot_eval_axis_comparison as pe  # noqa: E402
 
-C1, C3, C10, CS = "#c44e52", "#8172b3", "#4c72b0", "#f28cb1"  # red, purple, blue, pink
+C1, C3, C10, CS = "#c44e52", "#8172b3", "#4c72b0", "#55a868"  # red, purple, blue, green
 N1 = [89281, 825769, 825773, 825777, 825781]
 N3 = [89282, 825770, 825774, 825778, 825782]
 N10 = [568245, 568246]
