@@ -1,8 +1,8 @@
 # 150815 trajectory with population context
 
 The colored best-member curve is unchanged. Light-grey lines connect population
-score ranks 2–10 over generations 1–90. Small grey dots mark generations
-10, 20, …, 90, without additional labels. Members are ranked by descending
+score ranks 2–10 over generations 1–90, without grey dots or additional labels.
+Members are ranked by descending
 training score, with fewer LOC breaking exact ties, just as for the best curve.
 These are rank trajectories, not individual lineages.
 

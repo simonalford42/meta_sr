@@ -47,10 +47,6 @@ def draw_population_context(ax, populations):
         points = [population[rank] for population in populations.values()]
         ax.plot([p["loc"] for p in points], [p["train_score"] for p in points],
                 color="#d0d0d0", lw=0.7, alpha=0.65, zorder=0.8)
-        milestones = [p for p in points if p["generation"] % 10 == 0]
-        ax.scatter([p["loc"] for p in milestones],
-                   [p["train_score"] for p in milestones],
-                   color="#c9c9c9", s=15, edgecolors="none", zorder=0.9)
 
 
 def draw(ax, points, norm, label_every):
