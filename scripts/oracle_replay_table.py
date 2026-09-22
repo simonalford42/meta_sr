@@ -54,11 +54,27 @@ def main():
                for label, _, _ in POLICIES}, open(out, "w"), indent=1)
     print(f"saved {out}")
     rows = sorted(POLICIES, key=lambda p: np.mean([r[p[0]]["metric"] for r in per_run]))
+    TEX = {
+        "n1": r"$N_{\mathrm{init}}=1$", "n3": r"$N_{\mathrm{init}}=3$", "n10": r"$N_{\mathrm{init}}=10$",
+        "n1->n3": r"$N_{\mathrm{init}}=1,\ N_{\mathrm{reeval}}=2$",
+        "n2->n6": r"$N_{\mathrm{init}}=2,\ N_{\mathrm{reeval}}=4$",
+        "n3->n10": r"$N_{\mathrm{init}}=3,\ N_{\mathrm{reeval}}=7$",
+        "TTTS n1 B=20": r"TTTS, $N_{\mathrm{init}}=1,\ B=20$",
+        "TTTS n1 B=60": r"TTTS, $N_{\mathrm{init}}=1,\ B=60$",
+        "TTTS n3 B=20": r"TTTS, $N_{\mathrm{init}}=3,\ B=20$",
+        "TTTS n3 B=60": r"TTTS, $N_{\mathrm{init}}=3,\ B=60$",
+    }
+    tex = [r"\begin{tabular}{lcc}", r"\toprule",
+           r"Policy & Parent fitness & Seeds spent \\", r"\midrule"]
     for label, _, _ in rows:
         m = np.mean([r[label]["metric"] for r in per_run])
         sd = np.mean([r[label]["seeds"] for r in per_run])
-        rg = np.mean([r[label]["regret"] for r in per_run])
         print(f"| {label} | {m:.3f} | {sd:.0f} |")
+        tex.append(f"{TEX.get(label, label):55s} & {m:.3f} & {sd:.0f} \\\\")
+    tex += [r"\bottomrule", r"\end{tabular}"]
+    tex_out = orr.REPO / "figures" / "reeval_oracle_replay_table.tex"
+    tex_out.write_text("\n".join(tex) + "\n")
+    print(f"saved {tex_out}")
 
 
 if __name__ == "__main__":
