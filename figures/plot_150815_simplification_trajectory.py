@@ -56,7 +56,6 @@ def draw(ax, points, norm, label_every):
         ax.annotate(
             ", ".join(map(str, generations)), (loc, score), xytext=offset,
             textcoords="offset points", fontsize=10, color="#242a33",
-            bbox=dict(boxstyle="round,pad=0.22", fc="white", ec="none", alpha=0.9),
             arrowprops=dict(arrowstyle="-", color="#8a9199", lw=0.65), zorder=4,
         )
     ax.set_xlabel("Algorithm complexity (LOC)")
