@@ -7,8 +7,8 @@ span 1–30 (full evolution) and 30–45 (simplification, sharing the baseline a
 The y-axis therefore reads Training score (GT).
 
 Stars mark the highest-scoring member each generation; smaller colored points
-show ranks 2–10. Ties use fewer LOC. Light-grey lines connect each rank over
-time, not individual lineages. Generation 5 has 11 saved population members;
+show ranks 2–10. Ties use fewer LOC. No trajectory lines connect the points.
+Generation 5 has 11 saved population members;
 only the top 10 are plotted. Color runs from early yellow to late purple.
 Axis limits follow the best-member trajectory, so some lower-score or longer
 population members are clipped. LOC excludes blanks, comments, and docstrings.

@@ -54,13 +54,11 @@ def phase_brace(fig, x0, x1, y, label):
 
 
 def draw_population_context(ax, populations, norm):
-    """Connect score ranks across generations, not individual lineages."""
+    """Show score ranks 2–10 as small generation-colored dots."""
     if any(len(population) < 10 for population in populations.values()):
         raise ValueError("Population context expects at least 10 members per generation")
     for rank in range(1, 10):
         points = [population[rank] for population in populations.values()]
-        ax.plot([p["loc"] for p in points], [p["train_score"] for p in points],
-                color="#d0d0d0", lw=0.7, alpha=0.65, zorder=0.8)
         ax.scatter([p["loc"] for p in points],
                    [p["train_score"] for p in points],
                    c=[p["generation"] for p in points],
@@ -73,7 +71,8 @@ def draw(ax, points, norm, label_every, best_stars=False,
     x = [p["loc"] for p in points]
     y = [p["train_score"] for p in points]
     # A thin chronological guide; all points keep their exact saved coordinates.
-    ax.plot(x, y, color="#aeb5bd", lw=1.1, alpha=0.7, zorder=1)
+    if not best_stars:
+        ax.plot(x, y, color="#aeb5bd", lw=1.1, alpha=0.7, zorder=1)
     scatter = ax.scatter(x, y, c=[p["generation"] for p in points],
                          cmap="viridis_r", norm=norm,
                          s=120 if best_stars else 66,
@@ -131,7 +130,7 @@ def main():
     parser.add_argument("--label-offset", nargs=3, type=int, action="append", default=[],
                         metavar=("GEN", "DX", "DY"), help="Override label offset in points")
     parser.add_argument("--population-context", action="store_true",
-                        help="Add light-grey trajectories for score ranks 2–10")
+                        help="Add colored dots for score ranks 2–10 and stars for rank 1")
     args = parser.parse_args()
     if args.label_every < 1:
         parser.error("--label-every must be positive")
