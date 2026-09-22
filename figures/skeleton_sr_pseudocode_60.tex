@@ -25,13 +25,15 @@ A minimal PySR-style symbolic-regression engine. Expressions are trees of
 unary/binary operators over variables and constants. The skeleton owns the
 tree representation, the evaluation budget and the outer loop. The
 \emph{policy} (in \textcolor{blue!70!black}{\textsc{blue}}) decides how
-expressions are scored, chosen, varied, accepted and kept.
+expressions are scored, chosen, varied, accepted and kept; BasicSR supplies
+\slot{loss\_function}, \slot{selection}, \slot{mutation}, \slot{crossover},
+\slot{acceptance}, \slot{survival}, \slot{update\_population} and \slot{update\_state!}.
 Every call to \slot{loss\_function} costs one evaluation; the search stops
 when \textsc{HasBudget} (evals $<$ max\_evals and elapsed $<$ timeout) fails.
 
 \begin{algorithmic}[1]
 \Function{FitSkeletonSR}{$X, y$, config}
-  \State policy\_state $\gets$ \slot{init\_state}(config)
+  \State policy\_state $\gets$ init\_state(config)
   \State populations $\gets$ $n_{\text{pops}}$ populations of population\_size small random trees,
   \Statex \hspace{2.2em} each scored with \slot{loss\_function} \cmt{Const(0) with 3 random operators attached}
   \State \slot{update\_state!}(populations)
@@ -39,8 +41,8 @@ when \textsc{HasBudget} (evals $<$ max\_evals and elapsed $<$ timeout) fails.
     \ForEach{population $P$}
       \For{$1 \ldots$ ncycles\_per\_iteration}
         \State \slot{update\_state!}(populations)
-        \For{$1 \ldots$ \slot{cycles\_per\_population}($P$)}\cmt{default $\lceil |P| / \text{tournament}_n \rceil$}
-          \If{\slot{should\_crossover}($P$)}\cmt{default rand $\le$ crossover\_probability}
+        \For{$1 \ldots \lceil |P| / \text{tournament}_n \rceil$}
+          \If{rand $\le$ crossover\_probability}
             \State $a \gets$ \slot{selection}($P$); \; $b \gets$ \slot{selection}($P$) \quad (distinct)
             \State children $\gets$ [score($t$) for $t$ in \slot{crossover}($a,b$)], keep those passing \slot{acceptance}(parent, child)
             \If{children non-empty} $P \gets$ \slot{survival}($P$, children) \EndIf
