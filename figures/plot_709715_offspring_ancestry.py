@@ -30,18 +30,20 @@ def draw_ancestry_legend(ax):
                    transform=ax.transAxes, zorder=6)
         ax.text(0.878, y, label.capitalize(), transform=ax.transAxes,
                 va='center', fontsize=9, zorder=6)
-    ax.scatter([0.86], [0.06], s=30, c='#c9c9c9', alpha=0.60,
+    ax.scatter([0.86], [0.06], s=46, c='#bdbdbd', alpha=0.70,
                edgecolors='none', transform=ax.transAxes, zorder=6)
-    ax.text(0.72, 0.06, 'Other offspring', transform=ax.transAxes,
-            va='center', fontsize=9, zorder=6)
+    ax.text(0.815, 0.06, 'Other offspring', transform=ax.transAxes,
+            ha='right', va='center', fontsize=9, zorder=6)
     x, top, bottom = 0.835, 0.274, 0.101
     mid = (top + bottom) / 2
     vertices = [(x+0.010, top), (x, top), (x, bottom), (x+0.010, bottom)]
     ax.add_patch(PathPatch(MplPath(vertices, [MplPath.MOVETO]+[MplPath.LINETO]*3),
                            transform=ax.transAxes, fill=False, edgecolor='#555555',
                            linewidth=1, zorder=6))
-    ax.text(0.72, mid, 'Ancestor', transform=ax.transAxes,
-            va='center', fontsize=9, zorder=6)
+    ax.plot([x-0.012, x], [mid, mid], transform=ax.transAxes,
+            color='#555555', linewidth=1, zorder=6)
+    ax.text(0.815, mid, 'Ancestor', transform=ax.transAxes,
+            ha='right', va='center', fontsize=9, zorder=6)
 
 
 def extract(source):
@@ -167,10 +169,10 @@ def render(points):
     for status in ('not_recorded_ancestor', 'ancestor', 'operator_origin'):
         group = [p for p in points if p['status'] == status]
         colors = [COLORS[p['color_operator']] if p['color_operator'] else
-                  '#555555' if status == 'ancestor' else '#c9c9c9' for p in group]
+                  '#555555' if status == 'ancestor' else '#bdbdbd' for p in group]
         ax.scatter([p['generation'] for p in group], [p['fitness'] for p in group],
-                   marker='o', s=66 if status == 'operator_origin' else 46 if status == 'ancestor' else 30,
-                   c=colors, edgecolors='none', alpha=0.60 if status == 'not_recorded_ancestor' else 1,
+                   marker='o', s=66 if status == 'operator_origin' else 50 if status == 'ancestor' else 38,
+                   c=colors, edgecolors='none', alpha=0.70 if status == 'not_recorded_ancestor' else 1,
                    zorder=4 if status == 'operator_origin' else 3 if status == 'ancestor' else 2)
     ax.set(xlabel='Generation', ylabel='Fitness (GT)', xlim=(-1, 46), ylim=(0, 1))
     ax.xaxis.set_major_locator(MultipleLocator(5))
