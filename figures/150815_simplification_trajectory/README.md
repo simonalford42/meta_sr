@@ -2,7 +2,8 @@
 
 `trajectory.png`, `trajectory.pdf`, and `trajectory.svg` show LOC versus saved
 training score, with reversed viridis coloring (early yellow, late purple).
-The left panel covers generations 1–90; the right zooms into generations 30–90.
+The single panel covers generations 1–90, with generation 70 labeled below-left.
+Titles and captions are omitted from the figure.
 Generation 30 is the baseline before simplification; the continuations cover
 31–60 (`fullsr-150815-simplify`) and 61–90 (`150815-simplify-more`, job 229869).
 
