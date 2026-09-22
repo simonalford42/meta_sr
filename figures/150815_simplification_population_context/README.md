@@ -2,7 +2,9 @@
 
 Larger generation-colored stars mark the best member each generation.
 Smaller generation-colored dots show population score ranks 2–10 over
-generations 1–90, without additional labels or connecting trajectory lines.
+generations 1–90, without additional labels. Faint grey lines connect each
+score rank across generations; these are lighter than the earlier line version.
+Background dots retain their lightened colors and sit behind the stars.
 All ranks share reversed viridis coloring (early yellow, late purple).
 The horizontal generation colorbar sits below the x-axis at 80% of the previous
 width and thickness. Compact square brackets and smaller labels below
