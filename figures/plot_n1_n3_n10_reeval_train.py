@@ -1,11 +1,9 @@
-"""Reevaluation figure. 2x2 grid of curves + a right-hand column holding the
-oracle-replay table.
+"""Reevaluation figure. 2x2 grid of curves.
 
   (a) reeval train score of best algorithm vs generation, n1/n3/n10
   (b) same vs cumulative evaluations
   (c) winner's curse = live train fitness - reevaluated train fitness of the best algorithm
   (d) n1 (no reeval) vs n1 smart TTTS reeval (budget-matched 20 evals/gen), vs evals
-  (e) oracle-replay table (from plots/oracle_replay/oracle_replay_table.json)
 
 All runs: cheap models, random target noise, population 10, 15 generations.
 Reeval train score = wandb val_eval/train_avg_score (best bundle re-run on the
@@ -27,7 +25,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 import plot_eval_axis_comparison as pe  # noqa: E402
 
-C1, C3, C10, CS = "#4c72b0", "#dd8452", "#55a868", "#8172b3"
+C1, C3, C10, CS = "#c44e52", "#8172b3", "#4c72b0", "#f28cb1"  # red, purple, blue, pink
 N1 = [89281, 825769, 825773, 825777, 825781]
 N3 = [89282, 825770, 825774, 825778, 825782]
 N10 = [568245, 568246]
@@ -126,39 +124,38 @@ def main():
     print("--- n10"); d10 = load_method(api, N10)
     print("--- n1 smart"); ds = load_method(api, N1_SMART)
 
-    fig = plt.figure(figsize=(16, 8))
-    gs = fig.add_gridspec(2, 3, width_ratios=[1, 1, 1.05], wspace=0.28, hspace=0.32)
+    fig = plt.figure(figsize=(11, 8))
+    gs = fig.add_gridspec(2, 2, wspace=0.28, hspace=0.32)
     axa = fig.add_subplot(gs[0, 0]); axb = fig.add_subplot(gs[0, 1], sharey=axa)
     axc = fig.add_subplot(gs[1, 0]); axd = fig.add_subplot(gs[1, 1])
-    axt = fig.add_subplot(gs[:, 2])
 
-    meths = [(d1, C1, "o", r"$N_{init}=1$ (n=5)"),
-             (d3, C3, "s", r"$N_{init}=3$ (n=5)"),
-             (d10, C10, "^", r"$N_{init}=10$ (n=2)")]
+    meths = [(d1, C1, "o", r"$N_{init}=1$"),
+             (d3, C3, "s", r"$N_{init}=3$"),
+             (d10, C10, "^", r"$N_{init}=10$")]
     for d, c, mk, lab in meths:
         band(axa, GENS, d["reeval"], c, mk, lab)
         band(axb, np.nanmean(d["evals"], 0), d["reeval"], c, mk, lab)
         band(axc, GENS, d["curse"], c, mk, lab)
     axc.axhline(0, color="k", lw=0.8, alpha=0.5)
-    band(axd, np.nanmean(d1["evals"], 0), d1["reeval"], C1, "o", r"$N_{init}=1$, no reeval (n=5)")
+    band(axd, np.nanmean(d1["evals"], 0), d1["reeval"], C1, "o", r"$N_{init}=1$, no reeval")
     band(axd, np.nanmean(ds["evals"], 0), ds["reeval"], CS, "*",
-         r"$N_{init}=1$, TTTS reeval $B=20$ (n=5)")
+         r"$N_{init}=1$, TTTS reeval $B=20$")
 
     axa.set_xlabel("Generation"); axb.set_xlabel("Evaluations")
     axc.set_xlabel("Generation"); axd.set_xlabel("Evaluations")
     axa.set_ylabel("Reevaluated fitness, best algorithm")
     axb.set_ylabel("Reevaluated fitness, best algorithm")
     axd.set_ylabel("Reevaluated fitness, best algorithm")
-    axc.set_ylabel("Winner's curse (fitness minus reevaluated fitness)")
+    axc.set_ylabel("Winner's curse, best algorithm")
     axa.set_title("(a)", loc="left", fontsize=10); axb.set_title("(b)", loc="left", fontsize=10)
     axc.set_title("(c)", loc="left", fontsize=10); axd.set_title("(d)", loc="left", fontsize=10)
     for ax in (axa, axb, axc, axd):
         ax.grid(alpha=0.25)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
-    axa.legend(frameon=False, loc="lower right", fontsize=9)
-    axd.legend(frameon=False, loc="lower right", fontsize=9)
-    draw_table(axt)
+    for ax in (axa, axb, axd):
+        ax.legend(frameon=False, loc="lower right", fontsize=9)
+    axc.legend(frameon=False, loc="upper left", fontsize=9)
 
     out = REPO / "figures/n1_n3_n10_reeval_train.pdf"
     fig.savefig(out, bbox_inches="tight"); fig.savefig(out.with_suffix(".png"), dpi=150, bbox_inches="tight")
