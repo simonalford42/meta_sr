@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Plot offspring fitness, recorded ancestry, and operator origins for run 709715."""
+
+import argparse
+import copy
+import csv
+import json
+import math
+from pathlib import Path
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.ticker import MultipleLocator
+
+ROOT = Path(__file__).resolve().parent
+OUT = ROOT / '709715_offspring_ancestry'
+TYPES = ('mutation', 'survival', 'selection', 'loss')
+BASELINE = ('add_constant_offset', 'age_regularized_survival', 'tournament_selection', 'mse_loss')
+COLORS = dict(mutation='#d62728', loss='#2878c8', selection='#e4bc24', survival='#2c9b49')
+MARKERS = dict(explore='o', refine='s', simplify='^', crossover='x')
+
+
+def extract(source):
+    data = json.loads(source.read_text())
+    def compact(bundle):
+        return {k: bundle[k] for k in ('score', 'meta_mutation_counts')} | {
+            'operators': {t: {k: op.get(k) for k in ('name', 'generation', 'parent_name', 'mode')}
+                          for t, op in bundle['operators'].items()}}
+    records = {'generations': [{'generation': g['generation'],
+                               **{kind: [compact(b) for b in g[kind]]
+                                  for kind in ('population', 'offspring')}}
+                              for g in data['generations']],
+               'val_results': {n: {'avg_score': v.get('avg_score')}
+                               for n, v in data['val_results'].items()}}
+    (OUT / 'lineage_records.json').write_text(json.dumps(records, indent=2) + '\n')
+
+
+def reconstruct(data):
+    operators, bundles, rows, offspring = {}, {}, [], []
+    def key(b):
+        return tuple(b['operators'][t]['name'] for t in TYPES)
+    for g in data['generations']:
+        for kind in ('population', 'offspring'):
+            for index, original in enumerate(g[kind]):
+                b = dict(original, seen=g['generation'], kind=kind, index=index)
+                b['key'] = key(b)
+                rows.append(b)
+                bundles.setdefault(b['key'], b)
+                for t, op in b['operators'].items():
+                    operators[op['name']] = dict(op, type=t)
+                if kind == 'offspring':
+                    offspring.append(b)
+    def birth(b):
+        return max(op['generation'] for op in b['operators'].values())
+    def event(b):
+        edited = [operators[n] for n in b['key'] if operators[n]['generation'] == birth(b)
+                  and n not in BASELINE]
+        if len(edited) != 1:
+            raise ValueError(f'Ambiguous creation event: {b["key"]}')
+        return edited[0]
+    names = {' | '.join(k): k for k in bundles}
+    eligible = [(n, v['avg_score']) for n, v in data['val_results'].items()
+                if n in names and v.get('avg_score') is not None]
+    selected_name, val_score = max(eligible, key=lambda item: item[1])
+    selected = bundles[names[selected_name]]
+    assert selected['operators']['selection']['name'] == 'streamlined_niche_clone_tournament_gen43_3'
+
+    def parent(b):
+        op = event(b)
+        counts = copy.deepcopy(b['meta_mutation_counts'])
+        counts[op['type']][op['mode']] -= 1
+        found = {}
+        for candidate in rows:
+            if candidate['seen'] >= birth(b) or candidate['meta_mutation_counts'] != counts:
+                continue
+            if any(candidate['operators'][t]['name'] != b['operators'][t]['name']
+                   for t in TYPES if t != op['type']):
+                continue
+            if op['mode'] in ('refine', 'simplify') and candidate['operators'][op['type']]['name'] != op['parent_name']:
+                continue
+            found.setdefault(candidate['key'], candidate)
+        if len(found) != 1:
+            raise ValueError(f'Expected unique recorded bundle parent: {b["key"]}; found {len(found)}')
+        return next(iter(found.values()))
+
+    # Operator-origin coloring follows the explicit parent chain of each final component.
+    origins = {}
+    for t in TYPES:
+        name = selected['operators'][t]['name']
+        visited = set()
+        while name and name not in BASELINE:
+            if name in visited:
+                raise ValueError('Cycle in operator ancestry')
+            visited.add(name)
+            origins[name] = t
+            name = operators[name]['parent_name']
+    # Also follow bundle inheritance and recorded operator donors recursively.
+    creators = {}
+    for b in bundles.values():
+        if b['key'] != BASELINE:
+            creators.setdefault(event(b)['name'], b)
+    ancestors = set()
+    def visit(b):
+        if b['key'] in ancestors:
+            return
+        ancestors.add(b['key'])
+        if birth(b) > 0:
+            visit(parent(b))
+        op = event(b)
+        if op['mode'] in ('refine', 'simplify', 'crossover'):
+            donor = creators.get(op['parent_name'])
+            if donor is not None:
+                visit(donor)
+    visit(selected)
+    # Initial candidates have no separate generation-0 snapshot. Use earliest saved
+    # population fitness for surviving initial bundles and explicitly flag it.
+    initial = [b for b in bundles.values() if birth(b) == 0 and b['key'] != BASELINE]
+    plotted = []
+    for b in initial + offspring:
+        op = event(b)
+        score = b['score']
+        if score is None or not math.isfinite(float(score)):
+            raise ValueError(f'Missing/nonfinite fitness for {op["name"]}')
+        plotted.append(dict(generation=birth(b), fitness=float(score), mode=op['mode'],
+                            edited_operator=op['type'], operator_name=op['name'],
+                            status='operator_origin' if op['name'] in origins else
+                                   'ancestor' if b['key'] in ancestors else 'not_recorded_ancestor',
+                            color_operator=origins.get(op['name'], ''),
+                            score_source='first_saved_population' if birth(b) == 0 else 'offspring',
+                            score_snapshot_generation=b['seen'], bundle=' | '.join(b['key'])))
+    assert sorted(p['generation'] for p in plotted if p['color_operator'] == 'loss') == [0, 8, 34]
+    return plotted, dict(selected_bundle=selected_name, validation_score=val_score,
+                         recorded_ancestor_bundles=len(ancestors),
+                         colored_origins={t: sorted(p['generation'] for p in plotted if p['color_operator'] == t)
+                                          for t in TYPES})
+
+
+def render(points):
+    plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 10,
+                         'pdf.fonttype': 42, 'svg.fonttype': 'none'})
+    fig, ax = plt.subplots(figsize=(10.2, 6.2))
+    fig.subplots_adjust(left=0.08, right=0.90, bottom=0.29, top=0.91)
+    for status in ('not_recorded_ancestor', 'ancestor', 'operator_origin'):
+        for mode, marker in MARKERS.items():
+            for p in (p for p in points if p['status'] == status and p['mode'] == mode):
+                color = COLORS[p['color_operator']] if p['color_operator'] else '#555555' if status == 'ancestor' else '#c9c9c9'
+                size = 66 if status == 'operator_origin' else 40 if status == 'ancestor' else 23
+                style = dict(c=color) if marker == 'x' else dict(
+                    facecolors='none' if status == 'not_recorded_ancestor' else color,
+                    edgecolors=color)
+                ax.scatter(p['generation'], p['fitness'], marker=marker, s=size,
+                           linewidths=1.2 if status == 'operator_origin' else 0.8,
+                           zorder=4 if status == 'operator_origin' else 3 if status == 'ancestor' else 2,
+                           **style)
+    ax.set(xlabel='Generation', ylabel='Fitness (GT)', xlim=(-1, 46), ylim=(0, 1))
+    ax.set_title('PySR evolution: ancestry of the final selected bundle', fontsize=12, pad=12)
+    ax.xaxis.set_major_locator(MultipleLocator(5))
+    ax.grid(color='#e9ecf0', lw=0.8)
+    ax.set_axisbelow(True)
+    for spine in ('top', 'right'):
+        ax.spines[spine].set_visible(False)
+    for spine in ('bottom', 'left'):
+        ax.spines[spine].set_color('#bfc5cd')
+    # Preserve the existing LOC context; it summarizes selected populations,
+    # whereas the points above are offspring creation scores.
+    with (ROOT / '709715_fitness_by_generation/mean_population_loc.csv').open() as handle:
+        means = list(csv.DictReader(handle))
+    right = ax.twinx()
+    right.plot([int(r['generation']) for r in means], [float(r['mean_loc']) for r in means],
+               color='#a97948', lw=1.1, alpha=0.65)
+    right.set_ylabel('Mean population complexity (LOC)', color='#a97948')
+    right.tick_params(axis='y', colors='#a97948')
+    right.set_ylim(bottom=0)
+    for spine in ('top', 'left', 'bottom'):
+        right.spines[spine].set_visible(False)
+    right.spines['right'].set_color('#a97948')
+    ax.set_zorder(right.get_zorder() + 1)
+    ax.patch.set_visible(False)
+    color_handles = [Line2D([], [], marker='o', linestyle='none', color=c, label=t.capitalize())
+                     for t, c in COLORS.items()]
+    fig.legend(handles=color_handles, loc='lower center', bbox_to_anchor=(0.49, 0.175),
+               ncol=4, frameon=False, fontsize=9)
+    shape_handles = [Line2D([], [], marker=m, linestyle='none', color='#555555',
+                            markerfacecolor='none', label=mode.capitalize()) for mode, m in MARKERS.items()]
+    fig.legend(handles=shape_handles, loc='lower center', bbox_to_anchor=(0.49, 0.115),
+               ncol=4, frameon=False, fontsize=9)
+    status_handles = [Line2D([], [], marker='o', linestyle='none', color='#555555', label='Recorded ancestor'),
+                      Line2D([], [], marker='o', linestyle='none', color='#c9c9c9', markerfacecolor='none',
+                             label='Other offspring'),
+                      Line2D([], [], color='#a97948', lw=1.1, label='Mean population LOC (right)')]
+    fig.legend(handles=status_handles, loc='lower center', bbox_to_anchor=(0.49, 0.057),
+               ncol=3, frameon=False, fontsize=9)
+    fig.text(0.08, 0.025, 'Recorded ancestry only: crossover second parents were not saved. Gen 0 uses first saved population fitness.',
+             fontsize=8, color='#666666')
+    for ext in ('png', 'pdf', 'svg'):
+        fig.savefig(OUT / f'offspring_ancestry.{ext}', dpi=200, facecolor='white')
+    plt.close(fig)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--refresh-from', type=Path, help='Re-extract compact metadata from run_data.json')
+    args = parser.parse_args()
+    OUT.mkdir(exist_ok=True)
+    if args.refresh_from:
+        extract(args.refresh_from)
+    points, summary = reconstruct(json.loads((OUT / 'lineage_records.json').read_text()))
+    render(points)
+    with (OUT / 'plotted_offspring.csv').open('w', newline='') as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(points[0]))
+        writer.writeheader()
+        writer.writerows(points)
+    (OUT / 'ancestry_summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+    print(json.dumps(summary, indent=2))
+    print(f'Plotted {len(points)} creation events to {OUT}')
+
+
+if __name__ == '__main__':
+    main()

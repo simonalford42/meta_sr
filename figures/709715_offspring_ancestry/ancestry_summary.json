@@ -1,0 +1,28 @@
+{
+  "selected_bundle": "motif_duplication_simple_rational_gen27_9 | age_and_cost_regularized_survival_simple_gen28_8 | streamlined_niche_clone_tournament_gen43_3 | simplified_affine_profile_loss_gen34_7",
+  "validation_score": 0.7,
+  "recorded_ancestor_bundles": 14,
+  "colored_origins": {
+    "mutation": [
+      4,
+      9,
+      20,
+      27
+    ],
+    "survival": [
+      19,
+      28
+    ],
+    "selection": [
+      10,
+      18,
+      40,
+      43
+    ],
+    "loss": [
+      0,
+      8,
+      34
+    ]
+  }
+}
