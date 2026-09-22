@@ -63,7 +63,7 @@ def draw_population_context(ax, populations, norm):
                 color="#d0d0d0", lw=0.7, alpha=0.5, zorder=0.8)
         colors = plt.get_cmap("viridis_r")(norm([p["generation"] for p in points]))
         # Blend with white explicitly so repeated points cannot darken the background.
-        colors[:, :3] = 0.4 * colors[:, :3] + 0.6
+        colors[:, :3] = 0.5 * colors[:, :3] + 0.5
         ax.scatter([p["loc"] for p in points],
                    [p["train_score"] for p in points],
                    c=colors, s=14, edgecolors="none", zorder=2)
@@ -74,8 +74,8 @@ def draw(ax, points, norm, label_every, best_stars=False,
     x = [p["loc"] for p in points]
     y = [p["train_score"] for p in points]
     # A thin chronological guide; all points keep their exact saved coordinates.
-    ax.plot(x, y, color="#aeb5bd", lw=1.1,
-            alpha=0.55 if best_stars else 0.7, zorder=1)
+    ax.plot(x, y, color="black" if best_stars else "#aeb5bd", lw=1.1,
+            alpha=1.0 if best_stars else 0.7, zorder=2.5 if best_stars else 1)
     scatter = ax.scatter(x, y, c=[p["generation"] for p in points],
                          cmap="viridis_r", norm=norm,
                          s=120 if best_stars else 66,
