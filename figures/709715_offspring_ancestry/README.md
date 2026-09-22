@@ -55,3 +55,31 @@ The figure omits its title and caption. The legend is inside the bottom-right
 of the plot. Ancestor and Other offspring are right-aligned beside the marker
 column, without a bracket. All five legend circles have equal size. Grey
 background dots use marker area 38; the dark-grey ancestor uses area 50.
+
+## Figure sizing and regeneration
+
+The renderer now writes **PDF only**. Existing PNG/SVG files are older previews
+and are not regenerated. The default canvas is 7.2 × 4.2 inches, with 12-point
+axis labels, 10-point ticks, and a 10-point legend. This makes text larger
+relative to the plot than in the earlier 10.2-inch-wide version. The legend
+box scales with the canvas and legend font size.
+
+Regenerate with defaults:
+
+```bash
+python figures/plot_709715_offspring_ancestry.py
+```
+
+Customize size and typography (dimensions in inches; fonts in points):
+
+```bash
+python figures/plot_709715_offspring_ancestry.py \
+  --width 7.2 --height 4.2 \
+  --axis-fontsize 14 --tick-fontsize 12 --legend-fontsize 11
+```
+
+Output: `figures/709715_offspring_ancestry/offspring_ancestry.pdf`.
+Use `--help` for all options. For best print readability, render near the final
+placement size: scaling the PDF down also scales down its fonts. Colors, marker
+sizes, opacity, and legend placement are in `draw_ancestry_legend` and `render`
+in `figures/plot_709715_offspring_ancestry.py`.
