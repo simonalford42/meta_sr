@@ -15,7 +15,7 @@ def main():
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10,
                          "pdf.fonttype": 42, "svg.fonttype": "none"})
     fig, ax = plt.subplots(figsize=(7.4, 4.6))
-    fig.subplots_adjust(left=0.11, right=0.97, bottom=0.14, top=0.89)
+    fig.subplots_adjust(left=0.11, right=0.88, bottom=0.14, top=0.89)
     ax.scatter([p["generation"] for p in others], [p["train_score"] for p in others],
                s=19, color="#c9c9c9", edgecolors="none", zorder=2,
                label="Other population members")
@@ -32,8 +32,25 @@ def main():
         ax.spines[spine].set_visible(False)
     for spine in ("left", "bottom"):
         ax.spines[spine].set_color("#bfc5cd")
+    mean_loc = [sum(p["loc"] for p in members) / len(members)
+                for members in populations.values()]
+    right = ax.twinx()
+    loc_color = "#b66b32"
+    loc_line, = right.plot(list(populations), mean_loc, color=loc_color,
+                           linewidth=1.5, label="Mean population LOC (right)")
+    right.set_ylabel("Mean population complexity (LOC)", color=loc_color)
+    right.tick_params(axis="y", colors=loc_color)
+    right.set_ylim(bottom=0)
+    right.spines["top"].set_visible(False)
+    right.spines["left"].set_visible(False)
+    right.spines["bottom"].set_visible(False)
+    right.spines["right"].set_color(loc_color)
+    # Keep fitness markers and their legend above the LOC line.
+    ax.set_zorder(right.get_zorder() + 1)
+    ax.patch.set_visible(False)
     handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles[::-1], labels[::-1], frameon=False, loc="lower right", fontsize=9)
+    ax.legend(handles[::-1] + [loc_line], labels[::-1] + [loc_line.get_label()],
+              frameon=False, loc="lower right", fontsize=9)
     out = ROOT / "709715_fitness_by_generation"
     out.mkdir(exist_ok=True)
     for extension in ("png", "pdf", "svg"):
@@ -45,6 +62,11 @@ def main():
         for members in populations.values():
             for rank, point in enumerate(members, 1):
                 writer.writerow({**point, "fitness_rank": rank})
+    with (out / "mean_population_loc.csv").open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["generation", "population_size", "mean_loc"])
+        for (generation, members), value in zip(populations.items(), mean_loc):
+            writer.writerow([generation, len(members), value])
     print(f"Saved {len(best)} stars and {len(others)} other population points to {out}")
 
 

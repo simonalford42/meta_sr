@@ -11,6 +11,11 @@ are included. Generation 5 contains 11 members; all other generations contain
 10. All 451 members are included (45 stars, 406 background points).
 These are training scores, not validation scores.
 
+An orange line shows arithmetic mean LOC over the entire selected population
+on the right y-axis, including all 11 members at generation 5. LOC excludes
+blank lines, comments, and docstrings. `mean_population_loc.csv` records the
+45 generation means and population sizes.
+
 Regenerate from the repository root:
 
 ```bash
