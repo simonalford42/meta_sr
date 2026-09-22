@@ -59,11 +59,12 @@ def draw_population_context(ax, populations, norm):
         raise ValueError("Population context expects at least 10 members per generation")
     for rank in range(1, 10):
         points = [population[rank] for population in populations.values()]
+        colors = plt.get_cmap("viridis_r")(norm([p["generation"] for p in points]))
+        # Blend with white explicitly so repeated points cannot darken the background.
+        colors[:, :3] = 0.4 * colors[:, :3] + 0.6
         ax.scatter([p["loc"] for p in points],
                    [p["train_score"] for p in points],
-                   c=[p["generation"] for p in points],
-                   cmap="viridis_r", norm=norm, s=14,
-                   edgecolors="none", alpha=0.8, zorder=2)
+                   c=colors, s=14, edgecolors="none", zorder=2)
 
 
 def draw(ax, points, norm, label_every, best_stars=False,
