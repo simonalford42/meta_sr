@@ -47,15 +47,22 @@ def draw_population_context(ax, populations):
         points = [population[rank] for population in populations.values()]
         ax.plot([p["loc"] for p in points], [p["train_score"] for p in points],
                 color="#d0d0d0", lw=0.7, alpha=0.65, zorder=0.8)
+        ax.scatter([p["loc"] for p in points],
+                   [p["train_score"] for p in points],
+                   c=[p["generation"] for p in points],
+                   cmap="viridis_r", norm=Normalize(1, 90), s=14,
+                   edgecolors="none", alpha=0.8, zorder=2)
 
 
-def draw(ax, points, norm, label_every):
+def draw(ax, points, norm, label_every, best_stars=False):
     x = [p["loc"] for p in points]
     y = [p["train_score"] for p in points]
     # A thin chronological guide; all points keep their exact saved coordinates.
     ax.plot(x, y, color="#aeb5bd", lw=1.1, alpha=0.7, zorder=1)
     scatter = ax.scatter(x, y, c=[p["generation"] for p in points],
-                         cmap="viridis_r", norm=norm, s=66,
+                         cmap="viridis_r", norm=norm,
+                         s=120 if best_stars else 66,
+                         marker="*" if best_stars else "o",
                          edgecolors="#34383d", linewidths=0.55, zorder=3)
     labels = defaultdict(list)
     for p in points:
@@ -105,7 +112,8 @@ def main():
     fig, ax = plt.subplots(figsize=(7.4, 4.8))
     fig.subplots_adjust(left=0.12, right=0.82, bottom=0.14, top=0.96)
     norm = Normalize(1, 90)
-    scatter = draw(ax, points, norm, args.label_every)
+    scatter = draw(ax, points, norm, args.label_every,
+                   best_stars=args.population_context)
     if args.population_context:
         # Preserve the original view; early low-score members extend below it.
         ax.set_xlim(ax.get_xlim())
