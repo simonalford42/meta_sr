@@ -11,8 +11,8 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-from matplotlib.legend_handler import HandlerBase
+from matplotlib.path import Path as MplPath
+from matplotlib.patches import PathPatch
 from matplotlib.ticker import MultipleLocator
 
 ROOT = Path(__file__).resolve().parent
@@ -22,17 +22,29 @@ BASELINE = ('add_constant_offset', 'age_regularized_survival', 'tournament_selec
 COLORS = dict(mutation='#d62728', loss='#2878c8', selection='#e4bc24', survival='#2c9b49')
 
 
-class OverlappingCircles(HandlerBase):
-    """Four colored circles with 75% of each diameter exposed."""
-
-    def create_artists(self, legend, orig_handle, xdescent, ydescent,
-                       width, height, fontsize, trans):
-        diameter = width / 3.25
-        return [Line2D([diameter / 2 + i * 0.75 * diameter - xdescent],
-                       [height / 2 - ydescent], marker='o', linestyle='none',
-                       markersize=diameter, markerfacecolor=color,
-                       markeredgecolor='none', transform=trans)
-                for i, color in enumerate(orig_handle)]
+def draw_ancestry_legend(ax):
+    """Inset operator legend with a right curly brace grouping ancestors."""
+    for i, (label, color) in enumerate(COLORS.items()):
+        y = 0.255 - i * 0.045
+        ax.scatter([0.755], [y], s=46, c=color, edgecolors='none',
+                   transform=ax.transAxes, zorder=6)
+        ax.text(0.773, y, label.capitalize(), transform=ax.transAxes,
+                va='center', fontsize=9, zorder=6)
+    ax.scatter([0.755], [0.06], s=30, c='#c9c9c9', alpha=0.60,
+               edgecolors='none', transform=ax.transAxes, zorder=6)
+    ax.text(0.773, 0.06, 'Other offspring', transform=ax.transAxes,
+            va='center', fontsize=9, zorder=6)
+    x, top, bottom = 0.868, 0.274, 0.101
+    mid = (top + bottom) / 2
+    vertices = [(x, top), (x+0.010, top), (x+0.010, top-0.010), (x+0.010, mid+0.025),
+                (x+0.010, mid+0.008), (x+0.013, mid+0.004), (x+0.019, mid),
+                (x+0.013, mid-0.004), (x+0.010, mid-0.008), (x+0.010, mid-0.025),
+                (x+0.010, bottom+0.010), (x+0.010, bottom), (x, bottom)]
+    ax.add_patch(PathPatch(MplPath(vertices, [MplPath.MOVETO]+[MplPath.CURVE4]*12),
+                           transform=ax.transAxes, fill=False, edgecolor='#555555',
+                           linewidth=1, zorder=6))
+    ax.text(0.898, mid, 'ancestor', transform=ax.transAxes,
+            va='center', fontsize=9, zorder=6)
 
 
 def extract(source):
@@ -154,7 +166,7 @@ def render(points):
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 10,
                          'pdf.fonttype': 42, 'svg.fonttype': 'none'})
     fig, ax = plt.subplots(figsize=(10.2, 5.6))
-    fig.subplots_adjust(left=0.08, right=0.97, bottom=0.22, top=0.97)
+    fig.subplots_adjust(left=0.08, right=0.97, bottom=0.12, top=0.97)
     for status in ('not_recorded_ancestor', 'ancestor', 'operator_origin'):
         group = [p for p in points if p['status'] == status]
         colors = [COLORS[p['color_operator']] if p['color_operator'] else
@@ -171,16 +183,7 @@ def render(points):
         ax.spines[spine].set_visible(False)
     for spine in ('bottom', 'left'):
         ax.spines[spine].set_color('#bfc5cd')
-    color_handles = [Line2D([], [], marker='o', linestyle='none', color=c, label=t.capitalize())
-                     for t, c in COLORS.items()]
-    fig.legend(handles=color_handles, loc='lower center', bbox_to_anchor=(0.52, 0.10),
-               ncol=4, frameon=False, fontsize=9)
-    status_handles = [tuple(COLORS.values()),
-                      Line2D([], [], marker='o', markersize=5.5, linestyle='none', color='#c9c9c9', markeredgecolor='none', alpha=0.60,
-                             label='Other offspring')]
-    fig.legend(handles=status_handles, labels=['Recorded ancestor', 'Other offspring'],
-               handler_map={tuple: OverlappingCircles()}, loc='lower center',
-               bbox_to_anchor=(0.52, 0.04), ncol=2, frameon=False, fontsize=9)
+    draw_ancestry_legend(ax)
     for ext in ('png', 'pdf', 'svg'):
         fig.savefig(OUT / f'offspring_ancestry.{ext}', dpi=200, facecolor='white')
     plt.close(fig)

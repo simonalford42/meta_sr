@@ -51,6 +51,7 @@ Refresh the metadata from the original 2.1 GB run file and regenerate:
 python figures/plot_709715_offspring_ancestry.py --refresh-from runs/709715/run_data.json
 ```
 
-The figure omits its title and caption. The Recorded ancestor legend uses
-four overlapping red, blue, yellow, and green circles. Grey background dots
+The figure omits its title and caption. The legend is inside the bottom-right of the plot. Mutation, loss, selection,
+and survival are grouped by a right curly brace labeled “ancestor”, followed
+by Other offspring. Grey background dots
 use marker area 30; the remaining dark-grey ancestor uses area 46.
