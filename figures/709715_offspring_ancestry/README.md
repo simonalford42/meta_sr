@@ -51,8 +51,7 @@ Refresh the metadata from the original 2.1 GB run file and regenerate:
 python figures/plot_709715_offspring_ancestry.py --refresh-from runs/709715/run_data.json
 ```
 
-The figure omits its title and caption. The legend is inside the bottom-right of the plot. Mutation, loss, selection,
-and survival are grouped by a left square bracket labeled “Ancestor”. Ancestor and
-Other offspring are right-aligned in a left-hand category column. A short central bracket
-stroke points toward Ancestor. All five legend circles have equal size. Grey background dots
-use marker area 38; the remaining dark-grey ancestor uses area 50.
+The figure omits its title and caption. The legend is inside the bottom-right
+of the plot. Ancestor and Other offspring are right-aligned beside the marker
+column, without a bracket. All five legend circles have equal size. Grey
+background dots use marker area 38; the dark-grey ancestor uses area 50.

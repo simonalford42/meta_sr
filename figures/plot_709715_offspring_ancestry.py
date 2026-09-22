@@ -11,8 +11,6 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.path import Path as MplPath
-from matplotlib.patches import PathPatch
 from matplotlib.ticker import MultipleLocator
 
 ROOT = Path(__file__).resolve().parent
@@ -23,7 +21,7 @@ COLORS = dict(mutation='#d62728', loss='#2878c8', selection='#e4bc24', survival=
 
 
 def draw_ancestry_legend(ax):
-    """Align category labels at left, with a square bracket grouping operators."""
+    """Right-align category labels beside the operator markers."""
     for i, (label, color) in enumerate(COLORS.items()):
         y = 0.255 - i * 0.045
         ax.scatter([0.86], [y], s=46, c=color, edgecolors='none',
@@ -32,17 +30,10 @@ def draw_ancestry_legend(ax):
                 va='center', fontsize=9, zorder=6)
     ax.scatter([0.86], [0.06], s=46, c='#bdbdbd', alpha=0.70,
                edgecolors='none', transform=ax.transAxes, zorder=6)
-    ax.text(0.815, 0.06, 'Other offspring', transform=ax.transAxes,
+    ax.text(0.845, 0.06, 'Other offspring', transform=ax.transAxes,
             ha='right', va='center', fontsize=9, zorder=6)
-    x, top, bottom = 0.835, 0.274, 0.101
-    mid = (top + bottom) / 2
-    vertices = [(x+0.010, top), (x, top), (x, bottom), (x+0.010, bottom)]
-    ax.add_patch(PathPatch(MplPath(vertices, [MplPath.MOVETO]+[MplPath.LINETO]*3),
-                           transform=ax.transAxes, fill=False, edgecolor='#555555',
-                           linewidth=1, zorder=6))
-    ax.plot([x-0.012, x], [mid, mid], transform=ax.transAxes,
-            color='#555555', linewidth=1, zorder=6)
-    ax.text(0.815, mid, 'Ancestor', transform=ax.transAxes,
+    mid = (0.255 + 0.120) / 2
+    ax.text(0.845, mid, 'Ancestor', transform=ax.transAxes,
             ha='right', va='center', fontsize=9, zorder=6)
 
 
