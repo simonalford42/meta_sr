@@ -4,7 +4,7 @@ Matching population-context figure for `runs/709715`, using its existing
 `../709715_population_pareto/population.csv` export. The run contains generations
 1–45, with `fitness_metric=gt` and `simplify_cooldown=15`: the phase brackets
 span 1–30 (full evolution) and 30–45 (simplification, sharing the baseline at 30).
-The y-axis therefore reads Training score (GT).
+The y-axis therefore reads Fitness (GT).
 
 Stars mark the highest-scoring member each generation; smaller colored points
 show ranks 2–10. Ties use fewer LOC. Faint grey lines connect each score rank
@@ -23,5 +23,5 @@ Extra label offsets keep 20 and 45 clear of the dense upper cluster.
 Regenerate from the repository root:
 
 ```bash
-python figures/plot_150815_simplification_trajectory.py --source figures/709715_population_pareto/population.csv --population-context --xmin 0 --score-label 'Training score (GT)' --label-offset 20 -18 -40 --label-offset 45 12 27 --out-dir figures/709715_simplification_population_context
+python figures/plot_150815_simplification_trajectory.py --source figures/709715_population_pareto/population.csv --population-context --xmin 0 --score-label 'Fitness (GT)' --label-offset 20 -18 -40 --label-offset 45 12 27 --out-dir figures/709715_simplification_population_context
 ```

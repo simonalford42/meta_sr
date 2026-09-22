@@ -70,7 +70,7 @@ def draw_population_context(ax, populations, norm):
 
 
 def draw(ax, points, norm, label_every, best_stars=False,
-         score_label=r"Training score (GT/$R^2$)", label_offsets=None):
+         score_label=r"Fitness (GT/$R^2$)", label_offsets=None):
     x = [p["loc"] for p in points]
     y = [p["train_score"] for p in points]
     # A thin chronological guide; all points keep their exact saved coordinates.
@@ -131,7 +131,7 @@ def main():
     parser.add_argument("--label-every", type=int, default=10)
     parser.add_argument("--phase-boundary", type=int, default=30)
     parser.add_argument("--xmin", type=float, help="Override the LOC axis minimum")
-    parser.add_argument("--score-label", default=r"Training score (GT/$R^2$)")
+    parser.add_argument("--score-label", default=r"Fitness (GT/$R^2$)")
     parser.add_argument("--label-offset", nargs=3, type=int, action="append", default=[],
                         metavar=("GEN", "DX", "DY"), help="Override label offset in points")
     parser.add_argument("--population-context", action="store_true",
