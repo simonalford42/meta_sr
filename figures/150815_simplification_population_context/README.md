@@ -4,9 +4,11 @@ Larger generation-colored stars mark the best member each generation.
 Light-grey lines connect population score ranks 2–10 over generations 1–90,
 with smaller generation-colored dots at every generation and no additional labels.
 All ranks share reversed viridis coloring (early yellow, late purple).
-The horizontal generation colorbar sits below the x-axis. Curly braces below
+The horizontal generation colorbar sits below the x-axis at 80% of the previous
+width and thickness. Compact square brackets and smaller labels below
 it denote full evolution (1–30) and the simplification phase (30–90), with
 generation 30 as the shared transition boundary.
+Generation 1 is labeled above-left, 10 directly left, and 60/70 above-right.
 Members are ranked by descending
 training score, with fewer LOC breaking exact ties, just as for the best curve.
 These are rank trajectories, not individual lineages.
