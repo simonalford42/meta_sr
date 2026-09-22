@@ -74,7 +74,8 @@ def draw(ax, points, norm, label_every, best_stars=False,
     x = [p["loc"] for p in points]
     y = [p["train_score"] for p in points]
     # A thin chronological guide; all points keep their exact saved coordinates.
-    ax.plot(x, y, color="black" if best_stars else "#aeb5bd", lw=1.1,
+    ax.plot(x, y, color="#696b6d" if best_stars else "#aeb5bd",
+            lw=0.85 if best_stars else 1.1,
             alpha=1.0 if best_stars else 0.7, zorder=2.5 if best_stars else 1)
     scatter = ax.scatter(x, y, c=[p["generation"] for p in points],
                          cmap="viridis_r", norm=norm,
