@@ -23,27 +23,24 @@ COLORS = dict(mutation='#d62728', loss='#2878c8', selection='#e4bc24', survival=
 
 
 def draw_ancestry_legend(ax):
-    """Inset operator legend with a right curly brace grouping ancestors."""
+    """Align category labels at left, with a square bracket grouping operators."""
     for i, (label, color) in enumerate(COLORS.items()):
         y = 0.255 - i * 0.045
-        ax.scatter([0.755], [y], s=46, c=color, edgecolors='none',
+        ax.scatter([0.86], [y], s=46, c=color, edgecolors='none',
                    transform=ax.transAxes, zorder=6)
-        ax.text(0.773, y, label.capitalize(), transform=ax.transAxes,
+        ax.text(0.878, y, label.capitalize(), transform=ax.transAxes,
                 va='center', fontsize=9, zorder=6)
-    ax.scatter([0.755], [0.06], s=30, c='#c9c9c9', alpha=0.60,
+    ax.scatter([0.86], [0.06], s=30, c='#c9c9c9', alpha=0.60,
                edgecolors='none', transform=ax.transAxes, zorder=6)
-    ax.text(0.773, 0.06, 'Other offspring', transform=ax.transAxes,
+    ax.text(0.72, 0.06, 'Other offspring', transform=ax.transAxes,
             va='center', fontsize=9, zorder=6)
-    x, top, bottom = 0.868, 0.274, 0.101
+    x, top, bottom = 0.835, 0.274, 0.101
     mid = (top + bottom) / 2
-    vertices = [(x, top), (x+0.010, top), (x+0.010, top-0.010), (x+0.010, mid+0.025),
-                (x+0.010, mid+0.008), (x+0.013, mid+0.004), (x+0.019, mid),
-                (x+0.013, mid-0.004), (x+0.010, mid-0.008), (x+0.010, mid-0.025),
-                (x+0.010, bottom+0.010), (x+0.010, bottom), (x, bottom)]
-    ax.add_patch(PathPatch(MplPath(vertices, [MplPath.MOVETO]+[MplPath.CURVE4]*12),
+    vertices = [(x+0.010, top), (x, top), (x, bottom), (x+0.010, bottom)]
+    ax.add_patch(PathPatch(MplPath(vertices, [MplPath.MOVETO]+[MplPath.LINETO]*3),
                            transform=ax.transAxes, fill=False, edgecolor='#555555',
                            linewidth=1, zorder=6))
-    ax.text(0.898, mid, 'ancestor', transform=ax.transAxes,
+    ax.text(0.72, mid, 'Ancestor', transform=ax.transAxes,
             va='center', fontsize=9, zorder=6)
 
 
