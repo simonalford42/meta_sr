@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_SOURCE = ROOT / "150815-simplify-30-best2_population_pareto/population.csv"
 
 
-def load_best(source):
+def load_ranked(source):
     populations = defaultdict(list)
     with source.open(newline="") as handle:
         for row in csv.DictReader(handle):
@@ -31,8 +31,26 @@ def load_best(source):
             populations[point["generation"]].append(point)
     if not populations:
         raise ValueError("No population data")
-    return [max(populations[g], key=lambda p: (p["train_score"], -p["loc"]))
-            for g in sorted(populations)]
+    return {g: sorted(populations[g], key=lambda p: (-p["train_score"], p["loc"]))
+            for g in sorted(populations)}
+
+
+def load_best(source):
+    return [population[0] for population in load_ranked(source).values()]
+
+
+def draw_population_context(ax, populations):
+    """Connect score ranks across generations, not individual lineages."""
+    if any(len(population) != 10 for population in populations.values()):
+        raise ValueError("Population context expects 10 members per generation")
+    for rank in range(1, 10):
+        points = [population[rank] for population in populations.values()]
+        ax.plot([p["loc"] for p in points], [p["train_score"] for p in points],
+                color="#d0d0d0", lw=0.7, alpha=0.65, zorder=0.8)
+        milestones = [p for p in points if p["generation"] % 10 == 0]
+        ax.scatter([p["loc"] for p in milestones],
+                   [p["train_score"] for p in milestones],
+                   color="#c9c9c9", s=15, edgecolors="none", zorder=0.9)
 
 
 def draw(ax, points, norm, label_every):
@@ -77,6 +95,8 @@ def main():
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     parser.add_argument("--out-dir", type=Path, default=ROOT / "150815_simplification_trajectory")
     parser.add_argument("--label-every", type=int, default=10)
+    parser.add_argument("--population-context", action="store_true",
+                        help="Add light-grey trajectories for score ranks 2–10")
     args = parser.parse_args()
     if args.label_every < 1:
         parser.error("--label-every must be positive")
@@ -90,6 +110,11 @@ def main():
     fig.subplots_adjust(left=0.12, right=0.82, bottom=0.14, top=0.96)
     norm = Normalize(1, 90)
     scatter = draw(ax, points, norm, args.label_every)
+    if args.population_context:
+        # Preserve the original view; early low-score members extend below it.
+        ax.set_xlim(ax.get_xlim())
+        ax.set_ylim(ax.get_ylim())
+        draw_population_context(ax, load_ranked(args.source))
     cax = fig.add_axes([0.855, 0.14, 0.022, 0.82])
     colorbar = fig.colorbar(scatter, cax=cax, ticks=[1, 10, 20, 30, 40, 50, 60, 70, 80, 90])
     colorbar.set_label("Generation")
