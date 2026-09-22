@@ -17,7 +17,7 @@ later population scores because reevaluation changes them.
 - Yellow: selection origins at generations 10, 18, 40, 43.
 - Green: survival origins at generations 19, 28.
 - Dark grey: other recorded ancestors (generation 11).
-- Unfilled light grey: other offspring, not supported as ancestors by the records.
+- Light grey with 45% opacity: other offspring, not supported as ancestors by the records.
 
 The colored events follow the explicit operator `parent_name` chains of the four
 final components. They are ancestry contributions, not claims that every event
@@ -29,14 +29,10 @@ bundle parent is unique. The resulting 14 ancestors agree with the lineage repor
 Crossover's second parent was not persisted, so ancestry through missing donors
 cannot be recovered. Baseline operators are not colored offspring creation events.
 
-Marker shapes encode the creation method for every status/color: explore circle,
-refine square, simplify triangle, crossover x. Crosses have no interior to fill;
-their stroke color carries status. Exact overlaps are not jittered. The prior
-best-fitness stars are replaced by these creation-method shapes.
-
-The right-axis line retains mean LOC of the selected population from
-`../709715_fitness_by_generation/mean_population_loc.csv`. This line summarizes
-selected populations; plotted offspring are not necessarily selected survivors.
+All events use circular markers. Operator origins retain their operator colors;
+other recorded ancestors are dark grey. Other offspring are smaller filled
+light-grey dots with 45% opacity. No LOC line or second y-axis is shown.
+Exact overlaps are not jittered. Creation-method metadata remains in the CSV.
 
 `lineage_records.json` is a compact extract of the run's operator metadata,
 offspring/population scores, edit counts, and validation selection scores.
