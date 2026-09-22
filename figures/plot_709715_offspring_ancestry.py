@@ -15,7 +15,7 @@ from matplotlib.patches import Rectangle
 from matplotlib.ticker import MultipleLocator
 
 # Scale the entire figure: canvas, fonts, dots, and line widths.
-SCALE = 0.7
+SCALE = 1.0
 
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / '709715_offspring_ancestry'
@@ -31,12 +31,12 @@ def draw_ancestry_legend(ax, fontsize):
     sx = (fontsize / 9) * (10.2 / width)
     sy = (fontsize / 9) * (5.6 / height)
     def lx(value):
-        return 0.97 - (0.97 - value) * sx
+        return 1.0 - (0.97 - value) * sx
     def ly(value):
         return 0.025 + (value - 0.025) * sy
     ax.add_patch(Rectangle((lx(0.73), ly(0.025)), 0.24 * sx, 0.27 * sy,
                            transform=ax.transAxes, facecolor='white',
-                           edgecolor='black', linewidth=0.2 * SCALE, alpha=1, zorder=5))
+                           edgecolor='grey', linewidth=0.5 * SCALE, alpha=1, zorder=5))
     for i, (label, color) in enumerate(COLORS.items()):
         y = 0.255 - i * 0.045
         ax.scatter([lx(0.86)], [ly(y)], s=46 * SCALE**2, c=color, edgecolors='none',
@@ -194,7 +194,7 @@ def render(points):
         ax.spines[spine].set_visible(False)
     for spine in ('bottom', 'left'):
         ax.spines[spine].set_color('#bfc5cd')
-    draw_ancestry_legend(ax, 10 * SCALE)
+    draw_ancestry_legend(ax, 8 * SCALE)
     fig.savefig(OUT / 'offspring_ancestry.pdf', facecolor='white')
     plt.close(fig)
 
