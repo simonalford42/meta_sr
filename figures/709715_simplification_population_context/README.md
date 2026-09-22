@@ -23,7 +23,12 @@ Extra label offsets keep 20 and 45 clear of the dense upper cluster.
 Regenerate from the repository root:
 
 ```bash
-python figures/plot_150815_simplification_trajectory.py --source figures/709715_population_pareto/population.csv --population-context --ylim 0.4 1.0 --xmin 0 --score-label 'Fitness (GT)' --label-offset 20 -18 -40 --label-offset 45 12 27 --out-dir figures/709715_simplification_population_context
+python figures/combine_loc_score_time.py
 ```
+
+This script renders both standalone plots and `figures/pysr_basicsr_loc_score_time.pdf`
+directly from the population CSVs in Matplotlib, without merging PDFs. Both LOC
+axes start at zero. The panels share compact spacing below the plots and titles
+“PySR evolution” and “BasicSR evolution”.
 
 Fitness axis limits: 0.4–1.0. Both plots share the same layout.
