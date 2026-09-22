@@ -3,7 +3,7 @@ oracle-replay table.
 
   (a) reeval train score of best algorithm vs generation, n1/n3/n10
   (b) same vs cumulative evaluations
-  (c) winner's curse = reeval train score - live train score of the best algorithm
+  (c) winner's curse = live train fitness - reevaluated train fitness of the best algorithm
   (d) n1 (no reeval) vs n1 smart TTTS reeval (budget-matched 20 evals/gen), vs evals
   (e) oracle-replay table (from plots/oracle_replay/oracle_replay_table.json)
 
@@ -68,7 +68,7 @@ def load_method(api, rids):
         m = pe.cached_per_gen_metrics(f"runs/{rid}")
         ser = fetch_train_series(api, wandb_id(rid))
         re_ff = pe.forward_fill_by_gen([(g, v[0]) for g, v in ser.items()], GENS)
-        wc_ff = pe.forward_fill_by_gen([(g, v[0] - v[1]) for g, v in ser.items()
+        wc_ff = pe.forward_fill_by_gen([(g, v[1] - v[0]) for g, v in ser.items()
                                         if v[1] is not None], GENS)
         cum = dict(zip(m["gen"].tolist(), m["cum_evals"].tolist()))
         R.append([re_ff.get(g, np.nan) for g in GENS])
@@ -146,9 +146,10 @@ def main():
 
     axa.set_xlabel("Generation"); axb.set_xlabel("Evaluations")
     axc.set_xlabel("Generation"); axd.set_xlabel("Evaluations")
-    axa.set_ylabel("Reevaluated train score of best algorithm")
-    axd.set_ylabel("Reevaluated train score of best algorithm")
-    axc.set_ylabel("Winner's curse (reevaluated $-$ live train score)")
+    axa.set_ylabel("Reevaluated fitness, best algorithm")
+    axb.set_ylabel("Reevaluated fitness, best algorithm")
+    axd.set_ylabel("Reevaluated fitness, best algorithm")
+    axc.set_ylabel("Winner's curse (fitness minus reevaluated fitness)")
     axa.set_title("(a)", loc="left", fontsize=10); axb.set_title("(b)", loc="left", fontsize=10)
     axc.set_title("(c)", loc="left", fontsize=10); axd.set_title("(d)", loc="left", fontsize=10)
     for ax in (axa, axb, axc, axd):
