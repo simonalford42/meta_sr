@@ -1,0 +1,62 @@
+{
+  "affine_continuation_loss_init_8": {
+    "label": "Affine shape scaffolding",
+    "explanation": "Blends raw prediction error with error after affine calibration, rewarding the right functional shape before its scale and offset are tuned."
+  },
+  "symmetric_motif_duplication_gen4_9": {
+    "label": "Symmetric motif duplication",
+    "explanation": "Copies an expression subtree, optionally remaps its input variables, and reuses it through binary coupling or grafting into a matching structure."
+  },
+  "affine_angular_profile_loss_2pass_gen8_1": {
+    "label": "Sharper affine shape discrimination",
+    "explanation": "Uses normalized affine residual RMSE with a stable second residual pass and a bounded raw-error term to better distinguish nearly correct shapes."
+  },
+  "symmetric_motif_duplication_gen9_6": {
+    "label": "Simplified cyclic motif coupling",
+    "explanation": "Restricts motif reuse to binary coupling and cyclic variable shifts, removing targeted substitutions, grafting, and the unary fallback."
+  },
+  "crowding_suppressed_niche_tournament_gen10_4": {
+    "label": "Clone suppression and niche rescue",
+    "explanation": "Enlarges the tournament, penalizes redundant candidates, mildly favors younger members, and occasionally selects from a rare complexity niche."
+  },
+  "symmetric_motif_duplication_gen10_1_gen11_9": {
+    "label": "Size-aware targeted motif reuse",
+    "explanation": "Adds size-budget checks, favors compound motifs containing variables, restores targeted variable substitutions, and biases coupling toward addition and multiplication."
+  },
+  "crowding_suppressed_rare_niche_tournament_gen16_4": {
+    "label": "Simplified rare-niche selection",
+    "explanation": "Removes sibling penalties and the youth discount while retaining clone suppression and occasional selection from the rarest complexity niche."
+  },
+  "novelty_weighted_quality_gated_niche_tournament_gen18_4": {
+    "label": "Quality-gated niche exploration",
+    "explanation": "Combines clone suppression with similarity-dependent sibling penalties and adaptive rare-niche exploration restricted to sufficiently good niche champions."
+  },
+  "age_and_cost_regularized_survival_gen19_0": {
+    "label": "Cost-aware age replacement",
+    "explanation": "Combines age and cost ranks with weights of 0.75 and 0.25, respectively, so older and worse candidates are more likely to be replaced."
+  },
+  "motif_duplication_with_rational_coupling_gen12_gen20_5": {
+    "label": "Rational motif coupling",
+    "explanation": "Combines the compact cyclic-shift and size-aware motif parents and adds rational couplings of the form target divided by one plus or minus a motif."
+  },
+  "motif_duplication_simple_rational_gen27_9": {
+    "label": "Simplified rational motif templates",
+    "explanation": "Keeps cyclic or unchanged motifs with addition, multiplication, or target divided by one minus the motif, removing extra remapping and coupling branches."
+  },
+  "age_and_cost_regularized_survival_simple_gen28_8": {
+    "label": "Direct age\u2013cost normalization",
+    "explanation": "Replaces age and cost ranking with min\u2013max normalization while retaining the 0.75 age and 0.25 cost weighting."
+  },
+  "simplified_affine_profile_loss_gen34_7": {
+    "label": "Streamlined affine profile loss",
+    "explanation": "Retains affine fitting and direct residual evaluation with a bounded raw-RMSE penalty while removing compensated sums and specialized numerical handling."
+  },
+  "novelty_weighted_quality_gated_niche_tournament_gen18_4_simplified_gen40_6": {
+    "label": "Clone-only niche rescue",
+    "explanation": "Drops sibling penalties, youth adjustments, and niche quality gating while retaining clone penalties and adaptive rare-niche rescue."
+  },
+  "streamlined_niche_clone_tournament_gen43_3": {
+    "label": "Fixed-rate niche rescue",
+    "explanation": "Fixes rare-niche exploration at 10 percent and applies a single clone penalty once a better matching candidate is found."
+  }
+}

@@ -71,6 +71,29 @@ def main():
     chain.reverse()
     assert len(chain) == 14
 
+    recovery = ROOT / 'analysis/709715_crossover_recovery'
+    crossovers = json.loads((recovery / 'crossover_parents.json').read_text())
+    assert len(crossovers) == 73 and all(r['status'] == 'confirmed_exact_code' for r in crossovers)
+    crossover_parents = {r['child']: [r['parent1'], r['parent2']] for r in crossovers}
+    library = json.loads((recovery / 'operator_library.json').read_text())
+    for n, op in library.items():
+        operators.setdefault(n, {k: v for k, v in op.items() if k != 'code'})
+    changes = json.loads((recovery / 'ancestor_changes.json').read_text())
+
+    def operator_parents(n):
+        return crossover_parents.get(n, [operators[n]['parent_name']] if operators[n]['parent_name'] else [])
+
+    def ancestors(root):
+        reached = set()
+        def visit(n):
+            if n in reached:
+                return
+            reached.add(n)
+            for parent in operator_parents(n):
+                visit(parent)
+        visit(root)
+        return sorted((operators[n] for n in reached), key=lambda op: (op['generation'], op['name']))
+
     lines = ['# Run 709715: lineage of the default evaluation bundle', '',
         '`srbench_full_eval.py --evolve-results runs/709715` defaults to '
         '`--select-by val`. The selected bundle was created in **generation 43**, '
@@ -96,30 +119,42 @@ def main():
         cells = [f'**{b["ops"][t]}**' if t == edited else b['ops'][t] for t in TYPES]
         lines.append(f'| {g} | {method} | ' + ' | '.join(cells) + ' |')
 
+    ancestor_names = {op['name'] for t in TYPES for op in ancestors(selected['ops'][t])}
+    evolved = ancestor_names - set(BASELINE.values())
+    assert evolved == set(changes), (evolved - set(changes), set(changes) - evolved)
+    lines += ['', '## What changed at each ancestral step', '',
+        'These 15 evolved operators include both crossover branches, not just the '
+        'bundle-inheritance path above. Labels summarize code changes, not measured '
+        'fitness gains; simplification steps can remove mechanisms rather than add them. '
+        'Generation 16 is a donor branch; generation 11 contributes through the second '
+        'parent of the generation 20 crossover.', '',
+        '| Generation | Operator | Short description | One-sentence explanation |',
+        '| --- | --- | --- | --- |']
+    for n in sorted(evolved, key=lambda n: (operators[n]['generation'], n)):
+        op, change = operators[n], changes[n]
+        assert 1 <= len(change['label'].split()) <= 5
+        source = next((path for path in sorted((RUN / 'operators').glob(f"gen{op['generation']}_{op['type']}*.jl"))
+                       if n in path.read_text()), None)
+        assert source, n
+        lines.append(f"| {op['generation']} | [{op['type']}: `{n}`](../{source.relative_to(ROOT)}) | "
+                     f"{change['label']} | {change['explanation']} |")
+
     lines += ['', '## Operator ancestry and crossover inputs', '',
-        'Bundle inheritance and operator ancestry differ: crossover can draw an '
-        'operator from another bundle. The following tables follow the saved '
-        '`parent_name` for each final component. For crossover, this is only '
-        'parent 1; parent 2 was not persisted. Saved prompts stop after generation '
-        '3, so the crossover inputs at generations 18, 19, and 20 cannot be fully '
-        'recovered from these records. Explore creates a new proposal; a recorded '
-        'baseline reference is not a refine or crossover event.', '']
+        'Both crossover parents are recovered for **all 73 crossovers** by matching '
+        'cached response code to the saved child (undoing its generated function-name '
+        'suffix), then matching both parent code blocks in that request to saved '
+        'operators. Every match is exact after trimming outer whitespace. '
+        'The generation 19 survival crossover used the same baseline operator for '
+        'both inputs. Explore events with no parent metadata are new proposals.', '',
+        'See the [complete crossover audit](../analysis/709715_crossover_recovery/README.md) '
+        'for all parent pairs and the corresponding prompt evidence.', '']
     for t in TYPES:
-        lineage = []
-        n = selected['ops'][t]
-        while n:
-            assert n in operators, n
-            op = operators[n]
-            lineage.append(op)
-            n = op['parent_name']
         lines += [f'### {t.capitalize()}', '',
-                  '| Generation | Method | Operator | Recorded operator parent |',
+                  '| Generation | Method | Operator | Operator parent(s) |',
                   '| --- | --- | --- | --- |']
-        for op in reversed(lineage):
+        for op in ancestors(selected['ops'][t]):
             method = 'baseline' if op['name'] in BASELINE.values() else op['mode']
-            parent = op['parent_name'] or '—'
-            if method == 'crossover':
-                parent += '; second parent not recorded'
+            parent = '; '.join(operator_parents(op['name'])) or '—'
             label = op['name']
             if label == selected['ops'][t]:
                 label = f'**{label}**'
@@ -128,10 +163,9 @@ def main():
 
     lines += ['## Recorded descendants of the selected operators', '',
         'These are all direct and indirect descendants reachable through '
-        '`parent_name` for the four selected components, through generation 45. '
+        'saved parents and both recovered crossover inputs for the four selected components, through generation 45. '
         'They can predate the assembly of the final bundle in generation 43. '
-        'Crossover descendants connected only through an unrecorded second parent '
-        'cannot be identified. These tables describe operator descent, not '
+        'These tables describe operator descent, not '
         'necessarily descent of the complete selected bundle.', '']
     total_descendants = 0
     for t in TYPES:
@@ -139,7 +173,7 @@ def main():
         reached = {root}
         while True:
             expanded = reached | {n for n, op in operators.items()
-                                  if op['parent_name'] in reached}
+                                  if any(p in reached for p in operator_parents(n))}
             if expanded == reached:
                 break
             reached = expanded
@@ -155,7 +189,7 @@ def main():
                   '| --- | --- | --- | --- |']
         for op in descendants:
             lines.append(f'| {op["generation"]} | {op["mode"]} → {t} | '
-                         f'{op["name"]} | {op["parent_name"]} |')
+                         f'{op["name"]} | {"; ".join(operator_parents(op["name"]))} |')
         lines.append('')
 
     later = {name(b): b for b in rows if b['kind'] == 'offspring'
@@ -192,13 +226,15 @@ def main():
         '- [evolve_pysr.py](../evolve_pysr.py): crossover chooses operator parents '
         'independently of the bundle supplying unchanged components.',
         '- [Saved prompts](../runs/709715/prompts): available only through generation 3.',
+        '- [Crossover recovery](../scripts/recover_709715_crossover_parents.py): exact cached request/response matching.',
+        '- [Change descriptions](../analysis/709715_crossover_recovery/ancestor_changes.json): manually reviewed source-code summaries.',
         '- [Report generator](../scripts/trace_709715_lineage.py).', '',
         'The bundle path is reconstructed by matching the three unchanged components '
         'and all inherited edit counts against earlier records. Refine/simplify also '
         'require the replaced component to match the saved operator parent. Each '
         'of the 13 transitions after initialization has exactly one matching parent '
         'bundle. Initialization is the generation 0 loss exploration from the baseline. '
-        'The operator tables use explicit parent metadata rather than guesses from names.', '']
+        'The operator tables combine explicit parent metadata with exact cached-code evidence for both crossover inputs.', '']
     output = ROOT / 'out/709715-lineage.md'
     output.write_text('\n'.join(lines))
     print(f'Wrote {output}: {len(chain)} steps, {total_descendants} operator descendants; '

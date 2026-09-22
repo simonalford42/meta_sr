@@ -26,48 +26,74 @@ Each row descends from the previous row. Bold marks the operator introduced at t
 | 40 | simplify → selection | motif_duplication_simple_rational_gen27_9 | age_and_cost_regularized_survival_simple_gen28_8 | **novelty_weighted_quality_gated_niche_tournament_gen18_4_simplified_gen40_6** | simplified_affine_profile_loss_gen34_7 |
 | 43 | simplify → selection | motif_duplication_simple_rational_gen27_9 | age_and_cost_regularized_survival_simple_gen28_8 | **streamlined_niche_clone_tournament_gen43_3** | simplified_affine_profile_loss_gen34_7 |
 
+## What changed at each ancestral step
+
+These 15 evolved operators include both crossover branches, not just the bundle-inheritance path above. Labels summarize code changes, not measured fitness gains; simplification steps can remove mechanisms rather than add them. Generation 16 is a donor branch; generation 11 contributes through the second parent of the generation 20 crossover.
+
+| Generation | Operator | Short description | One-sentence explanation |
+| --- | --- | --- | --- |
+| 0 | [loss: `affine_continuation_loss_init_8`](../runs/709715/operators/gen0_loss8.jl) | Affine shape scaffolding | Blends raw prediction error with error after affine calibration, rewarding the right functional shape before its scale and offset are tuned. |
+| 4 | [mutation: `symmetric_motif_duplication_gen4_9`](../runs/709715/operators/gen4_mutation9.jl) | Symmetric motif duplication | Copies an expression subtree, optionally remaps its input variables, and reuses it through binary coupling or grafting into a matching structure. |
+| 8 | [loss: `affine_angular_profile_loss_2pass_gen8_1`](../runs/709715/operators/gen8_loss1.jl) | Sharper affine shape discrimination | Uses normalized affine residual RMSE with a stable second residual pass and a bounded raw-error term to better distinguish nearly correct shapes. |
+| 9 | [mutation: `symmetric_motif_duplication_gen9_6`](../runs/709715/operators/gen9_mutation6.jl) | Simplified cyclic motif coupling | Restricts motif reuse to binary coupling and cyclic variable shifts, removing targeted substitutions, grafting, and the unary fallback. |
+| 10 | [selection: `crowding_suppressed_niche_tournament_gen10_4`](../runs/709715/operators/gen10_selection4.jl) | Clone suppression and niche rescue | Enlarges the tournament, penalizes redundant candidates, mildly favors younger members, and occasionally selects from a rare complexity niche. |
+| 11 | [mutation: `symmetric_motif_duplication_gen10_1_gen11_9`](../runs/709715/operators/gen11_mutation9.jl) | Size-aware targeted motif reuse | Adds size-budget checks, favors compound motifs containing variables, restores targeted variable substitutions, and biases coupling toward addition and multiplication. |
+| 16 | [selection: `crowding_suppressed_rare_niche_tournament_gen16_4`](../runs/709715/operators/gen16_selection4.jl) | Simplified rare-niche selection | Removes sibling penalties and the youth discount while retaining clone suppression and occasional selection from the rarest complexity niche. |
+| 18 | [selection: `novelty_weighted_quality_gated_niche_tournament_gen18_4`](../runs/709715/operators/gen18_selection4.jl) | Quality-gated niche exploration | Combines clone suppression with similarity-dependent sibling penalties and adaptive rare-niche exploration restricted to sufficiently good niche champions. |
+| 19 | [survival: `age_and_cost_regularized_survival_gen19_0`](../runs/709715/operators/gen19_survival0.jl) | Cost-aware age replacement | Combines age and cost ranks with weights of 0.75 and 0.25, respectively, so older and worse candidates are more likely to be replaced. |
+| 20 | [mutation: `motif_duplication_with_rational_coupling_gen12_gen20_5`](../runs/709715/operators/gen20_mutation5.jl) | Rational motif coupling | Combines the compact cyclic-shift and size-aware motif parents and adds rational couplings of the form target divided by one plus or minus a motif. |
+| 27 | [mutation: `motif_duplication_simple_rational_gen27_9`](../runs/709715/operators/gen27_mutation9.jl) | Simplified rational motif templates | Keeps cyclic or unchanged motifs with addition, multiplication, or target divided by one minus the motif, removing extra remapping and coupling branches. |
+| 28 | [survival: `age_and_cost_regularized_survival_simple_gen28_8`](../runs/709715/operators/gen28_survival8.jl) | Direct age–cost normalization | Replaces age and cost ranking with min–max normalization while retaining the 0.75 age and 0.25 cost weighting. |
+| 34 | [loss: `simplified_affine_profile_loss_gen34_7`](../runs/709715/operators/gen34_loss7.jl) | Streamlined affine profile loss | Retains affine fitting and direct residual evaluation with a bounded raw-RMSE penalty while removing compensated sums and specialized numerical handling. |
+| 40 | [selection: `novelty_weighted_quality_gated_niche_tournament_gen18_4_simplified_gen40_6`](../runs/709715/operators/gen40_selection6.jl) | Clone-only niche rescue | Drops sibling penalties, youth adjustments, and niche quality gating while retaining clone penalties and adaptive rare-niche rescue. |
+| 43 | [selection: `streamlined_niche_clone_tournament_gen43_3`](../runs/709715/operators/gen43_selection3.jl) | Fixed-rate niche rescue | Fixes rare-niche exploration at 10 percent and applies a single clone penalty once a better matching candidate is found. |
+
 ## Operator ancestry and crossover inputs
 
-Bundle inheritance and operator ancestry differ: crossover can draw an operator from another bundle. The following tables follow the saved `parent_name` for each final component. For crossover, this is only parent 1; parent 2 was not persisted. Saved prompts stop after generation 3, so the crossover inputs at generations 18, 19, and 20 cannot be fully recovered from these records. Explore creates a new proposal; a recorded baseline reference is not a refine or crossover event.
+Both crossover parents are recovered for **all 73 crossovers** by matching cached response code to the saved child (undoing its generated function-name suffix), then matching both parent code blocks in that request to saved operators. Every match is exact after trimming outer whitespace. The generation 19 survival crossover used the same baseline operator for both inputs. Explore events with no parent metadata are new proposals.
+
+See the [complete crossover audit](../analysis/709715_crossover_recovery/README.md) for all parent pairs and the corresponding prompt evidence.
 
 ### Mutation
 
-| Generation | Method | Operator | Recorded operator parent |
+| Generation | Method | Operator | Operator parent(s) |
 | --- | --- | --- | --- |
 | 4 | explore → mutation | symmetric_motif_duplication_gen4_9 | — |
 | 9 | simplify → mutation | symmetric_motif_duplication_gen9_6 | symmetric_motif_duplication_gen4_9 |
-| 20 | crossover → mutation | motif_duplication_with_rational_coupling_gen12_gen20_5 | symmetric_motif_duplication_gen9_6; second parent not recorded |
+| 11 | refine → mutation | symmetric_motif_duplication_gen10_1_gen11_9 | symmetric_motif_duplication_gen9_6 |
+| 20 | crossover → mutation | motif_duplication_with_rational_coupling_gen12_gen20_5 | symmetric_motif_duplication_gen9_6; symmetric_motif_duplication_gen10_1_gen11_9 |
 | 27 | simplify → mutation | **motif_duplication_simple_rational_gen27_9** | motif_duplication_with_rational_coupling_gen12_gen20_5 |
 
 ### Survival
 
-| Generation | Method | Operator | Recorded operator parent |
+| Generation | Method | Operator | Operator parent(s) |
 | --- | --- | --- | --- |
 | 0 | baseline → survival | age_regularized_survival | — |
-| 19 | crossover → survival | age_and_cost_regularized_survival_gen19_0 | age_regularized_survival; second parent not recorded |
+| 19 | crossover → survival | age_and_cost_regularized_survival_gen19_0 | age_regularized_survival; age_regularized_survival |
 | 28 | simplify → survival | **age_and_cost_regularized_survival_simple_gen28_8** | age_and_cost_regularized_survival_gen19_0 |
 
 ### Selection
 
-| Generation | Method | Operator | Recorded operator parent |
+| Generation | Method | Operator | Operator parent(s) |
 | --- | --- | --- | --- |
 | 10 | explore → selection | crowding_suppressed_niche_tournament_gen10_4 | — |
-| 18 | crossover → selection | novelty_weighted_quality_gated_niche_tournament_gen18_4 | crowding_suppressed_niche_tournament_gen10_4; second parent not recorded |
+| 16 | simplify → selection | crowding_suppressed_rare_niche_tournament_gen16_4 | crowding_suppressed_niche_tournament_gen10_4 |
+| 18 | crossover → selection | novelty_weighted_quality_gated_niche_tournament_gen18_4 | crowding_suppressed_niche_tournament_gen10_4; crowding_suppressed_rare_niche_tournament_gen16_4 |
 | 40 | simplify → selection | novelty_weighted_quality_gated_niche_tournament_gen18_4_simplified_gen40_6 | novelty_weighted_quality_gated_niche_tournament_gen18_4 |
 | 43 | simplify → selection | **streamlined_niche_clone_tournament_gen43_3** | novelty_weighted_quality_gated_niche_tournament_gen18_4_simplified_gen40_6 |
 
 ### Loss
 
-| Generation | Method | Operator | Recorded operator parent |
+| Generation | Method | Operator | Operator parent(s) |
 | --- | --- | --- | --- |
-| 0 | baseline → loss | mse_loss | — |
 | 0 | explore → loss | affine_continuation_loss_init_8 | mse_loss |
+| 0 | baseline → loss | mse_loss | — |
 | 8 | refine → loss | affine_angular_profile_loss_2pass_gen8_1 | affine_continuation_loss_init_8 |
 | 34 | simplify → loss | **simplified_affine_profile_loss_gen34_7** | affine_angular_profile_loss_2pass_gen8_1 |
 
 ## Recorded descendants of the selected operators
 
-These are all direct and indirect descendants reachable through `parent_name` for the four selected components, through generation 45. They can predate the assembly of the final bundle in generation 43. Crossover descendants connected only through an unrecorded second parent cannot be identified. These tables describe operator descent, not necessarily descent of the complete selected bundle.
+These are all direct and indirect descendants reachable through saved parents and both recovered crossover inputs for the four selected components, through generation 45. They can predate the assembly of the final bundle in generation 43. These tables describe operator descent, not necessarily descent of the complete selected bundle.
 
 ### Mutation: 16 descendants
 
@@ -98,7 +124,7 @@ Root: **age_and_cost_regularized_survival_simple_gen28_8**.
 
 | Generation | Creation method | Descendant | Recorded parent |
 | --- | --- | --- | --- |
-| 30 | crossover → survival | age_dominant_cost_tiebreak_survival_gen30_8 | age_and_cost_regularized_survival_simple_gen28_8 |
+| 30 | crossover → survival | age_dominant_cost_tiebreak_survival_gen30_8 | age_and_cost_regularized_survival_simple_gen28_8; age_regularized_survival |
 | 31 | simplify → survival | age_and_cost_regularized_survival_simple_gen28_9_gen31_0 | age_and_cost_regularized_survival_simple_gen28_8 |
 | 32 | simplify → survival | two_oldest_cost_biased_survival_gen32_5 | age_and_cost_regularized_survival_simple_gen28_8 |
 | 33 | simplify → survival | elite_protected_age_survival_gen33_8 | two_oldest_cost_biased_survival_gen32_5 |
@@ -141,6 +167,8 @@ No later bundle descendants are supported by the saved inheritance and edit-coun
 - [operator_types.py](../operator_types.py): `OperatorBundle.copy_with` inherits three operators and increments one edit count.
 - [evolve_pysr.py](../evolve_pysr.py): crossover chooses operator parents independently of the bundle supplying unchanged components.
 - [Saved prompts](../runs/709715/prompts): available only through generation 3.
+- [Crossover recovery](../scripts/recover_709715_crossover_parents.py): exact cached request/response matching.
+- [Change descriptions](../analysis/709715_crossover_recovery/ancestor_changes.json): manually reviewed source-code summaries.
 - [Report generator](../scripts/trace_709715_lineage.py).
 
-The bundle path is reconstructed by matching the three unchanged components and all inherited edit counts against earlier records. Refine/simplify also require the replaced component to match the saved operator parent. Each of the 13 transitions after initialization has exactly one matching parent bundle. Initialization is the generation 0 loss exploration from the baseline. The operator tables use explicit parent metadata rather than guesses from names.
+The bundle path is reconstructed by matching the three unchanged components and all inherited edit counts against earlier records. Refine/simplify also require the replaced component to match the saved operator parent. Each of the 13 transitions after initialization has exactly one matching parent bundle. Initialization is the generation 0 loss exploration from the baseline. The operator tables combine explicit parent metadata with exact cached-code evidence for both crossover inputs.

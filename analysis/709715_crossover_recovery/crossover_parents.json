@@ -1,0 +1,2265 @@
+[
+  {
+    "child": "affine_shape_mse_loss_gen1_4",
+    "generation": 1,
+    "operator": "loss",
+    "saved_parent1": "mse_loss",
+    "parent1": "mse_loss",
+    "parent2": "mse_loss",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "9dcb4dde850463a4a57229d96f020faebcf68cc28da34709228e67cd9e5539a4",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "38375c7d5d08352c6147b1a1b531ca994e7c3b5d5411be2136849aafb31729b9",
+            "names": [
+              "mse_loss"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "38375c7d5d08352c6147b1a1b531ca994e7c3b5d5411be2136849aafb31729b9",
+            "names": [
+              "mse_loss"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_age_clone_niche_survival_gen1_7",
+    "generation": 1,
+    "operator": "survival",
+    "saved_parent1": "pareto_crowded_age_survival_init_4",
+    "parent1": "pareto_crowded_age_survival_init_4",
+    "parent2": "pareto_niche_crowding_survival_init_3",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "d01293f662b9ee65acc4d8a77d1a7f71db1ff608913891611b2641e2827bfd5b",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "01a72f3b8e5a3bb50fd3aa9a157cae4c1eb1f966a13f63148e3b5d04c61bbc34",
+            "names": [
+              "pareto_crowded_age_survival_init_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "a221eb5ced15d29a06a42f49e4343d169486ab6bae059a360ab5268a3f75a53b",
+            "names": [
+              "pareto_niche_crowding_survival_init_3"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "adaptive_front_contribution_clone_niche_survival_gen2_1",
+    "generation": 2,
+    "operator": "survival",
+    "saved_parent1": "pareto_crowded_age_survival_init_4",
+    "parent1": "pareto_crowded_age_survival_init_4",
+    "parent2": "pareto_age_clone_niche_survival_gen1_7",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "cba8b88032038dca1abab2da1f3ce1b5a1a22f36c865535827755693dfc17315",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "01a72f3b8e5a3bb50fd3aa9a157cae4c1eb1f966a13f63148e3b5d04c61bbc34",
+            "names": [
+              "pareto_crowded_age_survival_init_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "f5068d6b9886c9ffad75bad2c6a0b9fcaf691b162dbb1c43b3c164dbdb0444e3",
+            "names": [
+              "pareto_age_clone_niche_survival_gen1_7"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "adaptive_scale_pseudohuber_mse_loss_gen2_6",
+    "generation": 2,
+    "operator": "loss",
+    "saved_parent1": "dynamic_range_pseudohuber_loss_gen1_0",
+    "parent1": "dynamic_range_pseudohuber_loss_gen1_0",
+    "parent2": "mse_loss",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "6d483277bf2a45519fd559a5225921957a97540518b0c0641392b484fa85ce6f",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "21f48794c37fa8ab0d6ae56787368a47c1a3e0f3690d42bc16936ab934b47134",
+            "names": [
+              "dynamic_range_pseudohuber_loss_gen1_0"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "38375c7d5d08352c6147b1a1b531ca994e7c3b5d5411be2136849aafb31729b9",
+            "names": [
+              "mse_loss"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "balanced_rank_tournament_selection_gen3_2",
+    "generation": 3,
+    "operator": "selection",
+    "saved_parent1": "tournament_selection",
+    "parent1": "tournament_selection",
+    "parent2": "tournament_selection",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "9b8a729b6bca512137589deeccae325000e5b102ecf2782edbc8fd005d82e750",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "8fd2035b728713fd03acc673b5ae4038f8e943ac4273911e72a714efe0b21642",
+            "names": [
+              "tournament_selection"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "8fd2035b728713fd03acc673b5ae4038f8e943ac4273911e72a714efe0b21642",
+            "names": [
+              "tournament_selection"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_niche_age_regularized_survival_gen3_5",
+    "generation": 3,
+    "operator": "survival",
+    "saved_parent1": "age_regularized_survival",
+    "parent1": "age_regularized_survival",
+    "parent2": "pareto_crowded_age_survival_init_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "79bd510a02f20a51ff6d8ceafda23d319d0da6a0734b4b0a4877c956e7ca1716",
+        "model": "google/gemini-3.7-flash",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "01a72f3b8e5a3bb50fd3aa9a157cae4c1eb1f966a13f63148e3b5d04c61bbc34",
+            "names": [
+              "pareto_crowded_age_survival_init_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "adaptive_pareto_breakthrough_rank_tournament_selection_gen4_6",
+    "generation": 4,
+    "operator": "selection",
+    "saved_parent1": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "parent1": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "parent2": "tournament_selection",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "3bfd174ba257e2068b404b5ad7e28d0c015ded2d561fb7ab17d7ed168fe11814",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "0b892cd4a75d8b07e02dbd66719afbb824110dc489437a407d2980cf360a739f",
+            "names": [
+              "lineage_guarded_pareto_breakthrough_selection_gen2_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "8fd2035b728713fd03acc673b5ae4038f8e943ac4273911e72a714efe0b21642",
+            "names": [
+              "tournament_selection"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "directed_shape_relative_log_nmse_loss_gen5_2",
+    "generation": 5,
+    "operator": "loss",
+    "saved_parent1": "relative_aware_shape_log_nmse_loss_gen4_1_gen4_2",
+    "parent1": "relative_aware_shape_log_nmse_loss_gen4_1_gen4_2",
+    "parent2": "shape_guided_log_nmse_loss_gen3_3",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "71741974b902eb5653c5d0dfa2285857d429844c6cbc4d220b5acfbda8e5e941",
+        "model": "google/gemini-3.7-flash",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cadf057aee7fdb22a12bb62ed1d12bcddd802992cd5cfee3d8c2a33872f7cc63",
+            "names": [
+              "relative_aware_shape_log_nmse_loss_gen4_1_gen4_2"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "4abd6428e28155da9fd9cc5351a91c9c7313619b03049e967289468f25b47b8e",
+            "names": [
+              "shape_guided_log_nmse_loss_gen3_3"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "adaptive_pareto_breakthrough_rank_tournament_selection_gen7_5",
+    "generation": 7,
+    "operator": "selection",
+    "saved_parent1": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "parent1": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "parent2": "tournament_selection",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "6e47c715a402d36bd659472e3c51019400085e435fd3ff7eafcfae19b3f16ed3",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "0b892cd4a75d8b07e02dbd66719afbb824110dc489437a407d2980cf360a739f",
+            "names": [
+              "lineage_guarded_pareto_breakthrough_selection_gen2_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "8fd2035b728713fd03acc673b5ae4038f8e943ac4273911e72a714efe0b21642",
+            "names": [
+              "tournament_selection"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "motif_aware_algebraic_refactor_mutation_gen7_4",
+    "generation": 7,
+    "operator": "mutation",
+    "saved_parent1": "symmetric_motif_duplication_gen4_9",
+    "parent1": "symmetric_motif_duplication_gen4_9",
+    "parent2": "algebraic_refactor_mutation_init_1_gen1_9",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "ec82592ff643ac5c23a880ee4060f648158d1b9bca00a1f60f194216de846fae",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "8e5362ecf41c735cf3a5d54693864d3a6365a7c399480395b2d9cc8d6604e990",
+            "names": [
+              "symmetric_motif_duplication_gen4_9"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "26eef934bebb9e092dd87d05ad744a711c493b418806d2bf85ec435c214077bf",
+            "names": [
+              "algebraic_refactor_mutation_init_1_gen1_9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "adaptive_shape_continuation_nmse_loss_gen8_3",
+    "generation": 8,
+    "operator": "loss",
+    "saved_parent1": "affine_continuation_loss_init_8",
+    "parent1": "affine_continuation_loss_init_8",
+    "parent2": "shape_guided_log_nmse_loss_gen3_3",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "0fde7864ede6c1c0283e682a08dec88849f51a26123258096f9a6789c57c1e2b",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "d6fc088fc90eab8309d5275b5ea005d8915926f9aa45c5c3c985f1c361dcce47",
+            "names": [
+              "affine_continuation_loss_init_8"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "4abd6428e28155da9fd9cc5351a91c9c7313619b03049e967289468f25b47b8e",
+            "names": [
+              "shape_guided_log_nmse_loss_gen3_3"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "fit_offset_wrap_mutation_gen8_8",
+    "generation": 8,
+    "operator": "mutation",
+    "saved_parent1": "add_constant_offset",
+    "parent1": "add_constant_offset",
+    "parent2": "fit_rational_pole_mutation_gen4_3",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "e89ee83e9a05e096307a6bc92e5945a21506da425e3dbf2591b3160d0c6dabea",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "9525a9388732b61393cdd6170ca6b23e1ee3c6dadc1dd2779b9fb6eb72328c60",
+            "names": [
+              "add_constant_offset"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "e78c6adc3eddffe4439622533503e524899507df6381e3d66c10ae1e47852f6b",
+            "names": [
+              "fit_rational_pole_mutation_gen4_3"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "symmetry_motif_with_algebraic_canonicalization_gen8_4",
+    "generation": 8,
+    "operator": "mutation",
+    "saved_parent1": "symmetric_motif_duplication_gen4_9",
+    "parent1": "symmetric_motif_duplication_gen4_9",
+    "parent2": "algebraic_refactor_mutation_init_1_gen1_9",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "c9862c56bbff76a3ac046a8a5e8efc58cc79001269b2bd86ec2f69c34a730d59",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "8e5362ecf41c735cf3a5d54693864d3a6365a7c399480395b2d9cc8d6604e990",
+            "names": [
+              "symmetric_motif_duplication_gen4_9"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "26eef934bebb9e092dd87d05ad744a711c493b418806d2bf85ec435c214077bf",
+            "names": [
+              "algebraic_refactor_mutation_init_1_gen1_9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "adaptive_pareto_efficiency_rank_tournament_selection_gen9_7",
+    "generation": 9,
+    "operator": "selection",
+    "saved_parent1": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "parent1": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "parent2": "tournament_selection",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "8ae166011d4870929b02aad9e5940dd9c4e19f6e2e8a2b19dac3d81861e69cf6",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "0b892cd4a75d8b07e02dbd66719afbb824110dc489437a407d2980cf360a739f",
+            "names": [
+              "lineage_guarded_pareto_breakthrough_selection_gen2_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "8fd2035b728713fd03acc673b5ae4038f8e943ac4273911e72a714efe0b21642",
+            "names": [
+              "tournament_selection"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_and_cost_regularized_survival_gen9_3",
+    "generation": 9,
+    "operator": "survival",
+    "saved_parent1": "age_regularized_survival",
+    "parent1": "age_regularized_survival",
+    "parent2": "age_regularized_survival",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "4c9863040a95f784c4a3e81fef2c0386bd682cb4ae8d58b6889ce6d4cb72fa75",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_and_quality_regularized_survival_gen9_2",
+    "generation": 9,
+    "operator": "survival",
+    "saved_parent1": "age_regularized_survival",
+    "parent1": "age_regularized_survival",
+    "parent2": "age_regularized_survival",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "c56698d4e809d130f1533af4d60fc2e56d1ec51e46eaad2dcff392ab311e6ddc",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "lineage_guarded_frontier_bridge_selection_gen9_9",
+    "generation": 9,
+    "operator": "selection",
+    "saved_parent1": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "parent1": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "parent2": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "0a9f29b39904fd918f28e5df103fadd3432b60b807b23b890d1503d05f7952ce",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "0b892cd4a75d8b07e02dbd66719afbb824110dc489437a407d2980cf360a739f",
+            "names": [
+              "lineage_guarded_pareto_breakthrough_selection_gen2_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "0b892cd4a75d8b07e02dbd66719afbb824110dc489437a407d2980cf360a739f",
+            "names": [
+              "lineage_guarded_pareto_breakthrough_selection_gen2_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "tail_aware_bounded_shape_continuation_loss_gen9_4",
+    "generation": 9,
+    "operator": "loss",
+    "saved_parent1": "affine_tail_continuation_loss_gen3_9",
+    "parent1": "affine_tail_continuation_loss_gen3_9",
+    "parent2": "adaptive_shape_continuation_nmse_loss_gen8_3",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "84854b5a14d9b108bc0c5bdf1a9efe4dda89b1c7d928ee4f37c6d9813d48bd0c",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "f8e041ce51e493f95046d3be5a9a483decb3a7ae22f4900f049d592730337f22",
+            "names": [
+              "affine_tail_continuation_loss_gen3_9"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "12dda06d31c96f60a9dd1608b142c51642ca57498e25a0c7b4912f34b3c5787a",
+            "names": [
+              "adaptive_shape_continuation_nmse_loss_gen8_3"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_age_regularized_survival_gen10_8",
+    "generation": 10,
+    "operator": "survival",
+    "saved_parent1": "age_regularized_survival",
+    "parent1": "age_regularized_survival",
+    "parent2": "age_regularized_survival",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "da4825d71528830c851a38d329153c96022d2b623e6108ec7c04bd98b20a9293",
+        "model": "google/gemini-3.7-flash",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "rank_normalized_lineage_pareto_breakthrough_selection_gen10_6",
+    "generation": 10,
+    "operator": "selection",
+    "saved_parent1": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "parent1": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "parent2": "lineage_guarded_pareto_breakthrough_selection_gen2_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "a1e4c92c34416013238d0502497c84b6cd94eb8da4f42911629130d69798daea",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "0b892cd4a75d8b07e02dbd66719afbb824110dc489437a407d2980cf360a739f",
+            "names": [
+              "lineage_guarded_pareto_breakthrough_selection_gen2_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "0b892cd4a75d8b07e02dbd66719afbb824110dc489437a407d2980cf360a739f",
+            "names": [
+              "lineage_guarded_pareto_breakthrough_selection_gen2_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "symmetric_motif_offset_coupling_gen10_2",
+    "generation": 10,
+    "operator": "mutation",
+    "saved_parent1": "add_constant_offset_simple_gen7_1",
+    "parent1": "add_constant_offset_simple_gen7_1",
+    "parent2": "symmetric_motif_duplication_gen9_6",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "8e87993867e9076a7ed5795b8ee1178b40d9ae99751e55c4ae5b650c5d7a3cac",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "9d04648ac54965c3171772d05589d8443309d8f2ed91fa74e42e2fd3c16ca88d",
+            "names": [
+              "add_constant_offset_simple_gen7_1"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "50827ac99734a68acf459d1379afc8b6bb39ce5f0eb0ea7a1f48ff10f1aaeaac",
+            "names": [
+              "symmetric_motif_duplication_gen9_6"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "residual_guided_motif_duplication_gen11_8",
+    "generation": 11,
+    "operator": "mutation",
+    "saved_parent1": "residual_guided_basis_augmentation_gen9_8",
+    "parent1": "residual_guided_basis_augmentation_gen9_8",
+    "parent2": "symmetric_motif_duplication_gen4_9",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "567a28aac1ad3c7257d3869b042481b46a8caf96d5099fc698f5c59db58a3122",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "d8ccd2f12c7b776cfc85b9778c432ae461fdadfbbf2a49a1c6b25547b3b040c3",
+            "names": [
+              "residual_guided_basis_augmentation_gen9_8"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "8e5362ecf41c735cf3a5d54693864d3a6365a7c399480395b2d9cc8d6604e990",
+            "names": [
+              "symmetric_motif_duplication_gen4_9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "affine_profile_nrmse_calibration_loss_gen12_6",
+    "generation": 12,
+    "operator": "loss",
+    "saved_parent1": "affine_shape_nrmse_loss_simplified_gen10_7",
+    "parent1": "affine_shape_nrmse_loss_simplified_gen10_7",
+    "parent2": "affine_angular_profile_loss_2pass_gen8_1",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "c3053053cf9f7228a09383086caf5e564db2750fe02014118548ac4e97fed272",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "472070c467ff5dc5a9894bb4079d861b56a02cec3bc1d42c3877ec13d685070a",
+            "names": [
+              "affine_shape_nrmse_loss_simplified_gen10_7"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "affine_shape_relative_uniformity_loss_gen12_5",
+    "generation": 12,
+    "operator": "loss",
+    "saved_parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent2": "affine_angular_profile_loss_2pass_gen8_1",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "5f94a8e4af5ae9aebc49b19af0ba6d2b5a1abb24dab056e083a525dcb73183e5",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_rarity_tournament_selection_gen12_7",
+    "generation": 12,
+    "operator": "selection",
+    "saved_parent1": "tournament_selection",
+    "parent1": "tournament_selection",
+    "parent2": "tournament_selection",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "1037733f5805c4f159c5ad17cc9bf514ac93a5f5eb6a9309622256680a291615",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "8fd2035b728713fd03acc673b5ae4038f8e943ac4273911e72a714efe0b21642",
+            "names": [
+              "tournament_selection"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "8fd2035b728713fd03acc673b5ae4038f8e943ac4273911e72a714efe0b21642",
+            "names": [
+              "tournament_selection"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "scale_aware_centered_affine_profile_loss_gen12_4",
+    "generation": 12,
+    "operator": "loss",
+    "saved_parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent2": "affine_shape_nrmse_loss_simplified_gen10_7",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "fc6e9632f13260abc8bbb66da78fbcdace259d1107802294f72893149dd861f5",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "472070c467ff5dc5a9894bb4079d861b56a02cec3bc1d42c3877ec13d685070a",
+            "names": [
+              "affine_shape_nrmse_loss_simplified_gen10_7"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "symmetric_motif_duplication_hybrid_gen12_9",
+    "generation": 12,
+    "operator": "mutation",
+    "saved_parent1": "symmetric_motif_duplication_gen4_9",
+    "parent1": "symmetric_motif_duplication_gen4_9",
+    "parent2": "symmetric_motif_duplication_gen9_6",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "bfc787d2aaaa419212b7eae9bea2948bcd4aa8e9266a2eb92fba3fe547a7b9d4",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "8e5362ecf41c735cf3a5d54693864d3a6365a7c399480395b2d9cc8d6604e990",
+            "names": [
+              "symmetric_motif_duplication_gen4_9"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "50827ac99734a68acf459d1379afc8b6bb39ce5f0eb0ea7a1f48ff10f1aaeaac",
+            "names": [
+              "symmetric_motif_duplication_gen9_6"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "tempered_pareto_tournament_selection_gen12_1",
+    "generation": 12,
+    "operator": "selection",
+    "saved_parent1": "tournament_selection",
+    "parent1": "tournament_selection",
+    "parent2": "tournament_selection",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "5fb796358306f7be34e25db8ad825327e2e48f922a171226f1c511790171ad14",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "8fd2035b728713fd03acc673b5ae4038f8e943ac4273911e72a714efe0b21642",
+            "names": [
+              "tournament_selection"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "8fd2035b728713fd03acc673b5ae4038f8e943ac4273911e72a714efe0b21642",
+            "names": [
+              "tournament_selection"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_and_cost_regularized_survival_gen13_5",
+    "generation": 13,
+    "operator": "survival",
+    "saved_parent1": "age_regularized_survival",
+    "parent1": "age_regularized_survival",
+    "parent2": "age_regularized_survival",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "fbcb2c280f34abe3769362a9004ccbe7d5079aa3df6d47c838ce6a6e55cd2361",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_sampled_survival_with_staleness_guard_gen13_9",
+    "generation": 13,
+    "operator": "survival",
+    "saved_parent1": "age_regularized_survival",
+    "parent1": "age_regularized_survival",
+    "parent2": "age_tournament_survival_gen11_2",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "dce2055dface6f0ab6a902e4a8c047247724c8ce13fed5e2e7798b9343ce7ed9",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "c7aed12c469c60fff20437671b2cda9a829c735b7f418ef630a9339d0c7333ec",
+            "names": [
+              "age_tournament_survival_gen11_2"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "motif_symmetry_envelope_mutation_gen13_8",
+    "generation": 13,
+    "operator": "mutation",
+    "saved_parent1": "symmetric_motif_duplication_gen4_9",
+    "parent1": "symmetric_motif_duplication_gen4_9",
+    "parent2": "symmetric_motif_duplication_gen9_6",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "64be46c882ba7206b37676b763412f7300adde73640c902f99158e5586d8990f",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "8e5362ecf41c735cf3a5d54693864d3a6365a7c399480395b2d9cc8d6604e990",
+            "names": [
+              "symmetric_motif_duplication_gen4_9"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "50827ac99734a68acf459d1379afc8b6bb39ce5f0eb0ea7a1f48ff10f1aaeaac",
+            "names": [
+              "symmetric_motif_duplication_gen9_6"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "stale_guarded_niche_tournament_survival_gen14_6",
+    "generation": 14,
+    "operator": "survival",
+    "saved_parent1": "quality_aware_pareto_niche_survival_gen13_1_gen13_1",
+    "parent1": "quality_aware_pareto_niche_survival_gen13_1_gen13_1",
+    "parent2": "age_sampled_survival_with_staleness_guard_gen13_9",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "c582b2ad045ba2672f074993ee69942450a292ac0e8b1d10cd013b7528b215e5",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "2249ffdef944aa70da3f57fbbd592a7d4efbf217e4167a7ef6325434ef749c38",
+            "names": [
+              "quality_aware_pareto_niche_survival_gen13_1_gen13_1"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "9b5c1ebb7ae38f7d623659cd9499c8aecc752e48fec26fc73c93c40e23ca9865",
+            "names": [
+              "age_sampled_survival_with_staleness_guard_gen13_9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "symmetry_aware_motif_coupling_gen14_8",
+    "generation": 14,
+    "operator": "mutation",
+    "saved_parent1": "symmetric_motif_duplication_gen9_6",
+    "parent1": "symmetric_motif_duplication_gen9_6",
+    "parent2": "symmetric_motif_duplication_gen10_1_gen11_9",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "a4e666653a8994f8fd7da2ce296cb98757abf094bfef336821c5ce6aca99d491",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "50827ac99734a68acf459d1379afc8b6bb39ce5f0eb0ea7a1f48ff10f1aaeaac",
+            "names": [
+              "symmetric_motif_duplication_gen9_6"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "1b6e30738621230cb5254e8f90cf11a183e872aac07c662c9e3d008c14156ee2",
+            "names": [
+              "symmetric_motif_duplication_gen10_1_gen11_9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "affine_shape_bounded_relative_tail_loss_gen15_0",
+    "generation": 15,
+    "operator": "loss",
+    "saved_parent1": "affine_shape_nrmse_loss_simplified_gen10_7",
+    "parent1": "affine_shape_nrmse_loss_simplified_gen10_7",
+    "parent2": "affine_shape_relative_uniformity_loss_gen12_5",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "4f0507e41fe0d6bc8087f53a0fbde3bec10e05d15497412fb6b881e790c73075",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "472070c467ff5dc5a9894bb4079d861b56a02cec3bc1d42c3877ec13d685070a",
+            "names": [
+              "affine_shape_nrmse_loss_simplified_gen10_7"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "6b5c4f0a5d5a0ddbc57ca7134a932fd5dc5342e57a9cccfa0b257f061ba755ff",
+            "names": [
+              "affine_shape_relative_uniformity_loss_gen12_5"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_anchored_niche_survival_gen15_4",
+    "generation": 15,
+    "operator": "survival",
+    "saved_parent1": "quality_aware_pareto_niche_survival_gen13_1_gen13_1",
+    "parent1": "quality_aware_pareto_niche_survival_gen13_1_gen13_1",
+    "parent2": "age_regularized_survival",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "849822a826b95cd9fb56c6bd2231ed913416ae7e5d135948084f5ea4c57c08d7",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "2249ffdef944aa70da3f57fbbd592a7d4efbf217e4167a7ef6325434ef749c38",
+            "names": [
+              "quality_aware_pareto_niche_survival_gen13_1_gen13_1"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "motif_duplication_graft_encapsulate_gen15_5",
+    "generation": 15,
+    "operator": "mutation",
+    "saved_parent1": "symmetric_motif_duplication_gen10_1_gen11_9",
+    "parent1": "symmetric_motif_duplication_gen10_1_gen11_9",
+    "parent2": "symmetric_motif_duplication_gen4_9",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "5a9fd7f1eff37cc97a5b24edd939c3f95613c42fd0c2d438d0baf03c286a3d69",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "1b6e30738621230cb5254e8f90cf11a183e872aac07c662c9e3d008c14156ee2",
+            "names": [
+              "symmetric_motif_duplication_gen10_1_gen11_9"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "8e5362ecf41c735cf3a5d54693864d3a6365a7c399480395b2d9cc8d6604e990",
+            "names": [
+              "symmetric_motif_duplication_gen4_9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "affine_shape_softtail_relative_loss_gen16_6",
+    "generation": 16,
+    "operator": "loss",
+    "saved_parent1": "affine_shape_rmse_loss_simple_gen14_0",
+    "parent1": "affine_shape_rmse_loss_simple_gen14_0",
+    "parent2": "affine_shape_relative_uniformity_loss_gen12_5",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "8fdb6c16a8b4b027a655597b45227af470ade19a4a41925d8c64264e28e96f74",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "0530b0b5c8520b5c7d56c6a1a0a7535c7c1ca4ccbd5d53fb5ab4d18240f38594",
+            "names": [
+              "affine_shape_rmse_loss_simple_gen14_0"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "6b5c4f0a5d5a0ddbc57ca7134a932fd5dc5342e57a9cccfa0b257f061ba755ff",
+            "names": [
+              "affine_shape_relative_uniformity_loss_gen12_5"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_window_quality_parsimony_survival_gen16_7",
+    "generation": 16,
+    "operator": "survival",
+    "saved_parent1": "age_regularized_survival",
+    "parent1": "age_regularized_survival",
+    "parent2": "age_regularized_survival",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "589ad8414ecf843e1f5e5bc646c2ce6fe5cbbbad7b189f883c2d0967427643ab",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "stable_gated_affine_profile_loss_gen17_1",
+    "generation": 17,
+    "operator": "loss",
+    "saved_parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent2": "affine_shape_rmse_loss_simple_gen14_0",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "48524ccda0a50411d3c29aad2f2653ee598a60ed7c1161a23229afc2fe04d813",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "0530b0b5c8520b5c7d56c6a1a0a7535c7c1ca4ccbd5d53fb5ab4d18240f38594",
+            "names": [
+              "affine_shape_rmse_loss_simple_gen14_0"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "hybrid_age_tournament_survival_gen18_0",
+    "generation": 18,
+    "operator": "survival",
+    "saved_parent1": "age_tournament_survival_gen11_2",
+    "parent1": "age_tournament_survival_gen11_2",
+    "parent2": "age_regularized_survival",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "44f588335e2c702a52fc07c824a90934cfb6c0166a32d226a8140d005b6c11cf",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "c7aed12c469c60fff20437671b2cda9a829c735b7f418ef630a9339d0c7333ec",
+            "names": [
+              "age_tournament_survival_gen11_2"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "generation": 18,
+    "operator": "selection",
+    "saved_parent1": "crowding_suppressed_niche_tournament_gen10_4",
+    "parent1": "crowding_suppressed_niche_tournament_gen10_4",
+    "parent2": "crowding_suppressed_rare_niche_tournament_gen16_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "e9a782da9bff7b32b1c968d11f8fa8bd6171bd4dc9793e9ee7675046ab6ab7a6",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cadfd7a0f727284c6ee35ca64a03faa1b3ee23ffe37e1736ad6a076537ba5a9a",
+            "names": [
+              "crowding_suppressed_niche_tournament_gen10_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "943ca5814f0ea1d7cc88c132de1a7ec59e23ad505a3dcb654f7ba5dd3ef47a34",
+            "names": [
+              "crowding_suppressed_rare_niche_tournament_gen16_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "residual_guided_symmetric_motif_duplication_gen18_6",
+    "generation": 18,
+    "operator": "mutation",
+    "saved_parent1": "symmetric_motif_duplication_gen9_6",
+    "parent1": "symmetric_motif_duplication_gen9_6",
+    "parent2": "symmetric_motif_duplication_gen9_6",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "5b47bec83aee380fa0cdba831a05a330c5140553cb576df6f4dea0b6c4560386",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "50827ac99734a68acf459d1379afc8b6bb39ce5f0eb0ea7a1f48ff10f1aaeaac",
+            "names": [
+              "symmetric_motif_duplication_gen9_6"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "50827ac99734a68acf459d1379afc8b6bb39ce5f0eb0ea7a1f48ff10f1aaeaac",
+            "names": [
+              "symmetric_motif_duplication_gen9_6"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_and_cost_regularized_survival_gen19_0",
+    "generation": 19,
+    "operator": "survival",
+    "saved_parent1": "age_regularized_survival",
+    "parent1": "age_regularized_survival",
+    "parent2": "age_regularized_survival",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "ade99172200efeecb5c02815e0e057805596df0ed1d4a5c15be402154b6f7b4c",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_crowding_rare_niche_tournament_selection_gen19_7",
+    "generation": 19,
+    "operator": "selection",
+    "saved_parent1": "crowding_suppressed_niche_tournament_gen10_4",
+    "parent1": "crowding_suppressed_niche_tournament_gen10_4",
+    "parent2": "adaptive_pareto_niche_selection_gen18_7",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "220f1b48ed29857cdac92c0006d93750d7b61dcac5d8b94b37eca21dbfcb00b0",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cadfd7a0f727284c6ee35ca64a03faa1b3ee23ffe37e1736ad6a076537ba5a9a",
+            "names": [
+              "crowding_suppressed_niche_tournament_gen10_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "1ba3e67b2559804fd7693f1d4a04a3838e1a7a87384476189386198d8d3c62fa",
+            "names": [
+              "adaptive_pareto_niche_selection_gen18_7"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "symmetry_motif_recombination_gen15_1_gen19_9",
+    "generation": 19,
+    "operator": "mutation",
+    "saved_parent1": "symmetric_motif_duplication_gen9_6",
+    "parent1": "symmetric_motif_duplication_gen9_6",
+    "parent2": "symmetry_aware_motif_coupling_gen14_8",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "56a08c020fe05780c8d889e676b8fed838c3d31da698b8e3a28ff3eee95d8671",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "50827ac99734a68acf459d1379afc8b6bb39ce5f0eb0ea7a1f48ff10f1aaeaac",
+            "names": [
+              "symmetric_motif_duplication_gen9_6"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "b0a0d8e8e1819dce15df7fadcd33c1785046cf8f42919a0e685476d0734788f8",
+            "names": [
+              "symmetry_aware_motif_coupling_gen14_8"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_diversity_survival_hybrid_gen20_2",
+    "generation": 20,
+    "operator": "survival",
+    "saved_parent1": "age_regularized_survival",
+    "parent1": "age_regularized_survival",
+    "parent2": "age_tournament_survival_gen11_2",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "da802c661e34f9f6be5a3b15e2a7683e1fe6e922af67f9fbda6cc56fb9615239",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "c7aed12c469c60fff20437671b2cda9a829c735b7f418ef630a9339d0c7333ec",
+            "names": [
+              "age_tournament_survival_gen11_2"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "motif_duplication_with_rational_coupling_gen12_gen20_5",
+    "generation": 20,
+    "operator": "mutation",
+    "saved_parent1": "symmetric_motif_duplication_gen9_6",
+    "parent1": "symmetric_motif_duplication_gen9_6",
+    "parent2": "symmetric_motif_duplication_gen10_1_gen11_9",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "05cce491cdb08cafd6706578fe4ce5f737ab0a060ce134ec84044ab34e4a5759",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "50827ac99734a68acf459d1379afc8b6bb39ce5f0eb0ea7a1f48ff10f1aaeaac",
+            "names": [
+              "symmetric_motif_duplication_gen9_6"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "1b6e30738621230cb5254e8f90cf11a183e872aac07c662c9e3d008c14156ee2",
+            "names": [
+              "symmetric_motif_duplication_gen10_1_gen11_9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_aware_crowding_niche_tournament_gen20_3",
+    "generation": 20,
+    "operator": "selection",
+    "saved_parent1": "crowding_suppressed_niche_tournament_gen10_4",
+    "parent1": "crowding_suppressed_niche_tournament_gen10_4",
+    "parent2": "crowding_suppressed_niche_tournament_gen10_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "32a00802447858c35203b6f2b71fff3895bee12684be893f47a69c46dd4bd7b3",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cadfd7a0f727284c6ee35ca64a03faa1b3ee23ffe37e1736ad6a076537ba5a9a",
+            "names": [
+              "crowding_suppressed_niche_tournament_gen10_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cadfd7a0f727284c6ee35ca64a03faa1b3ee23ffe37e1736ad6a076537ba5a9a",
+            "names": [
+              "crowding_suppressed_niche_tournament_gen10_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "affine_shape_relative_calibration_loss_gen15_gen21_0",
+    "generation": 21,
+    "operator": "loss",
+    "saved_parent1": "affine_shape_relative_uniformity_loss_gen12_5",
+    "parent1": "affine_shape_relative_uniformity_loss_gen12_5",
+    "parent2": "affine_shape_rmse_loss_simple_gen14_0",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "002ec2e3b390268936f7127d12a229e63d3bbf34d7f83b6341b5ee088302c34b",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "6b5c4f0a5d5a0ddbc57ca7134a932fd5dc5342e57a9cccfa0b257f061ba755ff",
+            "names": [
+              "affine_shape_relative_uniformity_loss_gen12_5"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "0530b0b5c8520b5c7d56c6a1a0a7535c7c1ca4ccbd5d53fb5ab4d18240f38594",
+            "names": [
+              "affine_shape_rmse_loss_simple_gen14_0"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "tail_balanced_affine_angular_profile_loss_gen21_2",
+    "generation": 21,
+    "operator": "loss",
+    "saved_parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent2": "affine_angular_profile_loss_2pass_gen8_1",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "4de612acb06aec2f27df8dd89f23b52b9f148c4d99085294550440d7e59cade3",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "affine_shape_stratified_softtail_loss_gen22_0",
+    "generation": 22,
+    "operator": "loss",
+    "saved_parent1": "affine_shape_relative_uniformity_loss_gen12_5",
+    "parent1": "affine_shape_relative_uniformity_loss_gen12_5",
+    "parent2": "affine_shape_relative_uniformity_loss_gen12_5",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "deedb6708b86c9cc0f9a9e1552344f61ee441923e338f7a940d0186e70ce49cb",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "6b5c4f0a5d5a0ddbc57ca7134a932fd5dc5342e57a9cccfa0b257f061ba755ff",
+            "names": [
+              "affine_shape_relative_uniformity_loss_gen12_5"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "6b5c4f0a5d5a0ddbc57ca7134a932fd5dc5342e57a9cccfa0b257f061ba755ff",
+            "names": [
+              "affine_shape_relative_uniformity_loss_gen12_5"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_dominant_quality_protected_survival_gen22_9",
+    "generation": 22,
+    "operator": "survival",
+    "saved_parent1": "quality_aware_pareto_niche_survival_gen13_1_gen13_1",
+    "parent1": "quality_aware_pareto_niche_survival_gen13_1_gen13_1",
+    "parent2": "age_and_cost_regularized_survival_gen19_0",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "c215440d5f32881176a91a714605a21c3795c385b1359e9d5047ad92e085f8b1",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "2249ffdef944aa70da3f57fbbd592a7d4efbf217e4167a7ef6325434ef749c38",
+            "names": [
+              "quality_aware_pareto_niche_survival_gen13_1_gen13_1"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "6efad30cbe30c27f131ee345684818caec648ae012037f9b063a3038ab4d99d3",
+            "names": [
+              "age_and_cost_regularized_survival_gen19_0"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "diversity_lineage_pareto_niche_tournament_gen22_2",
+    "generation": 22,
+    "operator": "selection",
+    "saved_parent1": "crowding_suppressed_niche_tournament_gen10_4",
+    "parent1": "crowding_suppressed_niche_tournament_gen10_4",
+    "parent2": "crowding_suppressed_niche_tournament_gen10_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "7cda324982ed5c344140f7890200ea39328f96a5d41592de0a0c257d5078b93a",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cadfd7a0f727284c6ee35ca64a03faa1b3ee23ffe37e1736ad6a076537ba5a9a",
+            "names": [
+              "crowding_suppressed_niche_tournament_gen10_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cadfd7a0f727284c6ee35ca64a03faa1b3ee23ffe37e1736ad6a076537ba5a9a",
+            "names": [
+              "crowding_suppressed_niche_tournament_gen10_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_niche_declone_selection_gen22_4",
+    "generation": 22,
+    "operator": "selection",
+    "saved_parent1": "adaptive_pareto_niche_selection_gen18_7",
+    "parent1": "adaptive_pareto_niche_selection_gen18_7",
+    "parent2": "crowding_suppressed_niche_tournament_gen10_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "397c7c0504ffa1b67110f2d3700eb24ca90a4d84b9d21a65e79ba110c742342b",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "1ba3e67b2559804fd7693f1d4a04a3838e1a7a87384476189386198d8d3c62fa",
+            "names": [
+              "adaptive_pareto_niche_selection_gen18_7"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cadfd7a0f727284c6ee35ca64a03faa1b3ee23ffe37e1736ad6a076537ba5a9a",
+            "names": [
+              "crowding_suppressed_niche_tournament_gen10_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "stable_affine_shape_rmse_loss_gen22_1",
+    "generation": 22,
+    "operator": "loss",
+    "saved_parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent2": "affine_shape_rmse_loss_simple_gen14_0",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "855103433da5234c5b8548ed5e2f86e9fac0f1cb4f35bf8373f5899b19deaa50",
+        "model": "google/gemini-3.7-flash",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "0530b0b5c8520b5c7d56c6a1a0a7535c7c1ca4ccbd5d53fb5ab4d18240f38594",
+            "names": [
+              "affine_shape_rmse_loss_simple_gen14_0"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_diversity_survival_pareto_shield_gen23_3",
+    "generation": 23,
+    "operator": "survival",
+    "saved_parent1": "age_diversity_survival_hybrid_gen20_2",
+    "parent1": "age_diversity_survival_hybrid_gen20_2",
+    "parent2": "age_tournament_survival_gen11_2",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "42624d34d33a0909cfe6cd6d161fbbb65c9843102dd2241cf88914a9d9ad4707",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "ff7090e56f627d6aabb2015979846175e43b9d6a6735553d26ee0509e9b7f80b",
+            "names": [
+              "age_diversity_survival_hybrid_gen20_2"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "c7aed12c469c60fff20437671b2cda9a829c735b7f418ef630a9339d0c7333ec",
+            "names": [
+              "age_tournament_survival_gen11_2"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "crowding_and_lineage_aware_quality_gated_niche_tournament_gen23_0",
+    "generation": 23,
+    "operator": "selection",
+    "saved_parent1": "crowding_suppressed_niche_tournament_gen10_4",
+    "parent1": "crowding_suppressed_niche_tournament_gen10_4",
+    "parent2": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "416bd2bfb97432522ff5ba69cbc542f680d2c8870370644dc8eefbbb1b9ea76c",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cadfd7a0f727284c6ee35ca64a03faa1b3ee23ffe37e1736ad6a076537ba5a9a",
+            "names": [
+              "crowding_suppressed_niche_tournament_gen10_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "1bfb902c9046081715bb508bc58bc85529db5277a46b9181201880896bf232ad",
+            "names": [
+              "novelty_weighted_quality_gated_niche_tournament_gen18_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_crowding_age_regularized_survival_gen23_gen23_2",
+    "generation": 23,
+    "operator": "survival",
+    "saved_parent1": "pareto_protective_age_regularized_survival_gen22_8",
+    "parent1": "pareto_protective_age_regularized_survival_gen22_8",
+    "parent2": "age_regularized_survival",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "3078760791c99c2e883da140f8dfc075a1810ed74a6d22876040c21ef4e71506",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "85497687ba17af4772d70a175e461937ffaad71d3b36d228428dbe363850b17f",
+            "names": [
+              "pareto_protective_age_regularized_survival_gen22_8"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "motif_coupling_with_normalization_gen23_1_gen24_6",
+    "generation": 24,
+    "operator": "mutation",
+    "saved_parent1": "symmetry_aware_motif_coupling_gen14_8",
+    "parent1": "symmetry_aware_motif_coupling_gen14_8",
+    "parent2": "symmetric_motif_duplication_gen9_7_gen22_3",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "e269a1a3ec0d4879ed181a8918beebbc974f5b4a303f87aa594f17f99b72110c",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "b0a0d8e8e1819dce15df7fadcd33c1785046cf8f42919a0e685476d0734788f8",
+            "names": [
+              "symmetry_aware_motif_coupling_gen14_8"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "d156fc46843c5eae625d1f69cd347769302b4069f3350a5e1b71eb2a64339292",
+            "names": [
+              "symmetric_motif_duplication_gen9_7_gen22_3"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "robust_affine_relative_shape_loss_gen25_9",
+    "generation": 25,
+    "operator": "loss",
+    "saved_parent1": "affine_shape_relative_uniformity_loss_gen12_5",
+    "parent1": "affine_shape_relative_uniformity_loss_gen12_5",
+    "parent2": "affine_angular_profile_loss_2pass_gen8_1",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "cc90ed902ce452213c8a6e1515be64a3eda7c4a8944fd946fa1189a6d0c26150",
+        "model": "google/gemini-3.7-flash",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "6b5c4f0a5d5a0ddbc57ca7134a932fd5dc5342e57a9cccfa0b257f061ba755ff",
+            "names": [
+              "affine_shape_relative_uniformity_loss_gen12_5"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_quality_niche_survival_combined_gen26_6",
+    "generation": 26,
+    "operator": "survival",
+    "saved_parent1": "pareto_niche_crowding_survival_gen25_8",
+    "parent1": "pareto_niche_crowding_survival_gen25_8",
+    "parent2": "quality_aware_pareto_niche_survival_gen13_1_gen13_1",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "b15f2c33cdf47e43d74879623bbaef6318576970fcd3e21c14b44da6b154b9e6",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "b4096ec0c83213fd2c302b32335d3649448be185cf77c93ad84ad6ad8191faac",
+            "names": [
+              "pareto_niche_crowding_survival_gen25_8"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "2249ffdef944aa70da3f57fbbd592a7d4efbf217e4167a7ef6325434ef749c38",
+            "names": [
+              "quality_aware_pareto_niche_survival_gen13_1_gen13_1"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "plateau_aware_gap_seeking_niche_tournament_gen26_5",
+    "generation": 26,
+    "operator": "selection",
+    "saved_parent1": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "parent1": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "parent2": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "fca46168c789aa3449fe87e4d45f2e6c5a0a3e432a9766edf797fbfd223e0704",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "1bfb902c9046081715bb508bc58bc85529db5277a46b9181201880896bf232ad",
+            "names": [
+              "novelty_weighted_quality_gated_niche_tournament_gen18_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "1bfb902c9046081715bb508bc58bc85529db5277a46b9181201880896bf232ad",
+            "names": [
+              "novelty_weighted_quality_gated_niche_tournament_gen18_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "normalized_motif_duplication_gen27_3",
+    "generation": 27,
+    "operator": "mutation",
+    "saved_parent1": "symmetric_motif_duplication_gen9_7_gen22_3",
+    "parent1": "symmetric_motif_duplication_gen9_7_gen22_3",
+    "parent2": "symmetric_motif_duplication_gen10_1_gen11_9",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "7f67de31276cbdc8a747806d43239583b9de5cfa532c2b3716971cba452051b0",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "d156fc46843c5eae625d1f69cd347769302b4069f3350a5e1b71eb2a64339292",
+            "names": [
+              "symmetric_motif_duplication_gen9_7_gen22_3"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "1b6e30738621230cb5254e8f90cf11a183e872aac07c662c9e3d008c14156ee2",
+            "names": [
+              "symmetric_motif_duplication_gen10_1_gen11_9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_plateau_gap_novelty_tournament_gen27_4",
+    "generation": 27,
+    "operator": "selection",
+    "saved_parent1": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "parent1": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "parent2": "plateau_aware_gap_seeking_niche_tournament_gen26_5",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "a326e7e8e3bd8014b0bcf534dcb870e8571f1949931dffe01c082f6099a47568",
+        "model": "google/gemini-3.7-flash",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "1bfb902c9046081715bb508bc58bc85529db5277a46b9181201880896bf232ad",
+            "names": [
+              "novelty_weighted_quality_gated_niche_tournament_gen18_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "8567ab7e9cd252737096fbde0471809b762a3bfe07433b85d54cfe86404c10d7",
+            "names": [
+              "plateau_aware_gap_seeking_niche_tournament_gen26_5"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "shielded_age_cost_survival_gen24_gen27_7",
+    "generation": 27,
+    "operator": "survival",
+    "saved_parent1": "age_diversity_survival_pareto_shield_gen23_3",
+    "parent1": "age_diversity_survival_pareto_shield_gen23_3",
+    "parent2": "age_and_cost_regularized_survival_gen19_0",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "0a895b703c47cdd2c496d66ac4d6ea5c6491c52d9484a668cf090b191ae6082b",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "36ebf109bc99666b00368db591206561d6268087a4d3b6955edb57ead4a280a7",
+            "names": [
+              "age_diversity_survival_pareto_shield_gen23_3"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "6efad30cbe30c27f131ee345684818caec648ae012037f9b063a3038ab4d99d3",
+            "names": [
+              "age_and_cost_regularized_survival_gen19_0"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "motif_duplication_with_envelope_coupling_gen28_9",
+    "generation": 28,
+    "operator": "mutation",
+    "saved_parent1": "motif_duplication_with_rational_coupling_gen12_gen20_5",
+    "parent1": "motif_duplication_with_rational_coupling_gen12_gen20_5",
+    "parent2": "symmetric_motif_duplication_gen4_9",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "686265422b2b8026151e6a27d777e3656214b88a9833cfe8a5d852fca9910b7e",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "59bd42d53ea8e4f5a4ef0070c95202223db235b53c077be57ff2a25d5101d8b6",
+            "names": [
+              "motif_duplication_with_rational_coupling_gen12_gen20_5"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "8e5362ecf41c735cf3a5d54693864d3a6365a7c399480395b2d9cc8d6604e990",
+            "names": [
+              "symmetric_motif_duplication_gen4_9"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "novelty_weighted_quality_gated_niche_tournament_stagnation_adaptive_gen28_7",
+    "generation": 28,
+    "operator": "selection",
+    "saved_parent1": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "parent1": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "parent2": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "799d7320e9da50be83a53ccbf4b0cddc9746cf438b70fca1cf5deb4730dae0d9",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "1bfb902c9046081715bb508bc58bc85529db5277a46b9181201880896bf232ad",
+            "names": [
+              "novelty_weighted_quality_gated_niche_tournament_gen18_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "1bfb902c9046081715bb508bc58bc85529db5277a46b9181201880896bf232ad",
+            "names": [
+              "novelty_weighted_quality_gated_niche_tournament_gen18_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "robust_affine_angular_profile_loss_gen28_2",
+    "generation": 28,
+    "operator": "loss",
+    "saved_parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent1": "affine_angular_profile_loss_2pass_gen8_1",
+    "parent2": "affine_angular_profile_loss_2pass_gen8_1",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "2a28b09ebaf7f22cc17fa1d11b9ee80cc2d7ab87d5037bebb58bf9cdfebe48b8",
+        "model": "google/gemini-3.7-flash",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_niche_age_cost_survival_gen30_0_gen29_9",
+    "generation": 29,
+    "operator": "survival",
+    "saved_parent1": "age_and_cost_regularized_survival_gen19_0",
+    "parent1": "age_and_cost_regularized_survival_gen19_0",
+    "parent2": "adaptive_pareto_niche_survival_gen25_0",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "dc271db82c58636413412522e207f25dfbef8493d9cc6aad72232c9b61a4aa3a",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "6efad30cbe30c27f131ee345684818caec648ae012037f9b063a3038ab4d99d3",
+            "names": [
+              "age_and_cost_regularized_survival_gen19_0"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "64d9e4cf6047c5384f9bf904f27a9b7ee0ca3a325bc71291d05bcc482aaea829",
+            "names": [
+              "adaptive_pareto_niche_survival_gen25_0"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "pareto_shielded_sampled_age_survival_gen27_0_gen29_4",
+    "generation": 29,
+    "operator": "survival",
+    "saved_parent1": "adaptive_pareto_niche_survival_gen25_0",
+    "parent1": "adaptive_pareto_niche_survival_gen25_0",
+    "parent2": "age_diversity_survival_pareto_shield_simple_gen26_0",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "646b9b46d3e88b723f227a26b8cf7fe70e50c584f3d1f08acd4a3384e0bf4d50",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "64d9e4cf6047c5384f9bf904f27a9b7ee0ca3a325bc71291d05bcc482aaea829",
+            "names": [
+              "adaptive_pareto_niche_survival_gen25_0"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cb912066487ade1b435fbe2ef49727a15c3c2aad0728a845ac4900df0562bc88",
+            "names": [
+              "age_diversity_survival_pareto_shield_simple_gen26_0"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "structural_signature_quality_gated_niche_tournament_gen29_5",
+    "generation": 29,
+    "operator": "selection",
+    "saved_parent1": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "parent1": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "parent2": "novelty_weighted_quality_gated_niche_tournament_gen18_4",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "b5e53a8292ef1e008e4b44b998cf7524355a25ccad04849ac7a7ba88d41ef1b0",
+        "model": "anthropic/claude-sonnet-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "1bfb902c9046081715bb508bc58bc85529db5277a46b9181201880896bf232ad",
+            "names": [
+              "novelty_weighted_quality_gated_niche_tournament_gen18_4"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "1bfb902c9046081715bb508bc58bc85529db5277a46b9181201880896bf232ad",
+            "names": [
+              "novelty_weighted_quality_gated_niche_tournament_gen18_4"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "adaptive_affine_shape_precision_loss_gen30_3",
+    "generation": 30,
+    "operator": "loss",
+    "saved_parent1": "affine_shape_correlation_loss_gen29_8",
+    "parent1": "affine_shape_correlation_loss_gen29_8",
+    "parent2": "affine_angular_profile_loss_2pass_gen8_1",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "a397f3490819a07666d6772add0d3e70246cfca87d1bfb42628dcf2ca78d53b7",
+        "model": "openai/gpt-5.6-sol",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "cb325be7015c8f12aaab2a497e0f1bfd166c8234e7399b028439c83660611ba3",
+            "names": [
+              "affine_shape_correlation_loss_gen29_8"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "e5bf53e178398548f686f7961c5e955f2225506d9d797bf35a80e5708d27cde2",
+            "names": [
+              "affine_angular_profile_loss_2pass_gen8_1"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "child": "age_dominant_cost_tiebreak_survival_gen30_8",
+    "generation": 30,
+    "operator": "survival",
+    "saved_parent1": "age_and_cost_regularized_survival_simple_gen28_8",
+    "parent1": "age_and_cost_regularized_survival_simple_gen28_8",
+    "parent2": "age_regularized_survival",
+    "status": "confirmed_exact_code",
+    "cache_hits": [
+      {
+        "request_hash": "5fa4e6deb4f5e55f5507f636be33f1204658ca2d5730a7da31d4ab8afa8c0656",
+        "model": "anthropic/claude-opus-5",
+        "parents": [
+          {
+            "position": 1,
+            "code_sha256": "c9cc1e4dd9e1376b4926d90f60cf7defbf411d4d20084fded6de22eaf40a2196",
+            "names": [
+              "age_and_cost_regularized_survival_simple_gen28_8"
+            ]
+          },
+          {
+            "position": 2,
+            "code_sha256": "cd58bdbae0ee3e97085a0037083d3b619c2d496d5a08707d9f00bfddaa432551",
+            "names": [
+              "age_regularized_survival"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
