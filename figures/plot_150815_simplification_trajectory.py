@@ -52,7 +52,7 @@ def draw(ax, points, norm, label_every):
         # Put the closely spaced 60/70 labels on opposite sides of their points.
         offset = (10, -23) if 60 in generations else (10, 12)
         if 20 in generations or 70 in generations:
-            offset = (-20, -16)
+            offset = (-32, -21)
         ax.annotate(
             ", ".join(map(str, generations)), (loc, score), xytext=offset,
             textcoords="offset points", fontsize=10, color="#242a33",
