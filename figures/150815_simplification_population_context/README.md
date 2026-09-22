@@ -23,5 +23,7 @@ Source: `../150815-simplify-30-best2_population_pareto/population.csv`.
 Regenerate from the repository root:
 
 ```bash
-python figures/plot_150815_simplification_trajectory.py --population-context --out-dir figures/150815_simplification_population_context
+python figures/plot_150815_simplification_trajectory.py --population-context --ylim 0.6 1.0 --out-dir figures/150815_simplification_population_context
 ```
+
+Fitness axis limits: 0.6–1.0. Both plots share the same layout.
