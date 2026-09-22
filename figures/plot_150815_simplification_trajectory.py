@@ -12,6 +12,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
+from matplotlib.path import Path as MplPath
+from matplotlib.patches import PathPatch
 from matplotlib.ticker import MaxNLocator
 
 
@@ -37,6 +39,24 @@ def load_ranked(source):
 
 def load_best(source):
     return [population[0] for population in load_ranked(source).values()]
+
+
+def phase_brace(fig, x0, x1, y, label):
+    """Draw a downward curly brace in figure coordinates."""
+    mid = (x0 + x1) / 2
+    curl = min(0.018, (x1 - x0) / 8)
+    depth = 0.012
+    vertices = [
+        (x0, y), (x0, y-depth), (x0+curl, y-depth), (x0+2*curl, y-depth),
+        (mid-curl, y-depth), (mid-curl, y-depth), (mid, y-2*depth),
+        (mid+curl, y-depth), (mid+curl, y-depth), (x1-2*curl, y-depth),
+        (x1-curl, y-depth), (x1, y-depth), (x1, y),
+    ]
+    path = MplPath(vertices, [MplPath.MOVETO] + [MplPath.CURVE4] * 12)
+    fig.add_artist(PathPatch(path, transform=fig.transFigure, facecolor="none",
+                             edgecolor="#505966", lw=1, clip_on=False))
+    fig.text(mid, y-0.043, label, ha="center", va="top", fontsize=10,
+             color="#242a33")
 
 
 def draw_population_context(ax, populations):
@@ -109,8 +129,11 @@ def main():
     args.out_dir.mkdir(parents=True, exist_ok=True)
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10,
                          "pdf.fonttype": 42, "svg.fonttype": "none"})
-    fig, ax = plt.subplots(figsize=(7.4, 4.8))
-    fig.subplots_adjust(left=0.12, right=0.82, bottom=0.14, top=0.96)
+    fig, ax = plt.subplots(figsize=(7.4, 6.6) if args.population_context else (7.4, 4.8))
+    if args.population_context:
+        fig.subplots_adjust(left=0.12, right=0.96, bottom=0.40, top=0.97)
+    else:
+        fig.subplots_adjust(left=0.12, right=0.82, bottom=0.14, top=0.96)
     norm = Normalize(1, 90)
     scatter = draw(ax, points, norm, args.label_every,
                    best_stars=args.population_context)
@@ -119,10 +142,21 @@ def main():
         ax.set_xlim(ax.get_xlim())
         ax.set_ylim(ax.get_ylim())
         draw_population_context(ax, load_ranked(args.source))
-    cax = fig.add_axes([0.855, 0.14, 0.022, 0.82])
-    colorbar = fig.colorbar(scatter, cax=cax, ticks=[1, 10, 20, 30, 40, 50, 60, 70, 80, 90])
+    if args.population_context:
+        cax = fig.add_axes([0.12, 0.22, 0.84, 0.025])
+        orientation = "horizontal"
+    else:
+        cax = fig.add_axes([0.855, 0.14, 0.022, 0.82])
+        orientation = "vertical"
+    colorbar = fig.colorbar(scatter, cax=cax, orientation=orientation,
+                           ticks=[1, 10, 20, 30, 40, 50, 60, 70, 80, 90])
     colorbar.set_label("Generation")
     colorbar.outline.set_visible(False)
+    if args.population_context:
+        cax.xaxis.set_label_position("top")
+        boundary = 0.12 + 0.84 * (30 - 1) / (90 - 1)
+        phase_brace(fig, 0.12, boundary, 0.155, "Full evolution")
+        phase_brace(fig, boundary, 0.96, 0.155, "Simplification phase")
     for extension in ("png", "pdf", "svg"):
         fig.savefig(args.out_dir / f"trajectory.{extension}", dpi=200, facecolor="white")
     plt.close(fig)
