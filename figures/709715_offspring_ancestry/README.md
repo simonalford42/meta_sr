@@ -17,7 +17,7 @@ later population scores because reevaluation changes them.
 - Yellow: selection origins at generations 10, 18, 40, 43.
 - Green: survival origins at generations 19, 28.
 - Dark grey: other recorded ancestors (generation 11).
-- Light grey with 45% opacity: other offspring, not supported as ancestors by the records.
+- Light grey with 60% opacity: other offspring, not supported as ancestors by the records.
 
 The colored events follow the explicit operator `parent_name` chains of the four
 final components. They are ancestry contributions, not claims that every event
@@ -31,7 +31,7 @@ cannot be recovered. Baseline operators are not colored offspring creation event
 
 All events use circular markers. Operator origins retain their operator colors;
 other recorded ancestors are dark grey. Other offspring are smaller filled
-light-grey dots with 45% opacity. No LOC line or second y-axis is shown.
+light-grey dots with 60% opacity. No LOC line or second y-axis is shown.
 Exact overlaps are not jittered. Creation-method metadata remains in the CSV.
 
 `lineage_records.json` is a compact extract of the run's operator metadata,
@@ -50,3 +50,7 @@ Refresh the metadata from the original 2.1 GB run file and regenerate:
 ```bash
 python figures/plot_709715_offspring_ancestry.py --refresh-from runs/709715/run_data.json
 ```
+
+The figure omits its title and caption. The Recorded ancestor legend uses
+four overlapping red, blue, yellow, and green circles. Grey background dots
+use marker area 30; the remaining dark-grey ancestor uses area 46.

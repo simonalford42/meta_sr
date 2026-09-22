@@ -12,6 +12,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.legend_handler import HandlerBase
 from matplotlib.ticker import MultipleLocator
 
 ROOT = Path(__file__).resolve().parent
@@ -19,6 +20,19 @@ OUT = ROOT / '709715_offspring_ancestry'
 TYPES = ('mutation', 'survival', 'selection', 'loss')
 BASELINE = ('add_constant_offset', 'age_regularized_survival', 'tournament_selection', 'mse_loss')
 COLORS = dict(mutation='#d62728', loss='#2878c8', selection='#e4bc24', survival='#2c9b49')
+
+
+class OverlappingCircles(HandlerBase):
+    """Four colored circles with 75% of each diameter exposed."""
+
+    def create_artists(self, legend, orig_handle, xdescent, ydescent,
+                       width, height, fontsize, trans):
+        diameter = width / 3.25
+        return [Line2D([diameter / 2 + i * 0.75 * diameter - xdescent],
+                       [height / 2 - ydescent], marker='o', linestyle='none',
+                       markersize=diameter, markerfacecolor=color,
+                       markeredgecolor='none', transform=trans)
+                for i, color in enumerate(orig_handle)]
 
 
 def extract(source):
@@ -140,17 +154,16 @@ def render(points):
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 10,
                          'pdf.fonttype': 42, 'svg.fonttype': 'none'})
     fig, ax = plt.subplots(figsize=(10.2, 5.6))
-    fig.subplots_adjust(left=0.08, right=0.97, bottom=0.24, top=0.90)
+    fig.subplots_adjust(left=0.08, right=0.97, bottom=0.22, top=0.97)
     for status in ('not_recorded_ancestor', 'ancestor', 'operator_origin'):
         group = [p for p in points if p['status'] == status]
         colors = [COLORS[p['color_operator']] if p['color_operator'] else
                   '#555555' if status == 'ancestor' else '#c9c9c9' for p in group]
         ax.scatter([p['generation'] for p in group], [p['fitness'] for p in group],
-                   marker='o', s=66 if status == 'operator_origin' else 40 if status == 'ancestor' else 23,
-                   c=colors, edgecolors='none', alpha=0.45 if status == 'not_recorded_ancestor' else 1,
+                   marker='o', s=66 if status == 'operator_origin' else 46 if status == 'ancestor' else 30,
+                   c=colors, edgecolors='none', alpha=0.60 if status == 'not_recorded_ancestor' else 1,
                    zorder=4 if status == 'operator_origin' else 3 if status == 'ancestor' else 2)
     ax.set(xlabel='Generation', ylabel='Fitness (GT)', xlim=(-1, 46), ylim=(0, 1))
-    ax.set_title('PySR evolution: ancestry of the final selected bundle', fontsize=12, pad=12)
     ax.xaxis.set_major_locator(MultipleLocator(5))
     ax.grid(color='#e9ecf0', lw=0.8)
     ax.set_axisbelow(True)
@@ -160,15 +173,14 @@ def render(points):
         ax.spines[spine].set_color('#bfc5cd')
     color_handles = [Line2D([], [], marker='o', linestyle='none', color=c, label=t.capitalize())
                      for t, c in COLORS.items()]
-    fig.legend(handles=color_handles, loc='lower center', bbox_to_anchor=(0.52, 0.12),
+    fig.legend(handles=color_handles, loc='lower center', bbox_to_anchor=(0.52, 0.10),
                ncol=4, frameon=False, fontsize=9)
-    status_handles = [Line2D([], [], marker='o', linestyle='none', color='#555555', label='Recorded ancestor'),
-                      Line2D([], [], marker='o', linestyle='none', color='#c9c9c9', markeredgecolor='none', alpha=0.45,
+    status_handles = [tuple(COLORS.values()),
+                      Line2D([], [], marker='o', markersize=5.5, linestyle='none', color='#c9c9c9', markeredgecolor='none', alpha=0.60,
                              label='Other offspring')]
-    fig.legend(handles=status_handles, loc='lower center', bbox_to_anchor=(0.52, 0.065),
-               ncol=2, frameon=False, fontsize=9)
-    fig.text(0.08, 0.025, 'Recorded ancestry only: crossover second parents were not saved. Gen 0 uses first saved population fitness.',
-             fontsize=8, color='#666666')
+    fig.legend(handles=status_handles, labels=['Recorded ancestor', 'Other offspring'],
+               handler_map={tuple: OverlappingCircles()}, loc='lower center',
+               bbox_to_anchor=(0.52, 0.04), ncol=2, frameon=False, fontsize=9)
     for ext in ('png', 'pdf', 'svg'):
         fig.savefig(OUT / f'offspring_ancestry.{ext}', dpi=200, facecolor='white')
     plt.close(fig)
