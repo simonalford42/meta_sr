@@ -36,7 +36,7 @@ def draw_ancestry_legend(ax, fontsize):
         return 0.025 + (value - 0.025) * sy
     ax.add_patch(Rectangle((lx(0.73), ly(0.025)), 0.24 * sx, 0.27 * sy,
                            transform=ax.transAxes, facecolor='white',
-                           edgecolor='black', linewidth=0.8 * SCALE, alpha=1, zorder=5))
+                           edgecolor='black', linewidth=0.5 * SCALE, alpha=1, zorder=5))
     for i, (label, color) in enumerate(COLORS.items()):
         y = 0.255 - i * 0.045
         ax.scatter([lx(0.86)], [ly(y)], s=46 * SCALE**2, c=color, edgecolors='none',
