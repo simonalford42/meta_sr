@@ -23,40 +23,35 @@
 \paragraph{Overview.}
 The BasicSR algorithm skeleton. The \emph{policy} (in \textcolor{blue!70!black}{\textsc{blue}}) is the evolvable configuration of the BasicSR skeleton, consisting of
 operators for calculating \slot{loss\_function}, \slot{selection}, \slot{mutation}, \slot{crossover},
-\slot{acceptance}, \slot{survival}, \slot{update\_population} and \slot{update\_state!}.
+\slot{acceptance}, \slot{survival}, \slot{update\_population} and \slot{update\_state!}. The overall skeleton structure and constants (population sizes, number of iterations, etc.) originate from the PySR algorithm implementation.
 
 \begin{algorithmic}[1]
 \Function{FitSkeletonSR}{$X, y$, config}
   \State policy\_state $\gets$ init\_state(config)
-  \State populations $\gets$ 15 populations of 33 small random trees,
-  \Statex \hspace{2.2em} each scored with \slot{loss\_function} \cmt{Const(0) with 3 random operators attached}
+  \State populations $\gets$ 15 populations of 33 small random trees
   \State \slot{update\_state!}(populations)
   \For{iteration $= 1 \ldots 100$}
     \ForEach{population $P$}
       \For{$1 \ldots 380$}
         \State \slot{update\_state!}(populations)
-        \For{$1 \ldots 3$}\cmt{$\lceil 33 / 15 \rceil$}
+        \For{$1 \ldots 3$}
           \If{rand $\le 0.0259$}
             \State $a \gets$ \slot{selection}($P$); \; $b \gets$ \slot{selection}($P$) \quad (distinct)
-            \State children $\gets$ [score($t$) for $t$ in \slot{crossover}($a,b$)], keep those passing \slot{acceptance}(parent, child)
+            \State children $\gets$ \slot{crossover}($a,b$); \; compute \slot{loss\_function}(child) for each; keep those passing \slot{acceptance}(parent, child)
             \If{children non-empty} $P \gets$ \slot{survival}($P$, children) \EndIf
           \Else
             \State parent $\gets$ \slot{selection}($P$)
-            \State child $\gets$ score(\slot{mutation}(parent)) \cmt{skip if mutation returns $\varnothing$}
+            \State child $\gets$ \slot{mutation}(parent); \; compute \slot{loss\_function}(child)
             \If{\slot{acceptance}(parent, child)} $P \gets$ \slot{survival}($P$, [child]) \EndIf
           \EndIf
         \EndFor
       \EndFor
       \State \slot{update\_state!}(populations)
-      \State populations $\gets$ \slot{update\_population}(populations) \cmt{e.g.\ migration, hall of fame}
+      \State populations $\gets$ \slot{update\_population}(populations)
     \EndFor
   \EndFor
   \State \Return policy\_state.archive
 \EndFunction
 \end{algorithmic}
-
-\medskip
-\noindent where score($t$) $=$ Individual($t$, \slot{loss\_function}($t$), complexity $=$ size($t$)), and every loop
-above also exits early once the evaluation budget ($10^6$ calls to \slot{loss\_function}) is spent.
 
 \end{document}
