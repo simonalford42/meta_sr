@@ -83,7 +83,10 @@ def main():
         axe.errorbar(xe, mu, yerr=sd, color=color, marker=marker, ms=5, lw=1.5,
                      capsize=2.5, label=lab)
     axg.set_xlabel("Generation")
-    axe.set_xlabel("Total eval seeds spent")
+    axe.set_xscale("log")
+    axe.set_xticks([10, 30, 100, 300, 1000, 3000])
+    axe.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    axe.set_xlabel("Total eval seeds spent (log scale)")
     axg.set_ylabel("Reevaluated train score of best bundle")
     for ax in (axg, axe):
         ax.grid(alpha=0.25)
