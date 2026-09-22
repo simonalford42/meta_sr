@@ -42,7 +42,7 @@ def main():
         total = round(ys[-1]*90/100)
         assert total == (72 if method == 'Baseline' else 74)
         right.step(xs, ys, where='post', color=color, linewidth=2.2,
-                   label=f'{label} ({total}/90)')
+                   label=label)
     left.set(xlim=(9, 90), xlabel='Search time (sec)')
     left.set_xticks(range(10, 91, 10))
     right.set(xscale='log', xlim=(1/60, 60), xlabel='Search time (min)')
