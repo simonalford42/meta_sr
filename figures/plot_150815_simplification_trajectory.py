@@ -130,6 +130,7 @@ def main():
     parser.add_argument("--out-dir", type=Path, default=ROOT / "150815_simplification_trajectory")
     parser.add_argument("--label-every", type=int, default=10)
     parser.add_argument("--phase-boundary", type=int, default=30)
+    parser.add_argument("--xmin", type=float, help="Override the LOC axis minimum")
     parser.add_argument("--score-label", default=r"Training score (GT/$R^2$)")
     parser.add_argument("--label-offset", nargs=3, type=int, action="append", default=[],
                         metavar=("GEN", "DX", "DY"), help="Override label offset in points")
@@ -147,9 +148,9 @@ def main():
     args.out_dir.mkdir(parents=True, exist_ok=True)
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10,
                          "pdf.fonttype": 42, "svg.fonttype": "none"})
-    fig, ax = plt.subplots(figsize=(7.4, 6.6) if args.population_context else (7.4, 4.8))
+    fig, ax = plt.subplots(figsize=(7.4, 5.7) if args.population_context else (7.4, 4.8))
     if args.population_context:
-        fig.subplots_adjust(left=0.12, right=0.96, bottom=0.40, top=0.97)
+        fig.subplots_adjust(left=0.12, right=0.96, bottom=0.30, top=0.965)
     else:
         fig.subplots_adjust(left=0.12, right=0.82, bottom=0.14, top=0.96)
     norm = Normalize(first, last)
@@ -161,8 +162,10 @@ def main():
         ax.set_xlim(ax.get_xlim())
         ax.set_ylim(ax.get_ylim())
         draw_population_context(ax, load_ranked(args.source), norm)
+    if args.xmin is not None:
+        ax.set_xlim(left=args.xmin)
     if args.population_context:
-        cax = fig.add_axes([0.204, 0.22, 0.672, 0.020])
+        cax = fig.add_axes([0.204, 0.105, 0.672, 0.023])
         orientation = "horizontal"
     else:
         cax = fig.add_axes([0.855, 0.14, 0.022, 0.82])
@@ -175,8 +178,8 @@ def main():
         cax.xaxis.set_label_position("top")
         cax.tick_params(labelsize=8, pad=2)
         boundary = 0.204 + 0.672 * (args.phase_boundary - first) / (last - first)
-        phase_brace(fig, 0.204, boundary, 0.18, "Full evolution")
-        phase_brace(fig, boundary, 0.876, 0.18, "Simplification phase")
+        phase_brace(fig, 0.204, boundary, 0.060, "Full evolution")
+        phase_brace(fig, boundary, 0.876, 0.060, "Simplification phase")
     for extension in ("png", "pdf", "svg"):
         fig.savefig(args.out_dir / f"trajectory.{extension}", dpi=200, facecolor="white")
     plt.close(fig)

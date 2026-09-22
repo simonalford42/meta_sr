@@ -12,7 +12,7 @@ across generations, lighter than the earlier line version. Background dots
 retain their lightened colors and sit behind the stars.
 Generation 5 has 11 saved population members;
 only the top 10 are plotted. Color runs from early yellow to late purple.
-Axis limits follow the best-member trajectory, so some lower-score or longer
+The LOC axis starts at zero. Other axis limits follow the best-member trajectory, so some lower-score or longer
 population members are clipped. LOC excludes blanks, comments, and docstrings.
 Scores are saved training values, not validation scores.
 
@@ -23,5 +23,5 @@ Extra label offsets keep 20 and 45 clear of the dense upper cluster.
 Regenerate from the repository root:
 
 ```bash
-python figures/plot_150815_simplification_trajectory.py --source figures/709715_population_pareto/population.csv --population-context --score-label 'Training score (GT)' --label-offset 20 -18 -40 --label-offset 45 12 27 --out-dir figures/709715_simplification_population_context
+python figures/plot_150815_simplification_trajectory.py --source figures/709715_population_pareto/population.csv --population-context --xmin 0 --score-label 'Training score (GT)' --label-offset 20 -18 -40 --label-offset 45 12 27 --out-dir figures/709715_simplification_population_context
 ```
