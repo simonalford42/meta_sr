@@ -9,12 +9,12 @@ from matplotlib.colors import Normalize
 
 
 PANELS = [
-    dict(title="PySR evolution", source="709715_population_pareto/population.csv",
-         output="709715_simplification_population_context", ylim=(0.4, 1.0),
-         score_label="Fitness (GT)", offsets={20: (-18, -40), 45: (12, 27)}),
     dict(title="BasicSR evolution", source="150815-simplify-30-best2_population_pareto/population.csv",
          output="150815_simplification_population_context", ylim=(0.8, 1.0),
          score_label=r"Fitness (GT/$R^2$)", offsets={}),
+    dict(title="PySR evolution", source="709715_population_pareto/population.csv",
+         output="709715_simplification_population_context", ylim=(0.4, 1.0),
+         score_label="Fitness (GT)", offsets={20: (-18, -40), 45: (12, 27)}),
 ]
 
 
@@ -31,7 +31,7 @@ def render_panel(fig, spec, origin=0, width=1):
     ax.set_ylim(*spec["ylim"])
     draw_population_context(ax, populations, norm)
     fig.text(origin + width * 0.54, 0.98, spec["title"],
-             ha="center", va="top", fontsize=14)
+             ha="center", va="top", fontsize=12)
     bar_left, bar_width = origin + width * 0.204, width * 0.672
     cax = fig.add_axes([bar_left, 0.14, bar_width, 0.023])
     colorbar = fig.colorbar(scatter, cax=cax, orientation="horizontal",
