@@ -1,0 +1,104 @@
+% BasicSR / SkeletonSR pseudocode — "60% detail" version (overall gist).
+% Source: SymbolicRegression.jl/src/SkeletonSR.jl
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage{xcolor}
+\algnewcommand\algorithmicforeach{\textbf{for each}}
+\algdef{S}[FOR]{ForEach}[1]{\algorithmicforeach\ #1\ \algorithmicdo}
+\newcommand{\slot}[1]{\textcolor{blue!70!black}{\textsc{#1}}}
+\newcommand{\cmt}[1]{\Comment{\textit{#1}}}
+
+\title{SkeletonSR (BasicSR): Pseudocode\\\large Gist version ($\approx$60\% of the source)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\paragraph{Overview.}
+A minimal PySR-style symbolic-regression engine. Expressions are binary/unary
+trees over variables and constants. The skeleton owns the tree representation,
+the evaluation budget, random tree generation, constant optimisation and the
+outer loop. The \emph{policy} (in \textcolor{blue!70!black}{\textsc{blue}})
+decides how expressions are scored, chosen, mutated, crossed over, accepted
+and kept: \slot{loss\_function}, \slot{selection}, \slot{mutation},
+\slot{crossover}, \slot{acceptance}, \slot{survival},
+\slot{update\_population}, \slot{update\_state!}.
+
+\section*{Basics}
+\begin{algorithmic}[1]
+\State \textbf{Node} $::=$ Const(value) $\mid$ Var(feature) $\mid$ Op(op, left, right$\mid\varnothing$)
+\State \textbf{Individual} $=$ (tree, loss, cost, complexity, lineage ids)
+\State \textbf{HasBudget}: eval\_count $<$ max\_evals \textbf{and} elapsed $<$ timeout
+\Function{MakeIndividual}{tree, parent}
+  \State \Return $\varnothing$ if no budget; eval\_count $\mathrel{+}= 1$
+  \State (loss, cost) $\gets$ \slot{loss\_function}(tree); \Return Individual(tree, loss, cost, size(tree), parent)
+\EndFunction
+\Function{ValidTree}{tree}
+  \State \Return size $\le$ maxsize $\land$ depth $\le$ maxdepth $\land$ per-operator size / nesting constraints hold
+\EndFunction
+\end{algorithmic}
+
+\section*{Initialisation}
+\begin{algorithmic}[1]
+\Function{InitializePopulation}{}
+  \While{$|\text{pop}| <$ population\_size $\land$ HasBudget}
+    \State tree $\gets$ small random tree (start at Const(0), attach three random operators to random leaves)
+    \State fall back to a depth-$\le 3$ random tree if invalid; score with \Call{MakeIndividual}{} and add
+  \EndWhile
+  \State \Return pop \quad (or just the constant $\bar y$ if nothing could be scored)
+\EndFunction
+\end{algorithmic}
+
+\section*{Main loop}
+\begin{algorithmic}[1]
+\Function{FitSkeletonSR}{$X, y$, config}
+  \State state $\gets$ engine($X,y$) + \slot{init\_state}(); populations $\gets$ [\Call{InitializePopulation}{} $\times$ $n_{\text{pops}}$]
+  \For{iteration $= 1 \ldots$ niterations while HasBudget}
+    \ForEach{population $p$}
+      \For{$1 \ldots$ ncycles\_per\_iteration while HasBudget}
+        \State \slot{update\_state!}(populations)
+        \State \Call{EvolveCycle!}{$p$}
+      \EndFor
+      \State \Call{OptimizeAndSimplify!}{populations[$p$]}
+      \State \slot{update\_state!}(populations)
+      \State populations $\gets$ \slot{update\_population}(populations) \cmt{e.g.\ migration, hall of fame}
+    \EndFor
+  \EndFor
+  \State \Return archived expressions sorted by complexity
+\EndFunction
+\end{algorithmic}
+
+\begin{algorithmic}[1]
+\Function{EvolveCycle!}{$p$}
+  \State pop $\gets$ populations[$p$]
+  \For{$1 \ldots$ \slot{cycles\_per\_population}(pop) while HasBudget}
+    \If{\slot{should\_crossover}(pop)}
+      \State $a, b \gets$ \slot{selection}(pop), \slot{selection}(pop) \quad (distinct)
+      \State children $\gets$ [\Call{MakeIndividual}{$t$} for $t$ in \slot{crossover}($a,b$)], keep those passing \slot{acceptance}
+      \State pop $\gets$ \slot{survival}(pop, children) if any
+    \Else
+      \State parent $\gets$ \slot{selection}(pop)
+      \State child $\gets$ \Call{MakeIndividual}{\slot{mutation}(parent)} \cmt{skip cycle if mutation returns $\varnothing$}
+      \If{\slot{acceptance}(parent, child)} pop $\gets$ \slot{survival}(pop, [child]) \EndIf
+    \EndIf
+  \EndFor
+  \State populations[$p$] $\gets$ pop
+\EndFunction
+\end{algorithmic}
+
+\section*{Per-population refinement}
+\begin{algorithmic}[1]
+\Function{OptimizeAndSimplify!}{pop}
+  \ForEach{member in pop}
+    \State optionally fold constant subtrees (Op(Const, Const) $\to$ Const)
+    \State with prob.\ optimize\_probability: refit the tree's constants with Nelder--Mead (a few restarts),
+    \Statex \hspace{2.2em} each objective call spending one eval of \slot{loss\_function}; keep if loss improved
+  \EndFor
+\EndFunction
+\end{algorithmic}
+
+\end{document}
