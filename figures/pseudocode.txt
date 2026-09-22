@@ -92,3 +92,49 @@ Update population:
 
 Update state:
 	Store in the archive a Pareto frontier over expression loss and complexity.
+
+
+Evolved (runs/229869/best_bundles/best_final.jl; 150815 simplify more, through generation 90):
+
+Loss/cost:
+	Loss is mean squared error.
+	Cost is one minus squared correlation between predictions and targets, plus a bounded robust error term (weight 0.5) and a small complexity penalty (weight 1e-6).
+	The robust term is one minus exp(-mean(log(1 + squared error / target variance))), with target variance floored at 1e-12.
+
+Survival:
+	Merge the population and children, discard members with non-finite loss or cost, and deduplicate exact expressions, keeping the lowest-cost copy (breaking ties by lower loss, then younger age).
+	Keep the cost-complexity Pareto frontier first, visiting simpler expressions first.
+	Fill remaining slots with the best expression at each remaining complexity level, visiting simpler levels first, then with the remaining expressions in order of increasing cost.
+	If there are too few unique expressions, pad with copies of the first survivor.
+
+Selection:
+	Sample up to eight members with finite loss and cost, with replacement.
+	With 55% probability, choose from the sample's cost-complexity Pareto frontier, with probability inversely proportional to rank from simplest to most complex.
+	Otherwise, select the youngest of the three lowest-cost sampled members (or all sampled members if fewer than three).
+
+Mutation:
+	With 35% probability, choose a random leaf. Perturb a constant c to c * (1 + 0.5 * Gaussian noise) + 0.1 * independent Gaussian noise, or replace a variable with a random variable or constant.
+	With 45% probability, replace a random subtree with either a random variable or constant, or a random unary or binary operator with terminal inputs, with equal probability.
+	Otherwise, wrap a random subtree in a random unary or binary operator, using a random variable or constant as the other input for binary operators.
+	Retry invalid proposals up to eight attempts, choosing the mutation type again on each attempt.
+
+Acceptance:
+	Reject children with invalid trees or non-finite loss or cost; accept valid children when the parent's loss or cost is non-finite.
+	Accept a child if it improves cost plus a complexity penalty (0.02 * complexity / maximum size).
+	Also accept if no current population member has both equal or lower cost and equal or lower complexity, with at least one strict improvement.
+	Otherwise, accept probabilistically, penalizing increased cost and complexity relative to the parent and reducing exploration as the search progresses.
+
+Crossover:
+	On up to 64 randomly sampled training rows, rank donor subtrees by correlation with the recipient parent's residual errors and targets, with a preference for smaller subtrees.
+	Keep the five best donors and the twelve best donor-site pairs, favoring similar subtree sizes.
+	Try subtree replacement, addition or subtraction according to residual correlation, multiplication, and division where available; reject invalid children and exact copies of either parent.
+	Keep the child with the best sampled correlation-and-robust-error score plus a complexity penalty, if it is smaller than the recipient parent or its score is at most 0.12 worse.
+	If this succeeds, repeat in the opposite direction for a possible second child. Otherwise, try up to 24 subtree swaps ranked by size and arity compatibility.
+
+Update population:
+	At the end of each pass over all populations, send each population's best member to the next population in a ring.
+	Replace the destination's worst member only if the migrant is a valid, new expression and has lower cost (breaking ties by lower complexity).
+
+Update state:
+	Merge the archive with all population members having finite loss and cost, and rebuild the loss-complexity Pareto frontier.
+	Keep expressions in increasing complexity only when loss strictly improves, preferring older expressions on exact complexity-and-loss ties.

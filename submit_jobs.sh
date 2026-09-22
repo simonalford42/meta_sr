@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 # 9/21/26
+sbatch --partition=default_partition -J srb-full-229869 run.sh srbench_full_eval.py --evolve-results runs/229869 --select-by train --ground-truth --black-box --results-dir runs/229869-srbench_full_9-21_10seed --max-evals 1000000 --timeout 500 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --fullsr-wall-limit 600 --black-box-timeout 1500 --black-box-wall-limit 1800 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5
+
 ablation_flags=(
     --operator-type all --population-type topk --generations 15 --population 10 --offspring 10
     --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270 --population-reeval-runs 3
