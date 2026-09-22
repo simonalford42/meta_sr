@@ -14,6 +14,9 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import MultipleLocator
 
+# Scale the entire figure: canvas, fonts, dots, and line widths.
+SCALE = 1.0
+
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / '709715_offspring_ancestry'
 TYPES = ('mutation', 'survival', 'selection', 'loss')
@@ -33,14 +36,14 @@ def draw_ancestry_legend(ax, fontsize):
         return 0.025 + (value - 0.025) * sy
     ax.add_patch(Rectangle((lx(0.73), ly(0.025)), 0.24 * sx, 0.27 * sy,
                            transform=ax.transAxes, facecolor='white',
-                           edgecolor='black', linewidth=0.8, alpha=1, zorder=5))
+                           edgecolor='black', linewidth=0.8 * SCALE, alpha=1, zorder=5))
     for i, (label, color) in enumerate(COLORS.items()):
         y = 0.255 - i * 0.045
-        ax.scatter([lx(0.86)], [ly(y)], s=46, c=color, edgecolors='none',
+        ax.scatter([lx(0.86)], [ly(y)], s=46 * SCALE**2, c=color, edgecolors='none',
                    transform=ax.transAxes, zorder=6)
         ax.text(lx(0.878), ly(y), label.capitalize(), transform=ax.transAxes,
                 va='center', fontsize=fontsize, zorder=6)
-    ax.scatter([lx(0.86)], [ly(0.06)], s=46, c='#bdbdbd', alpha=0.70,
+    ax.scatter([lx(0.86)], [ly(0.06)], s=46 * SCALE**2, c='#bdbdbd', alpha=0.70,
                edgecolors='none', transform=ax.transAxes, zorder=6)
     ax.text(lx(0.845), ly(0.06), 'Other offspring', transform=ax.transAxes,
             ha='right', va='center', fontsize=fontsize, zorder=6)
@@ -164,29 +167,34 @@ def reconstruct(data):
                                           for t in TYPES})
 
 
-def render(points, args):
-    plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 10,
-                         'pdf.fonttype': 42, 'axes.labelsize': args.axis_fontsize,
-                         'xtick.labelsize': args.tick_fontsize, 'ytick.labelsize': args.tick_fontsize})
-    fig, ax = plt.subplots(figsize=(args.width, args.height))
+def render(points):
+    plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 10 * SCALE,
+                         'pdf.fonttype': 42, 'axes.labelsize': 12 * SCALE,
+                         'xtick.labelsize': 10 * SCALE, 'ytick.labelsize': 10 * SCALE,
+                         'axes.linewidth': 0.8 * SCALE,
+                         'xtick.major.size': 3.5 * SCALE, 'ytick.major.size': 3.5 * SCALE,
+                         'xtick.major.width': 0.8 * SCALE, 'ytick.major.width': 0.8 * SCALE,
+                         'xtick.major.pad': 3.5 * SCALE, 'ytick.major.pad': 3.5 * SCALE,
+                         'axes.labelpad': 4 * SCALE})
+    fig, ax = plt.subplots(figsize=(7.2 * SCALE, 4.2 * SCALE))
     fig.subplots_adjust(left=0.12, right=0.97, bottom=0.16, top=0.97)
     for status in ('not_recorded_ancestor', 'ancestor', 'operator_origin'):
         group = [p for p in points if p['status'] == status]
         colors = [COLORS[p['color_operator']] if p['color_operator'] else
                   '#555555' if status == 'ancestor' else '#bdbdbd' for p in group]
         ax.scatter([p['generation'] for p in group], [p['fitness'] for p in group],
-                   marker='o', s=66 if status == 'operator_origin' else 50 if status == 'ancestor' else 38,
+                   marker='o', s=(66 if status == 'operator_origin' else 50 if status == 'ancestor' else 38) * SCALE**2,
                    c=colors, edgecolors='none', alpha=0.70 if status == 'not_recorded_ancestor' else 1,
                    zorder=4 if status == 'operator_origin' else 3 if status == 'ancestor' else 2)
     ax.set(xlabel='Generation', ylabel='Fitness (GT)', xlim=(-1, 46), ylim=(0, 1))
     ax.xaxis.set_major_locator(MultipleLocator(5))
-    ax.grid(color='#e9ecf0', lw=0.8)
+    ax.grid(color='#e9ecf0', lw=0.8 * SCALE)
     ax.set_axisbelow(True)
     for spine in ('top', 'right'):
         ax.spines[spine].set_visible(False)
     for spine in ('bottom', 'left'):
         ax.spines[spine].set_color('#bfc5cd')
-    draw_ancestry_legend(ax, args.legend_fontsize)
+    draw_ancestry_legend(ax, 10 * SCALE)
     fig.savefig(OUT / 'offspring_ancestry.pdf', facecolor='white')
     plt.close(fig)
 
@@ -194,19 +202,14 @@ def render(points, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--refresh-from', type=Path, help='Re-extract compact metadata from run_data.json')
-    parser.add_argument('--width', type=float, default=7.2, help='Figure width in inches (default: 7.2)')
-    parser.add_argument('--height', type=float, default=4.2, help='Figure height in inches (default: 4.2)')
-    parser.add_argument('--axis-fontsize', type=float, default=12, help='Axis label size in points (default: 12)')
-    parser.add_argument('--tick-fontsize', type=float, default=10, help='Tick label size in points (default: 10)')
-    parser.add_argument('--legend-fontsize', type=float, default=10, help='Legend size in points (default: 10)')
     args = parser.parse_args()
-    if min(args.width, args.height, args.axis_fontsize, args.tick_fontsize, args.legend_fontsize) <= 0:
-        parser.error('Figure dimensions and font sizes must be positive')
+    if SCALE <= 0:
+        raise ValueError('SCALE must be positive')
     OUT.mkdir(exist_ok=True)
     if args.refresh_from:
         extract(args.refresh_from)
     points, summary = reconstruct(json.loads((OUT / 'lineage_records.json').read_text()))
-    render(points, args)
+    render(points)
     with (OUT / 'plotted_offspring.csv').open('w', newline='') as handle:
         writer = csv.DictWriter(handle, fieldnames=list(points[0]))
         writer.writeheader()
