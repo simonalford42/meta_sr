@@ -7,7 +7,7 @@ from collections import Counter
 import plot_709715_offspring_ancestry as plot
 
 # Maximum line width in points, before the shared figure SCALE is applied.
-MAX_LINE_WIDTH = 2.5
+MAX_LINE_WIDTH = 1.0
 
 
 def weight_edges(points, edges):

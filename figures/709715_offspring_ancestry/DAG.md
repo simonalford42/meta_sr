@@ -27,6 +27,8 @@ An edge ending in a leaf has branch count 1 and is hidden. For each child genera
 MAX_LINE_WIDTH * (branch_count - 1) / (largest_branch_count_in_that_generation - 1)
 ```
 
-Generations containing only leaf children have no lines. Set `MAX_LINE_WIDTH = 2.5` (points, before figure `SCALE`) in `figures/plot_709715_offspring_dag.py` to change the maximum thickness. Normalization groups edges by their child's generation, not their parent's age or the generations crossed by a long edge.
+Generations containing only leaf children have no lines. Set `MAX_LINE_WIDTH = 1.0` (points, before figure `SCALE`) in `figures/plot_709715_offspring_dag.py` to change the maximum thickness. Normalization groups edges by their child's generation, not their parent's age or the generations crossed by a long edge.
 
 All dots remain. Confirmed paths into the final selected bundle retain darker grey, and other edges remain transparent grey. Opacity can be adjusted in `render()` in `figures/plot_709715_offspring_ancestry.py`. Counts, normalization denominators, and widths are saved in `offspring_dag.json`.
+
+The selected final algorithm at generation 43 is shown as a larger yellow star; other offspring use smaller grey dots.
