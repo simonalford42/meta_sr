@@ -1,7 +1,14 @@
 generation,fitness,mode,edited_operator,operator_name,status,color_operator,score_source,score_snapshot_generation,bundle
-0,0.5600000000000002,explore,loss,affine_continuation_loss_init_8,operator_origin,loss,first_saved_population,1,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
-0,0.515,explore,mutation,algebraic_refactor_mutation_init_0,not_recorded_ancestor,,first_saved_population,1,algebraic_refactor_mutation_init_0 | age_regularized_survival | tournament_selection | mse_loss
-0,0.46499999999999997,explore,mutation,symmetric_motif_graft_init_1,not_recorded_ancestor,,first_saved_population,1,symmetric_motif_graft_init_1 | age_regularized_survival | tournament_selection | mse_loss
+0,0.5166666666666667,baseline,,baseline,not_recorded_ancestor,,initial_evaluation_log,0,add_constant_offset | age_regularized_survival | tournament_selection | mse_loss
+0,0.48333333333333334,explore,selection,pareto_dominance_niched_tournament_init_2,not_recorded_ancestor,,initial_evaluation_log,0,add_constant_offset | age_regularized_survival | pareto_dominance_niched_tournament_init_2 | mse_loss
+0,0.43333333333333335,explore,survival,pareto_niche_crowding_survival_init_3,not_recorded_ancestor,,initial_evaluation_log,0,add_constant_offset | pareto_niche_crowding_survival_init_3 | tournament_selection | mse_loss
+0,0.4833333333333334,explore,survival,pareto_crowded_age_survival_init_4,not_recorded_ancestor,,initial_evaluation_log,0,add_constant_offset | pareto_crowded_age_survival_init_4 | tournament_selection | mse_loss
+0,0.4166666666666667,explore,survival,pareto_niche_regularized_survival_init_5,not_recorded_ancestor,,initial_evaluation_log,0,add_constant_offset | pareto_niche_regularized_survival_init_5 | tournament_selection | mse_loss
+0,0.3333333333333333,explore,mutation,residual_correlation_insertion_mutation_init_6,not_recorded_ancestor,,initial_evaluation_log,0,residual_correlation_insertion_mutation_init_6 | age_regularized_survival | tournament_selection | mse_loss
+0,0.45,explore,mutation,residual_guided_linear_graft_init_7,not_recorded_ancestor,,initial_evaluation_log,0,residual_guided_linear_graft_init_7 | age_regularized_survival | tournament_selection | mse_loss
+0,0.5499999999999999,explore,loss,affine_continuation_loss_init_8,operator_origin,loss,initial_evaluation_log,0,add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8
+0,0.5166666666666667,explore,mutation,algebraic_refactor_mutation_init_0,not_recorded_ancestor,,initial_evaluation_log,0,algebraic_refactor_mutation_init_0 | age_regularized_survival | tournament_selection | mse_loss
+0,0.48333333333333334,explore,mutation,symmetric_motif_graft_init_1,not_recorded_ancestor,,initial_evaluation_log,0,symmetric_motif_graft_init_1 | age_regularized_survival | tournament_selection | mse_loss
 1,0.4666666666666666,explore,loss,dynamic_range_pseudohuber_loss_gen1_0,not_recorded_ancestor,,offspring,1,add_constant_offset | pareto_crowded_age_survival_init_4 | tournament_selection | dynamic_range_pseudohuber_loss_gen1_0
 1,0.4833333333333332,simplify,selection,simple_parsimony_tournament_gen1_1,not_recorded_ancestor,,offspring,1,add_constant_offset | age_regularized_survival | simple_parsimony_tournament_gen1_1 | mse_loss
 1,0.5,explore,mutation,fit_greedy_correction_factor_gen1_2,not_recorded_ancestor,,offspring,1,fit_greedy_correction_factor_gen1_2 | age_regularized_survival | tournament_selection | mse_loss

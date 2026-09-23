@@ -6,6 +6,7 @@ import copy
 import csv
 import json
 import math
+import re
 from pathlib import Path
 
 import matplotlib
@@ -67,11 +68,55 @@ def extract(source):
     (OUT / 'lineage_records.json').write_text(json.dumps(records, indent=2) + '\n')
 
 
+def recover_initial_population(data):
+    """Recover the ten original scores from the initial evaluation log block."""
+    source = ROOT.parent / 'runs/709715/run.log'
+    known = {op['name']: op for g in data['generations']
+             for kind in ('population', 'offspring') for b in g[kind]
+             for op in b['operators'].values()}
+    population, evidence = [], []
+    in_initial = False
+    for line_number, line in enumerate(source.read_text().splitlines(), 1):
+        if 'Evaluating initial population (10 bundles)' in line:
+            in_initial = True
+        if in_initial and '[timing] initial-pop evaluation:' in line:
+            break
+        if not in_initial:
+            continue
+        match = re.match(r'  Avg ([0-9.]+) (.+): \[([^]]+)\] solved', line)
+        if not match:
+            continue
+        printed_mean, bundle_name, scores = match.groups()
+        names = bundle_name.split(' | ')
+        assert len(names) == len(TYPES)
+        seed_scores = [float(score) for score in scores.split(',')]
+        assert len(seed_scores) == 3
+        # The logged scores are fractions solved out of 20 datasets per seed.
+        assert all(abs(score * 20 - round(score * 20)) < 1e-8 for score in seed_scores)
+        score = sum(seed_scores) / len(seed_scores)
+        assert abs(score - float(printed_mean)) <= 0.00005
+        counts = {t: dict.fromkeys(('explore', 'refine', 'simplify', 'crossover'), 0) for t in TYPES}
+        operators = {}
+        for t, name, baseline in zip(TYPES, names, BASELINE):
+            operators[t] = known.get(name, dict(name=name, generation=0, parent_name=None, mode='explore'))
+            assert operators[t]['generation'] == 0
+            if name != baseline:
+                counts[t]['explore'] = 1
+        population.append(dict(score=score, meta_mutation_counts=counts, operators=operators))
+        evidence.append(dict(bundle=bundle_name, fitness=score, seed_scores=seed_scores,
+                             source=str(source.relative_to(ROOT.parent)), line=line_number, text=line))
+    assert len(population) == 10
+    assert len({r['bundle'] for r in evidence}) == 10
+    (OUT / 'initial_population_scores.json').write_text(json.dumps(evidence, indent=2) + '\n')
+    return dict(generation=0, population=population, offspring=[])
+
+
 def reconstruct(data):
     operators, bundles, rows, offspring = {}, {}, [], []
     def key(b):
         return tuple(b['operators'][t]['name'] for t in TYPES)
-    for g in data['generations']:
+    initial_generation = recover_initial_population(data)
+    for g in [initial_generation] + data['generations']:
         for kind in ('population', 'offspring'):
             for index, original in enumerate(g[kind]):
                 b = dict(original, seen=g['generation'], kind=kind, index=index)
@@ -158,6 +203,8 @@ def reconstruct(data):
         if b['key'] in ancestors:
             return
         ancestors.add(b['key'])
+        if b['key'] == BASELINE:
+            return
         if birth(b) > 0:
             visit(parent(b))
         op = event(b)
@@ -167,12 +214,12 @@ def reconstruct(data):
                 if donor is not None:
                     visit(donor)
     visit(selected)
-    # Initial candidates have no separate generation-0 snapshot. Use earliest saved
-    # population fitness for surviving initial bundles and explicitly flag it.
-    initial = [b for b in bundles.values() if birth(b) == 0 and b['key'] != BASELINE]
+    # Use original logged fitness for all nine initial proposals and the baseline.
+    initial = [b for b in bundles.values() if birth(b) == 0]
     plotted = []
     for b in initial + offspring:
-        op = event(b)
+        op = (dict(name='baseline', mode='baseline', type='')
+              if b['key'] == BASELINE else event(b))
         score = b['score']
         if score is None or not math.isfinite(float(score)):
             raise ValueError(f'Missing/nonfinite fitness for {op["name"]}')
@@ -181,13 +228,15 @@ def reconstruct(data):
                             status='operator_origin' if op['name'] in origins else
                                    'ancestor' if b['key'] in ancestors else 'not_recorded_ancestor',
                             color_operator=origins.get(op['name'], ''),
-                            score_source='first_saved_population' if birth(b) == 0 else 'offspring',
+                            score_source='initial_evaluation_log' if birth(b) == 0 else 'offspring',
                             score_snapshot_generation=b['seen'], bundle=' | '.join(b['key'])))
     assert sorted(p['generation'] for p in plotted if p['color_operator'] == 'loss') == [0, 8, 34]
     return plotted, dict(selected_bundle=selected_name, validation_score=val_score,
                          recorded_ancestor_bundles=len(ancestors),
                          crossover_parent_source=str(recovery_path.relative_to(ROOT.parent)),
                          recovered_crossovers=len(recovered),
+                         initial_bundles=len(initial),
+                         initial_score_source='runs/709715/run.log',
                          colored_origins={t: sorted(p['generation'] for p in plotted if p['color_operator'] == t)
                                           for t in TYPES})
 

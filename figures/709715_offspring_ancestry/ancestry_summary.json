@@ -4,6 +4,8 @@
   "recorded_ancestor_bundles": 22,
   "crossover_parent_source": "analysis/709715_crossover_recovery/crossover_parents.json",
   "recovered_crossovers": 73,
+  "initial_bundles": 10,
+  "initial_score_source": "runs/709715/run.log",
   "colored_origins": {
     "mutation": [
       4,
