@@ -2,9 +2,24 @@
 import unittest
 import numpy as np
 from reevaluate_black_box_affine import affine_metrics, predict, training_data
+from reevaluate_black_box_affine_test import frozen_predictions, test_score
 
 
 class AffineTests(unittest.TestCase):
+    def test_test_predictions_use_frozen_training_fit(self):
+        from sklearn.preprocessing import StandardScaler
+        y_train = np.array([-2., -1., 0., 1., 2.])
+        metrics = affine_metrics(y_train, 2*y_train+5)
+        p_test = np.array([9., 11.])
+        fitted = frozen_predictions(p_test, metrics)
+        np.testing.assert_allclose(fitted, [2., 3.])
+        scaler = StandardScaler().fit(np.array([[-1.], [1.]]))
+        self.assertAlmostEqual(test_score(np.array([2., 3.]), fitted, scaler), 1.)
+        self.assertLess(test_score(np.array([20., 30.]), fitted, scaler), 0.)
+        # Scoring arbitrary held-out targets must not change the coefficients.
+        self.assertEqual(metrics['slope'], .5)
+        self.assertEqual(metrics['intercept'], -2.5)
+
     def test_recovers_scale_offset_and_negative_slope(self):
         y = np.linspace(-3, 3, 51)
         result = affine_metrics(y, -2*y+7)

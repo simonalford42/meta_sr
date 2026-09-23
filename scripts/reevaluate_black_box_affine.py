@@ -22,19 +22,27 @@ from domains import get_domain
 
 
 def training_data(X, y, task):
+    X_train, y_train, _, _, _ = split_data(X, y, task)
+    return X_train, y_train
+
+
+def split_data(X, y, task):
+    """Reconstruct train/test rows and train-fitted scalers from a saved task."""
     finite = np.isfinite(y) & np.isfinite(X).all(axis=1)
     X, y = X[finite], y[finite]
     seed = task.get('data_split_seed')
     if seed is None:
         seed = task['seed'] + task['run_index']
-    X, _, y, _ = train_test_split(X, y, train_size=.75, test_size=.25,
+    X, X_test, y, y_test = train_test_split(X, y, train_size=.75, test_size=.25,
                                  random_state=seed)
     cap = task['max_samples']
     if cap and len(y) > cap:
         keep = np.random.RandomState(seed).choice(len(y), cap)
         X, y = X[keep], y[keep]
-    return (StandardScaler().fit_transform(X),
-            StandardScaler().fit_transform(y.reshape(-1, 1)).ravel())
+    x_scaler, y_scaler = StandardScaler(), StandardScaler()
+    X = x_scaler.fit_transform(X)
+    y = y_scaler.fit_transform(y.reshape(-1, 1)).ravel()
+    return X, y, x_scaler.transform(X_test), y_test, y_scaler
 
 
 def predict(equation, X):

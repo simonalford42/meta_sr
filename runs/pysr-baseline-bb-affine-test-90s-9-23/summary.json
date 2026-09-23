@@ -1,0 +1,28 @@
+{
+  "source": "runs/pysr-base-srbench_full_9-22_10seed-90s",
+  "combined_sha256": "10776ab696cbf7d0e09bae5aa8a368eaf60f746f0b03cbbf3d4aba55c4c14a13",
+  "training_replay": "runs/pysr-baseline-bb-affine-train-9-23",
+  "max_evals": 1000000000,
+  "black_box_timeout": 90,
+  "seed": 10000,
+  "n_trials": 1220,
+  "n_candidates": 28559,
+  "n_replay_errors": 0,
+  "n_parity_failures": 0,
+  "n_candidates_with_stored_train_mse": 28559,
+  "n_selected_parity_failures": 0,
+  "protocol": {
+    "calibration": "OLS slope/intercept fitted on original training rows only",
+    "test_scoring": "original target units; predictions clipped to +/-1e10; denominator epsilon 1e-10; negative R2 retained",
+    "aggregation": "mean of per-trial scores; best_test columns select on test; train_selected columns select on train"
+  },
+  "scores": {
+    "stored_best_test_r2": 0.8135067866807045,
+    "raw_best_test_r2": 0.8135067866807045,
+    "affine_best_test_r2": 0.8137594106315957,
+    "raw_winner_affine_test_r2": 0.8131995586079562,
+    "train_selected_raw_test_r2": -21660434292586.324,
+    "train_selected_fixed_affine_test_r2": -21660434292146.52,
+    "train_selected_affine_test_r2": -21660434292146.52
+  }
+}
