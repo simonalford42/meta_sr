@@ -294,6 +294,7 @@ COMMENTARY_LABEL_X = {
 def add_ancestor_commentary(fig, ax, points):
     """Pack wrapped lineage labels into rows above the unchanged plotting area."""
     changes = json.loads((ROOT.parent / 'analysis/709715_crossover_recovery/ancestor_changes.json').read_text())
+    changes['streamlined_niche_clone_tournament_gen43_3']['label'] = 'Final best algorithm'
     ancestors = sorted((p for p in points if p['color_operator']), key=lambda p: p['generation'])
     assert {p['operator_name'] for p in ancestors} == set(changes)
     ancestors = [p for p in ancestors
