@@ -3039,6 +3039,10 @@ def main():
                              "Writes to a new output dir; --generations N means N ADDITIONAL generations. "
                              "Works for all variants (racing, population_type, etc.). "
                              "Config flags should match the prior run; mismatches are warned, not enforced.")
+    parser.add_argument("--continue-eval-idx", type=int, default=None,
+                        help="Exact cumulative evolution evaluation count at the resume checkpoint, "
+                             "if known. Overrides reconstruction from saved bundles, which can "
+                             "miss discarded initial candidates in older checkpoints.")
 
     parser.add_argument("--baseline", type=str, default=None,
                         help="Path to a baseline operator used for the baseline score and to seed the initial population. "
@@ -3085,6 +3089,11 @@ def main():
                         help="Per-fit evaluation budget for automatic NeuronBench full evaluation")
 
     args = parser.parse_args()
+    if args.continue_eval_idx is not None:
+        if not args.continue_from:
+            parser.error("--continue-eval-idx requires --continue-from")
+        if args.continue_eval_idx < 0:
+            parser.error("--continue-eval-idx must be nonnegative")
     if args.population_reeval_runs < 0:
         parser.error("--population-reeval-runs must be nonnegative")
 
@@ -3338,6 +3347,8 @@ def main():
     resume_state = None
     if args.continue_from:
         resume_state = load_resume_state(args.continue_from)
+        if args.continue_eval_idx is not None:
+            resume_state["eval_idx"] = args.continue_eval_idx
         prior_ops = resume_state["prior_config"].get("operator_types", [])
         if prior_ops and list(prior_ops) != list(operator_type_names):
             print(f"WARNING: operator_types differ from prior run: "

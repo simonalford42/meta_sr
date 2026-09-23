@@ -91,6 +91,48 @@ def plot():
     fig.tight_layout(rect=(0,.105,1,.925),h_pad=2.2,w_pad=2.2)
     fig.savefig(OUT / 'train_reevaluation_six_panels.pdf')
     plt.close(fig)
+    plot_combined(records)
+
+
+def plot_combined(records):
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#E69F00', '#555555']
+    methods = ['n1', 'n1-reeval', 'n1-TTTS', 'n3', 'n3-reeval', 'n3-TTTS']
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.8))
+    for ax, metric, title in zip(axes, ['train_reeval_score', 'winners_curse'],
+                                 ['Reevaluated train score', 'Winner’s curse']):
+        for method, color in zip(methods, colors):
+            for r in records:
+                if r['method'] != method:
+                    continue
+                p = r['points']
+                ax.plot([v['eval_idx'] for v in p], [v[metric] for v in p],
+                        color=color, ls='-' if r['seed'] == 1 else '--',
+                        marker='o', ms=3, lw=1.5, alpha=1 if r['seed'] == 1 else .75,
+                        label=method if r['seed'] == 1 else None)
+                if r['status'] == 'FAILED':
+                    ax.plot(p[-1]['eval_idx'], p[-1][metric], color=color, marker='x', ms=9, mew=2)
+        ax.set_title(title)
+        ax.set_xlabel('Cumulative evolution evaluations (seed-runs)')
+        ax.set_ylabel('Reevaluated train score' if metric == 'train_reeval_score'
+                      else 'Train score − reevaluated train score')
+        ax.set_ylim((.30,.90) if metric == 'train_reeval_score' else (-.06,.36))
+        ax.set_xlim(0,930)
+        ax.grid(alpha=.2)
+        ax.legend(ncol=3,fontsize=8,frameon=False,loc='upper left')
+        if metric == 'winners_curse':
+            ax.axhline(0,color='0.4',lw=.8)
+    fig.suptitle('All six 90-second PySR ablations · evaluation-count comparison',fontsize=16,y=.98)
+    handles = [Line2D([],[],color='0.25',ls='-',label='Seed 1'),
+               Line2D([],[],color='0.25',ls='--',label='Seed 2'),
+               Line2D([],[],color='0.25',marker='x',ls='none',ms=8,label='Failed run: last observed diagnostic')]
+    fig.legend(handles=handles,loc='upper center',bbox_to_anchor=(.5,.93),ncol=3,frameon=False)
+    fig.text(.06,.03,'10 fresh seeds per best-candidate train diagnostic; missing diagnostics are not filled. Four seed-2 runs failed (OpenRouter HTTP 402).\nEvaluation counts include selection reevaluations and exclude diagnostics. One seed-run covers the training task set.',fontsize=9)
+    fig.tight_layout(rect=(0,.105,1,.85))
+    fig.savefig(OUT / 'all_methods_eval_axis.pdf')
+    plt.close(fig)
 
 
 def draw(ax, records, group, xkey, ykey, colors):

@@ -106,7 +106,10 @@ def load_resume_state(path: str) -> Dict[str, Any]:
     for gen_entry in gens:
         for key in ("population", "offspring"):
             for b_dict in gen_entry.get(key, []):
-                name = b_dict.get("display_name") or b_dict.get("name")
+                # OperatorBundle.to_dict stores component names, not a top-level
+                # name. Reconstruct the same identity used for archive dedup.
+                name = (b_dict.get("display_name") or b_dict.get("name")
+                        or OperatorBundle.from_dict(b_dict).display_name)
                 seeds = int(b_dict.get("seeds_evaluated", 0) or 0)
                 if name is not None:
                     prev = seeds_by_name.get(name, 0)

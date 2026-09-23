@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+# 9/23/26
+ablation_flags=(
+    --operator-type all --population-type topk --population 10 --offspring 10
+    --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270 --population-reeval-runs 3 --seed 2
+)
+
+a=$(sbatch --parsable --job-name=n3-s2-resume run.sh evolve_pysr.py "${ablation_flags[@]}" --generations 3 --n-runs 3 --reeval none --continue-from runs/750247 --continue-eval-idx 390) || exit 1
+b=$(sbatch --parsable --job-name=n3-reeval-s2 run.sh evolve_pysr.py "${ablation_flags[@]}" --generations 15 --n-runs 3 --reeval population --n-reevals 10) || exit 1
+a=$(sbatch --parsable --dependency="afterany:$a" --job-name=n3-ttts-s2 run.sh evolve_pysr.py "${ablation_flags[@]}" --generations 15 --n-runs 3 --reeval TTTS --reeval-budget 30) || exit 1
+b=$(sbatch --parsable --dependency="afterany:$b" --job-name=n1-ttts-s2 run.sh evolve_pysr.py "${ablation_flags[@]}" --generations 15 --n-runs 1 --reeval TTTS --reeval-budget 10) || exit 1
+
 # 9/22/26
 srb_90s=$(sbatch --parsable --partition=default_partition --time=48:00:00 --mem=20G -J srb90-pysr-base run.sh srbench_full_eval.py --ground-truth --black-box --max-evals 1000000000 --timeout 90 --black-box-timeout 90 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --black-box-max-samples 10000 --pysr-wall-limit 300 --fullsr-wall-limit 600 --black-box-wall-limit 1800 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5 --no-early-stop --no-maxsize-warmup --frontier-snapshot-seconds 10 --results-dir runs/pysr-base-srbench_full_9-22_10seed-90s) || exit 1
 srb_90s=$(sbatch --parsable --dependency=afterany:"$srb_90s" --partition=default_partition --time=48:00:00 --mem=20G -J srb90-fullsr-base run.sh srbench_full_eval.py --fullsr-baseline --ground-truth --black-box --max-evals 1000000000 --timeout 90 --black-box-timeout 90 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --black-box-max-samples 10000 --pysr-wall-limit 300 --fullsr-wall-limit 600 --black-box-wall-limit 1800 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5 --results-dir runs/fullsr-base-srbench_full_9-22_10seed-90s) || exit 1
