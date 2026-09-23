@@ -284,6 +284,13 @@ def reconstruct(data):
                                           for t in TYPES})
 
 
+# Label centers in generation coordinates; connectors remain at the ancestor generation.
+COMMENTARY_LABEL_X = {
+    'Affine shape scaffolding': -1.0,
+    'Symmetric motif duplication': 1.5,
+}
+
+
 def add_ancestor_commentary(fig, ax, points):
     """Pack wrapped lineage labels into rows above the unchanged plotting area."""
     changes = json.loads((ROOT.parent / 'analysis/709715_crossover_recovery/ancestor_changes.json').read_text())
@@ -302,8 +309,13 @@ def add_ancestor_commentary(fig, ax, points):
                        ha='center', va='bottom', transform=ax.get_xaxis_transform(),
                        clip_on=False, linespacing=1.15, zorder=7)
         box = text.get_window_extent(renderer)
-        # Keep edge labels inside the plot width while retaining vertical connectors.
-        shift = max(bounds.x0 - box.x0, 0) - max(box.x1 - bounds.x1, 0)
+        # Manual centers can hang over the axis; other labels stay inside the plot.
+        short_label = changes[point['operator_name']]['label']
+        if short_label in COMMENTARY_LABEL_X:
+            shift = (ax.transData.transform((COMMENTARY_LABEL_X[short_label], 0))[0]
+                     - ax.transData.transform((point['generation'], 0))[0])
+        else:
+            shift = max(bounds.x0 - box.x0, 0) - max(box.x1 - bounds.x1, 0)
         xpixel = ax.transData.transform((point['generation'], 0))[0] + shift
         text.set_x(ax.transData.inverted().transform((xpixel, bounds.y0))[0])
         left, right = box.x0 + shift, box.x1 + shift
