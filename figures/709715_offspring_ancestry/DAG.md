@@ -34,3 +34,5 @@ All dots remain. Confirmed paths into the final selected bundle retain darker gr
 The selected final algorithm at generation 43 is shown as a larger yellow star; other offspring use smaller grey dots.
 
 Bundle-only ancestors use the same light grey dot style as other offspring; only ancestors of the final operators receive colored markers. Their ancestry relationships remain in the graph.
+
+The DAG PDF includes all 15 short ancestor descriptions from `analysis/709715_crossover_recovery/ancestor_changes.json`, shared with the lineage report. Wrapped labels are packed into nonoverlapping rows above the original-size plotting area, with vertical operator-colored connectors. Adjust font size, wrapping width, and row spacing in `add_ancestor_commentary()` in the shared plotting script.

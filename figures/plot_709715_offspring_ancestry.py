@@ -7,6 +7,7 @@ import csv
 import json
 import math
 import re
+import textwrap
 from pathlib import Path
 
 import matplotlib
@@ -242,7 +243,58 @@ def reconstruct(data):
                                           for t in TYPES})
 
 
-def render(points, edges=None, filename="offspring_ancestry.pdf"):
+def add_ancestor_commentary(fig, ax, points):
+    """Pack wrapped lineage labels into rows above the unchanged plotting area."""
+    changes = json.loads((ROOT.parent / 'analysis/709715_crossover_recovery/ancestor_changes.json').read_text())
+    ancestors = sorted((p for p in points if p['color_operator']), key=lambda p: p['generation'])
+    assert {p['operator_name'] for p in ancestors} == set(changes)
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    bounds = ax.get_window_extent(renderer)
+    rows, labels = [], []
+    for point in ancestors:
+        label = textwrap.fill(changes[point['operator_name']]['label'], width=19,
+                              break_long_words=False, break_on_hyphens=False)
+        text = ax.text(point['generation'], 1.04, label, fontsize=7.5 * SCALE,
+                       ha='center', va='bottom', transform=ax.get_xaxis_transform(),
+                       clip_on=False, linespacing=1.15, zorder=7)
+        box = text.get_window_extent(renderer)
+        # Keep edge labels inside the plot width while retaining vertical connectors.
+        shift = max(bounds.x0 - box.x0, 0) - max(box.x1 - bounds.x1, 0)
+        xpixel = ax.transData.transform((point['generation'], 0))[0] + shift
+        text.set_x(ax.transData.inverted().transform((xpixel, bounds.y0))[0])
+        left, right = box.x0 + shift, box.x1 + shift
+        padding = 7 * SCALE * fig.dpi / 72
+        row = next((i for i, intervals in enumerate(rows)
+                    if all(right + padding < a or left > b + padding for a, b in intervals)), len(rows))
+        if row == len(rows):
+            rows.append([])
+        rows[row].append((left, right))
+        labels.append((point, text, row, box.height))
+    # Add physical space above the old axes; keep its size and all existing elements.
+    width, height = fig.get_size_inches()
+    old = ax.get_position()
+    row_height = max(item[3] for item in labels) / fig.dpi + 0.14 * SCALE
+    extra = len(rows) * row_height + 0.18 * SCALE
+    fig.set_size_inches(width, height + extra)
+    ax.set_position([old.x0, old.y0 * height / (height + extra), old.width,
+                     old.height * height / (height + extra)])
+    axes_height = old.height * height
+    for point, text, row, _ in labels:
+        y = 1 + (0.14 * SCALE + row * row_height) / axes_height
+        text.set_y(y)
+        ax.plot([point['generation'], point['generation']], [point['fitness'], y - 0.012],
+                transform=ax.get_xaxis_transform(), color=COLORS[point['color_operator']],
+                linewidth=0.55 * SCALE, alpha=0.45, clip_on=False, zorder=1.8)
+    # Verify packed labels stay inside the exported canvas and don't overlap.
+    fig.canvas.draw()
+    boxes = [text.get_window_extent(fig.canvas.get_renderer()) for _, text, _, _ in labels]
+    for i, box in enumerate(boxes):
+        assert fig.bbox.contains(box.x0, box.y0) and fig.bbox.contains(box.x1, box.y1)
+        assert not any(box.overlaps(other) for other in boxes[i + 1:])
+
+
+def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=False):
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 10 * SCALE,
                          'pdf.fonttype': 42, 'axes.labelsize': 12 * SCALE,
                          'xtick.labelsize': 10 * SCALE, 'ytick.labelsize': 10 * SCALE,
@@ -288,6 +340,8 @@ def render(points, edges=None, filename="offspring_ancestry.pdf"):
     for spine in ('bottom', 'left'):
         ax.spines[spine].set_color('#bfc5cd')
     draw_ancestry_legend(ax, 8 * SCALE)
+    if commentary:
+        add_ancestor_commentary(fig, ax, points)
     fig.savefig(OUT / filename, facecolor='white')
     plt.close(fig)
 

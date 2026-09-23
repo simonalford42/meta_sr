@@ -134,7 +134,7 @@ def main():
     graph = dict(summary=summary, nodes=points, relationships=relationships,
                  segments=list(segments.values()))
     (plot.OUT / 'offspring_dag.json').write_text(json.dumps(graph, indent=2) + '\n')
-    plot.render(points, list(segments.values()), filename='offspring_ancestry_dag.pdf')
+    plot.render(points, list(segments.values()), filename='offspring_ancestry_dag.pdf', commentary=True)
     print(json.dumps(summary, indent=2))
 
 
