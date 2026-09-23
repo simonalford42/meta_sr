@@ -115,18 +115,40 @@ def reconstruct(data):
             raise ValueError(f'Expected unique recorded bundle parent: {b["key"]}; found {len(found)}')
         return next(iter(found.values()))
 
-    # Operator-origin coloring follows the explicit parent chain of each final component.
+    # The cache audit recovers both inputs, including donors omitted by parent_name.
+    recovery_path = ROOT.parent / 'analysis/709715_crossover_recovery/crossover_parents.json'
+    recovered = json.loads(recovery_path.read_text())
+    if len(recovered) != 73 or any(r['status'] != 'confirmed_exact_code' for r in recovered):
+        raise ValueError('Expected exact recovery for all 73 crossovers')
+    crossover_parents = {r['child']: (r['parent1'], r['parent2']) for r in recovered}
+
+    def operator_parents(op):
+        if op['mode'] == 'crossover':
+            parents = crossover_parents[op['name']]
+            assert parents[0] == op['parent_name']
+            return parents
+        return (op['parent_name'],) if op['parent_name'] else ()
+
+    # Color every operator contributing to a final component through either input.
     origins = {}
+    active = set()
+    def visit_operator(name, operator_type):
+        if name in BASELINE:
+            return
+        if name in active:
+            raise ValueError('Cycle in operator ancestry')
+        if name in origins:
+            return
+        active.add(name)
+        op = operators[name]
+        assert op['type'] == operator_type
+        for donor in operator_parents(op):
+            visit_operator(donor, operator_type)
+        active.remove(name)
+        origins[name] = operator_type
     for t in TYPES:
-        name = selected['operators'][t]['name']
-        visited = set()
-        while name and name not in BASELINE:
-            if name in visited:
-                raise ValueError('Cycle in operator ancestry')
-            visited.add(name)
-            origins[name] = t
-            name = operators[name]['parent_name']
-    # Also follow bundle inheritance and recorded operator donors recursively.
+        visit_operator(selected['operators'][t]['name'], t)
+    # Also follow bundle inheritance and both recovered operator donors recursively.
     creators = {}
     for b in bundles.values():
         if b['key'] != BASELINE:
@@ -140,9 +162,10 @@ def reconstruct(data):
             visit(parent(b))
         op = event(b)
         if op['mode'] in ('refine', 'simplify', 'crossover'):
-            donor = creators.get(op['parent_name'])
-            if donor is not None:
-                visit(donor)
+            for donor_name in operator_parents(op):
+                donor = creators.get(donor_name)
+                if donor is not None:
+                    visit(donor)
     visit(selected)
     # Initial candidates have no separate generation-0 snapshot. Use earliest saved
     # population fitness for surviving initial bundles and explicitly flag it.
@@ -163,6 +186,8 @@ def reconstruct(data):
     assert sorted(p['generation'] for p in plotted if p['color_operator'] == 'loss') == [0, 8, 34]
     return plotted, dict(selected_bundle=selected_name, validation_score=val_score,
                          recorded_ancestor_bundles=len(ancestors),
+                         crossover_parent_source=str(recovery_path.relative_to(ROOT.parent)),
+                         recovered_crossovers=len(recovered),
                          colored_origins={t: sorted(p['generation'] for p in plotted if p['color_operator'] == t)
                                           for t in TYPES})
 

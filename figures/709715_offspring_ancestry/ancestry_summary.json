@@ -1,11 +1,14 @@
 {
   "selected_bundle": "motif_duplication_simple_rational_gen27_9 | age_and_cost_regularized_survival_simple_gen28_8 | streamlined_niche_clone_tournament_gen43_3 | simplified_affine_profile_loss_gen34_7",
   "validation_score": 0.7,
-  "recorded_ancestor_bundles": 14,
+  "recorded_ancestor_bundles": 22,
+  "crossover_parent_source": "analysis/709715_crossover_recovery/crossover_parents.json",
+  "recovered_crossovers": 73,
   "colored_origins": {
     "mutation": [
       4,
       9,
+      11,
       20,
       27
     ],
@@ -15,6 +18,7 @@
     ],
     "selection": [
       10,
+      16,
       18,
       40,
       43
