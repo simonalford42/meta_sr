@@ -79,6 +79,28 @@ class BlackBoxSummaryTests(unittest.TestCase):
 
 
 class FindRunsTests(unittest.TestCase):
+    def test_depth_limits_discovery_without_recursive_scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("top", "bundle/nested", "archive/old"):
+                directory = root / name
+                directory.mkdir(parents=True)
+                (directory / "manifest.json").write_text(json.dumps({
+                    "datasets": [], "noise_levels": [], "batches": [],
+                }))
+            with patch.object(Path, "rglob", side_effect=AssertionError("recursive scan")):
+                self.assertEqual(find_full_srbench_runs(root, max_depth=1), [root / "top"])
+                self.assertEqual(find_full_srbench_runs(root, max_depth=2),
+                                 [root / "bundle/nested", root / "top"])
+                self.assertEqual(find_full_srbench_runs(root, max_depth=0), [])
+                output = io.StringIO()
+                with patch.object(sys, "argv", ["inspect_srbench_results.py", "--see-all",
+                                  "--runs-root", str(root), "--discovery-depth", "1"]):
+                    with redirect_stdout(output):
+                        main()
+                self.assertNotIn("bundle/nested", output.getvalue())
+                self.assertIn("top", output.getvalue())
+
     def test_nested_runs_exclude_archive_and_keep_distinct_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             runs_root = Path(tmp)

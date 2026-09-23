@@ -82,7 +82,8 @@ def subset_solve_rate(keyed: "dict", datasets: "set[str]",
 
 
 def find_full_srbench_runs(
-    runs_root: "str | Path", since_days: "int | None" = None
+    runs_root: "str | Path", since_days: "int | None" = None,
+    max_depth: "int | None" = None,
 ) -> "list[Path]":
     """Return all run directories under ``runs_root`` that are full-SRBench runs.
 
@@ -90,7 +91,8 @@ def find_full_srbench_runs(
     black-box evaluation marker written by ``srbench_full_eval.py``. If
     ``since_days`` is provided, only manifests modified within that many days
     are included. Search nested bundle directories too, excluding the archive
-    directly under ``runs_root``.
+    directly under ``runs_root``. ``max_depth=1`` checks only immediate run
+    directories; None preserves the recursive search.
     """
     runs_root = Path(runs_root)
     cutoff = time.time() - since_days * 24 * 60 * 60 if since_days is not None else None
@@ -99,7 +101,11 @@ def find_full_srbench_runs(
         manifest_path
         for child in runs_root.iterdir()
         if child.is_dir() and child.name != "archive"
-        for manifest_path in child.rglob("manifest.json")
+        for manifest_path in (
+            child.rglob("manifest.json") if max_depth is None else
+            (path for depth in range(max_depth)
+             for path in child.glob("*/" * depth + "manifest.json"))
+        )
     ) if runs_root.is_dir() else ()
     for manifest_path in sorted(manifest_paths):
         if cutoff is not None and manifest_path.stat().st_mtime < cutoff:
@@ -488,8 +494,9 @@ def main():
                         help="With --see-all or --v2, filter by manifest modification time.")
     parser.add_argument("--latest", type=int, metavar="N",
                         help="With --v2, show only the N most recent manifests, newest first.")
-    parser.add_argument("--discovery-depth", type=int, default=2, metavar="N",
-                        help="With --v2, search N directory levels below --runs-root.")
+    parser.add_argument("--discovery-depth", type=int, default=None, metavar="N",
+                        help="With --see-all or --v2, search N directory levels below "
+                             "--runs-root (default: unlimited for --see-all, 2 for --v2).")
     parser.add_argument("--runs-root", type=str, default="runs")
     parser.add_argument("--show-missing", type=int, default=50,
                         help="Max number of missing (task,seed,noise) triples to print.")
@@ -505,7 +512,7 @@ def main():
         parser.error("--since requires --see-all or --v2")
     if args.latest is not None and (not args.v2 or args.latest < 1):
         parser.error("--latest requires --v2 and a positive count")
-    if args.discovery_depth < 0:
+    if args.discovery_depth is not None and args.discovery_depth < 0:
         parser.error("--discovery-depth must be non-negative")
 
     if args.official:
@@ -520,7 +527,8 @@ def main():
 
     if args.v2:
         run_dirs = find_srbench2_runs(args.runs_root, since_days=args.since,
-                                     latest=args.latest, max_depth=args.discovery_depth)
+                                     latest=args.latest, max_depth=(
+                                         2 if args.discovery_depth is None else args.discovery_depth))
         if not run_dirs:
             print(f"No SRBench 2.0 runs found under {args.runs_root}")
             sys.exit(1)
@@ -528,7 +536,8 @@ def main():
         return
 
     if args.see_all:
-        run_dirs = find_full_srbench_runs(args.runs_root, since_days=args.since)
+        run_dirs = find_full_srbench_runs(args.runs_root, since_days=args.since,
+                                          max_depth=args.discovery_depth)
         if not run_dirs:
             suffix = f" from the past {args.since} day(s)" if args.since is not None else ""
             print(f"No full-SRBench runs found under {args.runs_root}{suffix}")
