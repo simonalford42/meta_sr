@@ -20,6 +20,12 @@ from matplotlib.ticker import MultipleLocator
 # Scale the entire figure: canvas, fonts, dots, and line widths.
 SCALE = 1.0
 
+HIDDEN_COMMENTARY_LABELS = {
+    'Simplified cyclic motif coupling',
+    'Clone suppression and niche rescue',
+    'Quality-gated niche exploration',
+}
+
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / '709715_offspring_ancestry'
 TYPES = ('mutation', 'survival', 'selection', 'loss')
@@ -278,6 +284,8 @@ def add_ancestor_commentary(fig, ax, points):
     changes = json.loads((ROOT.parent / 'analysis/709715_crossover_recovery/ancestor_changes.json').read_text())
     ancestors = sorted((p for p in points if p['color_operator']), key=lambda p: p['generation'])
     assert {p['operator_name'] for p in ancestors} == set(changes)
+    ancestors = [p for p in ancestors
+                 if changes[p['operator_name']]['label'] not in HIDDEN_COMMENTARY_LABELS]
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
     bounds = ax.get_window_extent(renderer)
@@ -314,8 +322,8 @@ def add_ancestor_commentary(fig, ax, points):
         y = 1 + (0.14 * SCALE + row * row_height) / axes_height
         text.set_y(y)
         ax.plot([point['generation'], point['generation']], [point['fitness'], y - 0.012],
-                transform=ax.get_xaxis_transform(), color=COLORS[point['color_operator']],
-                linewidth=0.55 * SCALE, alpha=0.45, clip_on=False, zorder=1.8)
+                transform=ax.get_xaxis_transform(), color='black',
+                linewidth=0.55 * SCALE, alpha=1.0, clip_on=False, zorder=1.8)
     # Verify packed labels stay inside the exported canvas and don't overlap.
     fig.canvas.draw()
     boxes = [text.get_window_extent(fig.canvas.get_renderer()) for _, text, _, _ in labels]
@@ -360,7 +368,7 @@ def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=Fal
     assert len(final) == 1
     point = final[0]
     ax.scatter([point['generation']], [point['fitness']], marker='*', s=155 * SCALE**2,
-               c=COLORS[point['color_operator']], edgecolors='none', zorder=4.5)
+               c=COLORS[point['color_operator']], edgecolors='black', linewidths=0.7 * SCALE, zorder=4.5)
     ax.set(xlabel='Generation', ylabel='Fitness (GT)', xlim=(-1, 46), ylim=(0, 1))
     ax.xaxis.set_major_locator(MultipleLocator(5))
     ax.grid(color='#e9ecf0', lw=0.8 * SCALE)
