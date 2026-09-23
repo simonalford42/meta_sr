@@ -21,6 +21,9 @@ from matplotlib.ticker import MultipleLocator
 SCALE = 1.0
 
 HIDDEN_COMMENTARY_LABELS = {
+    'Clone-only niche rescue',
+    'Streamlined affine profile loss',
+    'Fixed-rate niche rescue',
     'Cost-aware age replacement',
     'Simplified rational motif templates',
     'Simplified cyclic motif coupling',
