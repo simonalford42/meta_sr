@@ -1,0 +1,51 @@
+{
+  "source": "runs/pysr-gt-709715-srbench_full_9-22_10seed-90s",
+  "combined_sha256": "b28e23bf3e43494862efc1895b834629dc68b55142d19ac9a85fbba0fc0ad7fd",
+  "n_candidates": 29485,
+  "n_replay_errors": 0,
+  "n_parity_failures": 1,
+  "max_mse_absolute_difference": 24576.0,
+  "selections": {
+    "native_loss": {
+      "n_trials": 1220,
+      "before_mean": -6235021632132436.0,
+      "after_mean": 0.8577109741374018,
+      "mean_gain": 6235021632132438.0,
+      "before_median": 0.11997323563408724,
+      "after_median": 0.9458180666583018,
+      "median_gain": 0.6294891037485646,
+      "n_improved_over_001": 1062
+    },
+    "raw_train_mse": {
+      "n_trials": 1220,
+      "before_mean": 0.6923947547000904,
+      "after_mean": 0.7742493240010384,
+      "mean_gain": 0.08185456930094798,
+      "before_median": 0.7553483289242039,
+      "after_median": 0.886332444050289,
+      "median_gain": 0.032682102494307474,
+      "n_improved_over_001": 811
+    },
+    "affine_train_mse": {
+      "n_trials": 1220,
+      "before_mean": -6235021632133812.0,
+      "after_mean": 0.8577396073295296,
+      "mean_gain": 6235021632133812.0,
+      "before_median": -0.6915267091740328,
+      "after_median": 0.9458180666583018,
+      "median_gain": 1.614793223431451,
+      "n_improved_over_001": 1100
+    }
+  },
+  "n_selected_parity_failures": 0,
+  "protocol": {
+    "data": "original training rows from each 75/25 black-box trial",
+    "calibration": "unrestricted OLS slope and intercept fitted on training only",
+    "aggregation": "unclipped training R2, equal weight per dataset/seed trial",
+    "selection": "fixed candidate within each before/after pair",
+    "replay_tolerance": {
+      "rtol": 1e-06,
+      "atol": 1e-08
+    }
+  }
+}
