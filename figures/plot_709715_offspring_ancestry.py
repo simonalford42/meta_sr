@@ -12,6 +12,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import MultipleLocator
 
@@ -241,7 +242,7 @@ def reconstruct(data):
                                           for t in TYPES})
 
 
-def render(points):
+def render(points, edges=None, filename="offspring_ancestry.pdf"):
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 10 * SCALE,
                          'pdf.fonttype': 42, 'axes.labelsize': 12 * SCALE,
                          'xtick.labelsize': 10 * SCALE, 'ytick.labelsize': 10 * SCALE,
@@ -252,7 +253,18 @@ def render(points):
                          'axes.labelpad': 4 * SCALE})
     fig, ax = plt.subplots(figsize=(7.2 * SCALE, 4.2 * SCALE))
     fig.subplots_adjust(left=0.12, right=0.97, bottom=0.16, top=0.97)
-    for status in ('not_recorded_ancestor', 'ancestor', 'operator_origin'):
+    if edges is not None:
+        by_id = {p['node_id']: p for p in points}
+        for emphasis in (False, True):
+            group = [e for e in edges if e['final_ancestry'] == emphasis]
+            segments = [[(by_id[e[end]]['generation'], by_id[e[end]]['fitness'])
+                         for end in ('parent', 'child')] for e in group]
+            ax.add_collection(LineCollection(
+                segments, colors='#666666' if emphasis else '#999999',
+                linewidths=(0.65 if emphasis else 0.4) * SCALE,
+                alpha=0.40 if emphasis else 0.13, zorder=1.7 if emphasis else 1.6,
+                linestyles=['dashed' if e['certainty'] == 'ambiguous' else 'solid' for e in group]))
+    for status in ('not_recorded_ancestor' , 'ancestor', 'operator_origin'):
         group = [p for p in points if p['status'] == status]
         colors = [COLORS[p['color_operator']] if p['color_operator'] else
                   '#555555' if status == 'ancestor' else '#bdbdbd' for p in group]
@@ -269,7 +281,7 @@ def render(points):
     for spine in ('bottom', 'left'):
         ax.spines[spine].set_color('#bfc5cd')
     draw_ancestry_legend(ax, 8 * SCALE)
-    fig.savefig(OUT / 'offspring_ancestry.pdf', facecolor='white')
+    fig.savefig(OUT / filename, facecolor='white')
     plt.close(fig)
 
 
