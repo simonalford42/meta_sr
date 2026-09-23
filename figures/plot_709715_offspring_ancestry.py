@@ -113,6 +113,28 @@ def recover_initial_population(data):
     return dict(generation=0, population=population, offspring=[])
 
 
+def reevaluated_scores():
+    """Prefer independent train reevaluations, then population seed top-ups."""
+    population, independent = {}, {}
+    generation = 0
+    for line_number, line in enumerate((ROOT.parent / 'runs/709715/run.log').read_text().splitlines(), 1):
+        gen = re.match(r'Generation (\d+)/\d+', line)
+        if gen:
+            generation = int(gen.group(1))
+        match = re.match(r'  (?:\[extras\] )?Avg ([0-9.]+) (.+): \(seeds=(\d+)\)', line)
+        if match:
+            score, bundle, seeds = match.groups()
+            if int(seeds) > 3:
+                population[bundle] = dict(fitness=float(score), score_source='population_reevaluation_log',
+                                          score_snapshot_generation=generation, score_log_line=line_number)
+        match = re.match(r'\[train reeval\] gen (\d+) (.+): reeval GT match rate=([0-9.]+)', line)
+        if match:
+            gen, bundle, score = match.groups()
+            independent[bundle] = dict(fitness=float(score), score_source='independent_train_reevaluation_log',
+                                       score_snapshot_generation=int(gen), score_log_line=line_number)
+    return population | independent
+
+
 def reconstruct(data):
     operators, bundles, rows, offspring = {}, {}, [], []
     def key(b):
@@ -232,6 +254,12 @@ def reconstruct(data):
                             color_operator=origins.get(op['name'], ''),
                             score_source='initial_evaluation_log' if birth(b) == 0 else 'offspring',
                             score_snapshot_generation=b['seen'], bundle=' | '.join(b['key'])))
+    reevaluations = reevaluated_scores()
+    for point in plotted:
+        point['original_fitness'] = point['fitness']
+        point['score_log_line'] = None
+        if point['bundle'] in reevaluations:
+            point.update(reevaluations[point['bundle']])
     assert sorted(p['generation'] for p in plotted if p['color_operator'] == 'loss') == [0, 8, 34]
     return plotted, dict(selected_bundle=selected_name, validation_score=val_score,
                          recorded_ancestor_bundles=len(ancestors),
@@ -239,6 +267,8 @@ def reconstruct(data):
                          recovered_crossovers=len(recovered),
                          initial_bundles=len(initial),
                          initial_score_source='runs/709715/run.log',
+                         score_policy='independent training reevaluation, then population reevaluation, then original',
+                         reevaluated_points=sum(p['score_log_line'] is not None for p in plotted),
                          colored_origins={t: sorted(p['generation'] for p in plotted if p['color_operator'] == t)
                                           for t in TYPES})
 

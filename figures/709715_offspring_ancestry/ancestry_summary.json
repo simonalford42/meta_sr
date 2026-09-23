@@ -6,6 +6,8 @@
   "recovered_crossovers": 73,
   "initial_bundles": 10,
   "initial_score_source": "runs/709715/run.log",
+  "score_policy": "independent training reevaluation, then population reevaluation, then original",
+  "reevaluated_points": 156,
   "colored_origins": {
     "mutation": [
       4,

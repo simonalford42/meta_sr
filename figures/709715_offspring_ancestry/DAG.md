@@ -15,7 +15,7 @@ Edges mean:
 - **Bundle inheritance:** the previous generation's surviving bundle matching the three unchanged operators and decremented edit counts; refine/simplify also require the edited operator to match the recorded parent.
 - **Operator input:** the creation event of the source operator for refine/simplify, or each of the two exactly recovered crossover inputs. This identifies the origin of the code, not which later bundle carried that code when sampled. Baseline operator inputs point to the initial baseline node.
 
-Edges point forward in generation. Endpoints use each node's plotted creation fitness, not its reevaluated fitness at the time it was selected as a parent. Initial candidates are roots. Identical endpoint pairs are drawn once, but their separate roles and crossover parent slots remain in the JSON.
+Edges point forward in generation. Endpoints use each node's plotted reevaluated fitness where available, not its fitness at the time it was selected as a parent. Initial candidates are roots. Identical endpoint pairs are drawn once, but their separate roles and crossover parent slots remain in the JSON.
 
 There are 447 uniquely identified bundle parents and two ambiguous generation-1 exploration events: `(1,2)` has four possible parents; `(1,3)` has three. Their alternative inheritance edges are dashed rather than choosing a parent arbitrarily. All 449 offspring have at least one bundle-parent candidate. All 73 crossovers have both operator inputs.
 
@@ -36,3 +36,5 @@ The selected final algorithm at generation 43 is shown as a larger yellow star; 
 Bundle-only ancestors use the same light grey dot style as other offspring; only ancestors of the final operators receive colored markers. Their ancestry relationships remain in the graph.
 
 The DAG PDF includes all 15 short ancestor descriptions from `analysis/709715_crossover_recovery/ancestor_changes.json`, shared with the lineage report. Wrapped labels are packed into nonoverlapping rows above the original-size plotting area, with vertical operator-colored connectors. Adjust font size, wrapping width, and row spacing in `add_ancestor_commentary()` in the shared plotting script.
+
+Fitness now prefers the latest logged independent training reevaluation for each exact bundle, then the latest logged population seed top-up, then original evaluation if neither exists. This updates 156 of 459 points; 303 have no recorded reevaluation. `original_fitness`, `score_source`, `score_snapshot_generation`, and `score_log_line` preserve provenance in the CSV and graph JSON. Generation positions remain creation generations. Validation scores are not used on the fitness axis.
