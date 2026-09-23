@@ -256,12 +256,13 @@ def render(points, edges=None, filename="offspring_ancestry.pdf"):
     if edges is not None:
         by_id = {p['node_id']: p for p in points}
         for emphasis in (False, True):
-            group = [e for e in edges if e['final_ancestry'] == emphasis]
+            group = [e for e in edges if e['final_ancestry'] == emphasis
+                     and e.get('line_width', 1) > 0]
             segments = [[(by_id[e[end]]['generation'], by_id[e[end]]['fitness'])
                          for end in ('parent', 'child')] for e in group]
             ax.add_collection(LineCollection(
                 segments, colors='#666666' if emphasis else '#999999',
-                linewidths=(0.65 if emphasis else 0.4) * SCALE,
+                linewidths=[e.get('line_width', 0.65 if emphasis else 0.4) * SCALE for e in group],
                 alpha=0.40 if emphasis else 0.13, zorder=1.7 if emphasis else 1.6,
                 linestyles=['dashed' if e['certainty'] == 'ambiguous' else 'solid' for e in group]))
     for status in ('not_recorded_ancestor' , 'ancestor', 'operator_origin'):

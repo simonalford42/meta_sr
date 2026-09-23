@@ -6,6 +6,40 @@ from collections import Counter
 
 import plot_709715_offspring_ancestry as plot
 
+# Maximum line width in points, before the shared figure SCALE is applied.
+MAX_LINE_WIDTH = 2.5
+
+
+def weight_edges(points, edges):
+    """Count unique reachable nodes through each child; normalize by child generation."""
+    if MAX_LINE_WIDTH <= 0:
+        raise ValueError('MAX_LINE_WIDTH must be positive')
+    by_id = {p['node_id']: p for p in points}
+    children = {n: set() for n in by_id}
+    for e in edges:
+        if e['certainty'] == 'confirmed':
+            children[e['parent']].add(e['child'])
+    descendants = {n: set() for n in by_id}
+    for p in sorted(points, key=lambda p: p['generation'], reverse=True):
+        n = p['node_id']
+        for child in children[n]:
+            assert by_id[child]['generation'] > p['generation']
+            descendants[n].add(child)
+            descendants[n].update(descendants[child])
+        p['descendant_count'] = len(descendants[n])
+    maxima = {}
+    for e in edges:
+        # Include the child itself: an edge ending in a leaf has count 1 and vanishes.
+        count = 1 + len(descendants[e['child']])
+        generation = by_id[e['child']]['generation']
+        e['branch_descendant_count'] = count
+        maxima[generation] = max(maxima.get(generation, 0), count)
+    for e in edges:
+        maximum = maxima[by_id[e['child']]['generation']]
+        e['generation_max_descendant_count'] = maximum
+        e['line_width'] = (MAX_LINE_WIDTH * (e['branch_descendant_count'] - 1) / (maximum - 1)
+                           if maximum > 1 else 0.0)
+
 
 def main():
     data = json.loads((plot.OUT / 'lineage_records.json').read_text())
@@ -88,8 +122,13 @@ def main():
     assert not unresolved, unresolved
     assert len(points) == 459 and len(by_id) == 459
     assert len({r['child'] for r in relationships if r['kind'] == 'bundle_inheritance'}) == 449
+    weight_edges(points, list(segments.values()))
     summary = dict(nodes=len(points), relationships=len(relationships),
-                   drawn_segments=len(segments), ambiguous_bundle_parents=ambiguous,
+                   total_segments=len(segments),
+                   drawn_segments=sum(e['line_width'] > 0 for e in segments.values()),
+                   max_line_width=MAX_LINE_WIDTH,
+                   width_normalization='child generation; (branch count - 1) / (generation maximum - 1)',
+                   ambiguous_bundle_parents=ambiguous,
                    unresolved_bundle_parents=unresolved,
                    relationship_types=dict(Counter(r['kind'] for r in relationships)))
     graph = dict(summary=summary, nodes=points, relationships=relationships,

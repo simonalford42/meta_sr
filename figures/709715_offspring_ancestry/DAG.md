@@ -19,4 +19,14 @@ Edges point forward in generation. Endpoints use each node's plotted creation fi
 
 There are 447 uniquely identified bundle parents and two ambiguous generation-1 exploration events: `(1,2)` has four possible parents; `(1,3)` has three. Their alternative inheritance edges are dashed rather than choosing a parent arbitrarily. All 449 offspring have at least one bundle-parent candidate. All 73 crossovers have both operator inputs.
 
-The PDF draws 801 distinct segments: thin transparent grey lines behind all dots, with confirmed paths into the final selected bundle somewhat darker. Dashed alternatives are excluded from that emphasis. The existing dot colors are retained. Line width and opacity can be adjusted in `render()` in `figures/plot_709715_offspring_ancestry.py`.
+The graph contains 801 distinct segments; the weighted PDF draws 204. Each edge's branch count is its child plus all unique descendants of that child, following confirmed edges of both relationship types. Shared descendants reached through several paths count once. Ambiguous relationships do not propagate descendant counts; an ambiguous candidate edge is weighted by its child's confirmed descendants and remains dashed.
+
+An edge ending in a leaf has branch count 1 and is hidden. For each child generation separately, width is:
+
+```text
+MAX_LINE_WIDTH * (branch_count - 1) / (largest_branch_count_in_that_generation - 1)
+```
+
+Generations containing only leaf children have no lines. Set `MAX_LINE_WIDTH = 2.5` (points, before figure `SCALE`) in `figures/plot_709715_offspring_dag.py` to change the maximum thickness. Normalization groups edges by their child's generation, not their parent's age or the generations crossed by a long edge.
+
+All dots remain. Confirmed paths into the final selected bundle retain darker grey, and other edges remain transparent grey. Opacity can be adjusted in `render()` in `figures/plot_709715_offspring_ancestry.py`. Counts, normalization denominators, and widths are saved in `offspring_dag.json`.
