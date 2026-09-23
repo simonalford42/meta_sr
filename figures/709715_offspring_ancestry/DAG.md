@@ -32,3 +32,5 @@ Generations containing only leaf children have no lines. Set `MAX_LINE_WIDTH = 1
 All dots remain. Confirmed paths into the final selected bundle retain darker grey, and other edges remain transparent grey. Opacity can be adjusted in `render()` in `figures/plot_709715_offspring_ancestry.py`. Counts, normalization denominators, and widths are saved in `offspring_dag.json`.
 
 The selected final algorithm at generation 43 is shown as a larger yellow star; other offspring use smaller grey dots.
+
+Bundle-only ancestors use the same light grey dot style as other offspring; only ancestors of the final operators receive colored markers. Their ancestry relationships remain in the graph.

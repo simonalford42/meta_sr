@@ -269,11 +269,11 @@ def render(points, edges=None, filename="offspring_ancestry.pdf"):
     for status in ('not_recorded_ancestor', 'ancestor', 'operator_origin'):
         group = [p for p in points if p['status'] == status and p['operator_name'] != final_name]
         colors = [COLORS[p['color_operator']] if p['color_operator'] else
-                  '#555555' if status == 'ancestor' else '#bdbdbd' for p in group]
+                  '#bdbdbd' for p in group]
         ax.scatter([p['generation'] for p in group], [p['fitness'] for p in group],
-                   marker='o', s=(66 if status == 'operator_origin' else 50 if status == 'ancestor' else 28) * SCALE**2,
-                   c=colors, edgecolors='none', alpha=0.70 if status == 'not_recorded_ancestor' else 1,
-                   zorder=4 if status == 'operator_origin' else 3 if status == 'ancestor' else 2)
+                   marker='o', s=(66 if status == 'operator_origin' else 28) * SCALE**2,
+                   c=colors, edgecolors='none', alpha=1 if status == 'operator_origin' else 0.70,
+                   zorder=4 if status == 'operator_origin' else 2)
     final = [p for p in points if p['operator_name'] == final_name]
     assert len(final) == 1
     point = final[0]
