@@ -22,8 +22,8 @@ SHOW_NINIT = [1, 3]                       # which promote / TTTS bases to draw
 # N_init = shade (light = 1, dark = 3; fixed-N line is the dark blue).
 BLUES = {3: "#7fcdee", 10: "#1f4e9c"}     # fixed N_init (real runs): sky vs navy
 BLUE = BLUES[10]
-ORANGES = {1: "#f5b47a", 3: "#d9731a"}    # promote / uniform reeval, by N_init
-GREENS = {1: "#e8898a", 3: "#b8202a"}     # TTTS, by N_init (reds; name kept for imports)
+ORANGES = {1: "#ffc16b", 3: "#ff8c00"}    # promote / uniform reeval, by N_init
+GREENS = {1: "#f4a3a3", 3: "#e03c3c"}     # TTTS, by N_init (reds; name kept for imports)
 MARK = {"fixed": "o", "promote": "s", "ttts": "^"}
 
 
