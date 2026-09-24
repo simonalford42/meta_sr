@@ -26,16 +26,18 @@ def render_panel(fig, spec, origin=0, width=1):
     points = [population[0] for population in populations.values()]
     first, last = min(populations), max(populations)
     norm = Normalize(first, last)
-    ax = fig.add_axes([origin + width * 0.14, 0.29, width * 0.84, 0.58])
+    ax = fig.add_axes([origin + width * 0.155, 0.29, width * 0.825, 0.58])
     scatter = draw(ax, points, norm, 10, best_stars=True,
                    score_label=spec["score_label"], label_offsets=spec["offsets"])
+    ax.xaxis.labelpad = 9
+    ax.yaxis.labelpad = 9
     ax.set_xlim(0, ax.get_xlim()[1])
     ax.set_ylim(*spec["ylim"])
     draw_population_context(ax, populations, norm)
-    fig.text(origin + width * 0.56, 0.98, spec["title"],
+    fig.text(origin + width * 0.5675, 0.98, spec["title"],
              ha="center", va="top", fontsize=12)
-    bar_left, bar_width = origin + width * 0.224, width * 0.672
-    cax = fig.add_axes([bar_left, 0.13, bar_width, 0.023])
+    bar_left, bar_width = origin + width * 0.2315, width * 0.672
+    cax = fig.add_axes([bar_left, 0.10, bar_width, 0.023])
     colorbar = fig.colorbar(scatter, cax=cax, orientation="horizontal",
                            ticks=sorted({first, last, *range(10, last + 1, 10)}))
     colorbar.set_label("Generation", fontsize=8)
@@ -43,8 +45,8 @@ def render_panel(fig, spec, origin=0, width=1):
     cax.xaxis.set_label_position("top")
     cax.tick_params(labelsize=8, pad=2)
     boundary = bar_left + bar_width * (30 - first) / (last - first)
-    phase_brace(fig, bar_left, boundary, 0.085, "Full evolution")
-    phase_brace(fig, boundary, bar_left + bar_width, 0.085, "Simplification phase")
+    phase_brace(fig, bar_left, boundary, 0.055, "Full evolution")
+    phase_brace(fig, boundary, bar_left + bar_width, 0.055, "Simplification phase")
 
 
 def save(fig, stem):
