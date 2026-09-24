@@ -10,8 +10,8 @@ Primary artifacts
   16,384-state Z-rebound test set used by :class:`NeuronBenchDomain`.
 
 Run 708907 used one training world (Z-rebound), uninformative prompts, and no
-execution feedback. Colors encode a binary numerical classification:
-recovered <= 1e-6 and failure > 1e-6.
+execution feedback. Color identifies the method; marker shape identifies the
+binary numerical classification (recovered <= 1e-6, failure > 1e-6).
 """
 
 from __future__ import annotations
@@ -61,9 +61,9 @@ WORLD_LABELS = {
     "d_type": "D-type",
     "textbook_M": "Textbook M",
 }
-COLORS = {
-    "recovered": "#2E7D32",
-    "failure": "#B2182B",
+METHOD_COLORS = {
+    "PySR": "#1F77B4",
+    "Evolved PySR": "#FF7F0E",
 }
 
 
@@ -149,7 +149,7 @@ def evolved_values() -> dict[str, list[float]]:
 
 
 def count_outcomes(values: dict[str, list[float]]) -> dict[str, int]:
-    counts = {name: 0 for name in COLORS}
+    counts = {"recovered": 0, "failure": 0}
     for world_values in values.values():
         for value in world_values:
             counts[outcome(value)] += 1
@@ -177,19 +177,20 @@ def make_figure(output_stem: Path, scale: float) -> None:
     ax.axvline(0.50, color="#8A8A8A", linewidth=0.8, zorder=1)
 
     method_specs = (
-        ("PySR", baseline, -0.16, "o"),
-        ("Evolved PySR", evolved, 0.16, "*"),
+        ("PySR", baseline, -0.16),
+        ("Evolved PySR", evolved, 0.16),
     )
     seed_offsets = np.linspace(-0.055, 0.055, 5)
     for world_index, world in enumerate(WORLDS):
-        for _, method_values, method_offset, marker in method_specs:
+        for method, method_values, method_offset in method_specs:
             for seed_offset, value in zip(seed_offsets, method_values[world]):
+                classification = outcome(value)
                 ax.scatter(
                     world_index + method_offset + seed_offset,
                     value,
-                    s=38 if marker == "o" else 92,
-                    marker=marker,
-                    facecolor=COLORS[outcome(value)],
+                    s=92 if classification == "recovered" else 50,
+                    marker="*" if classification == "recovered" else "X",
+                    facecolor=METHOD_COLORS[method],
                     edgecolor="white",
                     linewidth=0.55,
                     zorder=3,
@@ -198,7 +199,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
     ax.set_yscale("log")
     ax.set_ylim(1e-14, 3e-2)
     ax.set_xlim(-0.55, len(WORLDS) - 0.45)
-    ax.set_ylabel("Held-out NRMSE")
+    ax.set_ylabel("Test NRMSE")
     ax.set_xticks(range(len(WORLDS)), [WORLD_LABELS[world] for world in WORLDS])
     ax.tick_params(axis="x", length=0, pad=7)
     ax.set_axisbelow(True)
@@ -233,18 +234,16 @@ def make_figure(output_stem: Path, scale: float) -> None:
     )
 
     legend_handles = [
-        Line2D([0], [0], marker="o", linestyle="none", markersize=6,
-               markerfacecolor=COLORS["recovered"], markeredgecolor="white",
-               label="Recovered"),
-        Line2D([0], [0], marker="o", linestyle="none", markersize=6,
-               markerfacecolor=COLORS["failure"], markeredgecolor="white",
-               label="Failure"),
-        Line2D([0], [0], marker="o", linestyle="none", markersize=5.5,
-               markerfacecolor="#555555", markeredgecolor="#555555",
+        Line2D([0], [0], color=METHOD_COLORS["PySR"], linewidth=4,
                label="PySR"),
+        Line2D([0], [0], color=METHOD_COLORS["Evolved PySR"], linewidth=4,
+               label="Evolved PySR"),
         Line2D([0], [0], marker="*", linestyle="none", markersize=9,
                markerfacecolor="#555555", markeredgecolor="#555555",
-               label="Evolved PySR"),
+               label="Recovered"),
+        Line2D([0], [0], marker="X", linestyle="none", markersize=6,
+               markerfacecolor="#555555", markeredgecolor="#555555",
+               label="Failure"),
     ]
     ax.legend(
         handles=legend_handles,
