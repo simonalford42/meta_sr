@@ -2,7 +2,7 @@
 
 `train_reevaluation_six_panels.pdf` shows the best candidate's reevaluated train GT-match score versus generation and cumulative evolution evaluations, and winner's curse versus generation. Seeds are separate curves; solid = seed 1, dashed = seed 2. Only completed method/seed combinations are plotted; superseded failed attempts and still-running seeds are excluded.
 
-`all_methods_eval_axis.pdf` adds two panels comparing all six methods against the same cumulative evaluation axis: reevaluated train score and winner's curse. Seeds have the same meaning as above.
+`all_methods_eval_axis.pdf` contains four panels comparing all six methods: reevaluated train score and winner's curse against cumulative evaluations (top row) and generation (bottom row). Seeds have the same meaning as above.
 
 Scores come from `[train reeval]` records in `runs/<job>/run.log`, rounded to four decimals by the logger. Winner's curse pairs each diagnostic with its logged contemporaneous `live` score. These are best-candidate diagnostics on 10 fresh training seeds, **not** population-average diagnostics or validation-set scores. Missing generations are not filled; lines connect available observations. In particular, completed n3 seed 1 has no generation-15 diagnostic (last observed generation 14).
 

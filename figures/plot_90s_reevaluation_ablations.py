@@ -122,36 +122,39 @@ def plot_combined(records):
 
     colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#E69F00', '#555555']
     methods = ['n1', 'n1-reeval', 'n1-TTTS', 'n3', 'n3-reeval', 'n3-TTTS']
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5.8))
-    for ax, metric, title in zip(axes, ['train_reeval_score', 'winners_curse'],
-                                 ['Reevaluated train score', 'Winner’s curse']):
-        for method, color in zip(methods, colors):
-            for r in records:
-                if r['method'] != method:
-                    continue
-                p = r['points']
-                ax.plot([v['eval_idx'] for v in p], [v[metric] for v in p],
-                        color=color, ls='-' if r['seed'] == 1 else '--',
-                        marker='o', ms=3, lw=1.5, alpha=1 if r['seed'] == 1 else .75,
-                        label=method if r['seed'] == 1 else None)
-                if r['status'] == 'FAILED':
-                    ax.plot(p[-1]['eval_idx'], p[-1][metric], color=color, marker='x', ms=9, mew=2)
-        ax.set_title(title)
-        ax.set_xlabel('Cumulative evolution evaluations (seed-runs)')
-        ax.set_ylabel('Reevaluated train score' if metric == 'train_reeval_score'
-                      else 'Train score − reevaluated train score')
-        ax.set_ylim((.30,.90) if metric == 'train_reeval_score' else (-.06,.36))
-        ax.set_xlim(0,930)
-        ax.grid(alpha=.2)
-        ax.legend(ncol=3,fontsize=8,frameon=False,loc='upper left')
-        if metric == 'winners_curse':
-            ax.axhline(0,color='0.4',lw=.8)
-    fig.suptitle('All six 90-second PySR ablations · evaluation-count comparison',fontsize=16,y=.98)
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    for row, xkey in enumerate(['eval_idx', 'generation']):
+        for ax, metric, title in zip(axes[row], ['train_reeval_score', 'winners_curse'],
+                                     ['Reevaluated train score', 'Winner’s curse']):
+            for method, color in zip(methods, colors):
+                for r in records:
+                    if r['method'] != method:
+                        continue
+                    p = r['points']
+                    ax.plot([v[xkey] for v in p], [v[metric] for v in p],
+                            color=color, ls='-' if r['seed'] == 1 else '--',
+                            marker='o', ms=3, lw=1.5, alpha=1 if r['seed'] == 1 else .75,
+                            label=method if r['seed'] == 1 else None)
+                    if r['status'] == 'FAILED':
+                        ax.plot(p[-1][xkey], p[-1][metric], color=color, marker='x', ms=9, mew=2)
+            ax.set_title(f'{title} vs {"evaluations" if row == 0 else "generation"}')
+            ax.set_xlabel('Cumulative evolution evaluations (seed-runs)' if row == 0 else 'Generation')
+            ax.set_ylabel('Reevaluated train score' if metric == 'train_reeval_score'
+                          else 'Train score − reevaluated train score')
+            ax.set_ylim((.30,.90) if metric == 'train_reeval_score' else (-.06,.36))
+            ax.set_xlim((0,930) if row == 0 else (-.35,15.35))
+            if row == 1:
+                ax.set_xticks(range(0,16,3))
+            ax.grid(alpha=.2)
+            ax.legend(ncol=3,fontsize=8,frameon=False,loc='upper left')
+            if metric == 'winners_curse':
+                ax.axhline(0,color='0.4',lw=.8)
+    fig.suptitle('All six 90-second PySR ablations · evaluation and generation comparisons',fontsize=16,y=.98)
     handles = [Line2D([],[],color='0.25',ls='-',label='Seed 1'),
                Line2D([],[],color='0.25',ls='--',label='Seed 2')]
-    fig.legend(handles=handles,loc='upper center',bbox_to_anchor=(.5,.93),ncol=3,frameon=False)
+    fig.legend(handles=handles,loc='upper center',bbox_to_anchor=(.5,.95),ncol=3,frameon=False)
     fig.text(.06,.03,'10 fresh seeds per best-candidate train diagnostic; missing diagnostics are not filled. Completed seeds only; resumed n3 seed 2 includes its earlier history.\nEvaluation counts include selection reevaluations and exclude diagnostics. One seed-run covers the training task set.',fontsize=9)
-    fig.tight_layout(rect=(0,.105,1,.85))
+    fig.tight_layout(rect=(0,.085,1,.91), h_pad=2.5)
     fig.savefig(OUT / 'all_methods_eval_axis.pdf')
     plt.close(fig)
 
