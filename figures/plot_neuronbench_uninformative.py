@@ -63,7 +63,7 @@ WORLD_LABELS = {
 }
 METHOD_COLORS = {
     "Base PySR": "#1F77B4",
-    "Fine-tuned PySR": "#22826A",
+    "Fine-tuned PySR": "#C33D3D",
 }
 
 
@@ -163,7 +163,8 @@ def make_figure(output_stem: Path, scale: float) -> None:
     evolved = evolved_values()
 
     plt.rcParams.update({
-        "font.family": "serif",
+        "font.family": "DejaVu Serif",
+        "mathtext.fontset": "dejavuserif",
         "font.size": 9,
         "axes.titlesize": 11,
         "axes.labelsize": 10,
@@ -171,7 +172,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
     })
-    fig, ax = plt.subplots(figsize=(8.2 * scale, 4.5 * scale))
+    fig, ax = plt.subplots(figsize=(8.8 * scale, 5.8 * scale))
 
     # Mark the boundary between the one evolution task and five transfer tasks.
     ax.axvline(0.50, color="#8A8A8A", linewidth=0.8, zorder=1)

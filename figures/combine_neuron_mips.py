@@ -10,6 +10,7 @@ Then run:
 from pathlib import Path
 
 import pymupdf
+from matplotlib.font_manager import FontProperties, findfont
 
 FIGURES = Path(__file__).resolve().parent
 
@@ -22,12 +23,21 @@ def main():
         height = neuron[0].rect.height
         widths = [doc[0].rect.width * height / doc[0].rect.height
                   for doc in (neuron, mips)]
-        gap = 14  # PDF points; scale both panels uniformly to equal height.
+        gap = 20  # PDF points; scale both panels uniformly to equal height.
+        title_height = 28
+        title_font = findfont(FontProperties(family='DejaVu Serif', weight='bold'))
+        font = pymupdf.Font(fontfile=title_font)
         with pymupdf.open() as output:
-            page = output.new_page(width=sum(widths) + gap, height=height)
-            page.show_pdf_page(pymupdf.Rect(0, 0, widths[0], height), neuron, 0)
-            page.show_pdf_page(pymupdf.Rect(widths[0] + gap, 0,
-                                           sum(widths) + gap, height), mips, 0)
+            page = output.new_page(width=sum(widths) + gap, height=height + title_height)
+            page.show_pdf_page(pymupdf.Rect(0, title_height, widths[0], height + title_height), neuron, 0)
+            page.show_pdf_page(pymupdf.Rect(widths[0] + gap, title_height,
+                                           sum(widths) + gap, height + title_height), mips, 0)
+            page.insert_font(fontname='PanelTitle', fontfile=title_font)
+            for label, center in [('NeuronBench', widths[0] / 2),
+                                  ('MIPS', widths[0] + gap + widths[1] / 2)]:
+                text_width = font.text_length(label, fontsize=14)
+                page.insert_text((center - text_width / 2, 17), label,
+                                 fontname='PanelTitle', fontsize=14)
             output.set_metadata({'title': 'NeuronBench and MIPS',
                                  'subject': 'NeuronBench left; MIPS right'})
             target = FIGURES / 'neuron_mips_combined.pdf'

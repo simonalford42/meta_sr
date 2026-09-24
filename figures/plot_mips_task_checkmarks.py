@@ -52,7 +52,7 @@ def main():
     totals = [len(s) for s in solved]
     assert totals == [7, 9, 11], f'Historical comparison changed: {totals}'
 
-    plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 9,
+    plt.rcParams.update({'font.family': 'DejaVu Serif', 'font.size': 10.5,
                          'pdf.fonttype': 42})
     fig, ax = plt.subplots(figsize=(4.5, 4.15))
     fig.subplots_adjust(left=.025, right=.98, bottom=.02, top=.98)
@@ -60,10 +60,10 @@ def main():
     ax.set_ylim(-.8, 15.8)
     ax.axis('off')
     ink, gray = '#24333D', '#89949C'
-    colors = ['#317DA5', '#BB7A20', '#22826A']
+    colors = ['#317DA5', '#BB7A20', '#C33D3D']
     # Marker coordinates preserve a 90-degree bend regardless of axis scaling.
     checkmark = MarkerPath([(-.60, .10), (-.15, -.35), (.75, .55)])
-    xs = [2.50, 3.27, 4.07]
+    xs = [2.60, 3.36, 4.13]
     ax.text(.12, 15.05, 'Task', fontweight='bold', color=ink, va='center')
     for x, label, color in zip(xs, ['Base', 'Evolved', 'MIPS-\nevolved'], colors):
         ax.text(x, 15.05, label, fontweight='bold', ha='center', va='center', color=color, linespacing=1.1)
@@ -77,7 +77,7 @@ def main():
             if task in successes:
                 # Draw a checkmark as vectors, independent of symbol font support.
                 ax.plot([x], [y], linestyle='none', marker=checkmark,
-                        markersize=11, markerfacecolor='none',
+                        markersize=12, markerfacecolor='none',
                         markeredgecolor=color, markeredgewidth=1.65)
             else:
                 ax.text(x, y, '–', ha='center', va='center', color=gray)
