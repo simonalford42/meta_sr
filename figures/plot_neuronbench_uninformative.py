@@ -10,8 +10,8 @@ Primary artifacts
   16,384-state Z-rebound test set used by :class:`NeuronBenchDomain`.
 
 Run 708907 used one training world (Z-rebound), uninformative prompts, and no
-execution feedback. Color identifies the method; marker shape identifies the
-binary numerical classification (recovered <= 1e-6, failure > 1e-6).
+execution feedback. Color identifies the method. The dashed recovery boundary
+is test NRMSE = 1e-6; points below it are recovered.
 """
 
 from __future__ import annotations
@@ -180,16 +180,15 @@ def make_figure(output_stem: Path, scale: float) -> None:
         ("Base PySR", baseline),
         ("Fine-tuned PySR", evolved),
     )
-    seed_offsets = np.linspace(-0.18, 0.18, 5)
+    seed_offsets = np.linspace(-0.28, 0.28, 5)
     for world_index, world in enumerate(WORLDS):
         for method, method_values in method_specs:
             for seed_offset, value in zip(seed_offsets, method_values[world]):
-                classification = outcome(value)
                 ax.scatter(
                     world_index + seed_offset,
                     value,
-                    s=115 if classification == "recovered" else 70,
-                    marker="*" if classification == "recovered" else "X",
+                    s=62,
+                    marker="o",
                     facecolor=METHOD_COLORS[method],
                     edgecolor="white",
                     linewidth=0.55,
@@ -200,6 +199,22 @@ def make_figure(output_stem: Path, scale: float) -> None:
     ax.set_ylim(1e-14, 3e-2)
     ax.set_xlim(-0.55, len(WORLDS) - 0.45)
     ax.set_ylabel("Test NRMSE")
+    ax.axhline(
+        NeuronBenchDomain.RECOVERED_NRMSE,
+        color="#666666",
+        linestyle="--",
+        linewidth=1.0,
+        zorder=2,
+    )
+    ax.text(
+        len(WORLDS) - 0.50,
+        NeuronBenchDomain.RECOVERED_NRMSE / 1.7,
+        "Recovered",
+        color="#555555",
+        ha="right",
+        va="top",
+        fontsize=8,
+    )
     ax.set_xticks(range(len(WORLDS)), [WORLD_LABELS[world] for world in WORLDS])
     ax.tick_params(axis="x", length=0, pad=7)
     ax.set_xlabel("Task", labelpad=9)
@@ -239,17 +254,11 @@ def make_figure(output_stem: Path, scale: float) -> None:
                label="Base PySR"),
         Line2D([0], [0], color=METHOD_COLORS["Fine-tuned PySR"], linewidth=4,
                label="Fine-tuned PySR"),
-        Line2D([0], [0], marker="*", linestyle="none", markersize=10,
-               markerfacecolor="#555555", markeredgecolor="#555555",
-               label="Recovered"),
-        Line2D([0], [0], marker="X", linestyle="none", markersize=7,
-               markerfacecolor="#555555", markeredgecolor="#555555",
-               label="Failure"),
     ]
     ax.legend(
         handles=legend_handles,
         loc="lower right",
-        ncol=4,
+        ncol=2,
         frameon=False,
         columnspacing=1.25,
         handletextpad=0.4,
