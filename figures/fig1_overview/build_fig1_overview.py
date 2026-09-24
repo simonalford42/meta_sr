@@ -1,9 +1,12 @@
-"""Build Figure 1 (meta-evolution overview) as an Inkscape-friendly SVG plus a PDF.
+"""Build Figure 1 (meta-evolution overview) as a PDF.
 
 The layout lives in mockups12.py (final design round); the other modules are the
-helpers it imports.  This script re-assembles that layout with one labelled
-Inkscape layer per block and every CSS class inlined as a style attribute, so
-the SVG can be hand-aligned in Inkscape.
+helpers it imports.  The figure is assembled with one labelled group per block and
+every CSS class inlined as a style attribute, then cropped horizontally to the
+drawing plus a small margin.
+
+Text is set in Atkinson Hyperlegible Next, expected as static TTFs in
+~/.local/share/fonts/atkinson-next/ (Google Fonts); cairo embeds it in the PDF.
 
     python figures/fig1_overview/build_fig1_overview.py
 """
@@ -20,12 +23,13 @@ import svgkit  # noqa: E402
 from svgkit import Svg, C  # noqa: E402
 import mockups12 as L  # noqa: E402
 
-FONT = 'Helvetica, Arial, sans-serif'
-MONO = "Menlo, Consolas, 'DejaVu Sans Mono', monospace"
+MARGIN = 4          # horizontal white space kept on each side
+X0 = L.MX0 - MARGIN
+X1 = L.XT + 9 + MARGIN   # outer edge of the loop's 18 px halo
 
 
 def class_styles():
-    css = svgkit.CSS.replace('@FONT@', FONT).replace('@MONO@', MONO)
+    css = svgkit.css()
     return {name: body.strip().rstrip(';') for name, body in re.findall(r'\.([\w-]+)\{([^}]*)\}', css)}
 
 
@@ -85,18 +89,14 @@ def build():
     layer('loop_arrowheads', 'Loop arrowheads', arrowheads)
 
     body = inline_classes(''.join(s.els))
-    return (f'<?xml version="1.0" encoding="UTF-8"?>\n'
-            f'<svg xmlns="http://www.w3.org/2000/svg" '
+    w = X1 - X0
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" '
             f'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" '
             f'xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" '
-            f'width="{L.W}" height="{L.H}" viewBox="0 0 {L.W} {L.H}">\n{body}\n</svg>\n')
+            f'width="{w}" height="{L.H}" viewBox="{X0} 0 {w} {L.H}">\n{body}\n</svg>\n')
 
 
 if __name__ == '__main__':
-    svg = build()
-    out_svg = HERE / 'fig1_overview.svg'
     out_pdf = HERE / 'fig1_overview.pdf'
-    out_svg.write_text(svg)
-    cairosvg.svg2pdf(bytestring=svg.encode(), write_to=str(out_pdf))
-    print('wrote', out_svg)
+    cairosvg.svg2pdf(bytestring=build().encode(), write_to=str(out_pdf))
     print('wrote', out_pdf)

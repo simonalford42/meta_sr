@@ -6,7 +6,7 @@ from svgkit import Svg, C, OPS, OPNAME, text_w
 from mockups2 import (chevron, meta_mutation, offspring, fitness_chips, pareto, task_stack, TRACK)
 
 W, H = 1100, 470
-INIT = '#7a8494'   # initial-evaluation seeds
+INIT = '#5c6575'   # initial-evaluation seeds
 REEV = C['warn']   # reevaluation seeds
 
 # racetrack geometry shared by all round-3 mockups

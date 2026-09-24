@@ -4,18 +4,23 @@ Only single-word SVG attributes + CSS classes are emitted, so the same markup
 works in cairosvg (local preview) and inside a React-rendered design canvas.
 """
 import math
-from html import escape
+import os
+import re
 
-FONT = "'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif"
+# Atkinson Hyperlegible Next (Braille Institute): designed for legibility, incl. at small sizes.
+FONT = "'Atkinson Hyperlegible Next', sans-serif"
+FONT_DIR = os.path.expanduser('~/.local/share/fonts/atkinson-next')
 MONO = "Menlo, Consolas, 'DejaVu Sans Mono', monospace"
+FS = 1.05          # global font-size scale applied to every .sNN class
+CAP = 0.68         # cap height / em of the font, used to centre text vertically
 
 C = dict(
     mut='#d62728', loss='#2878c8', sel='#e4bc24', surv='#2c9b49',
     mut_d='#b3201f', loss_d='#1f62a6', sel_d='#9a7a08', surv_d='#23803b',
     mut_t='#fbe3e2', loss_t='#e0ecf8', sel_t='#fbf2cf', surv_t='#dff1e3',
     llm='#6b4fc0', llm_d='#4f389a', llm_t='#ebe6f8',
-    ink='#1d2430', ink2='#465163', mute='#8791a1', line='#bcc3cd', faint='#dde1e7',
-    panel='#f7f8fa', panel2='#eef1f5', white='#ffffff', tab='#e6ebf1',
+    ink='#1d2430', ink2='#343c4a', mute='#636d7d', line='#99a2af', faint='#cbd1da',
+    panel='#f7f8fa', panel2='#e3e7ed', white='#ffffff', tab='#e2e7ee',
     gold='#c98a12', warn='#e07b24',
 )
 OPS = ['sel', 'mut', 'loss', 'surv']
@@ -24,12 +29,9 @@ OPNAME = dict(sel='Selection', mut='Mutation', loss='Loss', surv='Survival')
 CSS = f"""
 .t{{font-family:@FONT@}}
 .mono{{font-family:@MONO@}}
-.b{{font-weight:700}} .sb{{font-weight:600}} .i{{font-style:italic}}
+.b{{font-weight:700}} .sb{{font-weight:700}} .i{{font-style:italic}}
 .m{{text-anchor:middle}} .e{{text-anchor:end}}
-.s10{{font-size:10px}} .s11{{font-size:11px}} .s12{{font-size:12px}} .s13{{font-size:13px}}
-.s14{{font-size:14px}} .s15{{font-size:15px}} .s16{{font-size:16px}} .s17{{font-size:17px}}
-.s18{{font-size:18px}} .s20{{font-size:20px}} .s22{{font-size:22px}} .s24{{font-size:24px}}
-.s26{{font-size:26px}} .s28{{font-size:28px}}
+{' '.join(f'.s{n}{{font-size:{n * FS:.2f}px}}' for n in (10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 26, 28))}
 .ln{{fill:none;stroke-linecap:round;stroke-linejoin:round}}
 .w05{{stroke-width:0.6}} .w1{{stroke-width:1}} .w12{{stroke-width:1.25}} .w15{{stroke-width:1.5}}
 .w2{{stroke-width:2}} .w25{{stroke-width:2.5}} .w3{{stroke-width:3}} .w4{{stroke-width:4}} .w5{{stroke-width:5}}
@@ -39,10 +41,17 @@ CSS = f"""
 
 
 def css(local=False):
-    """Local previews use Liberation Sans (Arial metrics); the canvas uses the Helvetica stack."""
-    if local:
-        return CSS.replace('@FONT@', "'Liberation Sans'").replace('@MONO@', "'DejaVu Sans Mono'")
     return CSS.replace('@FONT@', FONT).replace('@MONO@', MONO)
+
+
+def vc(size):
+    """Baseline offset that vertically centres text of nominal `size` on a line."""
+    return size * FS * CAP / 2
+
+
+def weight_of(cls):
+    words = cls.split()
+    return 700 if ('b' in words or 'sb' in words) else 400
 
 
 class Svg:
@@ -140,12 +149,12 @@ class Svg:
         self.rect(x, y, w, h, fill=fill, stroke=stroke, rx=rx, cls='w15 dash' if dashed else 'w15')
         if title:
             extra = 24 if letter else 0
-            tw = text_w(title, tsize) * 1.08 + 26 + extra
+            tw = text_w(title, tsize, weight_of(title_cls), 'i' in title_cls.split()) + 26 + extra
             tx = tab_x if tab_x is not None else x + w / 2 - tw / 2
             self.rect(tx, y - 13, tw, 26, fill=tab, stroke=stroke, rx=13, cls='w12')
             if letter:
                 self.badge(tx + 14, y, letter, r=9, size=12)
-            self.text(tx + (tw + extra) / 2, y + tsize * 0.35, title, title_cls, anchor='m')
+            self.text(tx + (tw + extra) / 2, y + vc(tsize), title, title_cls, anchor='m')
 
     def star(self, cx, cy, r, fill=C['gold'], stroke=C['ink']):
         pts = []
@@ -156,11 +165,11 @@ class Svg:
         self.poly(pts, fill=fill, stroke=stroke, cls='w1')
 
     def chip(self, x, y, s, fill, stroke, color=None, size=13, h=22, pad=9, cls='sb', center=False):
-        w = text_w(s, size) * (1.07 if 'b' in cls else 1.0) + 2 * pad
+        w = text_w(s, size, weight_of(cls), 'i' in cls.split()) + 2 * pad
         if center:
             x = x - w / 2
         self.rect(x, y, w, h, fill=fill, stroke=stroke, rx=h / 2, cls='w12')
-        self.text(x + w / 2, y + h / 2 + size * 0.36, s, f's{size} {cls}', fill=color or C['ink'], anchor='m')
+        self.text(x + w / 2, y + h / 2 + vc(size), s, f's{size} {cls}', fill=color or C['ink'], anchor='m')
         return w
 
     def opchip(self, x, y, op, size=13, h=22, label=None, center=False):
@@ -276,13 +285,31 @@ class Svg:
                 f'width="{self.w}" height="{self.h}">{style}' + ''.join(self.els) + '</svg>')
 
 
-def text_w(s, size):
-    """Rough Helvetica width estimate."""
-    import re
+_FONTS = {}
+
+
+def _font(weight, italic):
+    key = (weight, italic)
+    if key not in _FONTS:
+        path = os.path.join(FONT_DIR, f"AtkinsonHyperlegibleNext-{weight}{'Italic' if italic else ''}.ttf")
+        try:
+            from PIL import ImageFont
+            _FONTS[key] = ImageFont.truetype(path, 100)
+        except (ImportError, OSError):
+            _FONTS[key] = None
+    return _FONTS[key]
+
+
+def text_w(s, size, weight=400, italic=False):
+    """Rendered width of `s` at nominal `size` (after the global FS scale), measured from the font."""
     s = re.sub(r'<[^>]+>', '', s)
     s = s.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+    f = _font(weight, italic)
+    if f is not None:
+        return f.getlength(s) / 100 * size * FS
+    # fallback: rough Helvetica estimate
     wide = sum(1 for ch in s if ch in 'mwMW@%')
     narrow = sum(1 for ch in s if ch in 'iljtf.,:;|!\' ()')
     caps = sum(1 for ch in s if ch.isupper())
     n = len(s)
-    return size * (0.52 * (n - wide - narrow - caps) + 0.82 * wide + 0.28 * narrow + 0.66 * caps)
+    return size * FS * (0.52 * (n - wide - narrow - caps) + 0.82 * wide + 0.28 * narrow + 0.66 * caps)

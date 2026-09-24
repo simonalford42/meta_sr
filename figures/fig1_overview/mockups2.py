@@ -5,7 +5,7 @@ from svgkit import Svg, C, OPS, OPNAME, text_w
 from mockups import inner_ring, trace_plot
 
 W = 1100
-TRACK = '#e2e7ee'
+TRACK = '#d5dbe3'
 NEW = C['warn']          # evaluations run this generation
 OLD = '#5b6678'          # evaluations from earlier generations
 

@@ -1,7 +1,7 @@
 """Round-12 Figure 1 (refined X): shorter overall."""
 import math
 import sys
-from svgkit import Svg, C, OPS, OPNAME, text_w
+from svgkit import Svg, C, OPS, OPNAME, text_w, vc
 from mockups2 import chevron, task_stack, TRACK
 from mockups3 import glyph_loss, seeds_ir, strategy_pill, INIT, REEV
 from mockups5 import robot, pareto2, prog
@@ -104,13 +104,13 @@ def mode_grid(s, x, y, active='refine', size=12, h=20, colw=88, rowh=24):
 def op_grid(s, x, y, active='surv', size=12, h=20, colw=88, rowh=28):
     for k, op in enumerate(['mut', 'sel', 'surv', 'loss']):
         xx, yy = x + (k % 2) * colw, y + (k // 2) * rowh
-        w = text_w(OPNAME[op], size) * 1.07 + 14
+        w = text_w(OPNAME[op], size, 700 if op == active else 400) + 14
         if op == active:
             s.rect(xx, yy, w, h, fill=C[op + '_t'], stroke=C['ink'], rx=h / 2, cls='w15')
-            s.text(xx + w / 2, yy + h / 2 + size * 0.36, OPNAME[op], f's{size} b', fill=C[op + '_d'], anchor='m')
+            s.text(xx + w / 2, yy + h / 2 + vc(size), OPNAME[op], f's{size} b', fill=C[op + '_d'], anchor='m')
         else:
             s.rect(xx, yy, w, h, fill=C['white'], stroke=C['line'], rx=h / 2, cls='w12')
-            s.text(xx + w / 2, yy + h / 2 + size * 0.36, OPNAME[op], f's{size}', fill=C['ink2'], anchor='m')
+            s.text(xx + w / 2, yy + h / 2 + vc(size), OPNAME[op], f's{size}', fill=C['ink2'], anchor='m')
 
 
 def pareto_history(s, x, y, w, h):
@@ -119,8 +119,8 @@ def pareto_history(s, x, y, w, h):
     ax0, ay0, ax1, ay1 = x + 7, y + 5, x + w - 5, y + h - 6
     s.line(ax0, ay1, ax1, ay1, stroke=C['mute'], cls='w1')
     s.line(ax0, ay0, ax0, ay1, stroke=C['mute'], cls='w1')
-    fronts = [([(0.05, 0.95), (0.3, 0.8), (0.6, 0.7), (0.95, 0.66)], '#c3c9d2'),
-              ([(0.05, 0.9), (0.25, 0.62), (0.5, 0.48), (0.95, 0.42)], '#8791a1'),
+    fronts = [([(0.05, 0.95), (0.3, 0.8), (0.6, 0.7), (0.95, 0.66)], '#a4adb9'),
+              ([(0.05, 0.9), (0.25, 0.62), (0.5, 0.48), (0.95, 0.42)], '#687282'),
               ([(0.05, 0.86), (0.2, 0.5), (0.42, 0.3), (0.7, 0.14), (0.95, 0.1)], C['ink'])]
     for pts, col in fronts:
         P = [(ax0 + 3 + u * (ax1 - ax0 - 6), ay1 - 2 - v * (ay1 - ay0 - 4)) for u, v in pts]
@@ -138,9 +138,12 @@ def reference_doc(s, x, y, w=28, h=34):
     s.path(f'M{x},{y} L{x + w - f},{y} L{x + w},{y + f} L{x + w},{y + h} L{x},{y + h} Z',
            stroke=C['ink2'], fill=C['white'], cls='w12')
     s.path(f'M{x + w - f},{y} L{x + w - f},{y + f} L{x + w},{y + f}', stroke=C['ink2'], cls='w1')
-    for k, (ww, col) in enumerate([(0.55, C['ink2']), (0.72, C['line']), (0.62, C['line']), (0.5, C['ink2']),
-                                   (0.68, C['line']), (0.58, C['line'])]):
-        s.rect(x + 5, y + 12 + k * 4.6, (w - 10) * ww, 2.3, fill=col, stroke='none', rx=1, cls='w1')
+    rows = [(0.55, C['ink2']), (0.72, C['line']), (0.62, C['line']), (0.5, C['ink2']),
+            (0.68, C['line']), (0.58, C['line'])]
+    block = (w - 10) * max(ww for ww, _ in rows)
+    bx = x + (w - block) / 2
+    for k, (ww, col) in enumerate(rows):
+        s.rect(bx, y + 12 + k * 4.6, (w - 10) * ww, 2.3, fill=col, stroke='none', rx=1, cls='w1')
 
 
 # ------------------------------------------------------------------ blocks
@@ -174,21 +177,22 @@ def meta_mutation(s):
     title_base = py + 24
     s.text(px + 12, title_base, 'Prompt', 's16 b')
     # section heights: mode (2 chip rows), operator (2 chip rows), feedback (label + plot), parent card
-    mode_h, op_h, fb_h, par_top = 20 + 22, 20 + 24, 9 + 5 + 34, BOT - CH / 2
+    mode_h, op_h, fb_h, par_top = 20 + 24, 20 + 24, 9 + 9 + 34, BOT - CH / 2
     g_end = pb - (BOT + CH / 2)            # whitespace below the parent row ...
     mode_y = title_base + g_end            # ... equals whitespace above the mode row
     g = (par_top - (mode_y + mode_h) - op_h - fb_h) / 3
     op_y = mode_y + mode_h + g
     fb_y = op_y + op_h + g                 # top of the feedback label's capitals
     s.text(px + 12, mode_y + 14.5, 'mode', 's13', fill=C['ink2'])
-    mode_grid(s, px + 78, mode_y, size=12, h=20, rowh=22, colw=88)
+    mode_grid(s, px + 78, mode_y, size=12, h=20, rowh=24, colw=88)
     s.text(px + 12, op_y + 14.5, 'operator', 's13', fill=C['ink2'])
     op_grid(s, px + 78, op_y, 'surv', size=12, h=20, colw=88, rowh=24)
     half = px + pw / 2 + 2
     s.text(px + 12, fb_y + 9, 'execution feedback', 's12', fill=C['ink2'])
-    pareto_history(s, px + 12, fb_y + 14, 100, 34)
-    s.text(half + 12, fb_y + 9, 'SR reference', 's12', fill=C['ink2'])
-    reference_doc(s, half + 12 + 22, fb_y + 14)
+    pareto_history(s, px + 12, fb_y + 18, 100, 34)
+    dcx = half + 12 + text_w('SR reference', 12) / 2      # label and page share a centre line
+    s.text(dcx, fb_y + 9, 'SR reference', 's12', fill=C['ink2'], anchor='m')
+    reference_doc(s, dcx - 14, fb_y + 18)
     # the selected parent, arriving from meta-selection on the bottom loop line
     s.text(px + 12, BOT + 5, 'parent(s)', 's13', fill=C['ink2'])
     s.code_card(px + 78, BOT - CH / 2, CW, CH, header=False, bars=1)
@@ -220,7 +224,7 @@ def evaluate(s):
     task_stack(s, x + 18, cy - 36, w=62, h=42, label=False, lab2=False)
     s.text(x + 55, cy + 44, 'training', 's14 b', anchor='m')
     s.text(x + 55, cy + 61, 'tasks', 's14 b', anchor='m')
-    s.arrow([(x + 100, cy), (lx - 8, cy)], cls='w2', head=8)
+    s.arrow([(lx - 34, cy), (lx - 8, cy)], cls='w2', head=8)
     s.text(lx + lw / 2, y + 38, 'PySR or BasicSR', 's14 b', fill=C['ink2'], anchor='m')
     island_loop(s, lx, ly, lw, lh)
     ox = lx + lw + 40
