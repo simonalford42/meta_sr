@@ -41,9 +41,9 @@ def draw_frontier(ax, D=None, legend_fontsize=9, legend_loc="lower right"):
         pts = sorted(((v["seeds"], v["metric"]) for v in P.values() if v["family"] == fam))
         return [p[0] for p in pts], [p[1] for p in pts]
 
-    ax.axhline(oracle["metric"], color="k", ls="--", lw=0.9, alpha=0.6, zorder=0)
-    ax.text(0.02, oracle["metric"] - 0.0008, r"oracle ($N_{\mathrm{init}}=10$)", ha="left", va="top",
-            fontsize=legend_fontsize, color="#333", transform=ax.get_yaxis_transform())
+    ax.axhline(oracle["metric"], color="k", ls="--", lw=1.4, alpha=0.7, zorder=0)
+    ax.text(0.45, oracle["metric"] + 0.0006, r"oracle ($N_{\mathrm{init}}=10$)", ha="left", va="bottom",
+            fontsize=legend_fontsize + 2, color="#222", transform=ax.get_yaxis_transform())
     x, y = series("fixed")
     ax.plot(x, y, color=BLUE, marker=MARK["fixed"], ms=5, lw=1.6)
     for n in SHOW_NINIT:
@@ -63,6 +63,7 @@ def draw_frontier(ax, D=None, legend_fontsize=9, legend_loc="lower right"):
     ax.legend(handles=handles, fontsize=legend_fontsize, loc=legend_loc, frameon=False,
               handletextpad=0.5)
     ax.set_xlim(0, D["oracle_seeds"] * 1.04)
+    ax.set_ylim(top=oracle["metric"] + 0.005)
     ax.set_xlabel("Total evaluations")
     ax.set_ylabel("Expected true parent fitness")
     ax.grid(alpha=0.25)

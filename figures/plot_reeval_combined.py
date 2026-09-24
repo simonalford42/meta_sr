@@ -30,7 +30,7 @@ labels = {
 
 with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
                      'xtick.labelsize': 10, 'ytick.labelsize': 10}):
-    fig, axes = plt.subplots(1, 3, figsize=(13.5 * SCALE, 4.2 * SCALE),
+    fig, axes = plt.subplots(1, 3, figsize=(12.5 * SCALE, 3.9 * SCALE),
                              gridspec_kw={'width_ratios': [1, 1, 1.15]})
     axl, axc, axr = axes
     axc.sharey(axl)
