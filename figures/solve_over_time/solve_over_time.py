@@ -1,6 +1,6 @@
 """Combine existing SRBench snapshot and empirical-overlap portfolio curves.
 
-Run: python figures/recovery_side_by_side/plot.py
+Run: python figures/solve_over_time/solve_over_time.py
 """
 import csv
 import json
@@ -59,11 +59,11 @@ def main():
         ax.grid(axis='y', which='minor', alpha=.22)
         ax.set_axisbelow(True)
         ax.spines[['top','right']].set_visible(False)
-        ax.legend(frameon=False, loc='upper left')
+        ax.legend(frameon=False, loc='lower right')
     fig.tight_layout(w_pad=2.5)
-    fig.savefig(OUT/'recovery_side_by_side.pdf')
+    fig.savefig(OUT/'solve_over_time.pdf')
     plt.close(fig)
-    print(OUT/'recovery_side_by_side.pdf')
+    print(OUT/'solve_over_time.pdf')
 
 
 if __name__ == '__main__':
