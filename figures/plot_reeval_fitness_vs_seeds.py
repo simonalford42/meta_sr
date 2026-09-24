@@ -1,7 +1,11 @@
 """Parent fitness vs seeds spent for reevaluation policies (oracle replay, pair
 average of runs 568245+568246, final generation). Reads the JSON written by
-scripts/oracle_replay_table.py."""
+scripts/oracle_replay_table.py.
+
+Usage: python figures/plot_reeval_fitness_vs_seeds.py [SCALE]
+  SCALE (default 1.0) multiplies the figure size; fonts stay fixed."""
 import json
+import sys
 from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
@@ -47,8 +51,11 @@ CHAINS = [  # (members, category, legend text)
     (["TTTS n3 B=20", "TTTS n3 B=60"], "ttts3", r"TTTS, $N_{init}=3,\ B \in \{20, 60\}$"),
 ]
 
+# SCALE shrinks/grows the canvas while fonts stay fixed, so text gets
+# relatively bigger as SCALE goes down. 1.0 = 5 x 3.8 inches.
+SCALE = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
 plt.rcParams.update({"font.size": 11})
-fig, ax = plt.subplots(figsize=(5, 3.8))
+fig, ax = plt.subplots(figsize=(5 * SCALE, 3.8 * SCALE))
 for chain, cat, legend in CHAINS:
     color, marker = CATS[cat]
     ax.plot([data[c]["seeds"] for c in chain], [data[c]["metric"] for c in chain],
