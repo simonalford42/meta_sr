@@ -63,7 +63,7 @@ WORLD_LABELS = {
 }
 METHOD_COLORS = {
     "Base PySR": "#1F77B4",
-    "Fine-tuned PySR": "#FF7F0E",
+    "Fine-tuned PySR": "#22826A",
 }
 
 
