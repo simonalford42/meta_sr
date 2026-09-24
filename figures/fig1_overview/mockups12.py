@@ -138,12 +138,13 @@ def reference_doc(s, x, y, w=28, h=34):
     s.path(f'M{x},{y} L{x + w - f},{y} L{x + w},{y + f} L{x + w},{y + h} L{x},{y + h} Z',
            stroke=C['ink2'], fill=C['white'], cls='w12')
     s.path(f'M{x + w - f},{y} L{x + w - f},{y + f} L{x + w},{y + f}', stroke=C['ink2'], cls='w1')
-    rows = [(0.55, C['ink2']), (0.72, C['line']), (0.62, C['line']), (0.5, C['ink2']),
-            (0.68, C['line']), (0.58, C['line'])]
-    block = (w - 10) * max(ww for ww, _ in rows)
-    bx = x + (w - block) / 2
+    rows = [(0.55, C['ink2']), (0.72, C['line']), (0.62, C['line']), (0.5, C['ink2']), (0.66, C['line'])]
+    lh, pitch = 2.3, 4.4
+    block_w = (w - 10) * max(ww for ww, _ in rows)
+    block_h = (len(rows) - 1) * pitch + lh
+    bx, by = x + (w - block_w) / 2, y + (h - block_h) / 2      # text block centred in the page
     for k, (ww, col) in enumerate(rows):
-        s.rect(bx, y + 12 + k * 4.6, (w - 10) * ww, 2.3, fill=col, stroke='none', rx=1, cls='w1')
+        s.rect(bx, by + k * pitch, (w - 10) * ww, lh, fill=col, stroke='none', rx=1, cls='w1')
 
 
 # ------------------------------------------------------------------ blocks
@@ -224,11 +225,15 @@ def evaluate(s):
     task_stack(s, x + 18, cy - 36, w=62, h=42, label=False, lab2=False)
     s.text(x + 55, cy + 44, 'training', 's14 b', anchor='m')
     s.text(x + 55, cy + 61, 'tasks', 's14 b', anchor='m')
-    s.arrow([(lx - 34, cy), (lx - 8, cy)], cls='w2', head=8)
+    # 26 px arrow centred between the task stack (right edge x+92) and the loop's arrowhead (lx - 6)
+    a0 = (x + 92 + lx - 6) / 2 - 13
+    s.arrow([(a0, cy), (a0 + 26, cy)], cls='w2', head=8)
     s.text(lx + lw / 2, y + 38, 'PySR or BasicSR', 's14 b', fill=C['ink2'], anchor='m')
     island_loop(s, lx, ly, lw, lh)
     ox = lx + lw + 40
-    s.arrow([(lx + lw + 10, cy), (ox - 4, cy)], cls='w2', head=8)
+    # likewise between the loop's arrowhead (lx + lw + 6) and the Pareto box
+    a1 = (lx + lw + 6 + ox) / 2 - 13
+    s.arrow([(a1, cy), (a1 + 26, cy)], cls='w2', head=8)
     pareto2(s, ox, cy - 44, 104, 82, labels=False)
     s.text(ox + 52, cy + 56, 'Pareto front', 's13', fill=C['ink2'], anchor='m')
 
