@@ -28,7 +28,7 @@ def main():
         widths = [doc[0].rect.width * height / doc[0].rect.height
                   for doc in (neuron, mips)]
         gap = 20  # PDF points; scale both panels uniformly to equal height.
-        title_height = 28
+        title_height = 30
         title_font = findfont(FontProperties(family='DejaVu Serif', weight='normal'))
         font = pymupdf.Font(fontfile=title_font)
         with pymupdf.open() as output:
@@ -39,9 +39,9 @@ def main():
             page.insert_font(fontname='PanelTitle', fontfile=title_font)
             for label, center in [('NeuronBench', widths[0] / 2),
                                   ('MIPS', widths[0] + gap + widths[1] / 2)]:
-                text_width = font.text_length(label, fontsize=14)
-                page.insert_text((center - text_width / 2, 17), label,
-                                 fontname='PanelTitle', fontsize=14)
+                text_width = font.text_length(label, fontsize=15)
+                page.insert_text((center - text_width / 2, 19), label,
+                                 fontname='PanelTitle', fontsize=15)
             output.set_metadata({'title': 'NeuronBench and MIPS',
                                  'subject': 'NeuronBench left; MIPS right'})
             target = args.output

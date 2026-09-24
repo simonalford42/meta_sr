@@ -57,26 +57,26 @@ def main():
     totals = [len(s) for s in solved]
     assert totals == [7, 9, 11], f'Historical comparison changed: {totals}'
 
-    plt.rcParams.update({'font.family': 'DejaVu Serif', 'font.size': 10.5,
+    plt.rcParams.update({'font.family': 'DejaVu Serif', 'font.size': 11,
                          'pdf.fonttype': 42})
-    fig, ax = plt.subplots(figsize=(4.5, 4.15))
+    fig, ax = plt.subplots(figsize=(4.3, 4.15))
     fig.subplots_adjust(left=.025, right=.98, bottom=.02, top=.98)
-    ax.set_xlim(0, 4.5)
+    ax.set_xlim(0, 4.3)
     ax.set_ylim(-.8, 15.8)
     ax.axis('off')
     ink, gray = '#24333D', '#89949C'
     colors = ['#317DA5', '#BB7A20', '#C33D3D']
     # Marker coordinates preserve a 90-degree bend regardless of axis scaling.
     checkmark = MarkerPath([(-.60, .10), (-.15, -.35), (.75, .55)])
-    xs = [2.60, 3.36, 4.13]
+    xs = [2.35, 3.13, 3.94]
     ax.text(.12, 15.05, 'Task', fontweight='bold', color=ink, va='center')
     for x, label, color in zip(xs, ['Base', 'Evolved', 'MIPS-\nevolved'], colors):
         ax.text(x, 15.05, label, fontweight='bold', ha='center', va='center', color=color, linespacing=1.1)
-    ax.plot([.08, 4.47], [14.38, 14.38], color=ink, lw=.9)
+    ax.plot([.08, 4.27], [14.38, 14.38], color=ink, lw=.9)
     for i, (task, label) in enumerate(TASKS):
         y = 13.75 - i
         if args.style == 'ruled' and i < len(TASKS) - 1:
-            ax.plot([.08, 4.47], [y-.5, y-.5], color='#D7DCE0', lw=.4, zorder=0)
+            ax.plot([.08, 4.27], [y-.5, y-.5], color='#D7DCE0', lw=.4, zorder=0)
         ax.text(.12, y, label, color=ink, va='center')
         for x, successes, color in zip(xs, solved, colors):
             if task in successes:
@@ -86,10 +86,10 @@ def main():
                         markeredgecolor=color, markeredgewidth=1.65)
             else:
                 ax.text(x, y, '–', ha='center', va='center', color=gray)
-    ax.plot([.08, 4.47], [.13, .13], color=ink, lw=.9)
+    ax.plot([.08, 4.27], [.13, .13], color=ink, lw=.9)
     ax.text(.12, -.43, 'Solved / 14', fontweight='bold', color=ink, va='center')
     for x, total, color in zip(xs, totals, colors):
-        ax.text(x, -.43, str(total), ha='center', va='center', fontweight='bold', color=color, fontsize=11)
+        ax.text(x, -.43, str(total), ha='center', va='center', fontweight='bold', color=color, fontsize=12)
     output = args.output
     fig.savefig(output, metadata={'Title': 'MIPS task recovery',
         'Subject': 'Base PySR vs SRBench-evolved 709715 vs MIPS-evolved 709714; pooled ten-seed exact transition-table recovery'})

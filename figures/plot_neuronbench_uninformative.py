@@ -43,7 +43,7 @@ EVOLVED_RESULTS = ROOT / "runs/708907/neuron_full_eval/neuron_results.json"
 EVOLUTION_RUN = ROOT / "runs/708907/run_data.json"
 
 # Overall size slider: use 0.8 for a smaller figure or 1.2 for a larger figure.
-FIGURE_SCALE = 0.75
+FIGURE_SCALE = 0.83
 
 WORLDS = (
     "z_rebound",
@@ -165,10 +165,10 @@ def make_figure(output_stem: Path, scale: float) -> None:
     plt.rcParams.update({
         "font.family": "DejaVu Serif",
         "mathtext.fontset": "dejavuserif",
-        "font.size": 9,
-        "axes.titlesize": 11,
-        "axes.labelsize": 10,
-        "legend.fontsize": 8,
+        "font.size": 10,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "legend.fontsize": 9,
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
     })
@@ -214,7 +214,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
         color="#555555",
         ha="right",
         va="top",
-        fontsize=8,
+        fontsize=9,
     )
     ax.set_xticks(range(len(WORLDS)), [WORLD_LABELS[world] for world in WORLDS])
     ax.tick_params(axis="x", length=0, pad=7)
@@ -238,7 +238,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
         transform=ax.get_xaxis_transform(),
         ha="center",
         va="bottom",
-        fontsize=9,
+        fontsize=10,
     )
     ax.text(
         3.0,
@@ -247,7 +247,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
         transform=ax.get_xaxis_transform(),
         ha="center",
         va="bottom",
-        fontsize=9,
+        fontsize=10,
     )
 
     legend_handles = [
