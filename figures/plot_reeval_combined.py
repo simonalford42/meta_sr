@@ -39,7 +39,7 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
             abl.draw_mean(ax, records, method, xkey, 'train_reeval_score', color)
             ax.lines[-1].set_label(labels[method])
             ax.lines[-1].set_alpha(LINE_ALPHA)
-        ax.set_ylim(.30, .90)
+        ax.set_ylim(0, 1)
         ax.grid(alpha=.2)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
@@ -56,6 +56,12 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
     for ax, tag in zip(axes, "abc"):
         ax.set_title(f"({tag})", loc="left", fontsize=11)
     fig.tight_layout(w_pad=1.6)
+    # (a) and (b) share a y-axis: pull (b) toward (a) and give the slack to (c).
+    pl, pc = axl.get_position(), axc.get_position()
+    gap = pc.x0 - pl.x1
+    axc.set_position([pl.x1 + 0.3 * gap, pc.y0, pc.width, pc.height])
+    pc, pr = axc.get_position(), axr.get_position()
+    axr.set_position([pc.x1 + gap, pr.y0, pr.x1 - (pc.x1 + gap), pr.height])
     out = HERE / "reeval_combined.pdf"
     fig.savefig(out)
     SCRATCH.mkdir(parents=True, exist_ok=True)
