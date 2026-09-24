@@ -273,7 +273,12 @@ def plot_n3_compact(records):
 
     colors = {'n3': '#228833', 'n10': '#4477AA',
               'n3-reeval': '#CC3311', 'n3-TTTS': '#EE9933'}
-    labels = {'n3': 'n3', 'n10': 'n10', 'n3-reeval': 'Reeval', 'n3-TTTS': 'Reeval TTTS'}
+    labels = {
+        'n3': r'$N_{\mathrm{init}} = 3$',
+        'n10': r'$N_{\mathrm{init}} = 10$',
+        'n3-reeval': r'$N_{\mathrm{init}} = 3$, Reeval - uniform',
+        'n3-TTTS': r'$N_{\mathrm{init}} = 3$, Reeval - TTTS',
+    }
     with plt.rc_context({'font.size': 12, 'axes.labelsize': 13,
                          'xtick.labelsize': 11, 'ytick.labelsize': 11}):
         fig, axes = plt.subplots(2, 1, figsize=(5.5, 6.5), sharey=True)
@@ -295,7 +300,8 @@ def plot_n3_compact(records):
             ax.grid(alpha=.2)
         handles, legend_labels = axes[0].get_legend_handles_labels()
         fig.legend(handles, legend_labels, loc='upper center', ncol=2,
-                   frameon=False, fontsize=12, bbox_to_anchor=(.55, 1))
+                   frameon=False, fontsize=10, bbox_to_anchor=(.5, 1),
+                   columnspacing=1.2, handlelength=1.8)
         fig.tight_layout(rect=(0, 0, 1, .91), h_pad=1.4)
         fig.savefig(OUT / 'n3_comparison_compact.pdf')
         plt.close(fig)
