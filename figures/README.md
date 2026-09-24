@@ -13,7 +13,7 @@ python figures/plot_neuronbench_uninformative.py
 Set `FIGURE_SCALE` near the top of the script, or override it from the command
 line with `--scale 1.2`, to resize the overall figure.
 
-The figure compares five PySR and five evolved-PySR fits for each of the six
+The figure compares five Base PySR and five Fine-tuned PySR fits for each of the six
 NeuronBench worlds. Run 708907 was evolved on Z-rebound only, with an
 uninformative prompt and no execution feedback. Its other five worlds are
 held-out transfer tasks. The plotting script documents the exact source files,

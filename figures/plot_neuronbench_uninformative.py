@@ -43,7 +43,7 @@ EVOLVED_RESULTS = ROOT / "runs/708907/neuron_full_eval/neuron_results.json"
 EVOLUTION_RUN = ROOT / "runs/708907/run_data.json"
 
 # Overall size slider: use 0.8 for a smaller figure or 1.2 for a larger figure.
-FIGURE_SCALE = 0.8
+FIGURE_SCALE = 0.75
 
 WORLDS = (
     "z_rebound",
@@ -62,8 +62,8 @@ WORLD_LABELS = {
     "textbook_M": "Textbook M",
 }
 METHOD_COLORS = {
-    "PySR": "#1F77B4",
-    "Evolved PySR": "#FF7F0E",
+    "Base PySR": "#1F77B4",
+    "Fine-tuned PySR": "#FF7F0E",
 }
 
 
@@ -177,18 +177,18 @@ def make_figure(output_stem: Path, scale: float) -> None:
     ax.axvline(0.50, color="#8A8A8A", linewidth=0.8, zorder=1)
 
     method_specs = (
-        ("PySR", baseline, -0.16),
-        ("Evolved PySR", evolved, 0.16),
+        ("Base PySR", baseline),
+        ("Fine-tuned PySR", evolved),
     )
-    seed_offsets = np.linspace(-0.055, 0.055, 5)
+    seed_offsets = np.linspace(-0.18, 0.18, 5)
     for world_index, world in enumerate(WORLDS):
-        for method, method_values, method_offset in method_specs:
+        for method, method_values in method_specs:
             for seed_offset, value in zip(seed_offsets, method_values[world]):
                 classification = outcome(value)
                 ax.scatter(
-                    world_index + method_offset + seed_offset,
+                    world_index + seed_offset,
                     value,
-                    s=92 if classification == "recovered" else 50,
+                    s=115 if classification == "recovered" else 70,
                     marker="*" if classification == "recovered" else "X",
                     facecolor=METHOD_COLORS[method],
                     edgecolor="white",
@@ -202,6 +202,7 @@ def make_figure(output_stem: Path, scale: float) -> None:
     ax.set_ylabel("Test NRMSE")
     ax.set_xticks(range(len(WORLDS)), [WORLD_LABELS[world] for world in WORLDS])
     ax.tick_params(axis="x", length=0, pad=7)
+    ax.set_xlabel("Task", labelpad=9)
     ax.set_axisbelow(True)
     ax.grid(
         axis="y",
@@ -234,14 +235,14 @@ def make_figure(output_stem: Path, scale: float) -> None:
     )
 
     legend_handles = [
-        Line2D([0], [0], color=METHOD_COLORS["PySR"], linewidth=4,
-               label="PySR"),
-        Line2D([0], [0], color=METHOD_COLORS["Evolved PySR"], linewidth=4,
-               label="Evolved PySR"),
-        Line2D([0], [0], marker="*", linestyle="none", markersize=9,
+        Line2D([0], [0], color=METHOD_COLORS["Base PySR"], linewidth=4,
+               label="Base PySR"),
+        Line2D([0], [0], color=METHOD_COLORS["Fine-tuned PySR"], linewidth=4,
+               label="Fine-tuned PySR"),
+        Line2D([0], [0], marker="*", linestyle="none", markersize=10,
                markerfacecolor="#555555", markeredgecolor="#555555",
                label="Recovered"),
-        Line2D([0], [0], marker="X", linestyle="none", markersize=6,
+        Line2D([0], [0], marker="X", linestyle="none", markersize=7,
                markerfacecolor="#555555", markeredgecolor="#555555",
                label="Failure"),
     ]
@@ -261,8 +262,8 @@ def make_figure(output_stem: Path, scale: float) -> None:
     fig.savefig(output_stem.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
-    print(f"PySR outcomes: {count_outcomes(baseline)}")
-    print(f"Evolved PySR outcomes: {count_outcomes(evolved)}")
+    print(f"Base PySR outcomes: {count_outcomes(baseline)}")
+    print(f"Fine-tuned PySR outcomes: {count_outcomes(evolved)}")
     print(f"Wrote {output_stem.with_suffix('.pdf')}")
 
 
