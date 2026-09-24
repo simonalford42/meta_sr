@@ -4,6 +4,12 @@
     "seed": 1,
     "job_id": "671962",
     "wandb_id": "7wdnkqss",
+    "sources": [
+      {
+        "job_id": "671962",
+        "wandb_id": "7wdnkqss"
+      }
+    ],
     "status": "COMPLETED",
     "failure": null,
     "last_completed_generation": 15,
@@ -20,7 +26,8 @@
       "timeout": 90,
       "budget_mode": "time",
       "val_n_runs": 10,
-      "population_reeval_runs": 3
+      "population_reeval_runs": 3,
+      "continue_from": null
     },
     "generation_history": [
       {
@@ -216,6 +223,12 @@
     "seed": 2,
     "job_id": "750244",
     "wandb_id": "kwxib4uc",
+    "sources": [
+      {
+        "job_id": "750244",
+        "wandb_id": "kwxib4uc"
+      }
+    ],
     "status": "COMPLETED",
     "failure": null,
     "last_completed_generation": 15,
@@ -232,104 +245,105 @@
       "timeout": 90,
       "budget_mode": "time",
       "val_n_runs": 10,
-      "population_reeval_runs": 3
+      "population_reeval_runs": 3,
+      "continue_from": null
     },
     "generation_history": [
       {
-        "eval_idx": 10,
-        "best_score": 0.5,
         "_step": 10,
+        "best_score": 0.5,
+        "eval_idx": 10,
         "generation": 0
       },
       {
         "_step": 20,
-        "generation": 1,
+        "best_score": 0.5,
         "eval_idx": 20,
-        "best_score": 0.5
+        "generation": 1
       },
       {
         "_step": 30,
-        "generation": 2,
+        "best_score": 0.55,
         "eval_idx": 30,
-        "best_score": 0.55
+        "generation": 2
       },
       {
         "_step": 40,
-        "generation": 3,
+        "best_score": 0.55,
         "eval_idx": 40,
-        "best_score": 0.55
+        "generation": 3
       },
       {
         "_step": 50,
-        "generation": 4,
+        "best_score": 0.55,
         "eval_idx": 50,
-        "best_score": 0.55
+        "generation": 4
       },
       {
-        "best_score": 0.55,
         "_step": 60,
-        "generation": 5,
-        "eval_idx": 60
+        "best_score": 0.55,
+        "eval_idx": 60,
+        "generation": 5
       },
       {
         "_step": 70,
-        "generation": 6,
+        "best_score": 0.55,
         "eval_idx": 70,
-        "best_score": 0.55
+        "generation": 6
       },
       {
         "_step": 80,
-        "generation": 7,
+        "best_score": 0.65,
         "eval_idx": 80,
-        "best_score": 0.65
+        "generation": 7
       },
       {
-        "eval_idx": 90,
-        "best_score": 0.7,
         "_step": 90,
+        "best_score": 0.7,
+        "eval_idx": 90,
         "generation": 8
       },
       {
-        "best_score": 0.7,
         "_step": 100,
-        "generation": 9,
-        "eval_idx": 100
+        "best_score": 0.7,
+        "eval_idx": 100,
+        "generation": 9
       },
       {
         "_step": 110,
-        "generation": 10,
+        "best_score": 0.7,
         "eval_idx": 110,
-        "best_score": 0.7
+        "generation": 10
       },
       {
         "_step": 120,
-        "generation": 11,
+        "best_score": 0.7,
         "eval_idx": 120,
-        "best_score": 0.7
+        "generation": 11
       },
       {
         "_step": 130,
-        "generation": 12,
+        "best_score": 0.7,
         "eval_idx": 130,
-        "best_score": 0.7
+        "generation": 12
       },
       {
         "_step": 140,
-        "generation": 13,
+        "best_score": 0.7,
         "eval_idx": 140,
-        "best_score": 0.7
+        "generation": 13
       },
       {
-        "best_score": 0.7,
         "_step": 150,
-        "generation": 14,
-        "eval_idx": 150
+        "best_score": 0.7,
+        "eval_idx": 150,
+        "generation": 14
       },
       {
         "_step": 160,
-        "generation": 15,
+        "best_score": 0.7,
         "eval_idx": 160,
-        "best_score": 0.7
+        "generation": 15
       }
     ],
     "points": [
@@ -468,6 +482,12 @@
     "seed": 1,
     "job_id": "671963",
     "wandb_id": "hbonk3al",
+    "sources": [
+      {
+        "job_id": "671963",
+        "wandb_id": "hbonk3al"
+      }
+    ],
     "status": "COMPLETED",
     "failure": null,
     "last_completed_generation": 15,
@@ -484,7 +504,8 @@
       "timeout": 90,
       "budget_mode": "time",
       "val_n_runs": 10,
-      "population_reeval_runs": 3
+      "population_reeval_runs": 3,
+      "continue_from": null
     },
     "generation_history": [
       {
@@ -704,6 +725,12 @@
     "seed": 2,
     "job_id": "750245",
     "wandb_id": "iuqo0leg",
+    "sources": [
+      {
+        "job_id": "750245",
+        "wandb_id": "iuqo0leg"
+      }
+    ],
     "status": "COMPLETED",
     "failure": null,
     "last_completed_generation": 15,
@@ -720,104 +747,105 @@
       "timeout": 90,
       "budget_mode": "time",
       "val_n_runs": 10,
-      "population_reeval_runs": 3
+      "population_reeval_runs": 3,
+      "continue_from": null
     },
     "generation_history": [
       {
-        "generation": 0,
         "eval_idx": 10,
         "best_score": 0.5,
+        "generation": 0,
         "_step": 10
       },
       {
-        "_step": 40,
-        "generation": 1,
         "eval_idx": 40,
-        "best_score": 0.4666666666666667
+        "best_score": 0.4666666666666667,
+        "generation": 1,
+        "_step": 40
       },
       {
-        "_step": 62,
-        "generation": 2,
         "eval_idx": 62,
-        "best_score": 0.55
+        "best_score": 0.55,
+        "generation": 2,
+        "_step": 62
       },
       {
-        "_step": 85,
-        "generation": 3,
         "eval_idx": 85,
-        "best_score": 0.6
-      },
-      {
-        "_step": 102,
-        "generation": 4,
-        "eval_idx": 102,
-        "best_score": 0.5666666666666667
-      },
-      {
         "best_score": 0.6,
-        "_step": 122,
+        "generation": 3,
+        "_step": 85
+      },
+      {
+        "eval_idx": 102,
+        "best_score": 0.5666666666666667,
+        "generation": 4,
+        "_step": 102
+      },
+      {
+        "eval_idx": 122,
+        "best_score": 0.6,
         "generation": 5,
-        "eval_idx": 122
+        "_step": 122
       },
       {
-        "_step": 138,
-        "generation": 6,
         "eval_idx": 138,
-        "best_score": 0.6
+        "best_score": 0.6,
+        "generation": 6,
+        "_step": 138
       },
       {
-        "_step": 156,
-        "generation": 7,
         "eval_idx": 156,
-        "best_score": 0.65
+        "best_score": 0.65,
+        "generation": 7,
+        "_step": 156
       },
       {
-        "_step": 172,
-        "generation": 8,
         "eval_idx": 172,
-        "best_score": 0.5833333333333333
+        "best_score": 0.5833333333333333,
+        "generation": 8,
+        "_step": 172
       },
       {
-        "_step": 192,
-        "generation": 9,
         "eval_idx": 192,
-        "best_score": 0.5833333333333333
+        "best_score": 0.5833333333333333,
+        "generation": 9,
+        "_step": 192
       },
       {
-        "_step": 206,
-        "generation": 10,
         "eval_idx": 206,
-        "best_score": 0.65
+        "best_score": 0.65,
+        "generation": 10,
+        "_step": 206
       },
       {
-        "_step": 222,
-        "generation": 11,
         "eval_idx": 222,
-        "best_score": 0.75
+        "best_score": 0.75,
+        "generation": 11,
+        "_step": 222
       },
       {
-        "_step": 238,
-        "generation": 12,
         "eval_idx": 238,
-        "best_score": 0.6
+        "best_score": 0.6,
+        "generation": 12,
+        "_step": 238
       },
       {
-        "_step": 250,
-        "generation": 13,
         "eval_idx": 250,
-        "best_score": 0.7
+        "best_score": 0.7,
+        "generation": 13,
+        "_step": 250
       },
       {
+        "eval_idx": 266,
         "best_score": 0.7166666666666667,
-        "_step": 266,
         "generation": 14,
-        "eval_idx": 266
+        "_step": 266
       },
       {
-        "_step": 284,
-        "generation": 15,
         "eval_idx": 284,
-        "best_score": 0.8
+        "best_score": 0.8,
+        "generation": 15,
+        "_step": 284
       }
     ],
     "points": [
@@ -956,6 +984,12 @@
     "seed": 1,
     "job_id": "750241",
     "wandb_id": "ubg1ir57",
+    "sources": [
+      {
+        "job_id": "750241",
+        "wandb_id": "ubg1ir57"
+      }
+    ],
     "status": "COMPLETED",
     "failure": null,
     "last_completed_generation": 15,
@@ -972,7 +1006,8 @@
       "timeout": 90,
       "budget_mode": "time",
       "val_n_runs": 10,
-      "population_reeval_runs": 3
+      "population_reeval_runs": 3,
+      "continue_from": null
     },
     "generation_history": [
       {
@@ -1204,58 +1239,16 @@
     ]
   },
   {
-    "method": "n1-TTTS",
-    "seed": 2,
-    "job_id": "750250",
-    "wandb_id": "2sgnyvt8",
-    "status": "FAILED",
-    "failure": "OpenRouter HTTP 402: insufficient credits/key limit",
-    "last_completed_generation": 1,
-    "config": {
-      "seed": 2,
-      "n_runs": 1,
-      "reeval": "TTTS",
-      "n_reevals": 0,
-      "reeval_budget": 10,
-      "population_type": "topk",
-      "population": 10,
-      "offspring": 10,
-      "generations": 15,
-      "timeout": 90,
-      "budget_mode": "time",
-      "val_n_runs": 10,
-      "population_reeval_runs": 3
-    },
-    "generation_history": [
-      {
-        "_step": 10,
-        "generation": 0,
-        "eval_idx": 10,
-        "best_score": 0.5
-      },
-      {
-        "eval_idx": 30,
-        "best_score": 0.5,
-        "_step": 30,
-        "generation": 1
-      }
-    ],
-    "points": [
-      {
-        "generation": 0,
-        "eval_idx": 10,
-        "bundle": "algebraic_motif_scaffold_init_2 | age_regularized_survival | tournament_selection | mse_loss",
-        "train_score": 0.5,
-        "train_reeval_score": 0.385,
-        "winners_curse": 0.11499999999999999
-      }
-    ]
-  },
-  {
     "method": "n3",
     "seed": 1,
     "job_id": "671964",
     "wandb_id": "m642yus3",
+    "sources": [
+      {
+        "job_id": "671964",
+        "wandb_id": "m642yus3"
+      }
+    ],
     "status": "COMPLETED",
     "failure": null,
     "last_completed_generation": 15,
@@ -1272,7 +1265,8 @@
       "timeout": 90,
       "budget_mode": "time",
       "val_n_runs": 10,
-      "population_reeval_runs": 3
+      "population_reeval_runs": 3,
+      "continue_from": null
     },
     "generation_history": [
       {
@@ -1490,11 +1484,21 @@
   {
     "method": "n3",
     "seed": 2,
-    "job_id": "750247",
-    "wandb_id": "20af68tv",
-    "status": "FAILED",
-    "failure": "OpenRouter HTTP 402: insufficient credits/key limit",
-    "last_completed_generation": 12,
+    "job_id": "980597",
+    "wandb_id": "0g6wvmco",
+    "sources": [
+      {
+        "job_id": "750247",
+        "wandb_id": "20af68tv"
+      },
+      {
+        "job_id": "980597",
+        "wandb_id": "0g6wvmco"
+      }
+    ],
+    "status": "COMPLETED",
+    "failure": null,
+    "last_completed_generation": 15,
     "config": {
       "seed": 2,
       "n_runs": 3,
@@ -1504,90 +1508,109 @@
       "population_type": "topk",
       "population": 10,
       "offspring": 10,
-      "generations": 15,
+      "generations": 3,
       "timeout": 90,
       "budget_mode": "time",
       "val_n_runs": 10,
-      "population_reeval_runs": 3
+      "population_reeval_runs": 3,
+      "continue_from": "runs/750247"
     },
     "generation_history": [
       {
-        "eval_idx": 30,
-        "best_score": 0.4666666666666667,
+        "generation": 0,
         "_step": 30,
-        "generation": 0
+        "eval_idx": 30,
+        "best_score": 0.4666666666666667
       },
       {
-        "_step": 60,
         "generation": 1,
+        "_step": 60,
         "eval_idx": 60,
         "best_score": 0.4666666666666667
       },
       {
-        "_step": 90,
         "generation": 2,
+        "_step": 90,
         "eval_idx": 90,
         "best_score": 0.4833333333333332
       },
       {
-        "_step": 120,
         "generation": 3,
+        "_step": 120,
         "eval_idx": 120,
         "best_score": 0.65
       },
       {
-        "_step": 150,
         "generation": 4,
+        "_step": 150,
         "eval_idx": 150,
         "best_score": 0.65
       },
       {
         "generation": 5,
+        "_step": 180,
         "eval_idx": 180,
-        "best_score": 0.65,
-        "_step": 180
+        "best_score": 0.65
       },
       {
-        "eval_idx": 210,
-        "best_score": 0.65,
+        "generation": 6,
         "_step": 210,
-        "generation": 6
+        "eval_idx": 210,
+        "best_score": 0.65
       },
       {
-        "_step": 240,
         "generation": 7,
+        "_step": 240,
         "eval_idx": 240,
         "best_score": 0.65
       },
       {
         "generation": 8,
+        "_step": 270,
         "eval_idx": 270,
-        "best_score": 0.65,
-        "_step": 270
+        "best_score": 0.65
       },
       {
-        "_step": 300,
         "generation": 9,
+        "_step": 300,
         "eval_idx": 300,
         "best_score": 0.65
       },
       {
-        "_step": 330,
         "generation": 10,
+        "_step": 330,
         "eval_idx": 330,
         "best_score": 0.65
       },
       {
-        "_step": 360,
         "generation": 11,
+        "_step": 360,
         "eval_idx": 360,
         "best_score": 0.65
       },
       {
-        "best_score": 0.65,
         "_step": 390,
         "generation": 12,
-        "eval_idx": 390
+        "eval_idx": 390,
+        "best_score": 0.65
+      },
+      {
+        "_step": 420,
+        "generation": 13,
+        "eval_idx": 420,
+        "best_score": 0.65
+      },
+      {
+        "_step": 450,
+        "generation": 14,
+        "eval_idx": 450,
+        "best_score": 0.65
+      },
+      {
+        "eval_idx": 480,
+        "best_score": 0.65,
+        "_step": 480,
+        "generation": 15
       }
     ],
     "points": [
@@ -1686,6 +1709,30 @@
         "train_score": 0.65,
         "train_reeval_score": 0.515,
         "winners_curse": 0.135
+      },
+      {
+        "generation": 13,
+        "eval_idx": 420,
+        "bundle": "add_constant_offset | age_regularized_survival | tournament_selection | robust_multiscale_shape_loss_gen3_5",
+        "train_score": 0.65,
+        "train_reeval_score": 0.49,
+        "winners_curse": 0.16000000000000003
+      },
+      {
+        "generation": 14,
+        "eval_idx": 450,
+        "bundle": "add_constant_offset | age_regularized_survival | tournament_selection | robust_multiscale_shape_loss_gen3_5",
+        "train_score": 0.65,
+        "train_reeval_score": 0.525,
+        "winners_curse": 0.125
+      },
+      {
+        "generation": 15,
+        "eval_idx": 480,
+        "bundle": "add_constant_offset | age_regularized_survival | tournament_selection | robust_multiscale_shape_loss_gen3_5",
+        "train_score": 0.65,
+        "train_reeval_score": 0.45,
+        "winners_curse": 0.2
       }
     ]
   },
@@ -1694,6 +1741,12 @@
     "seed": 1,
     "job_id": "750239",
     "wandb_id": "igwan6cy",
+    "sources": [
+      {
+        "job_id": "750239",
+        "wandb_id": "igwan6cy"
+      }
+    ],
     "status": "COMPLETED",
     "failure": null,
     "last_completed_generation": 15,
@@ -1710,104 +1763,105 @@
       "timeout": 90,
       "budget_mode": "time",
       "val_n_runs": 10,
-      "population_reeval_runs": 3
+      "population_reeval_runs": 3,
+      "continue_from": null
     },
     "generation_history": [
       {
-        "_step": 30,
-        "generation": 0,
+        "best_score": 0.5499999999999999,
         "eval_idx": 30,
-        "best_score": 0.5499999999999999
+        "_step": 30,
+        "generation": 0
       },
       {
-        "eval_idx": 130,
         "best_score": 0.485,
+        "eval_idx": 130,
         "_step": 130,
         "generation": 1
       },
       {
-        "_step": 181,
-        "generation": 2,
+        "best_score": 0.485,
         "eval_idx": 181,
-        "best_score": 0.485
+        "_step": 181,
+        "generation": 2
       },
       {
-        "_step": 232,
-        "generation": 3,
+        "best_score": 0.5166666666666666,
         "eval_idx": 232,
-        "best_score": 0.5166666666666666
+        "_step": 232,
+        "generation": 3
       },
       {
-        "_step": 283,
-        "generation": 4,
+        "best_score": 0.6666666666666666,
         "eval_idx": 283,
-        "best_score": 0.6666666666666666
+        "_step": 283,
+        "generation": 4
       },
       {
-        "_step": 348,
-        "generation": 5,
+        "best_score": 0.5599999999999999,
         "eval_idx": 348,
-        "best_score": 0.5599999999999999
+        "_step": 348,
+        "generation": 5
       },
       {
-        "_step": 392,
-        "generation": 6,
+        "best_score": 0.5833333333333333,
         "eval_idx": 392,
-        "best_score": 0.5833333333333333
+        "_step": 392,
+        "generation": 6
       },
       {
-        "_step": 443,
-        "generation": 7,
+        "best_score": 0.6666666666666666,
         "eval_idx": 443,
-        "best_score": 0.6666666666666666
-      },
-      {
-        "_step": 501,
-        "generation": 8,
-        "eval_idx": 501,
-        "best_score": 0.6
+        "_step": 443,
+        "generation": 7
       },
       {
         "best_score": 0.6,
-        "_step": 545,
-        "generation": 9,
-        "eval_idx": 545
+        "eval_idx": 501,
+        "_step": 501,
+        "generation": 8
       },
       {
-        "eval_idx": 596,
+        "best_score": 0.6,
+        "eval_idx": 545,
+        "_step": 545,
+        "generation": 9
+      },
+      {
         "best_score": 0.6166666666666666,
+        "eval_idx": 596,
         "_step": 596,
         "generation": 10
       },
       {
-        "generation": 11,
-        "eval_idx": 647,
         "best_score": 0.6166666666666666,
-        "_step": 647
+        "eval_idx": 647,
+        "_step": 647,
+        "generation": 11
       },
       {
-        "_step": 712,
-        "generation": 12,
+        "best_score": 0.6833333333333333,
         "eval_idx": 712,
-        "best_score": 0.6833333333333333
+        "_step": 712,
+        "generation": 12
       },
       {
         "best_score": 0.6333333333333332,
+        "eval_idx": 763,
         "_step": 763,
-        "generation": 13,
-        "eval_idx": 763
+        "generation": 13
       },
       {
-        "_step": 814,
-        "generation": 14,
+        "best_score": 0.6250000000000001,
         "eval_idx": 814,
-        "best_score": 0.6250000000000001
+        "_step": 814,
+        "generation": 14
       },
       {
-        "_step": 872,
-        "generation": 15,
+        "best_score": 0.6666666666666666,
         "eval_idx": 872,
-        "best_score": 0.6666666666666666
+        "_step": 872,
+        "generation": 15
       }
     ],
     "points": [
@@ -1944,11 +1998,17 @@
   {
     "method": "n3-reeval",
     "seed": 2,
-    "job_id": "750248",
-    "wandb_id": "sqk1poaq",
-    "status": "FAILED",
-    "failure": "OpenRouter HTTP 402: insufficient credits/key limit",
-    "last_completed_generation": 1,
+    "job_id": "980598",
+    "wandb_id": "k3xgq41q",
+    "sources": [
+      {
+        "job_id": "980598",
+        "wandb_id": "k3xgq41q"
+      }
+    ],
+    "status": "COMPLETED",
+    "failure": null,
+    "last_completed_generation": 15,
     "config": {
       "seed": 2,
       "n_runs": 3,
@@ -1962,20 +2022,105 @@
       "timeout": 90,
       "budget_mode": "time",
       "val_n_runs": 10,
-      "population_reeval_runs": 3
+      "population_reeval_runs": 3,
+      "continue_from": null
     },
     "generation_history": [
       {
+        "best_score": 0.4666666666666667,
         "_step": 30,
         "generation": 0,
-        "eval_idx": 30,
+        "eval_idx": 30
+      },
+      {
+        "_step": 130,
+        "generation": 1,
+        "eval_idx": 130,
         "best_score": 0.4666666666666667
       },
       {
-        "eval_idx": 130,
-        "best_score": 0.4666666666666667,
-        "_step": 130,
-        "generation": 1
+        "generation": 2,
+        "eval_idx": 202,
+        "best_score": 0.5333333333333333,
+        "_step": 202
+      },
+      {
+        "_step": 267,
+        "generation": 3,
+        "eval_idx": 267,
+        "best_score": 0.5666666666666667
+      },
+      {
+        "eval_idx": 319,
+        "best_score": 0.5666666666666667,
+        "_step": 319,
+        "generation": 4
+      },
+      {
+        "_step": 377,
+        "generation": 5,
+        "eval_idx": 377,
+        "best_score": 0.5666666666666667
+      },
+      {
+        "_step": 428,
+        "generation": 6,
+        "eval_idx": 428,
+        "best_score": 0.5833333333333333
+      },
+      {
+        "eval_idx": 500,
+        "best_score": 0.6,
+        "_step": 500,
+        "generation": 7
+      },
+      {
+        "_step": 551,
+        "generation": 8,
+        "eval_idx": 551,
+        "best_score": 0.6333333333333333
+      },
+      {
+        "generation": 9,
+        "eval_idx": 592,
+        "best_score": 0.6166666666666666,
+        "_step": 592
+      },
+      {
+        "_step": 643,
+        "generation": 10,
+        "eval_idx": 643,
+        "best_score": 0.6833333333333333
+      },
+      {
+        "_step": 694,
+        "generation": 11,
+        "eval_idx": 694,
+        "best_score": 0.65
+      },
+      {
+        "generation": 12,
+        "eval_idx": 752,
+        "best_score": 0.7,
+        "_step": 752
+      },
+      {
+        "eval_idx": 810,
+        "best_score": 0.675,
+        "_step": 810,
+        "generation": 13
+      },
+      {
+        "best_score": 0.675,
+        "_step": 847,
+        "generation": 14,
+        "eval_idx": 847
+      },
+      {
+        "_step": 898,
+        "generation": 15,
+        "eval_idx": 898,
+        "best_score": 0.7
       }
     ],
     "points": [
@@ -1986,6 +2131,118 @@
         "train_score": 0.4667,
         "train_reeval_score": 0.4,
         "winners_curse": 0.06669999999999998
+      },
+      {
+        "generation": 1,
+        "eval_idx": 130,
+        "bundle": "add_constant_offset | age_regularized_survival | tournament_selection | adaptive_pseudo_huber_loss_gen1_3",
+        "train_score": 0.4667,
+        "train_reeval_score": 0.39,
+        "winners_curse": 0.07669999999999999
+      },
+      {
+        "generation": 2,
+        "eval_idx": 202,
+        "bundle": "algebraic_distribute_factor_mutation_gen2_0 | age_regularized_survival | tournament_selection | mse_loss",
+        "train_score": 0.5333,
+        "train_reeval_score": 0.47,
+        "winners_curse": 0.06330000000000002
+      },
+      {
+        "generation": 3,
+        "eval_idx": 267,
+        "bundle": "add_constant_offset | age_regularized_survival | frontier_gap_relay_selection_gen1_1 | shape_aware_relative_loss_gen3_5",
+        "train_score": 0.5667,
+        "train_reeval_score": 0.545,
+        "winners_curse": 0.02169999999999994
+      },
+      {
+        "generation": 4,
+        "eval_idx": 319,
+        "bundle": "algebraic_distribute_factor_mutation_gen2_0 | age_regularized_survival | marginal_frontier_relay_selection_gen4_2 | mse_loss",
+        "train_score": 0.5667,
+        "train_reeval_score": 0.515,
+        "winners_curse": 0.05169999999999997
+      },
+      {
+        "generation": 5,
+        "eval_idx": 377,
+        "bundle": "subtree_swap_mutation_gen5_1 | age_regularized_survival | frontier_gap_relay_selection_gen1_1 | shape_aware_relative_loss_gen3_5",
+        "train_score": 0.5667,
+        "train_reeval_score": 0.59,
+        "winners_curse": -0.023299999999999987
+      },
+      {
+        "generation": 6,
+        "eval_idx": 428,
+        "bundle": "simplified_add_constant_offset_gen6_1 | age_regularized_survival | frontier_gap_relay_selection_gen1_1 | shape_aware_relative_loss_gen3_5",
+        "train_score": 0.5833,
+        "train_reeval_score": 0.57,
+        "winners_curse": 0.01330000000000009
+      },
+      {
+        "generation": 7,
+        "eval_idx": 500,
+        "bundle": "subtree_swap_mutation_gen5_1 | age_regularized_survival | pareto_breakthrough_selection_gen7_2 | shape_aware_relative_loss_gen3_5",
+        "train_score": 0.6,
+        "train_reeval_score": 0.59,
+        "winners_curse": 0.010000000000000009
+      },
+      {
+        "generation": 8,
+        "eval_idx": 551,
+        "bundle": "algebraic_distribute_factor_mutation_gen2_0 | age_regularized_survival | marginal_frontier_relay_selection_gen4_2 | mean_absolute_error_loss_gen8_3",
+        "train_score": 0.6333,
+        "train_reeval_score": 0.52,
+        "winners_curse": 0.11329999999999996
+      },
+      {
+        "generation": 9,
+        "eval_idx": 592,
+        "bundle": "subtree_swap_siblings_gen7_6 | pareto_age_window_survival_gen9_8 | frontier_gap_relay_selection_gen1_1 | shape_aware_relative_loss_gen3_5",
+        "train_score": 0.6167,
+        "train_reeval_score": 0.49,
+        "winners_curse": 0.12670000000000003
+      },
+      {
+        "generation": 10,
+        "eval_idx": 643,
+        "bundle": "subtree_swap_siblings_gen7_6 | age_regularized_survival | breakthrough_gap_selection_simplified_gen10_4 | shape_aware_relative_loss_gen3_5",
+        "train_score": 0.6833,
+        "train_reeval_score": 0.585,
+        "winners_curse": 0.09830000000000005
+      },
+      {
+        "generation": 11,
+        "eval_idx": 694,
+        "bundle": "subtree_swap_siblings_gen7_6 | age_regularized_survival | breakthrough_gap_selection_simplified_gen10_4 | shape_aware_relative_loss_gen3_5",
+        "train_score": 0.65,
+        "train_reeval_score": 0.625,
+        "winners_curse": 0.025000000000000022
+      },
+      {
+        "generation": 13,
+        "eval_idx": 810,
+        "bundle": "subtree_swap_siblings_gen7_6 | age_regularized_survival | breakthrough_gap_selection_simplified_gen10_4 | affine_shape_relative_loss_gen12_4",
+        "train_score": 0.675,
+        "train_reeval_score": 0.63,
+        "winners_curse": 0.04500000000000004
+      },
+      {
+        "generation": 14,
+        "eval_idx": 847,
+        "bundle": "subtree_swap_siblings_gen7_6 | age_regularized_survival | breakthrough_gap_selection_simplified_gen10_4 | affine_shape_relative_loss_gen12_4",
+        "train_score": 0.675,
+        "train_reeval_score": 0.66,
+        "winners_curse": 0.015000000000000013
+      },
+      {
+        "generation": 15,
+        "eval_idx": 898,
+        "bundle": "sibling_subtree_swap_binary_gen14_0 | age_regularized_survival | significance_weighted_frontier_gap_selection_gen15_6 | affine_shape_relative_loss_gen12_4",
+        "train_score": 0.7,
+        "train_reeval_score": 0.585,
+        "winners_curse": 0.11499999999999999
       }
     ]
   },
@@ -1994,6 +2251,12 @@
     "seed": 1,
     "job_id": "750242",
     "wandb_id": "egg7h6w2",
+    "sources": [
+      {
+        "job_id": "750242",
+        "wandb_id": "egg7h6w2"
+      }
+    ],
     "status": "COMPLETED",
     "failure": null,
     "last_completed_generation": 15,
@@ -2010,14 +2273,15 @@
       "timeout": 90,
       "budget_mode": "time",
       "val_n_runs": 10,
-      "population_reeval_runs": 3
+      "population_reeval_runs": 3,
+      "continue_from": null
     },
     "generation_history": [
       {
-        "best_score": 0.5499999999999999,
         "_step": 30,
         "generation": 0,
-        "eval_idx": 30
+        "eval_idx": 30,
+        "best_score": 0.5499999999999999
       },
       {
         "_step": 90,
@@ -2026,10 +2290,10 @@
         "best_score": 0.48125
       },
       {
-        "eval_idx": 150,
-        "best_score": 0.5833333333333333,
         "_step": 150,
-        "generation": 2
+        "generation": 2,
+        "eval_idx": 150,
+        "best_score": 0.5833333333333333
       },
       {
         "_step": 210,
@@ -2050,16 +2314,16 @@
         "best_score": 0.6333333333333333
       },
       {
+        "_step": 387,
         "generation": 6,
         "eval_idx": 387,
-        "best_score": 0.65,
-        "_step": 387
+        "best_score": 0.65
       },
       {
-        "best_score": 0.6499999999999999,
         "_step": 447,
         "generation": 7,
-        "eval_idx": 447
+        "eval_idx": 447,
+        "best_score": 0.6499999999999999
       },
       {
         "_step": 477,
@@ -2074,10 +2338,10 @@
         "best_score": 0.6666666666666666
       },
       {
+        "_step": 597,
         "generation": 10,
         "eval_idx": 597,
-        "best_score": 0.7,
-        "_step": 597
+        "best_score": 0.7
       },
       {
         "_step": 657,
@@ -2092,10 +2356,10 @@
         "best_score": 0.68
       },
       {
-        "eval_idx": 777,
-        "best_score": 0.7166666666666666,
         "_step": 777,
-        "generation": 13
+        "generation": 13,
+        "eval_idx": 777,
+        "best_score": 0.7166666666666666
       },
       {
         "_step": 837,
@@ -2104,10 +2368,10 @@
         "best_score": 0.7833333333333333
       },
       {
+        "_step": 897,
         "generation": 15,
         "eval_idx": 897,
-        "best_score": 0.8833333333333332,
-        "_step": 897
+        "best_score": 0.8833333333333332
       }
     ],
     "points": [
@@ -2238,54 +2502,6 @@
         "train_score": 0.8833,
         "train_reeval_score": 0.83,
         "winners_curse": 0.053300000000000014
-      }
-    ]
-  },
-  {
-    "method": "n3-TTTS",
-    "seed": 2,
-    "job_id": "750251",
-    "wandb_id": "apo0crji",
-    "status": "FAILED",
-    "failure": "OpenRouter HTTP 402: insufficient credits/key limit",
-    "last_completed_generation": 1,
-    "config": {
-      "seed": 2,
-      "n_runs": 3,
-      "reeval": "TTTS",
-      "n_reevals": 0,
-      "reeval_budget": 30,
-      "population_type": "topk",
-      "population": 10,
-      "offspring": 10,
-      "generations": 15,
-      "timeout": 90,
-      "budget_mode": "time",
-      "val_n_runs": 10,
-      "population_reeval_runs": 3
-    },
-    "generation_history": [
-      {
-        "_step": 30,
-        "generation": 0,
-        "eval_idx": 30,
-        "best_score": 0.4666666666666667
-      },
-      {
-        "best_score": 0.4666666666666667,
-        "_step": 90,
-        "generation": 1,
-        "eval_idx": 90
-      }
-    ],
-    "points": [
-      {
-        "generation": 0,
-        "eval_idx": 30,
-        "bundle": "mutate_distributive_bridge_init_8 | age_regularized_survival | tournament_selection | mse_loss",
-        "train_score": 0.4667,
-        "train_reeval_score": 0.4,
-        "winners_curse": 0.06669999999999998
       }
     ]
   }

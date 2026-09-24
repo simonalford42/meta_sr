@@ -17,20 +17,19 @@ OUT = ROOT / 'figures/reevaluation_ablations_90s'
 RUNS = [
     ('n1', 1, '671962', '7wdnkqss'), ('n1', 2, '750244', 'kwxib4uc'),
     ('n1-reeval', 1, '671963', 'hbonk3al'), ('n1-reeval', 2, '750245', 'iuqo0leg'),
-    ('n1-TTTS', 1, '750241', 'ubg1ir57'), ('n1-TTTS', 2, '750250', '2sgnyvt8'),
-    ('n3', 1, '671964', 'm642yus3'), ('n3', 2, '750247', '20af68tv'),
-    ('n3-reeval', 1, '750239', 'igwan6cy'), ('n3-reeval', 2, '750248', 'sqk1poaq'),
-    ('n3-TTTS', 1, '750242', 'egg7h6w2'), ('n3-TTTS', 2, '750251', 'apo0crji'),
+    ('n1-TTTS', 1, '750241', 'ubg1ir57'), ('n1-TTTS', 2, '980600', 'rpgjrcdd'),
+    ('n3', 1, '671964', 'm642yus3'), ('n3', 2, '980597', '0g6wvmco'),
+    ('n3-reeval', 1, '750239', 'igwan6cy'), ('n3-reeval', 2, '980598', 'k3xgq41q'),
+    ('n3-TTTS', 1, '750242', 'egg7h6w2'), ('n3-TTTS', 2, '980599', 'skg0nsbf'),
 ]
-FAILED = {'750247', '750248', '750250', '750251'}  # sacct confirmed 2026-09-23
+RESUMED = {'980597': ('750247', '20af68tv')}
 PATTERN = re.compile(r'\[train reeval\] gen (\d+) (.+?): reeval GT match rate=([\d.]+) \(live=([\d.]+), winners_curse=([+\-\d.]+)\)')
 
 
 def refresh():
     import wandb
     api = wandb.Api(timeout=90)
-    records = []
-    for method, seed, job, run_id in RUNS:
+    def read_source(job, run_id):
         run = api.run(f'simon-alford/meta-sr/{run_id}')
         history = [r for r in run.scan_history(keys=['generation', 'eval_idx', 'best_score'], page_size=1000)
                    if all(r.get(k) is not None for k in ['generation', 'eval_idx', 'best_score'])]
@@ -44,17 +43,40 @@ def refresh():
                                train_score=float(live), train_reeval_score=float(reeval),
                                winners_curse=float(live)-float(reeval)))
         assert len({p['generation'] for p in points}) == len(points), job
+        return run, history, points
+
+    records = []
+    for method, seed, job, run_id in RUNS:
+        folder = ROOT / 'runs' / job
+        if not (folder / 'final_eval_summary.json').exists():
+            print(job, method, seed, 'not complete: excluded', flush=True)
+            continue
+        run, history, points = read_source(job, run_id)
+        sources = [dict(job_id=job, wandb_id=run_id)]
+        if job in RESUMED:
+            parent_job, parent_id = RESUMED[job]
+            _, prior_history, prior_points = read_source(parent_job, parent_id)
+            boundary = min(int(h['generation']) for h in history)
+            prior_count = max(h['eval_idx'] for h in prior_history if h['generation'] == boundary)
+            resumed_count = max(h['eval_idx'] for h in history if h['generation'] == boundary)
+            assert prior_count == resumed_count, (job, prior_count, resumed_count)
+            # Prefer fresh resumed diagnostics if both sources have the boundary.
+            merged = {p['generation']: p for p in prior_points if p['generation'] <= boundary}
+            merged.update({p['generation']: p for p in points})
+            points = list(merged.values())
+            history = [h for h in prior_history if h['generation'] < boundary] + history
+            sources.insert(0, dict(job_id=parent_job, wandb_id=parent_id))
         points.sort(key=lambda p: p['generation'])
         assert run.config['seed'] == seed
-        assert run.config['generations'] == 15 and run.config['timeout'] == 90
-        assert run.config['val_n_runs'] == 10
+        assert run.config['generations'] == (3 if job in RESUMED else 15)
+        assert run.config['timeout'] == 90 and run.config['val_n_runs'] == 10
+        assert max(h['generation'] for h in history) == 15
         records.append(dict(method=method, seed=seed, job_id=job, wandb_id=run_id,
-                            status='FAILED' if job in FAILED else 'COMPLETED',
-                            failure='OpenRouter HTTP 402: insufficient credits/key limit' if job in FAILED else None,
-                            last_completed_generation=max(counts),
-                            config={k:run.config.get(k) for k in ['seed','n_runs','reeval','n_reevals','reeval_budget','population_type','population','offspring','generations','timeout','budget_mode','val_n_runs','population_reeval_runs']},
+                            sources=sources, status='COMPLETED', failure=None,
+                            last_completed_generation=15,
+                            config={k:run.config.get(k) for k in ['seed','n_runs','reeval','n_reevals','reeval_budget','population_type','population','offspring','generations','timeout','budget_mode','val_n_runs','population_reeval_runs','continue_from']},
                             generation_history=history, points=points))
-        print(job, method, seed, max(counts), len(points), flush=True)
+        print(job, method, seed, 'completed', len(points), flush=True)
     (OUT / 'data.json').write_text(json.dumps(records, indent=2)+'\n')
 
 
@@ -65,7 +87,7 @@ def plot():
     from matplotlib.lines import Line2D
     records = json.loads((OUT / 'data.json').read_text())
     with (OUT / 'scores.csv').open('w') as f:
-        writer = csv.DictWriter(f, fieldnames=['method','seed','job_id','status','generation','eval_idx','bundle','train_score','train_reeval_score','winners_curse'])
+        writer = csv.DictWriter(f, lineterminator='\n', fieldnames=['method','seed','job_id','status','generation','eval_idx','bundle','train_score','train_reeval_score','winners_curse'])
         writer.writeheader()
         for r in records:
             for p in r['points']:
@@ -85,9 +107,9 @@ def plot():
         axes[2,row].set_ylim(-0.06,0.36)
         axes[2,row].axhline(0,color='0.4',lw=.8)
     fig.suptitle('90-second PySR ablations · best-candidate train reevaluation',fontsize=17,y=.985)
-    handles = [Line2D([],[],color='0.25',ls='-',label='Seed 1'),Line2D([],[],color='0.25',ls='--',label='Seed 2'),Line2D([],[],color='0.25',marker='x',ls='none',ms=8,label='Failed run: last observed diagnostic')]
+    handles = [Line2D([],[],color='0.25',ls='-',label='Seed 1'),Line2D([],[],color='0.25',ls='--',label='Seed 2')]
     fig.legend(handles=handles,loc='upper center',bbox_to_anchor=(.5,.96),ncol=3,frameon=False)
-    fig.text(.06,.035,'Each point: best candidate reevaluated on training tasks with 10 fresh seeds. Lines join observed points; missing diagnostics are not filled.\nEvaluations = cumulative evolution seed-runs (including selection reevaluations; excluding diagnostics). One seed-run covers the train task set.\n8/12 runs completed 15 generations; 4 seed-2 runs failed (OpenRouter HTTP 402). n3-reeval uses population reevaluation, 3 → 10 seeds.',fontsize=9,va='bottom')
+    fig.text(.06,.035,'Each point: best candidate reevaluated on training tasks with 10 fresh seeds. Lines join observed points; missing diagnostics are not filled.\nEvaluations = cumulative evolution seed-runs (including selection reevaluations; excluding diagnostics). One seed-run covers the train task set.\nCompleted seeds only; resumed n3 seed 2 includes its pre-resume history. n3-reeval uses population reevaluation, 3 → 10 seeds.',fontsize=9,va='bottom')
     fig.tight_layout(rect=(0,.105,1,.925),h_pad=2.2,w_pad=2.2)
     fig.savefig(OUT / 'train_reevaluation_six_panels.pdf')
     plt.close(fig)
@@ -126,10 +148,9 @@ def plot_combined(records):
             ax.axhline(0,color='0.4',lw=.8)
     fig.suptitle('All six 90-second PySR ablations · evaluation-count comparison',fontsize=16,y=.98)
     handles = [Line2D([],[],color='0.25',ls='-',label='Seed 1'),
-               Line2D([],[],color='0.25',ls='--',label='Seed 2'),
-               Line2D([],[],color='0.25',marker='x',ls='none',ms=8,label='Failed run: last observed diagnostic')]
+               Line2D([],[],color='0.25',ls='--',label='Seed 2')]
     fig.legend(handles=handles,loc='upper center',bbox_to_anchor=(.5,.93),ncol=3,frameon=False)
-    fig.text(.06,.03,'10 fresh seeds per best-candidate train diagnostic; missing diagnostics are not filled. Four seed-2 runs failed (OpenRouter HTTP 402).\nEvaluation counts include selection reevaluations and exclude diagnostics. One seed-run covers the training task set.',fontsize=9)
+    fig.text(.06,.03,'10 fresh seeds per best-candidate train diagnostic; missing diagnostics are not filled. Completed seeds only; resumed n3 seed 2 includes its earlier history.\nEvaluation counts include selection reevaluations and exclude diagnostics. One seed-run covers the training task set.',fontsize=9)
     fig.tight_layout(rect=(0,.105,1,.85))
     fig.savefig(OUT / 'all_methods_eval_axis.pdf')
     plt.close(fig)
