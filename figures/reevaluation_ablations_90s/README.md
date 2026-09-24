@@ -1,6 +1,6 @@
 # 90-second PySR reevaluation ablations
 
-Updated 2026-09-24T15:33:39.958124+00:00. Includes 13 completed method/seed combinations.
+Updated 2026-09-24T15:36:15.496488+00:00. Includes 13 completed method/seed combinations.
 
 `train_reevaluation_six_panels.pdf` compares n1 and n3 with population reevaluation
 and TTTS, without n10. It shows reevaluated
@@ -28,6 +28,11 @@ n1-TTTS and n1-reeval against n1 on the generation axis and n3 on the evaluation
 axis. The bottom row compares n3-TTTS and n3-reeval against both n3 and n10 on
 both axes. All panels show reevaluated train score, with generation on the left
 and cumulative evolution evaluations on the right, using the same mean/SD convention.
+
+`n3_comparison_compact.pdf` is figure 5: generation above evolution evaluations,
+with n3 (green), n10 (blue), population reevaluation (red), and TTTS reevaluation
+(orange). It uses the same seed means and SD bands, a compact 5.5 × 6.5 inch layout,
+and no caption below the panels. n10 still has one completed seed and no SD band.
 
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
 `[train reeval]` records in local run.log files (four-decimal logging precision).

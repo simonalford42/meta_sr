@@ -162,6 +162,7 @@ def plot():
     plot_combined(records)
     plot_initial_seeds(records)
     plot_reevaluation_vs_more_seeds(records)
+    plot_n3_compact(records)
     write_readme(records)
 
 
@@ -267,6 +268,39 @@ def plot_reevaluation_vs_more_seeds(records):
     plt.close(fig)
 
 
+def plot_n3_compact(records):
+    import matplotlib.pyplot as plt
+
+    colors = {'n3': '#228833', 'n10': '#4477AA',
+              'n3-reeval': '#CC3311', 'n3-TTTS': '#EE9933'}
+    labels = {'n3': 'n3', 'n10': 'n10', 'n3-reeval': 'Reeval', 'n3-TTTS': 'Reeval TTTS'}
+    with plt.rc_context({'font.size': 12, 'axes.labelsize': 13,
+                         'xtick.labelsize': 11, 'ytick.labelsize': 11}):
+        fig, axes = plt.subplots(2, 1, figsize=(5.5, 6.5), sharey=True)
+        for ax, xkey in zip(axes, ['generation', 'eval_idx']):
+            for method, color in colors.items():
+                draw_mean(ax, records, method, xkey, 'train_reeval_score', color)
+                ax.lines[-1].set_label(labels[method])
+            ax.set_ylabel('Reevaluated train score')
+            ax.set_ylim(.30, .90)
+            if xkey == 'generation':
+                ax.set_xlabel('Generation')
+                ax.set_xlim(-.35, 15.35)
+                ax.set_xticks(range(0, 16, 3))
+            else:
+                ax.set_xlabel('Evolution evaluations (seed-runs)')
+                xmax = max(aggregate(records, method, xkey, 'train_reeval_score')[0][-1]
+                           for method in colors)
+                ax.set_xlim(0, xmax * 1.04)
+            ax.grid(alpha=.2)
+        handles, legend_labels = axes[0].get_legend_handles_labels()
+        fig.legend(handles, legend_labels, loc='upper center', ncol=2,
+                   frameon=False, fontsize=12, bbox_to_anchor=(.55, 1))
+        fig.tight_layout(rect=(0, 0, 1, .91), h_pad=1.4)
+        fig.savefig(OUT / 'n3_comparison_compact.pdf')
+        plt.close(fig)
+
+
 def write_readme(records):
     from datetime import datetime, timezone
     text = f"""# 90-second PySR reevaluation ablations
@@ -299,6 +333,11 @@ n1-TTTS and n1-reeval against n1 on the generation axis and n3 on the evaluation
 axis. The bottom row compares n3-TTTS and n3-reeval against both n3 and n10 on
 both axes. All panels show reevaluated train score, with generation on the left
 and cumulative evolution evaluations on the right, using the same mean/SD convention.
+
+`n3_comparison_compact.pdf` is figure 5: generation above evolution evaluations,
+with n3 (green), n10 (blue), population reevaluation (red), and TTTS reevaluation
+(orange). It uses the same seed means and SD bands, a compact 5.5 × 6.5 inch layout,
+and no caption below the panels. n10 still has one completed seed and no SD band.
 
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
 `[train reeval]` records in local run.log files (four-decimal logging precision).
