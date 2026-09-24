@@ -237,6 +237,9 @@ def plot_reevaluation_vs_more_seeds(records):
             reference = base if col == 0 else more_seeds
             methods = [base + '-TTTS', base + '-reeval', reference]
             title = f'{base} reevaluation vs {reference}'
+            if row == 1 and col == 0:
+                methods.append(more_seeds)
+                title = 'n3 reevaluation vs n3 and n10'
             if row == 1 and col == 1:
                 methods.insert(2, base)
                 title = 'n3 reevaluation vs n3 and n10'
@@ -293,8 +296,8 @@ evolution evaluations on the right, using the same completed seeds.
 
 `reevaluation_vs_more_seeds.pdf` is the fourth figure: the top row compares
 n1-TTTS and n1-reeval against n1 on the generation axis and n3 on the evaluation
-axis. The bottom row compares n3-TTTS and n3-reeval against n3 on the generation
-axis and both n3 and n10 on the evaluation axis. All panels show reevaluated train score, with generation on the left
+axis. The bottom row compares n3-TTTS and n3-reeval against both n3 and n10 on
+both axes. All panels show reevaluated train score, with generation on the left
 and cumulative evolution evaluations on the right, using the same mean/SD convention.
 
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
