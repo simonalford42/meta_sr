@@ -24,8 +24,9 @@ SCALE = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
 plt.rcParams.update({"font.size": 11})
 
 BLUE = "#4c72b0"
-ORANGES = ["#f6c29a", "#ee9a5e", "#dd7a2f", "#b35a18"]   # promote, N_init 1..4
-GREENS = ["#a8d8b0", "#7cc18a", "#55a868", "#2f7a45"]    # TTTS,    N_init 1..4
+SHOW_NINIT = [1, 3]                       # which promote / TTTS bases to draw
+ORANGES = {1: "#f0a868", 3: "#b35a18"}    # promote, by N_init
+GREENS = {1: "#7cc18a", 3: "#2f7a45"}     # TTTS,    by N_init
 MARK = {"fixed": "o", "promote": "s", "ttts": "^"}
 
 
@@ -41,20 +42,20 @@ ax.text(0.02, oracle["metric"] - 0.0008, r"oracle ($N_{init}=10$)", ha="left", v
 
 x, y = series("fixed")
 ax.plot(x, y, color=BLUE, marker=MARK["fixed"], ms=5, lw=1.6, label=r"$N_{init} \in \{1,\dots,7\}$")
-for i in range(4):
-    x, y = series(f"promote n{i+1}")
-    ax.plot(x, y, color=ORANGES[i], marker=MARK["promote"], ms=4.5, lw=1.4)
-    x, y = series(f"ttts n{i+1}")
-    ax.plot(x, y, color=GREENS[i], marker=MARK["ttts"], ms=5, lw=1.4)
+for n in SHOW_NINIT:
+    x, y = series(f"promote n{n}")
+    ax.plot(x, y, color=ORANGES[n], marker=MARK["promote"], ms=4.5, lw=1.4)
+    x, y = series(f"ttts n{n}")
+    ax.plot(x, y, color=GREENS[n], marker=MARK["ttts"], ms=5, lw=1.4)
 
 handles = [Line2D([], [], color=BLUE, marker="o", ms=5, lw=1.6, label=r"$N_{init} \in \{1,\dots,7\}$")]
-for i in range(4):
-    handles.append(Line2D([], [], color=ORANGES[i], marker="s", ms=4.5, lw=1.4,
-                          label=rf"$N_{{init}}={i+1}$, $N_{{reeval}} \in \{{1,\dots,{9-i}\}}$"))
-for i in range(4):
-    handles.append(Line2D([], [], color=GREENS[i], marker="^", ms=5, lw=1.4,
-                          label=rf"TTTS, $N_{{init}}={i+1}$, $B \in \{{5,\dots,100\}}$"))
-ax.legend(handles=handles, fontsize=8, loc="lower right", frameon=False, handletextpad=0.5)
+for n in SHOW_NINIT:
+    handles.append(Line2D([], [], color=ORANGES[n], marker="s", ms=4.5, lw=1.4,
+                          label=rf"$N_{{init}}={n}$, $N_{{reeval}} \in \{{1,\dots,{10-n}\}}$"))
+for n in SHOW_NINIT:
+    handles.append(Line2D([], [], color=GREENS[n], marker="^", ms=5, lw=1.4,
+                          label=rf"TTTS, $N_{{init}}={n}$, $B \in \{{5,\dots,100\}}$"))
+ax.legend(handles=handles, fontsize=9, loc="lower right", frameon=False, handletextpad=0.5)
 
 ax.set_xlim(0, D["budget_frac"] * D["oracle_seeds"])
 ax.set_xlabel("Total evaluations")
