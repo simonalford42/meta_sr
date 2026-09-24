@@ -222,6 +222,12 @@ def load_evaluation_source(args) -> EvaluationSource:
 
 
 def _load_evaluation_source(args) -> EvaluationSource:
+    only_operator = getattr(args, "only_operator", None)
+    if only_operator and (
+        not args.evolve_results
+        or detect_evolve_backend(args.evolve_results) != "pysr"
+    ):
+        raise ValueError("--only-operator requires a PySR --evolve-results source")
     if getattr(args, "fullsr_baseline", False):
         from parallel_eval_fullsr import (
             FullSRConfig,
@@ -315,6 +321,14 @@ def load_pysr_evaluation_config(args):
         bundle = OperatorBundle.create_default()
         mode, source = "baseline", None
 
+    only_operator = getattr(args, "only_operator", None)
+    if only_operator:
+        operator = bundle.operators.get(only_operator)
+        if operator is None:
+            raise ValueError(f"Source bundle has no evolved {only_operator} operator")
+        # Start from baseline hyperparameters; retain just the selected operator.
+        bundle = OperatorBundle(operators={only_operator: operator})
+
     config = bundle.to_pysr_config(pysr_kwargs)
     config.name = mode
     method_meta = {}
@@ -344,4 +358,7 @@ def load_pysr_evaluation_config(args):
             ],
             "best_hparams": bundle.best_hparams,
         }
+    if only_operator:
+        config.name = f"evolve_only_{only_operator}"
+        method_meta["only_operator"] = only_operator
     return config, mode, method_meta

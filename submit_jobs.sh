@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 
 # 9/24/26
+srb709715_flags=(
+    --evolve-results runs/709715 --select-by val --ground-truth --black-box
+    --max-evals 1000000000 --timeout 90 --black-box-timeout 90 --seed 10000 --n-runs 10
+    --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --black-box-max-samples 10000
+    --pysr-wall-limit 300 --black-box-wall-limit 1800 --cpus-per-task 1
+    --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00
+    --mem-per-cpu 8G --max-retries 5 --no-early-stop --no-maxsize-warmup --frontier-snapshot-seconds 10
+)
+srb709715=$(sbatch --parsable --partition=default_partition --time=48:00:00 --mem=20G -J srb90-709715-mutation run.sh srbench_full_eval.py "${srb709715_flags[@]}" --only-operator mutation --results-dir runs/709715-only-mutation-srbench_full_9-24_10seed-90s) || exit 1
+printf '%s\n' "709715-only-mutation=$srb709715"
+srb709715=$(sbatch --parsable --dependency="afterany:$srb709715" --partition=default_partition --time=48:00:00 --mem=20G -J srb90-709715-loss run.sh srbench_full_eval.py "${srb709715_flags[@]}" --only-operator loss --results-dir runs/709715-only-loss-srbench_full_9-24_10seed-90s) || exit 1
+printf '%s\n' "709715-only-loss=$srb709715"
+srb709715=$(sbatch --parsable --dependency="afterany:$srb709715" --partition=default_partition --time=48:00:00 --mem=20G -J srb90-709715-selection run.sh srbench_full_eval.py "${srb709715_flags[@]}" --only-operator selection --results-dir runs/709715-only-selection-srbench_full_9-24_10seed-90s) || exit 1
+printf '%s\n' "709715-only-selection=$srb709715"
+srb709715=$(sbatch --parsable --dependency="afterany:$srb709715" --partition=default_partition --time=48:00:00 --mem=20G -J srb90-709715-survival run.sh srbench_full_eval.py "${srb709715_flags[@]}" --only-operator survival --results-dir runs/709715-only-survival-srbench_full_9-24_10seed-90s) || exit 1
+printf '%s\n' "709715-only-survival=$srb709715"
+
 # Submitted: n3-reeval=203388, n3-TTTS=203389, n3=203390, n1=203391, n1-reeval=203392; existing n1-TTTS=192859.
 # recovery_flags=(
 #     --operator-type all --population-type topk --population 10 --offspring 10 --seed 3

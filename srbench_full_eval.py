@@ -514,6 +514,8 @@ def main(argv=None, *, force_srbench_2025=False):
                              "score (default) or training score. Val falls back "
                              "to train for runs without persisted val data.")
 
+    parser.add_argument("--only-operator", choices=["mutation", "loss", "selection", "survival"],
+                        help="Use baseline PySR plus only this evolved operator.")
     parser.add_argument("--split-file", type=str, default="splits/srbench_all.txt")
     parser.add_argument("--ground-truth", action="store_true",
                         help="Evaluate ground-truth problems (the default unless "
@@ -640,6 +642,8 @@ def main(argv=None, *, force_srbench_2025=False):
     parser.add_argument("--no-maxsize-warmup", action="store_true",
                         help="Disable PySR's gradual max-size warm-up.")
     args = parser.parse_args(argv)
+    if args.only_operator and (not args.evolve_results or args.task_population_bundles):
+        parser.error("--only-operator requires --evolve-results and cannot use --task-population-bundles")
     if args.cpus_per_task <= 0:
         parser.error("--cpus-per-task must be positive")
     if force_srbench_2025:
