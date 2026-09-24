@@ -51,6 +51,20 @@
    "metric": 0.6218072826060248,
    "seeds": 1974.0
   },
+  "n8": {
+   "family": "fixed",
+   "n_init": 8,
+   "param": null,
+   "metric": 0.6226381824659688,
+   "seeds": 2256.0
+  },
+  "n9": {
+   "family": "fixed",
+   "n_init": 9,
+   "param": null,
+   "metric": 0.6233173695574721,
+   "seeds": 2538.0
+  },
   "n10": {
    "family": "fixed",
    "n_init": 10,

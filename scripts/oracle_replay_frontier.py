@@ -3,8 +3,8 @@
   fixed    N_init in 1..10
   promote  N_init in 1..4  x  N_reeval in 1..9  (N_init + N_reeval <= 10)
   TTTS     N_init in 1..4  x  B in {5,10,20,40,60,80,100}
-Policies whose total seeds spent reach >= 75% of the oracle's (N_init=10) are
-dropped. Writes plots/oracle_replay/oracle_replay_frontier.json."""
+Reeval policies whose total seeds spent reach >= 75% of the oracle's (N_init=10)
+are dropped; fixed-N is kept in full. Writes plots/oracle_replay/oracle_replay_frontier.json."""
 import json, sys, time, zlib
 from pathlib import Path
 import numpy as np
@@ -51,7 +51,10 @@ def main():
         out[label] = {"family": family, "n_init": n, "param": param, "metric": m, "seeds": sd}
         print(f"{label:16s} fam={family:12s} fit={m:.4f} seeds={sd:6.0f} ({time.time()-t0:.1f}s)", flush=True)
     oracle_seeds = out["n10"]["seeds"]
-    kept = {k: v for k, v in out.items() if v["seeds"] < BUDGET_FRAC * oracle_seeds or k == "n10"}
+    # fixed-N kept in full (reference curve up to the oracle); reeval policies
+    # filtered to < BUDGET_FRAC of the oracle's seeds.
+    kept = {k: v for k, v in out.items()
+            if v["family"] == "fixed" or v["seeds"] < BUDGET_FRAC * oracle_seeds}
     dropped = sorted(set(out) - set(kept))
     print(f"\nkept {len(kept)}/{len(out)}; dropped (>= {BUDGET_FRAC:.0%} of oracle seeds {oracle_seeds:.0f}): {dropped}")
     path = orr.OUT_DIR / "oracle_replay_frontier.json"
