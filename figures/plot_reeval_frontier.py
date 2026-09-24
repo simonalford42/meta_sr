@@ -18,9 +18,12 @@ REPO = Path(__file__).resolve().parents[1]
 SCRATCH = Path("/tmp/claude-1603675/-home-sca63-meta-sr/23a64b6d-2223-4f23-baa1-bb18405fdba8/scratchpad")
 
 SHOW_NINIT = [1, 3]                       # which promote / TTTS bases to draw
-BLUE = "#4c72b0"
-ORANGES = {1: "#f0a868", 3: "#b35a18"}    # promote, by N_init
-GREENS = {1: "#7cc18a", 3: "#2f7a45"}     # TTTS,    by N_init
+# Shared palette (also used by plot_reeval_combined.py): family = hue,
+# N_init = shade (light = 1, dark = 3; fixed-N line is the dark blue).
+BLUES = {3: "#8fb3d9", 10: "#4c72b0"}     # fixed N_init (real runs)
+BLUE = BLUES[10]
+ORANGES = {1: "#f0a868", 3: "#b35a18"}    # promote / uniform reeval, by N_init
+GREENS = {1: "#7cc18a", 3: "#2f7a45"}     # TTTS, by N_init
 MARK = {"fixed": "o", "promote": "s", "ttts": "^"}
 
 

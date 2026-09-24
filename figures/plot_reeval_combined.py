@@ -15,22 +15,22 @@ import matplotlib.pyplot as plt
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import plot_90s_reevaluation_ablations as abl  # noqa: E402
-from plot_reeval_frontier import draw_frontier, SCRATCH  # noqa: E402
+from plot_reeval_frontier import draw_frontier, SCRATCH, BLUES, ORANGES, GREENS  # noqa: E402
 
 SCALE = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
 records = json.loads((abl.OUT / "data.json").read_text())
 
-colors = {'n3': '#228833', 'n10': '#4477AA', 'n3-reeval': '#CC3311', 'n3-TTTS': '#EE9933'}
+colors = {'n3': BLUES[3], 'n10': BLUES[10], 'n3-reeval': ORANGES[3], 'n3-TTTS': GREENS[3]}
 labels = {
     'n3': r'$N_{\mathrm{init}} = 3$',
     'n10': r'$N_{\mathrm{init}} = 10$',
-    'n3-reeval': r'$N_{\mathrm{init}} = 3$, Reeval - uniform',
-    'n3-TTTS': r'$N_{\mathrm{init}} = 3$, Reeval - TTTS',
+    'n3-reeval': r'$N_{\mathrm{init}} = 3$, uniform reeval, $N_{\mathrm{reeval}} = 7$',
+    'n3-TTTS': r'$N_{\mathrm{init}} = 3$, TTTS reeval, $B = 30$',
 }
 
 with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
                      'xtick.labelsize': 10, 'ytick.labelsize': 10}):
-    fig, axes = plt.subplots(1, 3, figsize=(15 * SCALE, 4.6 * SCALE),
+    fig, axes = plt.subplots(1, 3, figsize=(13.5 * SCALE, 4.2 * SCALE),
                              gridspec_kw={'width_ratios': [1, 1, 1.15]})
     axl, axc, axr = axes
     axc.sharey(axl)
@@ -47,6 +47,7 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
     axc.set_xlabel('Cumulative evaluations')
     xmax = max(abl.aggregate(records, m, 'eval_idx', 'train_reeval_score')[0][-1] for m in colors)
     axc.set_xlim(0, xmax * 1.04)
+    axc.set_xticks(range(0, int(xmax) + 1, 500))
     axc.tick_params(labelleft=False)
     axl.legend(frameon=False, fontsize=9, loc='upper left', handlelength=1.8)
 
