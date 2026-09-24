@@ -1,13 +1,23 @@
 # 90-second PySR reevaluation ablations
 
-Updated 2026-09-24T15:10:13.736300+00:00. Includes 13 completed method/seed combinations.
+Updated 2026-09-24T15:22:19.750616+00:00. Includes 13 completed method/seed combinations.
 
 `train_reevaluation_six_panels.pdf` compares n1 and n3 with population reevaluation
 and TTTS, without n10. It shows reevaluated
 train score versus generation and cumulative evolution evaluations, plus winner's
 curse versus generation. `all_methods_eval_axis.pdf` compares all seven methods
-on both axes. Solid = seed 1; dashed = seed 2; dotted = seed 3 when complete.
-Each seed is a separate curve, not a seed average. Only completed runs are included.
+on both axes. All panels show an equally weighted mean across completed seeds,
+with ±1 population standard deviation (ddof=0), not a standard error or confidence
+interval. Legend counts state the number of independent seeds. A one-seed method
+has no band; its variability cannot be estimated.
+
+For each method and x-axis, each seed is linearly interpolated onto a common grid
+within the intersection of its observed range with all other seeds. Generation
+grids are integer-valued; evaluation grids use the union of observed counts inside
+the shared range. There is no extrapolation or changing seed count along a curve.
+Thus n3's generation curve stops at 14 because seed 1 has no generation-15 diagnostic.
+Winner's curse is computed per seed before averaging. `aggregate_scores.csv`
+records the plotted means, SDs and seed counts for both metrics and x-axes.
 
 `n1_n3_n10_train_reevaluation.pdf` compares n1, n3 and n10 without selection
 reevaluation: reevaluated train score versus generation on the left and cumulative
@@ -16,8 +26,8 @@ evolution evaluations on the right, using the same completed seeds.
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
 `[train reeval]` records in local run.log files (four-decimal logging precision).
 These are not validation scores or population averages. Winner's curse is the
-contemporaneous live train score minus the reevaluated score. Missing diagnostics
-are not filled; lines connect available observations, with no extrapolation.
+contemporaneous live train score minus the reevaluated score. Raw diagnostics remain
+unchanged; interpolation is applied only for aggregating the plotted curves.
 
 Unsampled W&B generation records supply evolution eval_idx at the submitted
 generation, not the diagnostic completion step. Counts include initial population,

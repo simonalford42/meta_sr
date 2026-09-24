@@ -2,8 +2,8 @@
 
 Offline rerender: python figures/plot_90s_reevaluation_ablations.py
 Scores are best-candidate train diagnostics (10 fresh seeds), not population means.
-Missing diagnostics are left missing. Lines connect observed points only; no tails
-are extrapolated. Evaluation counts are generation-end evolution eval_idx values,
+Seed curves are linearly interpolated over their common domain for mean/std
+aggregation; no tails are extrapolated. Evaluation counts are generation-end evolution eval_idx values,
 including selection reevaluations but excluding baseline/diagnostic evaluations.
 """
 import argparse
@@ -24,7 +24,6 @@ RUNS = [
     ('n10', 1, '64604', 'sifnivw6'), ('n10', 2, '64605', 'wftnv7sd'),
     ('n1', 3, '64606', '4e15t4ig'),
 ]
-SEED_STYLES = {1: '-', 2: '--', 3: ':'}
 RESUMED = {'980597': ('750247', '20af68tv')}
 PATTERN = re.compile(r'\[train reeval\] gen (\d+) (.+?): reeval GT match rate=([\d.]+) \(live=([\d.]+), winners_curse=([+\-\d.]+)\)')
 
@@ -87,11 +86,44 @@ def refresh():
     (OUT / 'data.json').write_text(json.dumps(records, indent=2)+'\n')
 
 
+def aggregate(records, method, xkey, ykey):
+    """Equal-weight seed mean and population SD on a shared, unextrapolated grid."""
+    import numpy as np
+    runs = [r for r in records if r['method'] == method and r['status'] == 'COMPLETED']
+    if not runs:
+        raise ValueError(f'No completed runs for {method}')
+    assert len({r['seed'] for r in runs}) == len(runs), method
+    curves = []
+    for run in runs:
+        points = sorted(run['points'], key=lambda p: p[xkey])
+        x = np.array([p[xkey] for p in points], dtype=float)
+        y = np.array([p[ykey] for p in points], dtype=float)
+        assert len(x) and np.all(np.diff(x) > 0), (method, run['seed'], xkey)
+        curves.append((x, y))
+    lo = max(x[0] for x, _ in curves)
+    hi = min(x[-1] for x, _ in curves)
+    assert lo <= hi, (method, xkey, 'no shared domain')
+    grid = (np.arange(np.ceil(lo), np.floor(hi) + 1) if xkey == 'generation'
+            else np.unique(np.concatenate([x[(x >= lo) & (x <= hi)] for x, _ in curves])))
+    values = np.stack([np.interp(grid, x, y) for x, y in curves])
+    return grid, values.mean(axis=0), values.std(axis=0, ddof=0), len(runs)
+
+
+def draw_mean(ax, records, method, xkey, ykey, color):
+    x, mean, std, n = aggregate(records, method, xkey, ykey)
+    ax.plot(x, mean, color=color, lw=1.8, marker='o', ms=3,
+            label=f'{method} ({n} seed' + ('s)' if n != 1 else ')'))
+    if n > 1:
+        ax.fill_between(x, mean - std, mean + std, color=color, alpha=.18, linewidth=0)
+
+
+MEAN_NOTE = 'Lines: seed mean; shading: ±1 SD (ddof=0). One seed: no band. Linear interpolation within shared seed coverage; no extrapolation.'
+
+
 def plot():
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    from matplotlib.lines import Line2D
     records = json.loads((OUT / 'data.json').read_text())
     with (OUT / 'scores.csv').open('w') as f:
         writer = csv.DictWriter(f, lineterminator='\n', fieldnames=['method','seed','job_id','status','generation','eval_idx','bundle','train_score','train_reeval_score','winners_curse'])
@@ -99,6 +131,14 @@ def plot():
         for r in records:
             for p in r['points']:
                 writer.writerow({**{k:r[k] for k in ['method','seed','job_id','status']}, **p})
+    with (OUT / 'aggregate_scores.csv').open('w') as f:
+        writer = csv.writer(f, lineterminator='\n')
+        writer.writerow(['method', 'axis', 'metric', 'x', 'mean', 'std', 'n_seeds'])
+        for method in sorted({r['method'] for r in records}):
+            for xkey in ['generation', 'eval_idx']:
+                for ykey in ['train_reeval_score', 'winners_curse']:
+                    x, mean, std, n = aggregate(records, method, xkey, ykey)
+                    writer.writerows((method, xkey, ykey, a, b, c, n) for a, b, c in zip(x, mean, std))
     plt.rcParams.update({'font.size':10, 'axes.spines.top':False, 'axes.spines.right':False, 'pdf.fonttype':42})
     fig, axes = plt.subplots(3, 2, figsize=(13, 12))
     colors = ['#0072B2','#D55E00','#009E73']
@@ -114,10 +154,8 @@ def plot():
         axes[2,row].set_ylim(-0.06,0.36)
         axes[2,row].axhline(0,color='0.4',lw=.8)
     fig.suptitle('90-second PySR ablations · best-candidate train reevaluation',fontsize=17,y=.985)
-    handles = [Line2D([], [], color='0.25', ls=SEED_STYLES[seed], label=f'Seed {seed}')
-               for seed in sorted({r['seed'] for r in records})]
-    fig.legend(handles=handles,loc='upper center',bbox_to_anchor=(.5,.96),ncol=3,frameon=False)
-    fig.text(.06,.035,'Each point: best candidate reevaluated on training tasks with 10 fresh seeds. Lines join observed points; missing diagnostics are not filled.\nEvaluations = cumulative evolution seed-runs (including selection reevaluations; excluding diagnostics). One seed-run covers the train task set.\nCompleted seeds only; resumed n3 seed 2 includes its pre-resume history. n3-reeval uses population reevaluation, 3 → 10 seeds.',fontsize=9,va='bottom')
+    fig.text(.5, .94, 'Mean across completed seeds ±1 standard deviation', ha='center', fontsize=10)
+    fig.text(.06,.035, MEAN_NOTE + '\nDiagnostics use 10 fresh training seeds. Evaluations count evolution seed-runs across the training task set, excluding diagnostics.', fontsize=9,va='bottom')
     fig.tight_layout(rect=(0,.105,1,.925),h_pad=2.2,w_pad=2.2)
     fig.savefig(OUT / 'train_reevaluation_six_panels.pdf')
     plt.close(fig)
@@ -128,7 +166,6 @@ def plot():
 
 def plot_combined(records):
     import matplotlib.pyplot as plt
-    from matplotlib.lines import Line2D
 
     colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#E69F00', '#555555', '#000000']
     methods = ['n1', 'n1-reeval', 'n1-TTTS', 'n3', 'n3-reeval', 'n3-TTTS', 'n10']
@@ -137,16 +174,7 @@ def plot_combined(records):
         for ax, metric, title in zip(axes[row], ['train_reeval_score', 'winners_curse'],
                                      ['Reevaluated train score', 'Winner’s curse']):
             for method, color in zip(methods, colors):
-                for r in records:
-                    if r['method'] != method:
-                        continue
-                    p = r['points']
-                    ax.plot([v[xkey] for v in p], [v[metric] for v in p],
-                            color=color, ls=SEED_STYLES[r['seed']],
-                            marker='o', ms=3, lw=1.5, alpha=1 if r['seed'] == 1 else .75,
-                            label=method if r['seed'] == 1 else None)
-                    if r['status'] == 'FAILED':
-                        ax.plot(p[-1][xkey], p[-1][metric], color=color, marker='x', ms=9, mew=2)
+                draw_mean(ax, records, method, xkey, metric, color)
             ax.set_title(f'{title} vs {"evaluations" if row == 0 else "generation"}')
             ax.set_xlabel('Cumulative evolution evaluations (seed-runs)' if row == 0 else 'Generation')
             ax.set_ylabel('Reevaluated train score' if metric == 'train_reeval_score'
@@ -160,10 +188,8 @@ def plot_combined(records):
             if metric == 'winners_curse':
                 ax.axhline(0,color='0.4',lw=.8)
     fig.suptitle('All seven 90-second PySR ablations · evaluation and generation comparisons',fontsize=16,y=.98)
-    handles = [Line2D([], [], color='0.25', ls=SEED_STYLES[seed], label=f'Seed {seed}')
-               for seed in sorted({r['seed'] for r in records})]
-    fig.legend(handles=handles,loc='upper center',bbox_to_anchor=(.5,.95),ncol=3,frameon=False)
-    fig.text(.06,.03,'10 fresh seeds per best-candidate train diagnostic; missing diagnostics are not filled. Completed seeds only; resumed n3 seed 2 includes its earlier history.\nEvaluation counts include selection reevaluations and exclude diagnostics. One seed-run covers the training task set.',fontsize=9)
+    fig.text(.5, .94, 'Mean across completed seeds ±1 standard deviation', ha='center', fontsize=10)
+    fig.text(.06,.03, MEAN_NOTE + '\nEvaluations include selection reevaluations and exclude diagnostics. One seed-run covers the training task set.', fontsize=9)
     fig.tight_layout(rect=(0,.085,1,.91), h_pad=2.5)
     fig.savefig(OUT / 'all_methods_eval_axis.pdf')
     plt.close(fig)
@@ -171,20 +197,13 @@ def plot_combined(records):
 
 def plot_initial_seeds(records):
     import matplotlib.pyplot as plt
-    from matplotlib.lines import Line2D
 
     methods = {'n1': '#0072B2', 'n3': '#CC79A7', 'n10': '#000000'}
     selected = [r for r in records if r['method'] in methods]
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.5), sharey=True)
     for ax, xkey in zip(axes, ['generation', 'eval_idx']):
-        labeled = set()
-        for r in selected:
-            points = r['points']
-            ax.plot([p[xkey] for p in points], [p['train_reeval_score'] for p in points],
-                    color=methods[r['method']], ls=SEED_STYLES[r['seed']],
-                    marker='o', ms=3, lw=1.6, alpha=1 if r['seed'] == 1 else .75,
-                    label=r['method'] if r['method'] not in labeled else None)
-            labeled.add(r['method'])
+        for method, color in methods.items():
+            draw_mean(ax, records, method, xkey, 'train_reeval_score', color)
         ax.set_title('Reevaluated train score vs ' + ('generation' if xkey == 'generation' else 'evaluations'))
         ax.set_xlabel('Generation' if xkey == 'generation' else 'Cumulative evolution evaluations (seed-runs)')
         ax.set_ylabel('Reevaluated train score')
@@ -197,10 +216,8 @@ def plot_initial_seeds(records):
         ax.grid(alpha=.2)
         ax.legend(ncol=3, frameon=False, loc='upper left')
     fig.suptitle('n1 vs n3 vs n10 · no selection reevaluation', fontsize=16, y=.98)
-    handles = [Line2D([], [], color='0.25', ls=SEED_STYLES[seed], label=f'Seed {seed}')
-               for seed in sorted({r['seed'] for r in selected})]
-    fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(.5, .92), ncol=3, frameon=False)
-    fig.text(.06, .025, 'Best candidate reevaluated on training tasks with 10 fresh seeds. Completed seeds shown separately; missing diagnostics are not filled.\nEvaluations = cumulative evolution seed-runs, excluding diagnostics. One seed-run covers the training task set.', fontsize=9)
+    fig.text(.5, .90, 'Mean across completed seeds ±1 standard deviation', ha='center', fontsize=10)
+    fig.text(.06, .025, MEAN_NOTE + '\nBest-candidate train diagnostics use 10 fresh seeds. Evaluations exclude diagnostics.', fontsize=9)
     fig.tight_layout(rect=(0, .105, 1, .85))
     fig.savefig(OUT / 'n1_n3_n10_train_reevaluation.pdf')
     plt.close(fig)
@@ -216,8 +233,18 @@ Updated {datetime.now(timezone.utc).isoformat()}. Includes {len(records)} comple
 and TTTS, without n10. It shows reevaluated
 train score versus generation and cumulative evolution evaluations, plus winner's
 curse versus generation. `all_methods_eval_axis.pdf` compares all seven methods
-on both axes. Solid = seed 1; dashed = seed 2; dotted = seed 3 when complete.
-Each seed is a separate curve, not a seed average. Only completed runs are included.
+on both axes. All panels show an equally weighted mean across completed seeds,
+with ±1 population standard deviation (ddof=0), not a standard error or confidence
+interval. Legend counts state the number of independent seeds. A one-seed method
+has no band; its variability cannot be estimated.
+
+For each method and x-axis, each seed is linearly interpolated onto a common grid
+within the intersection of its observed range with all other seeds. Generation
+grids are integer-valued; evaluation grids use the union of observed counts inside
+the shared range. There is no extrapolation or changing seed count along a curve.
+Thus n3's generation curve stops at 14 because seed 1 has no generation-15 diagnostic.
+Winner's curse is computed per seed before averaging. `aggregate_scores.csv`
+records the plotted means, SDs and seed counts for both metrics and x-axes.
 
 `n1_n3_n10_train_reevaluation.pdf` compares n1, n3 and n10 without selection
 reevaluation: reevaluated train score versus generation on the left and cumulative
@@ -226,8 +253,8 @@ evolution evaluations on the right, using the same completed seeds.
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
 `[train reeval]` records in local run.log files (four-decimal logging precision).
 These are not validation scores or population averages. Winner's curse is the
-contemporaneous live train score minus the reevaluated score. Missing diagnostics
-are not filled; lines connect available observations, with no extrapolation.
+contemporaneous live train score minus the reevaluated score. Raw diagnostics remain
+unchanged; interpolation is applied only for aggregating the plotted curves.
 
 Unsampled W&B generation records supply evolution eval_idx at the submitted
 generation, not the diagnostic completion step. Counts include initial population,
@@ -266,15 +293,7 @@ observations. Outputs are PDF only.
 def draw(ax, records, group, xkey, ykey, colors):
     methods = [group,group+'-reeval',group+'-TTTS']
     for method, color in zip(methods, colors):
-        for r in records:
-            if r['method'] != method:
-                continue
-            points = r['points']
-            ax.plot([p[xkey] for p in points],[p[ykey] for p in points],
-                    color=color,ls=SEED_STYLES[r['seed']],marker='o',ms=3,lw=1.6,
-                    label=method if r['seed']==1 else None,alpha=1 if r['seed']==1 else .75)
-            if r['status']=='FAILED':
-                ax.plot(points[-1][xkey],points[-1][ykey],color=color,marker='x',ms=9,mew=2)
+        draw_mean(ax, records, method, xkey, ykey, color)
     ax.set_xlabel('Generation' if xkey=='generation' else 'Cumulative evolution evaluations (seed-runs)')
     if xkey=='generation':
         ax.set_xlim(-.35,15.35)
