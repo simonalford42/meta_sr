@@ -42,13 +42,16 @@ def load_best(source):
 
 
 def phase_brace(fig, x0, x1, y, label):
-    """Draw a compact square bracket in figure coordinates."""
+    """Draw a phase span with tall end ticks crossing its horizontal line."""
     mid = (x0 + x1) / 2
-    depth = 0.009
-    vertices = [(x0, y), (x0, y-depth), (x1, y-depth), (x1, y)]
-    path = MplPath(vertices, [MplPath.MOVETO] + [MplPath.LINETO] * 3)
+    baseline = y - 0.009
+    half_height = 0.014
+    vertices = [(x0, baseline), (x1, baseline),
+                (x0, baseline - half_height), (x0, baseline + half_height),
+                (x1, baseline - half_height), (x1, baseline + half_height)]
+    path = MplPath(vertices, [MplPath.MOVETO, MplPath.LINETO] * 3)
     fig.add_artist(PathPatch(path, transform=fig.transFigure, facecolor="none",
-                             edgecolor="#505966", lw=1, clip_on=False))
+                             edgecolor="#505966", lw=1.5, clip_on=False))
     fig.text(mid, y-0.017, label, ha="center", va="top", fontsize=8,
              color="#242a33")
 
