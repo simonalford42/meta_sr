@@ -53,10 +53,10 @@ def main():
 
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 9,
                          'pdf.fonttype': 42})
-    fig, ax = plt.subplots(figsize=(4.5, 4.5))
+    fig, ax = plt.subplots(figsize=(4.5, 4.15))
     fig.subplots_adjust(left=.025, right=.98, bottom=.02, top=.98)
     ax.set_xlim(0, 4.5)
-    ax.set_ylim(-2.15, 15.8)
+    ax.set_ylim(-.8, 15.8)
     ax.axis('off')
     ink, gray = '#24333D', '#89949C'
     colors = ['#317DA5', '#BB7A20', '#22826A']
@@ -81,8 +81,6 @@ def main():
     ax.text(.12, -.43, 'Solved / 14', fontweight='bold', color=ink, va='center')
     for x, total, color in zip(xs, totals, colors):
         ax.text(x, -.43, str(total), ha='center', va='center', fontweight='bold', color=color, fontsize=11)
-    ax.text(.12, -1.25, 'Solved: every component recovered across 10 seeds.', fontsize=7, color='#5A656E')
-    ax.text(.12, -1.80, 'Originally solved tasks excluded. Approximate difficulty order.', fontsize=7, color='#5A656E')
     output = ROOT / 'figures/mips_task_checkmarks.pdf'
     fig.savefig(output, metadata={'Title': 'MIPS task recovery',
         'Subject': 'Base PySR vs SRBench-evolved 709715 vs MIPS-evolved 709714; pooled ten-seed exact transition-table recovery'})
