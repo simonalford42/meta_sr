@@ -37,8 +37,8 @@ def main():
             page.show_pdf_page(pymupdf.Rect(widths[0] + gap, title_height,
                                            sum(widths) + gap, height + title_height), mips, 0)
             page.insert_font(fontname='PanelTitle', fontfile=title_font)
-            for label, center in [('NeuronBench', widths[0] / 2),
-                                  ('MIPS', widths[0] + gap + widths[1] / 2)]:
+            for label, center in [('(a) NeuronBench', widths[0] / 2),
+                                  ('(b) MIPS', widths[0] + gap + widths[1] / 2)]:
                 text_width = font.text_length(label, fontsize=17)
                 page.insert_text((center - text_width / 2, 21), label,
                                  fontname='PanelTitle', fontsize=17)
