@@ -25,7 +25,8 @@ def main():
     with RIGHT.open() as f:
         right_rows = list(csv.DictReader(f))
     plt.rcParams.update({'font.size': 11, 'axes.labelsize': 11, 'savefig.facecolor': 'white'})
-    fig, axes = plt.subplots(1, 2, figsize=(15.2, 5))
+    scale = 0.6
+    fig, axes = plt.subplots(1, 2, figsize=(15.2*scale, 5*scale))
     left, right = axes
     times = sorted(map(int, table))
     assert max(times) == 90
@@ -43,9 +44,9 @@ def main():
         assert total == (72 if method == 'Baseline' else 74)
         right.step(xs, ys, where='post', color=color, linewidth=2.2,
                    label=label)
-    left.set(xlim=(9, 90), xlabel='Search time (sec)')
+    left.set(title='SRBench', xlim=(9, 90), xlabel='Search time (sec)')
     left.set_xticks(range(10, 91, 10))
-    right.set(xscale='log', xlim=(1/60, 60), xlabel='Search time (min)')
+    right.set(title='EmpiricalBench', xscale='log', xlim=(1/60, 60), xlabel='Search time (min)')
     right.set_xticks([.02, .1, .5, 1, 5, 15, 60])
     right.xaxis.set_major_formatter(StrMethodFormatter('{x:g}'))
     right.xaxis.set_minor_formatter(NullFormatter())
@@ -60,8 +61,7 @@ def main():
         ax.spines[['top','right']].set_visible(False)
         ax.legend(frameon=False, loc='upper left')
     fig.tight_layout(w_pad=2.5)
-    for ext in ['png','pdf']:
-        fig.savefig(OUT/f'recovery_side_by_side.{ext}', dpi=200)
+    fig.savefig(OUT/'recovery_side_by_side.pdf')
     plt.close(fig)
     print(OUT/'recovery_side_by_side.pdf')
 
