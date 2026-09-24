@@ -6,11 +6,14 @@ ablation_flags=(
     --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270 --population-reeval-runs 3
 )
 
-a=$(sbatch --parsable --dependency=afterany:64606 --job-name=n1-ttts-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 3) || exit 1
-b=$(sbatch --parsable --dependency=afterany:64607 --job-name=n3-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval none --seed 3) || exit 1
-c=$(sbatch --parsable --job-name=n3-reeval-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval population --n-reevals 10 --seed 3) || exit 1
-a=$(sbatch --parsable --dependency="afterany:$a" --job-name=n3-ttts-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval TTTS --reeval-budget 30 --seed 3) || exit 1
-b=$(sbatch --parsable --dependency="afterany:$b" --job-name=n10-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 10 --reeval none --seed 3) || exit 1
+# a=$(sbatch --parsable --dependency=afterany:64606 --job-name=n3-ttts-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval TTTS --reeval-budget 30 --seed 3) || exit 1
+# b=$(sbatch --parsable --dependency=afterany:64607 --job-name=n3-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval none --seed 3) || exit 1
+# c=$(sbatch --parsable --job-name=n3-reeval-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 3 --reeval population --n-reevals 10 --seed 3) || exit 1
+# a=$(sbatch --parsable --dependency="afterany:$a" --job-name=n1-ttts-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 3) || exit 1
+# b=$(sbatch --parsable --dependency="afterany:$b" --job-name=n10-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 10 --reeval none --seed 3) || exit 1
+# Applied to existing jobs: 64606 -> 192864 (n3-ttts-s3) -> 192859 (n1-ttts-s3).
+# scontrol update JobId=192864 Dependency=afterany:64606
+# scontrol update JobId=192859 Dependency=afterany:192864
 # c=$(sbatch --parsable --dependency="afterany:$c" --job-name=n1-s4 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval none --seed 4) || exit 1
 # a=$(sbatch --parsable --dependency="afterany:$a" --job-name=n1-reeval-s4 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval population --n-reevals 3 --seed 4) || exit 1
 # b=$(sbatch --parsable --dependency="afterany:$b" --job-name=n1-ttts-s4 run.sh evolve_pysr.py "${ablation_flags[@]}" --n-runs 1 --reeval TTTS --reeval-budget 10 --seed 4) || exit 1
