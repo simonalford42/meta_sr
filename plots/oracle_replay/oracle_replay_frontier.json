@@ -1,0 +1,468 @@
+{
+ "budget_frac": 0.75,
+ "oracle_seeds": 2820.0,
+ "policies": {
+  "n1": {
+   "family": "fixed",
+   "n_init": 1,
+   "param": null,
+   "metric": 0.5681242063492062,
+   "seeds": 282.0
+  },
+  "n2": {
+   "family": "fixed",
+   "n_init": 2,
+   "param": null,
+   "metric": 0.6046600994674185,
+   "seeds": 564.0
+  },
+  "n3": {
+   "family": "fixed",
+   "n_init": 3,
+   "param": null,
+   "metric": 0.6088290309106099,
+   "seeds": 846.0
+  },
+  "n4": {
+   "family": "fixed",
+   "n_init": 4,
+   "param": null,
+   "metric": 0.6135965446704998,
+   "seeds": 1128.0
+  },
+  "n5": {
+   "family": "fixed",
+   "n_init": 5,
+   "param": null,
+   "metric": 0.6161033548945895,
+   "seeds": 1410.0
+  },
+  "n6": {
+   "family": "fixed",
+   "n_init": 6,
+   "param": null,
+   "metric": 0.6183970672698904,
+   "seeds": 1692.0
+  },
+  "n7": {
+   "family": "fixed",
+   "n_init": 7,
+   "param": null,
+   "metric": 0.6218072826060248,
+   "seeds": 1974.0
+  },
+  "n10": {
+   "family": "fixed",
+   "n_init": 10,
+   "param": null,
+   "metric": 0.6247660372296692,
+   "seeds": 2820.0
+  },
+  "n1->n2": {
+   "family": "promote n1",
+   "n_init": 1,
+   "param": 1,
+   "metric": 0.5967966021825397,
+   "seeds": 342.5
+  },
+  "n1->n3": {
+   "family": "promote n1",
+   "n_init": 1,
+   "param": 2,
+   "metric": 0.6032992063492063,
+   "seeds": 424.0
+  },
+  "n1->n4": {
+   "family": "promote n1",
+   "n_init": 1,
+   "param": 3,
+   "metric": 0.60481329088653,
+   "seeds": 495.0
+  },
+  "n1->n5": {
+   "family": "promote n1",
+   "n_init": 1,
+   "param": 4,
+   "metric": 0.6120132675438597,
+   "seeds": 560.0
+  },
+  "n1->n6": {
+   "family": "promote n1",
+   "n_init": 1,
+   "param": 5,
+   "metric": 0.6124838319757728,
+   "seeds": 629.5
+  },
+  "n1->n7": {
+   "family": "promote n1",
+   "n_init": 1,
+   "param": 6,
+   "metric": 0.6178912228487886,
+   "seeds": 696.0
+  },
+  "n1->n8": {
+   "family": "promote n1",
+   "n_init": 1,
+   "param": 7,
+   "metric": 0.619458534356725,
+   "seeds": 779.0
+  },
+  "n1->n9": {
+   "family": "promote n1",
+   "n_init": 1,
+   "param": 8,
+   "metric": 0.6199894867376775,
+   "seeds": 846.0
+  },
+  "n1->n10": {
+   "family": "promote n1",
+   "n_init": 1,
+   "param": 9,
+   "metric": 0.6212918676900585,
+   "seeds": 930.0
+  },
+  "n2->n3": {
+   "family": "promote n2",
+   "n_init": 2,
+   "param": 1,
+   "metric": 0.6081441102756893,
+   "seeds": 614.0
+  },
+  "n2->n4": {
+   "family": "promote n2",
+   "n_init": 2,
+   "param": 2,
+   "metric": 0.6122518405388471,
+   "seeds": 665.0
+  },
+  "n2->n5": {
+   "family": "promote n2",
+   "n_init": 2,
+   "param": 3,
+   "metric": 0.6155835369674185,
+   "seeds": 727.5
+  },
+  "n2->n6": {
+   "family": "promote n2",
+   "n_init": 2,
+   "param": 4,
+   "metric": 0.6138345264202172,
+   "seeds": 790.0
+  },
+  "n2->n7": {
+   "family": "promote n2",
+   "n_init": 2,
+   "param": 5,
+   "metric": 0.6145989609440268,
+   "seeds": 854.0
+  },
+  "n2->n8": {
+   "family": "promote n2",
+   "n_init": 2,
+   "param": 6,
+   "metric": 0.6156579391186299,
+   "seeds": 918.0
+  },
+  "n2->n9": {
+   "family": "promote n2",
+   "n_init": 2,
+   "param": 7,
+   "metric": 0.6166422645154552,
+   "seeds": 987.5
+  },
+  "n2->n10": {
+   "family": "promote n2",
+   "n_init": 2,
+   "param": 8,
+   "metric": 0.6198064510233918,
+   "seeds": 1048.0
+  },
+  "n3->n4": {
+   "family": "promote n3",
+   "n_init": 3,
+   "param": 1,
+   "metric": 0.6132891917293233,
+   "seeds": 892.5
+  },
+  "n3->n5": {
+   "family": "promote n3",
+   "n_init": 3,
+   "param": 2,
+   "metric": 0.6148605210944027,
+   "seeds": 944.0
+  },
+  "n3->n6": {
+   "family": "promote n3",
+   "n_init": 3,
+   "param": 3,
+   "metric": 0.6164171653091061,
+   "seeds": 996.0
+  },
+  "n3->n7": {
+   "family": "promote n3",
+   "n_init": 3,
+   "param": 4,
+   "metric": 0.6176551117376774,
+   "seeds": 1042.0
+  },
+  "n3->n8": {
+   "family": "promote n3",
+   "n_init": 3,
+   "param": 5,
+   "metric": 0.6196962181802546,
+   "seeds": 1108.5
+  },
+  "n3->n9": {
+   "family": "promote n3",
+   "n_init": 3,
+   "param": 6,
+   "metric": 0.6195061534043441,
+   "seeds": 1170.0
+  },
+  "n3->n10": {
+   "family": "promote n3",
+   "n_init": 3,
+   "param": 7,
+   "metric": 0.6209981176900585,
+   "seeds": 1252.0
+  },
+  "n4->n5": {
+   "family": "promote n4",
+   "n_init": 4,
+   "param": 1,
+   "metric": 0.6153799071821711,
+   "seeds": 1179.0
+  },
+  "n4->n6": {
+   "family": "promote n4",
+   "n_init": 4,
+   "param": 2,
+   "metric": 0.6174138973352499,
+   "seeds": 1228.0
+  },
+  "n4->n7": {
+   "family": "promote n4",
+   "n_init": 4,
+   "param": 3,
+   "metric": 0.6190644254631676,
+   "seeds": 1276.5
+  },
+  "n4->n8": {
+   "family": "promote n4",
+   "n_init": 4,
+   "param": 4,
+   "metric": 0.6195576269104133,
+   "seeds": 1344.0
+  },
+  "n4->n9": {
+   "family": "promote n4",
+   "n_init": 4,
+   "param": 5,
+   "metric": 0.6208334409860435,
+   "seeds": 1403.0
+  },
+  "n4->n10": {
+   "family": "promote n4",
+   "n_init": 4,
+   "param": 6,
+   "metric": 0.6222730885117205,
+   "seeds": 1470.0
+  },
+  "TTTS n1 B=5": {
+   "family": "ttts n1",
+   "n_init": 1,
+   "param": 5,
+   "metric": 0.584607132936508,
+   "seeds": 356.7
+  },
+  "TTTS n1 B=10": {
+   "family": "ttts n1",
+   "n_init": 1,
+   "param": 10,
+   "metric": 0.597648681676618,
+   "seeds": 428.1
+  },
+  "TTTS n1 B=20": {
+   "family": "ttts n1",
+   "n_init": 1,
+   "param": 20,
+   "metric": 0.6101192961724164,
+   "seeds": 560.9
+  },
+  "TTTS n1 B=40": {
+   "family": "ttts n1",
+   "n_init": 1,
+   "param": 40,
+   "metric": 0.6130680204494079,
+   "seeds": 743.4
+  },
+  "TTTS n1 B=60": {
+   "family": "ttts n1",
+   "n_init": 1,
+   "param": 60,
+   "metric": 0.6150916506032238,
+   "seeds": 849.2
+  },
+  "TTTS n1 B=80": {
+   "family": "ttts n1",
+   "n_init": 1,
+   "param": 80,
+   "metric": 0.6160424104071452,
+   "seeds": 926.5
+  },
+  "TTTS n1 B=100": {
+   "family": "ttts n1",
+   "n_init": 1,
+   "param": 100,
+   "metric": 0.6176609234790408,
+   "seeds": 986.4
+  },
+  "TTTS n2 B=5": {
+   "family": "ttts n2",
+   "n_init": 2,
+   "param": 5,
+   "metric": 0.6124631417084379,
+   "seeds": 636.0
+  },
+  "TTTS n2 B=10": {
+   "family": "ttts n2",
+   "n_init": 2,
+   "param": 10,
+   "metric": 0.6109119032262028,
+   "seeds": 701.7
+  },
+  "TTTS n2 B=20": {
+   "family": "ttts n2",
+   "n_init": 2,
+   "param": 20,
+   "metric": 0.613079454057939,
+   "seeds": 823.0999999999999
+  },
+  "TTTS n2 B=40": {
+   "family": "ttts n2",
+   "n_init": 2,
+   "param": 40,
+   "metric": 0.6128272049916458,
+   "seeds": 977.3
+  },
+  "TTTS n2 B=60": {
+   "family": "ttts n2",
+   "n_init": 2,
+   "param": 60,
+   "metric": 0.6173118280075188,
+   "seeds": 1066.8
+  },
+  "TTTS n2 B=80": {
+   "family": "ttts n2",
+   "n_init": 2,
+   "param": 80,
+   "metric": 0.6178410991326355,
+   "seeds": 1128.5
+  },
+  "TTTS n2 B=100": {
+   "family": "ttts n2",
+   "n_init": 2,
+   "param": 100,
+   "metric": 0.6176273917330091,
+   "seeds": 1163.5
+  },
+  "TTTS n3 B=5": {
+   "family": "ttts n3",
+   "n_init": 3,
+   "param": 5,
+   "metric": 0.6138173694346158,
+   "seeds": 915.6
+  },
+  "TTTS n3 B=10": {
+   "family": "ttts n3",
+   "n_init": 3,
+   "param": 10,
+   "metric": 0.6138790735724113,
+   "seeds": 979.9
+  },
+  "TTTS n3 B=20": {
+   "family": "ttts n3",
+   "n_init": 3,
+   "param": 20,
+   "metric": 0.6155410127647549,
+   "seeds": 1076.9
+  },
+  "TTTS n3 B=40": {
+   "family": "ttts n3",
+   "n_init": 3,
+   "param": 40,
+   "metric": 0.6172394528908054,
+   "seeds": 1195.0
+  },
+  "TTTS n3 B=60": {
+   "family": "ttts n3",
+   "n_init": 3,
+   "param": 60,
+   "metric": 0.6179074594267531,
+   "seeds": 1253.1999999999998
+  },
+  "TTTS n3 B=80": {
+   "family": "ttts n3",
+   "n_init": 3,
+   "param": 80,
+   "metric": 0.620223848315642,
+   "seeds": 1303.1
+  },
+  "TTTS n3 B=100": {
+   "family": "ttts n3",
+   "n_init": 3,
+   "param": 100,
+   "metric": 0.6205939218450538,
+   "seeds": 1336.1999999999998
+  },
+  "TTTS n4 B=5": {
+   "family": "ttts n4",
+   "n_init": 4,
+   "param": 5,
+   "metric": 0.6157031626246989,
+   "seeds": 1197.0
+  },
+  "TTTS n4 B=10": {
+   "family": "ttts n4",
+   "n_init": 4,
+   "param": 10,
+   "metric": 0.6156205365742788,
+   "seeds": 1257.5
+  },
+  "TTTS n4 B=20": {
+   "family": "ttts n4",
+   "n_init": 4,
+   "param": 20,
+   "metric": 0.6168598870644748,
+   "seeds": 1338.8
+  },
+  "TTTS n4 B=40": {
+   "family": "ttts n4",
+   "n_init": 4,
+   "param": 40,
+   "metric": 0.6195672592633545,
+   "seeds": 1421.0
+  },
+  "TTTS n4 B=60": {
+   "family": "ttts n4",
+   "n_init": 4,
+   "param": 60,
+   "metric": 0.6201125002764263,
+   "seeds": 1476.1
+  },
+  "TTTS n4 B=80": {
+   "family": "ttts n4",
+   "n_init": 4,
+   "param": 80,
+   "metric": 0.6207356620411322,
+   "seeds": 1503.1999999999998
+  },
+  "TTTS n4 B=100": {
+   "family": "ttts n4",
+   "n_init": 4,
+   "param": 100,
+   "metric": 0.6225729169430931,
+   "seeds": 1535.6
+  }
+ }
+}
