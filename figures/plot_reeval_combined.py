@@ -15,12 +15,12 @@ import matplotlib.pyplot as plt
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import plot_90s_reevaluation_ablations as abl  # noqa: E402
-from plot_reeval_frontier import draw_frontier, SCRATCH, BLUES, ORANGES, GREENS  # noqa: E402
+from plot_reeval_frontier import draw_frontier, SCRATCH, BLUES, ORANGES, REDS  # noqa: E402
 
 SCALE = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
 records = json.loads((abl.OUT / "data.json").read_text())
 
-colors = {'n3': BLUES[3], 'n10': BLUES[10], 'n3-reeval': ORANGES[3], 'n3-TTTS': GREENS[3]}
+colors = {'n3': BLUES[3], 'n10': BLUES[10], 'n3-reeval': ORANGES[3], 'n3-TTTS': REDS[3]}
 labels = {
     'n3': r'$N_{\mathrm{init}} = 3$',
     'n10': r'$N_{\mathrm{init}} = 10$',

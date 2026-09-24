@@ -23,7 +23,7 @@ SHOW_NINIT = [1, 3]                       # which promote / TTTS bases to draw
 BLUES = {3: "#7fcdee", 10: "#1f4e9c"}     # fixed N_init (real runs): sky vs navy
 BLUE = BLUES[10]
 ORANGES = {1: "#ffc16b", 3: "#ff8c00"}    # promote / uniform reeval, by N_init
-GREENS = {1: "#f4a3a3", 3: "#e03c3c"}     # TTTS, by N_init (reds; name kept for imports)
+REDS = {1: "#f4a3a3", 3: "#e03c3c"}     # TTTS, by N_init
 MARK = {"fixed": "o", "promote": "s", "ttts": "^"}
 
 
@@ -50,7 +50,7 @@ def draw_frontier(ax, D=None, legend_fontsize=9, legend_loc="lower right"):
         x, y = series(f"promote n{n}")
         ax.plot(x, y, color=ORANGES[n], marker=MARK["promote"], ms=4.5, lw=1.4)
         x, y = series(f"ttts n{n}")
-        ax.plot(x, y, color=GREENS[n], marker=MARK["ttts"], ms=5, lw=1.4)
+        ax.plot(x, y, color=REDS[n], marker=MARK["ttts"], ms=5, lw=1.4)
 
     handles = [Line2D([], [], color=BLUE, marker="o", ms=5, lw=1.6,
                       label=r"$N_{\mathrm{init}} \in \{1,\dots,10\}$")]
@@ -58,7 +58,7 @@ def draw_frontier(ax, D=None, legend_fontsize=9, legend_loc="lower right"):
         handles.append(Line2D([], [], color=ORANGES[n], marker="s", ms=4.5, lw=1.4,
                               label=rf"$N_{{\mathrm{{init}}}}={n}$, $N_{{\mathrm{{reeval}}}} \in \{{1,\dots,{10-n}\}}$"))
     for n in SHOW_NINIT:
-        handles.append(Line2D([], [], color=GREENS[n], marker="^", ms=5, lw=1.4,
+        handles.append(Line2D([], [], color=REDS[n], marker="^", ms=5, lw=1.4,
                               label=rf"TTTS, $N_{{\mathrm{{init}}}}={n}$, $B \in \{{5,\dots,100\}}$"))
     ax.legend(handles=handles, fontsize=legend_fontsize, loc=legend_loc, frameon=False,
               handletextpad=0.5)
