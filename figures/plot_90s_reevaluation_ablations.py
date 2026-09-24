@@ -227,14 +227,16 @@ def plot_initial_seeds(records):
 def plot_reevaluation_vs_more_seeds(records):
     import matplotlib.pyplot as plt
 
-    groups = [(['n1-TTTS', 'n1-reeval', 'n1', 'n3'], 'n1 methods vs n3'),
-              (['n3-TTTS', 'n3-reeval', 'n3', 'n10'], 'n3 methods vs n10')]
+    groups = [('n1', 'n3'), ('n3', 'n10')]
     colors = {'n1': '#0072B2', 'n1-reeval': '#D55E00', 'n1-TTTS': '#009E73',
               'n3': '#CC79A7', 'n3-reeval': '#E69F00', 'n3-TTTS': '#555555',
               'n10': '#000000'}
     fig, axes = plt.subplots(2, 2, figsize=(13, 9), sharey=True)
-    for row, (methods, title) in enumerate(groups):
+    for row, (base, more_seeds) in enumerate(groups):
         for col, xkey in enumerate(['generation', 'eval_idx']):
+            reference = base if col == 0 else more_seeds
+            methods = [base + '-TTTS', base + '-reeval', reference]
+            title = f'{base} reevaluation vs {reference}'
             ax = axes[row, col]
             for method in methods:
                 draw_mean(ax, records, method, xkey, 'train_reeval_score', colors[method])
@@ -287,8 +289,9 @@ reevaluation: reevaluated train score versus generation on the left and cumulati
 evolution evaluations on the right, using the same completed seeds.
 
 `reevaluation_vs_more_seeds.pdf` is the fourth figure: the top row compares
-n1-TTTS, n1-reeval, n1 and n3; the bottom row compares n3-TTTS, n3-reeval,
-n3 and n10. All panels show reevaluated train score, with generation on the left
+n1-TTTS and n1-reeval against n1 on the generation axis and n3 on the evaluation
+axis. The bottom row compares n3-TTTS and n3-reeval against n3 on the generation
+axis and n10 on the evaluation axis. All panels show reevaluated train score, with generation on the left
 and cumulative evolution evaluations on the right, using the same mean/SD convention.
 
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
