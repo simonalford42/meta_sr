@@ -293,7 +293,7 @@ def plot_n3_compact(records):
                 ax.set_xlim(-.35, 15.35)
                 ax.set_xticks(range(0, 16, 3))
             else:
-                ax.set_xlabel('Evolution evaluations (seed-runs)')
+                ax.set_xlabel('Cumulative evaluations')
                 xmax = max(aggregate(records, method, xkey, 'train_reeval_score')[0][-1]
                            for method in colors)
                 ax.set_xlim(0, xmax * 1.04)
