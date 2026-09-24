@@ -1239,6 +1239,257 @@
     ]
   },
   {
+    "method": "n1-TTTS",
+    "seed": 2,
+    "job_id": "980600",
+    "wandb_id": "rpgjrcdd",
+    "sources": [
+      {
+        "job_id": "980600",
+        "wandb_id": "rpgjrcdd"
+      }
+    ],
+    "status": "COMPLETED",
+    "failure": null,
+    "last_completed_generation": 15,
+    "config": {
+      "seed": 2,
+      "n_runs": 1,
+      "reeval": "TTTS",
+      "n_reevals": 0,
+      "reeval_budget": 10,
+      "population_type": "topk",
+      "population": 10,
+      "offspring": 10,
+      "generations": 15,
+      "timeout": 90,
+      "budget_mode": "time",
+      "val_n_runs": 10,
+      "population_reeval_runs": 3,
+      "continue_from": null
+    },
+    "generation_history": [
+      {
+        "_step": 10,
+        "generation": 0,
+        "eval_idx": 10,
+        "best_score": 0.5
+      },
+      {
+        "_step": 30,
+        "generation": 1,
+        "eval_idx": 30,
+        "best_score": 0.5
+      },
+      {
+        "_step": 50,
+        "generation": 2,
+        "eval_idx": 50,
+        "best_score": 0.55
+      },
+      {
+        "eval_idx": 70,
+        "best_score": 0.55,
+        "_step": 70,
+        "generation": 3
+      },
+      {
+        "_step": 90,
+        "generation": 4,
+        "eval_idx": 90,
+        "best_score": 0.5625
+      },
+      {
+        "_step": 110,
+        "generation": 5,
+        "eval_idx": 110,
+        "best_score": 0.65
+      },
+      {
+        "_step": 129,
+        "generation": 6,
+        "eval_idx": 129,
+        "best_score": 0.65
+      },
+      {
+        "best_score": 0.575,
+        "_step": 149,
+        "generation": 7,
+        "eval_idx": 149
+      },
+      {
+        "_step": 168,
+        "generation": 8,
+        "eval_idx": 168,
+        "best_score": 0.6
+      },
+      {
+        "_step": 188,
+        "generation": 9,
+        "eval_idx": 188,
+        "best_score": 0.65
+      },
+      {
+        "_step": 208,
+        "generation": 10,
+        "eval_idx": 208,
+        "best_score": 0.65
+      },
+      {
+        "generation": 11,
+        "eval_idx": 228,
+        "best_score": 0.575,
+        "_step": 228
+      },
+      {
+        "_step": 248,
+        "generation": 12,
+        "eval_idx": 248,
+        "best_score": 0.6
+      },
+      {
+        "_step": 268,
+        "generation": 13,
+        "eval_idx": 268,
+        "best_score": 0.6
+      },
+      {
+        "_step": 288,
+        "generation": 14,
+        "eval_idx": 288,
+        "best_score": 0.575
+      },
+      {
+        "best_score": 0.6,
+        "_step": 308,
+        "generation": 15,
+        "eval_idx": 308
+      }
+    ],
+    "points": [
+      {
+        "generation": 0,
+        "eval_idx": 10,
+        "bundle": "algebraic_motif_scaffold_init_2 | age_regularized_survival | tournament_selection | mse_loss",
+        "train_score": 0.5,
+        "train_reeval_score": 0.385,
+        "winners_curse": 0.11499999999999999
+      },
+      {
+        "generation": 1,
+        "eval_idx": 30,
+        "bundle": "add_constant_offset | age_regularized_survival | tournament_selection | hybrid_relative_mse_loss_gen1_5",
+        "train_score": 0.5,
+        "train_reeval_score": 0.47,
+        "winners_curse": 0.030000000000000027
+      },
+      {
+        "generation": 2,
+        "eval_idx": 50,
+        "bundle": "algebraic_distribute_factor_mutation_gen2_0 | age_regularized_survival | marginal_gain_niching_selection_gen1_1 | mse_loss",
+        "train_score": 0.55,
+        "train_reeval_score": 0.52,
+        "winners_curse": 0.030000000000000027
+      },
+      {
+        "generation": 3,
+        "eval_idx": 70,
+        "bundle": "add_constant_offset | age_regularized_epsilon_pareto_survival_gen3_0 | tournament_selection | hybrid_relative_mse_loss_gen1_5",
+        "train_score": 0.55,
+        "train_reeval_score": 0.47,
+        "winners_curse": 0.08000000000000007
+      },
+      {
+        "generation": 4,
+        "eval_idx": 90,
+        "bundle": "mutate_distributive_bridge_init_8 | age_regularized_survival | pareto_niche_tournament_selection_gen3_5 | mean_absolute_error_loss_gen2_9",
+        "train_score": 0.5625,
+        "train_reeval_score": 0.535,
+        "winners_curse": 0.02749999999999997
+      },
+      {
+        "generation": 5,
+        "eval_idx": 110,
+        "bundle": "mutate_distributive_bridge_init_8 | pareto_guarded_age_survival_gen5_9 | pareto_niche_tournament_selection_gen3_5 | mean_absolute_error_loss_gen2_9",
+        "train_score": 0.65,
+        "train_reeval_score": 0.515,
+        "winners_curse": 0.135
+      },
+      {
+        "generation": 6,
+        "eval_idx": 129,
+        "bundle": "mutate_distributive_bridge_init_8 | pareto_guarded_age_survival_gen6_3 | pareto_niche_tournament_selection_gen3_5 | mean_absolute_error_loss_gen2_9",
+        "train_score": 0.65,
+        "train_reeval_score": 0.51,
+        "winners_curse": 0.14
+      },
+      {
+        "generation": 7,
+        "eval_idx": 149,
+        "bundle": "mutate_distributive_bridge_init_8 | age_regularized_survival | pareto_niche_tournament_selection_gen3_5 | mean_absolute_error_loss_gen2_9",
+        "train_score": 0.575,
+        "train_reeval_score": 0.53,
+        "winners_curse": 0.04499999999999993
+      },
+      {
+        "generation": 8,
+        "eval_idx": 168,
+        "bundle": "mutate_distributive_bridge_init_8 | dominated_oldest_cohort_survival_gen8_8 | pareto_niche_tournament_selection_gen3_5 | mean_absolute_error_loss_gen2_9",
+        "train_score": 0.6,
+        "train_reeval_score": 0.505,
+        "winners_curse": 0.09499999999999997
+      },
+      {
+        "generation": 9,
+        "eval_idx": 188,
+        "bundle": "mutate_distributive_bridge_init_8 | pareto_guarded_age_survival_gen5_9 | pareto_tournament_selection_simplified_gen9_6 | mean_absolute_error_loss_gen2_9",
+        "train_score": 0.65,
+        "train_reeval_score": 0.5,
+        "winners_curse": 0.15000000000000002
+      },
+      {
+        "generation": 10,
+        "eval_idx": 208,
+        "bundle": "mutate_distributive_bridge_init_8 | age_regularized_survival | adaptive_pareto_niche_tournament_selection_gen10_8 | mean_absolute_error_loss_gen2_9",
+        "train_score": 0.65,
+        "train_reeval_score": 0.515,
+        "winners_curse": 0.135
+      },
+      {
+        "generation": 11,
+        "eval_idx": 228,
+        "bundle": "mutate_distributive_bridge_init_8 | pareto_guarded_age_survival_gen5_9 | pareto_niche_tournament_selection_gen3_5 | mean_absolute_error_loss_gen2_9",
+        "train_score": 0.575,
+        "train_reeval_score": 0.495,
+        "winners_curse": 0.07999999999999996
+      },
+      {
+        "generation": 12,
+        "eval_idx": 248,
+        "bundle": "mutate_distributive_bridge_init_8 | pareto_guarded_age_survival_gen5_9 | pareto_front_flag_tournament_selection_gen12_7 | mean_absolute_error_loss_gen2_9",
+        "train_score": 0.6,
+        "train_reeval_score": 0.495,
+        "winners_curse": 0.10499999999999998
+      },
+      {
+        "generation": 13,
+        "eval_idx": 268,
+        "bundle": "mutate_distributive_bridge_factor_unit_v9_gen13_2 | age_regularized_survival | pareto_niche_tournament_selection_gen3_5 | mean_absolute_error_loss_gen2_9",
+        "train_score": 0.6,
+        "train_reeval_score": 0.46,
+        "winners_curse": 0.13999999999999996
+      },
+      {
+        "generation": 14,
+        "eval_idx": 288,
+        "bundle": "mutate_distributive_bridge_init_8 | age_pareto_crowding_survival_gen9_1_gen13_8 | pareto_budget_niche_selection_gen6_7 | adaptive_mad_huber_loss_gen7_7",
+        "train_score": 0.575,
+        "train_reeval_score": 0.47,
+        "winners_curse": 0.10499999999999998
+      }
+    ]
+  },
+  {
     "method": "n3",
     "seed": 1,
     "job_id": "671964",
@@ -1589,28 +1840,28 @@
         "best_score": 0.65
       },
       {
+        "eval_idx": 390,
         "_step": 390,
         "generation": 12,
-        "eval_idx": 390,
         "best_score": 0.65
       },
       {
+        "eval_idx": 420,
         "_step": 420,
         "generation": 13,
-        "eval_idx": 420,
         "best_score": 0.65
       },
       {
+        "eval_idx": 450,
         "_step": 450,
         "generation": 14,
-        "eval_idx": 450,
         "best_score": 0.65
       },
       {
         "eval_idx": 480,
-        "best_score": 0.65,
         "_step": 480,
-        "generation": 15
+        "generation": 15,
+        "best_score": 0.65
       }
     ],
     "points": [
@@ -2027,100 +2278,100 @@
     },
     "generation_history": [
       {
-        "best_score": 0.4666666666666667,
-        "_step": 30,
         "generation": 0,
+        "_step": 30,
+        "best_score": 0.4666666666666667,
         "eval_idx": 30
       },
       {
-        "_step": 130,
         "generation": 1,
-        "eval_idx": 130,
-        "best_score": 0.4666666666666667
+        "_step": 130,
+        "best_score": 0.4666666666666667,
+        "eval_idx": 130
       },
       {
         "generation": 2,
-        "eval_idx": 202,
+        "_step": 202,
         "best_score": 0.5333333333333333,
-        "_step": 202
+        "eval_idx": 202
       },
       {
-        "_step": 267,
         "generation": 3,
-        "eval_idx": 267,
-        "best_score": 0.5666666666666667
-      },
-      {
-        "eval_idx": 319,
+        "_step": 267,
         "best_score": 0.5666666666666667,
+        "eval_idx": 267
+      },
+      {
+        "generation": 4,
         "_step": 319,
-        "generation": 4
+        "best_score": 0.5666666666666667,
+        "eval_idx": 319
       },
       {
-        "_step": 377,
         "generation": 5,
-        "eval_idx": 377,
-        "best_score": 0.5666666666666667
+        "_step": 377,
+        "best_score": 0.5666666666666667,
+        "eval_idx": 377
       },
       {
-        "_step": 428,
         "generation": 6,
-        "eval_idx": 428,
-        "best_score": 0.5833333333333333
+        "_step": 428,
+        "best_score": 0.5833333333333333,
+        "eval_idx": 428
       },
       {
-        "eval_idx": 500,
-        "best_score": 0.6,
+        "generation": 7,
         "_step": 500,
-        "generation": 7
+        "best_score": 0.6,
+        "eval_idx": 500
       },
       {
-        "_step": 551,
         "generation": 8,
-        "eval_idx": 551,
-        "best_score": 0.6333333333333333
+        "_step": 551,
+        "best_score": 0.6333333333333333,
+        "eval_idx": 551
       },
       {
         "generation": 9,
-        "eval_idx": 592,
+        "_step": 592,
         "best_score": 0.6166666666666666,
-        "_step": 592
+        "eval_idx": 592
       },
       {
-        "_step": 643,
         "generation": 10,
-        "eval_idx": 643,
-        "best_score": 0.6833333333333333
+        "_step": 643,
+        "best_score": 0.6833333333333333,
+        "eval_idx": 643
       },
       {
-        "_step": 694,
         "generation": 11,
-        "eval_idx": 694,
-        "best_score": 0.65
+        "_step": 694,
+        "best_score": 0.65,
+        "eval_idx": 694
       },
       {
         "generation": 12,
-        "eval_idx": 752,
+        "_step": 752,
         "best_score": 0.7,
-        "_step": 752
+        "eval_idx": 752
       },
       {
-        "eval_idx": 810,
-        "best_score": 0.675,
+        "generation": 13,
         "_step": 810,
-        "generation": 13
+        "best_score": 0.675,
+        "eval_idx": 810
       },
       {
-        "best_score": 0.675,
-        "_step": 847,
         "generation": 14,
+        "_step": 847,
+        "best_score": 0.675,
         "eval_idx": 847
       },
       {
-        "_step": 898,
         "generation": 15,
-        "eval_idx": 898,
-        "best_score": 0.7
+        "_step": 898,
+        "best_score": 0.7,
+        "eval_idx": 898
       }
     ],
     "points": [
@@ -2502,6 +2753,524 @@
         "train_score": 0.8833,
         "train_reeval_score": 0.83,
         "winners_curse": 0.053300000000000014
+      }
+    ]
+  },
+  {
+    "method": "n3-TTTS",
+    "seed": 2,
+    "job_id": "980599",
+    "wandb_id": "skg0nsbf",
+    "sources": [
+      {
+        "job_id": "980599",
+        "wandb_id": "skg0nsbf"
+      }
+    ],
+    "status": "COMPLETED",
+    "failure": null,
+    "last_completed_generation": 15,
+    "config": {
+      "seed": 2,
+      "n_runs": 3,
+      "reeval": "TTTS",
+      "n_reevals": 0,
+      "reeval_budget": 30,
+      "population_type": "topk",
+      "population": 10,
+      "offspring": 10,
+      "generations": 15,
+      "timeout": 90,
+      "budget_mode": "time",
+      "val_n_runs": 10,
+      "population_reeval_runs": 3,
+      "continue_from": null
+    },
+    "generation_history": [
+      {
+        "best_score": 0.4666666666666667,
+        "_step": 30,
+        "generation": 0,
+        "eval_idx": 30
+      },
+      {
+        "best_score": 0.4666666666666667,
+        "_step": 90,
+        "generation": 1,
+        "eval_idx": 90
+      },
+      {
+        "_step": 150,
+        "generation": 2,
+        "eval_idx": 150,
+        "best_score": 0.5166666666666666
+      },
+      {
+        "best_score": 0.55,
+        "_step": 210,
+        "generation": 3,
+        "eval_idx": 210
+      },
+      {
+        "eval_idx": 270,
+        "best_score": 0.6333333333333333,
+        "_step": 270,
+        "generation": 4
+      },
+      {
+        "_step": 330,
+        "generation": 5,
+        "eval_idx": 330,
+        "best_score": 0.5833333333333333
+      },
+      {
+        "_step": 390,
+        "generation": 6,
+        "eval_idx": 390,
+        "best_score": 0.65
+      },
+      {
+        "eval_idx": 450,
+        "best_score": 0.659375,
+        "_step": 450,
+        "generation": 7
+      },
+      {
+        "generation": 8,
+        "eval_idx": 510,
+        "best_score": 0.6485294117647059,
+        "_step": 510
+      },
+      {
+        "_step": 567,
+        "generation": 9,
+        "eval_idx": 567,
+        "best_score": 0.6833333333333333
+      },
+      {
+        "_step": 627,
+        "generation": 10,
+        "eval_idx": 627,
+        "best_score": 0.6666666666666666
+      },
+      {
+        "_step": 687,
+        "generation": 11,
+        "eval_idx": 687,
+        "best_score": 0.7
+      },
+      {
+        "_step": 747,
+        "generation": 12,
+        "eval_idx": 747,
+        "best_score": 0.7333333333333333
+      },
+      {
+        "best_score": 0.6799999999999999,
+        "_step": 807,
+        "generation": 13,
+        "eval_idx": 807
+      },
+      {
+        "generation": 14,
+        "eval_idx": 867,
+        "best_score": 0.6833333333333333,
+        "_step": 867
+      },
+      {
+        "best_score": 0.7,
+        "_step": 927,
+        "generation": 15,
+        "eval_idx": 927
+      }
+    ],
+    "points": [
+      {
+        "generation": 0,
+        "eval_idx": 30,
+        "bundle": "mutate_distributive_bridge_init_8 | age_regularized_survival | tournament_selection | mse_loss",
+        "train_score": 0.4667,
+        "train_reeval_score": 0.4,
+        "winners_curse": 0.06669999999999998
+      },
+      {
+        "generation": 1,
+        "eval_idx": 90,
+        "bundle": "add_constant_offset | age_regularized_survival | tournament_selection | mse_loss",
+        "train_score": 0.4667,
+        "train_reeval_score": 0.375,
+        "winners_curse": 0.0917
+      },
+      {
+        "generation": 2,
+        "eval_idx": 150,
+        "bundle": "add_constant_offset_right_gen2_0 | age_regularized_survival | tournament_selection | mse_loss",
+        "train_score": 0.5167,
+        "train_reeval_score": 0.46,
+        "winners_curse": 0.05670000000000003
+      },
+      {
+        "generation": 3,
+        "eval_idx": 210,
+        "bundle": "add_constant_offset | age_regularized_survival | frontier_gap_relay_selection_gen1_1 | balanced_relative_mse_loss_gen3_2",
+        "train_score": 0.55,
+        "train_reeval_score": 0.57,
+        "winners_curse": -0.019999999999999907
+      },
+      {
+        "generation": 4,
+        "eval_idx": 270,
+        "bundle": "fit_global_constant_offset_gen4_9 | age_regularized_survival | frontier_gap_relay_selection_gen1_1 | balanced_relative_mse_loss_gen3_2",
+        "train_score": 0.6333,
+        "train_reeval_score": 0.515,
+        "winners_curse": 0.11829999999999996
+      },
+      {
+        "generation": 5,
+        "eval_idx": 330,
+        "bundle": "fit_global_constant_offset_gen4_9 | oldest_worst_tiebreak_survival_gen5_4 | frontier_gap_relay_selection_gen1_1 | balanced_relative_mse_loss_gen3_2",
+        "train_score": 0.5833,
+        "train_reeval_score": 0.53,
+        "winners_curse": 0.053300000000000014
+      },
+      {
+        "generation": 6,
+        "eval_idx": 390,
+        "bundle": "pade_rational_resummation_mutation_gen6_8 | age_regularized_survival | simplified_frontier_relay_selection_gen5_6 | balanced_relative_mse_loss_gen3_2",
+        "train_score": 0.65,
+        "train_reeval_score": 0.68,
+        "winners_curse": -0.030000000000000027
+      },
+      {
+        "generation": 7,
+        "eval_idx": 450,
+        "bundle": "pade_rational_resummation_mutation_gen6_8 | age_regularized_survival | simplified_frontier_relay_selection_gen5_6 | balanced_relative_mse_loss_gen3_2",
+        "train_score": 0.6594,
+        "train_reeval_score": 0.655,
+        "winners_curse": 0.0043999999999999595
+      },
+      {
+        "generation": 8,
+        "eval_idx": 510,
+        "bundle": "pade_rational_resummation_mutation_gen6_8 | age_regularized_survival | simplified_frontier_relay_selection_gen5_6 | balanced_relative_mse_loss_gen3_2",
+        "train_score": 0.6485,
+        "train_reeval_score": 0.635,
+        "winners_curse": 0.013499999999999956
+      },
+      {
+        "generation": 9,
+        "eval_idx": 567,
+        "bundle": "pade_rational_resummation_mutation_gen6_8 | age_regularized_survival | simplified_frontier_relay_selection_gen5_6 | tail_aware_shape_dual_scale_loss_gen9_4",
+        "train_score": 0.6833,
+        "train_reeval_score": 0.67,
+        "winners_curse": 0.013299999999999979
+      },
+      {
+        "generation": 10,
+        "eval_idx": 627,
+        "bundle": "transcendental_pade_resummation_mutation_gen10_6 | age_regularized_survival | simplified_frontier_relay_selection_gen5_6 | tail_aware_shape_dual_scale_loss_gen9_4",
+        "train_score": 0.6667,
+        "train_reeval_score": 0.7,
+        "winners_curse": -0.033299999999999996
+      },
+      {
+        "generation": 11,
+        "eval_idx": 687,
+        "bundle": "pade_rational_resummation_mutation_gen6_8 | age_regularized_survival | simplified_frontier_relay_selection_gen5_6 | shape_aware_dual_scale_loss_simplified_gen11_3",
+        "train_score": 0.7,
+        "train_reeval_score": 0.65,
+        "winners_curse": 0.04999999999999993
+      },
+      {
+        "generation": 12,
+        "eval_idx": 747,
+        "bundle": "pade_resummation_mutation_simple_gen12_7 | age_regularized_survival | simplified_frontier_relay_selection_gen5_6 | tail_aware_shape_dual_scale_loss_gen9_4",
+        "train_score": 0.7333,
+        "train_reeval_score": 0.67,
+        "winners_curse": 0.06329999999999991
+      },
+      {
+        "generation": 13,
+        "eval_idx": 807,
+        "bundle": "pade_resummation_mutation_simple_gen12_7 | age_regularized_survival | simplified_frontier_relay_selection_gen5_6 | tail_aware_shape_dual_scale_loss_gen9_4",
+        "train_score": 0.68,
+        "train_reeval_score": 0.675,
+        "winners_curse": 0.0050000000000000044
+      },
+      {
+        "generation": 14,
+        "eval_idx": 867,
+        "bundle": "adaptive_scale_matched_resummation_mutation_gen11_gen13_0 | age_regularized_survival | scale_robust_frontier_relay_selection_gen6_gen14_7 | tail_aware_shape_dual_scale_loss_gen9_4",
+        "train_score": 0.6833,
+        "train_reeval_score": 0.665,
+        "winners_curse": 0.018299999999999983
+      },
+      {
+        "generation": 15,
+        "eval_idx": 927,
+        "bundle": "guided_resummation_and_argument_mixing_mutation_gen15_0 | age_regularized_survival | scale_robust_frontier_relay_selection_gen6_gen14_7 | tail_aware_shape_dual_scale_loss_gen9_4",
+        "train_score": 0.7,
+        "train_reeval_score": 0.65,
+        "winners_curse": 0.04999999999999993
+      }
+    ]
+  },
+  {
+    "method": "n10",
+    "seed": 1,
+    "job_id": "64604",
+    "wandb_id": "sifnivw6",
+    "sources": [
+      {
+        "job_id": "64604",
+        "wandb_id": "sifnivw6"
+      }
+    ],
+    "status": "COMPLETED",
+    "failure": null,
+    "last_completed_generation": 15,
+    "config": {
+      "seed": 1,
+      "n_runs": 10,
+      "reeval": "none",
+      "n_reevals": 0,
+      "reeval_budget": 20,
+      "population_type": "topk",
+      "population": 10,
+      "offspring": 10,
+      "generations": 15,
+      "timeout": 90,
+      "budget_mode": "time",
+      "val_n_runs": 10,
+      "population_reeval_runs": 3,
+      "continue_from": null
+    },
+    "generation_history": [
+      {
+        "generation": 0,
+        "eval_idx": 100,
+        "best_score": 0.485,
+        "_step": 100
+      },
+      {
+        "eval_idx": 200,
+        "best_score": 0.485,
+        "_step": 200,
+        "generation": 1
+      },
+      {
+        "eval_idx": 300,
+        "best_score": 0.5250000000000001,
+        "_step": 300,
+        "generation": 2
+      },
+      {
+        "_step": 400,
+        "generation": 3,
+        "eval_idx": 400,
+        "best_score": 0.5250000000000001
+      },
+      {
+        "eval_idx": 500,
+        "best_score": 0.5250000000000001,
+        "_step": 500,
+        "generation": 4
+      },
+      {
+        "eval_idx": 600,
+        "best_score": 0.54,
+        "_step": 600,
+        "generation": 5
+      },
+      {
+        "eval_idx": 700,
+        "best_score": 0.54,
+        "_step": 700,
+        "generation": 6
+      },
+      {
+        "generation": 7,
+        "eval_idx": 800,
+        "best_score": 0.54,
+        "_step": 800
+      },
+      {
+        "_step": 900,
+        "generation": 8,
+        "eval_idx": 900,
+        "best_score": 0.6050000000000001
+      },
+      {
+        "best_score": 0.6050000000000001,
+        "_step": 1000,
+        "generation": 9,
+        "eval_idx": 1000
+      },
+      {
+        "_step": 1100,
+        "generation": 10,
+        "eval_idx": 1100,
+        "best_score": 0.6050000000000001
+      },
+      {
+        "_step": 1200,
+        "generation": 11,
+        "eval_idx": 1200,
+        "best_score": 0.6100000000000001
+      },
+      {
+        "_step": 1300,
+        "generation": 12,
+        "eval_idx": 1300,
+        "best_score": 0.635
+      },
+      {
+        "eval_idx": 1400,
+        "best_score": 0.635,
+        "_step": 1400,
+        "generation": 13
+      },
+      {
+        "_step": 1500,
+        "generation": 14,
+        "eval_idx": 1500,
+        "best_score": 0.635
+      },
+      {
+        "_step": 1600,
+        "generation": 15,
+        "eval_idx": 1600,
+        "best_score": 0.635
+      }
+    ],
+    "points": [
+      {
+        "generation": 0,
+        "eval_idx": 100,
+        "bundle": "add_constant_offset | age_regularized_survival | tournament_selection | affine_shape_guided_loss_init_5",
+        "train_score": 0.485,
+        "train_reeval_score": 0.465,
+        "winners_curse": 0.019999999999999962
+      },
+      {
+        "generation": 1,
+        "eval_idx": 200,
+        "bundle": "add_constant_offset | age_regularized_survival | tournament_selection | affine_shape_guided_loss_init_5",
+        "train_score": 0.485,
+        "train_reeval_score": 0.5,
+        "winners_curse": -0.015000000000000013
+      },
+      {
+        "generation": 2,
+        "eval_idx": 300,
+        "bundle": "wrap_subtree_with_constant_offset_gen1_1 | two_oldest_loss_survival_gen2_7 | tournament_selection | affine_shape_guided_loss_init_5",
+        "train_score": 0.525,
+        "train_reeval_score": 0.525,
+        "winners_curse": 0.0
+      },
+      {
+        "generation": 3,
+        "eval_idx": 400,
+        "bundle": "wrap_subtree_with_constant_offset_gen1_1 | two_oldest_loss_survival_gen2_7 | tournament_selection | affine_shape_guided_loss_init_5",
+        "train_score": 0.525,
+        "train_reeval_score": 0.415,
+        "winners_curse": 0.11000000000000004
+      },
+      {
+        "generation": 4,
+        "eval_idx": 500,
+        "bundle": "wrap_subtree_with_constant_offset_gen1_1 | two_oldest_loss_survival_gen2_7 | tournament_selection | affine_shape_guided_loss_init_5",
+        "train_score": 0.525,
+        "train_reeval_score": 0.51,
+        "winners_curse": 0.015000000000000013
+      },
+      {
+        "generation": 5,
+        "eval_idx": 600,
+        "bundle": "wrap_subtree_with_constant_offset_gen2_9 | age_regularized_survival | frontier_breakthrough_selection_gen5_2 | correlation_guided_pseudo_huber_loss_init_6",
+        "train_score": 0.54,
+        "train_reeval_score": 0.54,
+        "winners_curse": 0.0
+      },
+      {
+        "generation": 6,
+        "eval_idx": 700,
+        "bundle": "wrap_subtree_with_constant_offset_gen2_9 | age_regularized_survival | frontier_breakthrough_selection_gen5_2 | correlation_guided_pseudo_huber_loss_init_6",
+        "train_score": 0.54,
+        "train_reeval_score": 0.51,
+        "winners_curse": 0.030000000000000027
+      },
+      {
+        "generation": 7,
+        "eval_idx": 800,
+        "bundle": "wrap_subtree_with_constant_offset_gen2_9 | age_regularized_survival | frontier_breakthrough_selection_gen5_2 | correlation_guided_pseudo_huber_loss_init_6",
+        "train_score": 0.54,
+        "train_reeval_score": 0.495,
+        "winners_curse": 0.04500000000000004
+      },
+      {
+        "generation": 8,
+        "eval_idx": 900,
+        "bundle": "wrap_subtree_with_constant_offset_gen1_1 | two_oldest_loss_survival_gen2_7 | tournament_selection | affine_profiled_bounded_pseudo_huber_loss_gen8_3",
+        "train_score": 0.605,
+        "train_reeval_score": 0.555,
+        "winners_curse": 0.04999999999999993
+      },
+      {
+        "generation": 9,
+        "eval_idx": 1000,
+        "bundle": "wrap_subtree_with_constant_offset_gen1_1 | two_oldest_loss_survival_gen2_7 | tournament_selection | affine_profiled_bounded_pseudo_huber_loss_gen8_3",
+        "train_score": 0.605,
+        "train_reeval_score": 0.53,
+        "winners_curse": 0.07499999999999996
+      },
+      {
+        "generation": 10,
+        "eval_idx": 1100,
+        "bundle": "wrap_subtree_with_constant_offset_gen1_1 | two_oldest_loss_survival_gen2_7 | tournament_selection | affine_profiled_bounded_pseudo_huber_loss_gen8_3",
+        "train_score": 0.605,
+        "train_reeval_score": 0.545,
+        "winners_curse": 0.05999999999999994
+      },
+      {
+        "generation": 11,
+        "eval_idx": 1200,
+        "bundle": "algebraic_motif_mutation_gen9_8 | age_regularized_survival | frontier_breakthrough_selection_gen5_2 | robust_affine_shape_huber_loss_gen11_5",
+        "train_score": 0.61,
+        "train_reeval_score": 0.605,
+        "winners_curse": 0.0050000000000000044
+      },
+      {
+        "generation": 12,
+        "eval_idx": 1300,
+        "bundle": "algebraic_factor_motif_mutation_gen10_3 | age_regularized_survival | frontier_breakthrough_selection_lite_gen12_0 | correlation_guided_pseudo_huber_loss_init_6",
+        "train_score": 0.635,
+        "train_reeval_score": 0.61,
+        "winners_curse": 0.025000000000000022
+      },
+      {
+        "generation": 13,
+        "eval_idx": 1400,
+        "bundle": "algebraic_factor_motif_mutation_gen10_3 | age_regularized_survival | frontier_breakthrough_selection_lite_gen12_0 | correlation_guided_pseudo_huber_loss_init_6",
+        "train_score": 0.635,
+        "train_reeval_score": 0.575,
+        "winners_curse": 0.06000000000000005
+      },
+      {
+        "generation": 14,
+        "eval_idx": 1500,
+        "bundle": "algebraic_factor_motif_mutation_gen10_3 | age_regularized_survival | frontier_breakthrough_selection_lite_gen12_0 | correlation_guided_pseudo_huber_loss_init_6",
+        "train_score": 0.635,
+        "train_reeval_score": 0.615,
+        "winners_curse": 0.020000000000000018
+      },
+      {
+        "generation": 15,
+        "eval_idx": 1600,
+        "bundle": "algebraic_factor_motif_mutation_gen10_3 | age_regularized_survival | frontier_breakthrough_selection_lite_gen12_0 | correlation_guided_pseudo_huber_loss_init_6",
+        "train_score": 0.635,
+        "train_reeval_score": 0.545,
+        "winners_curse": 0.08999999999999997
       }
     ]
   }
