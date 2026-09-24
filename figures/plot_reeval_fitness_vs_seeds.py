@@ -35,8 +35,8 @@ POL = {
 OFF = {  # per-point annotation offsets (points)
     "n1": (7, 4), "n3": (7, -12), "n10": (-6, -16),
     "n1->n3": (-7, 5), "n2->n6": (-7, -12), "n3->n10": (-7, 5),
-    "TTTS n1 B=20": (-6, 6), "TTTS n1 B=60": (7, 1),
-    "TTTS n3 B=20": (6, -13), "TTTS n3 B=60": (7, 2),
+    "TTTS n1 B=20": (-6, 6), "TTTS n1 B=60": (5, -12),
+    "TTTS n3 B=20": (8, -5), "TTTS n3 B=60": (7, 2),
 }
 
 CHAINS = [  # (members, category, legend text)
