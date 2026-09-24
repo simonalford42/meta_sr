@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 
 # 9/24/26
+# Submitted: n3-reeval=203388, n3-TTTS=203389, n3=203390, n1=203391, n1-reeval=203392; existing n1-TTTS=192859.
+# recovery_flags=(
+#     --operator-type all --population-type topk --population 10 --offspring 10 --seed 3
+#     --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270 --population-reeval-runs 3
+# )
+
+# n3_reeval_resume=$(sbatch --parsable --job-name=n3-reeval-s3-resume run.sh evolve_pysr.py "${recovery_flags[@]}" --generations 14 --n-runs 3 --reeval population --n-reevals 10 --continue-from runs/192863 --continue-eval-idx 130) || exit 1
+# n3_ttts_resume=$(sbatch --parsable --job-name=n3-ttts-s3-resume run.sh evolve_pysr.py "${recovery_flags[@]}" --generations 14 --n-runs 3 --reeval TTTS --reeval-budget 30 --continue-from runs/192864 --continue-eval-idx 90) || exit 1
+# n3_resume=$(sbatch --parsable --dependency=afterany:192865 --job-name=n3-s3-resume run.sh evolve_pysr.py "${recovery_flags[@]}" --generations 14 --n-runs 3 --reeval none --continue-from runs/192862 --continue-eval-idx 60) || exit 1
+# n1_dependency="afterany:$n3_reeval_resume:$n3_ttts_resume:$n3_resume"
+# n1_resume=$(sbatch --parsable --dependency="$n1_dependency" --job-name=n1-s3-resume run.sh evolve_pysr.py "${recovery_flags[@]}" --generations 2 --n-runs 1 --reeval none --continue-from runs/64606 --continue-eval-idx 138) || exit 1
+# n1_reeval_resume=$(sbatch --parsable --dependency="$n1_dependency" --job-name=n1-reeval-s3-resume run.sh evolve_pysr.py "${recovery_flags[@]}" --generations 12 --n-runs 1 --reeval population --n-reevals 3 --continue-from runs/64607 --continue-eval-idx 76) || exit 1
+# scontrol update JobId=192859 Dependency="$n1_dependency" || exit 1
+# scontrol release 192859 || exit 1
+# printf '%s\n' "n3-reeval-s3-resume=$n3_reeval_resume" "n3-ttts-s3-resume=$n3_ttts_resume" "n3-s3-resume=$n3_resume" "n1-s3-resume=$n1_resume" "n1-reeval-s3-resume=$n1_reeval_resume" "n1-ttts-s3=192859 ($n1_dependency)"
+
 ablation_flags=(
     --operator-type all --population-type topk --generations 15 --population 10 --offspring 10
     --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270 --population-reeval-runs 3
