@@ -5,7 +5,9 @@ from plot_150815_simplification_trajectory import (
     ROOT, draw, draw_population_context, load_ranked, phase_brace,
 )
 import matplotlib.pyplot as plt
+from matplotlib.collections import PathCollection
 from matplotlib.colors import Normalize
+from matplotlib.text import Text
 
 
 PANELS = [
@@ -24,15 +26,15 @@ def render_panel(fig, spec, origin=0, width=1):
     points = [population[0] for population in populations.values()]
     first, last = min(populations), max(populations)
     norm = Normalize(first, last)
-    ax = fig.add_axes([origin + width * 0.12, 0.29, width * 0.84, 0.58])
+    ax = fig.add_axes([origin + width * 0.13, 0.29, width * 0.85, 0.58])
     scatter = draw(ax, points, norm, 10, best_stars=True,
                    score_label=spec["score_label"], label_offsets=spec["offsets"])
     ax.set_xlim(0, ax.get_xlim()[1])
     ax.set_ylim(*spec["ylim"])
     draw_population_context(ax, populations, norm)
-    fig.text(origin + width * 0.54, 0.98, spec["title"],
+    fig.text(origin + width * 0.555, 0.98, spec["title"],
              ha="center", va="top", fontsize=12)
-    bar_left, bar_width = origin + width * 0.204, width * 0.672
+    bar_left, bar_width = origin + width * 0.219, width * 0.672
     cax = fig.add_axes([bar_left, 0.14, bar_width, 0.023])
     colorbar = fig.colorbar(scatter, cax=cax, orientation="horizontal",
                            ticks=sorted({first, last, *range(10, last + 1, 10)}))
@@ -46,8 +48,13 @@ def render_panel(fig, spec, origin=0, width=1):
 
 
 def save(fig, stem):
-    for extension in ("pdf", "png", "svg"):
-        fig.savefig(stem.with_suffix(f".{extension}"), dpi=200, facecolor="white")
+    # Enlarge labels and markers without enlarging the page they appear on.
+    fig.canvas.draw()
+    for text in fig.findobj(Text):
+        text.set_fontsize(text.get_fontsize() * 1.2)
+    for collection in fig.findobj(PathCollection):
+        collection.set_sizes(collection.get_sizes() * 1.2**2)
+    fig.savefig(stem.with_suffix(".pdf"), facecolor="white")
     plt.close(fig)
 
 
