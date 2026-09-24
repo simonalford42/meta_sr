@@ -161,6 +161,7 @@ def plot():
     plt.close(fig)
     plot_combined(records)
     plot_initial_seeds(records)
+    plot_reevaluation_vs_more_seeds(records)
     write_readme(records)
 
 
@@ -223,6 +224,41 @@ def plot_initial_seeds(records):
     plt.close(fig)
 
 
+def plot_reevaluation_vs_more_seeds(records):
+    import matplotlib.pyplot as plt
+
+    groups = [(['n1-TTTS', 'n1-reeval', 'n1', 'n3'], 'n1 methods vs n3'),
+              (['n3-TTTS', 'n3-reeval', 'n3', 'n10'], 'n3 methods vs n10')]
+    colors = {'n1': '#0072B2', 'n1-reeval': '#D55E00', 'n1-TTTS': '#009E73',
+              'n3': '#CC79A7', 'n3-reeval': '#E69F00', 'n3-TTTS': '#555555',
+              'n10': '#000000'}
+    fig, axes = plt.subplots(2, 2, figsize=(13, 9), sharey=True)
+    for row, (methods, title) in enumerate(groups):
+        for col, xkey in enumerate(['generation', 'eval_idx']):
+            ax = axes[row, col]
+            for method in methods:
+                draw_mean(ax, records, method, xkey, 'train_reeval_score', colors[method])
+            ax.set_title(f'{title} · ' + ('generation' if col == 0 else 'evaluations'))
+            ax.set_ylabel('Reevaluated train score')
+            ax.set_xlabel('Generation' if col == 0 else 'Cumulative evolution evaluations (seed-runs)')
+            ax.set_ylim(.30, .90)
+            if col == 0:
+                ax.set_xlim(-.35, 15.35)
+                ax.set_xticks(range(0, 16, 3))
+            else:
+                xmax = max(aggregate(records, method, xkey, 'train_reeval_score')[0][-1]
+                           for method in methods)
+                ax.set_xlim(0, xmax * 1.04)
+            ax.grid(alpha=.2)
+            ax.legend(ncol=2, fontsize=9, frameon=False, loc='upper left')
+    fig.suptitle('Selection reevaluation vs more initial seeds', fontsize=16, y=.98)
+    fig.text(.5, .935, 'Mean reevaluated train score ±1 standard deviation', ha='center', fontsize=10)
+    fig.text(.06, .025, MEAN_NOTE + '\nDiagnostics use 10 fresh training seeds. Evolution evaluation counts exclude diagnostics.', fontsize=9)
+    fig.tight_layout(rect=(0, .085, 1, .91), h_pad=2.2, w_pad=2)
+    fig.savefig(OUT / 'reevaluation_vs_more_seeds.pdf')
+    plt.close(fig)
+
+
 def write_readme(records):
     from datetime import datetime, timezone
     text = f"""# 90-second PySR reevaluation ablations
@@ -249,6 +285,11 @@ records the plotted means, SDs and seed counts for both metrics and x-axes.
 `n1_n3_n10_train_reevaluation.pdf` compares n1, n3 and n10 without selection
 reevaluation: reevaluated train score versus generation on the left and cumulative
 evolution evaluations on the right, using the same completed seeds.
+
+`reevaluation_vs_more_seeds.pdf` is the fourth figure: the top row compares
+n1-TTTS, n1-reeval, n1 and n3; the bottom row compares n3-TTTS, n3-reeval,
+n3 and n10. All panels show reevaluated train score, with generation on the left
+and cumulative evolution evaluations on the right, using the same mean/SD convention.
 
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
 `[train reeval]` records in local run.log files (four-decimal logging precision).
