@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import plot_90s_reevaluation_ablations as abl  # noqa: E402
-from plot_reeval_frontier import draw_frontier, SCRATCH, BLUES, ORANGES, REDS  # noqa: E402
+from plot_reeval_frontier import draw_frontier, SCRATCH, BLUES, ORANGES, REDS, LINE_ALPHA  # noqa: E402
 
 SCALE = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
 records = json.loads((abl.OUT / "data.json").read_text())
@@ -38,6 +38,7 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
         for method, color in colors.items():
             abl.draw_mean(ax, records, method, xkey, 'train_reeval_score', color)
             ax.lines[-1].set_label(labels[method])
+            ax.lines[-1].set_alpha(LINE_ALPHA)
         ax.set_ylim(.30, .90)
         ax.grid(alpha=.2)
         for sp in ("top", "right"):

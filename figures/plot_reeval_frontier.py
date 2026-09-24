@@ -25,6 +25,7 @@ BLUE = BLUES[10]
 ORANGES = {1: "#ffc16b", 3: "#ff8c00"}    # promote / uniform reeval, by N_init
 REDS = {1: "#f4a3a3", 3: "#e03c3c"}     # TTTS, by N_init
 MARK = {"fixed": "o", "promote": "s", "ttts": "^"}
+LINE_ALPHA = 0.8   # lines/markers slightly translucent so overlaps don't occlude
 
 
 def load():
@@ -45,12 +46,12 @@ def draw_frontier(ax, D=None, legend_fontsize=9, legend_loc="lower right"):
     ax.text(0.45, oracle["metric"] + 0.0006, r"oracle ($N_{\mathrm{init}}=10$)", ha="left", va="bottom",
             fontsize=legend_fontsize + 2, color="#222", transform=ax.get_yaxis_transform())
     x, y = series("fixed")
-    ax.plot(x, y, color=BLUE, marker=MARK["fixed"], ms=5, lw=1.6)
+    ax.plot(x, y, color=BLUE, marker=MARK["fixed"], ms=5, lw=1.6, alpha=LINE_ALPHA)
     for n in SHOW_NINIT:
         x, y = series(f"promote n{n}")
-        ax.plot(x, y, color=ORANGES[n], marker=MARK["promote"], ms=4.5, lw=1.4)
+        ax.plot(x, y, color=ORANGES[n], marker=MARK["promote"], ms=4.5, lw=1.4, alpha=LINE_ALPHA)
         x, y = series(f"ttts n{n}")
-        ax.plot(x, y, color=REDS[n], marker=MARK["ttts"], ms=5, lw=1.4)
+        ax.plot(x, y, color=REDS[n], marker=MARK["ttts"], ms=5, lw=1.4, alpha=LINE_ALPHA)
 
     handles = [Line2D([], [], color=BLUE, marker="o", ms=5, lw=1.6,
                       label=r"$N_{\mathrm{init}} \in \{1,\dots,10\}$")]
