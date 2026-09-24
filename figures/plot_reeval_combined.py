@@ -39,7 +39,7 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
             abl.draw_mean(ax, records, method, xkey, 'train_reeval_score', color)
             ax.lines[-1].set_label(labels[method])
             ax.lines[-1].set_alpha(LINE_ALPHA)
-        ax.set_ylim(0, 1)
+        ax.set_ylim(.30, .90)
         ax.grid(alpha=.2)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
