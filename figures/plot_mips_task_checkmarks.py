@@ -57,7 +57,7 @@ def main():
     totals = [len(s) for s in solved]
     assert totals == [7, 9, 11], f'Historical comparison changed: {totals}'
 
-    plt.rcParams.update({'font.family': 'DejaVu Serif', 'font.size': 11,
+    plt.rcParams.update({'font.family': 'DejaVu Serif', 'font.size': 11.5,
                          'pdf.fonttype': 42})
     fig, ax = plt.subplots(figsize=(4.3, 4.15))
     fig.subplots_adjust(left=.025, right=.98, bottom=.02, top=.98)
@@ -82,14 +82,14 @@ def main():
             if task in successes:
                 # Draw a checkmark as vectors, independent of symbol font support.
                 ax.plot([x], [y], linestyle='none', marker=checkmark,
-                        markersize=12, markerfacecolor='none',
+                        markersize=13, markerfacecolor='none',
                         markeredgecolor=color, markeredgewidth=1.65)
             else:
                 ax.text(x, y, '–', ha='center', va='center', color=gray)
     ax.plot([.08, 4.27], [.13, .13], color=ink, lw=.9)
     ax.text(.12, -.43, 'Solved / 14', fontweight='bold', color=ink, va='center')
     for x, total, color in zip(xs, totals, colors):
-        ax.text(x, -.43, str(total), ha='center', va='center', fontweight='bold', color=color, fontsize=12)
+        ax.text(x, -.43, str(total), ha='center', va='center', fontweight='bold', color=color, fontsize=12.5)
     output = args.output
     fig.savefig(output, metadata={'Title': 'MIPS task recovery',
         'Subject': 'Base PySR vs SRBench-evolved 709715 vs MIPS-evolved 709714; pooled ten-seed exact transition-table recovery'})
