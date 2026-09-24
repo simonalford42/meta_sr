@@ -17,6 +17,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+from matplotlib.path import Path as MarkerPath
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -60,6 +61,8 @@ def main():
     ax.axis('off')
     ink, gray = '#24333D', '#89949C'
     colors = ['#317DA5', '#BB7A20', '#22826A']
+    # Marker coordinates preserve a 90-degree bend regardless of axis scaling.
+    checkmark = MarkerPath([(-.60, .10), (-.15, -.35), (.75, .55)])
     xs = [2.50, 3.27, 4.07]
     ax.text(.12, 15.05, 'Task', fontweight='bold', color=ink, va='center')
     for x, label, color in zip(xs, ['Base', 'Evolved', 'MIPS-\nevolved'], colors):
@@ -73,8 +76,9 @@ def main():
         for x, successes, color in zip(xs, solved, colors):
             if task in successes:
                 # Draw a checkmark as vectors, independent of symbol font support.
-                ax.plot([x-.09, x-.025, x+.11], [y, y-.12, y+.17],
-                        lw=1.65, color=color, solid_capstyle='round', solid_joinstyle='round')
+                ax.plot([x], [y], linestyle='none', marker=checkmark,
+                        markersize=11, markerfacecolor='none',
+                        markeredgecolor=color, markeredgewidth=1.65)
             else:
                 ax.text(x, y, '–', ha='center', va='center', color=gray)
     ax.plot([.08, 4.47], [.13, .13], color=ink, lw=.9)
