@@ -8,6 +8,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 REPO = Path(__file__).resolve().parents[1]
+SCRATCH = Path("/tmp/claude-1603675/-home-sca63-meta-sr/23a64b6d-2223-4f23-baa1-bb18405fdba8/scratchpad")
+SCRATCH.mkdir(parents=True, exist_ok=True)
 data = json.load(open(REPO / "plots/oracle_replay/oracle_replay_table.json"))
 
 # category -> (color, marker)
@@ -31,13 +33,24 @@ POL = {
     "TTTS n3 B=60": ("ttts3", r"TTTS $N_{init}=3,\ B=60$", r"$B{=}60$"),
 }
 OFF = {  # per-point annotation offsets (points)
-    "n1": (7, 4), "n3": (7, -12), "n10": (-8, -12),
+    "n1": (7, 4), "n3": (7, -12), "n10": (-6, -16),
     "n1->n3": (-8, 6), "n2->n6": (-8, -12), "n3->n10": (-8, 6),
     "TTTS n1 B=20": (-6, 6), "TTTS n1 B=60": (-6, 6),
-    "TTTS n3 B=20": (6, -12), "TTTS n3 B=60": (6, -12),
+    "TTTS n3 B=20": (6, -13), "TTTS n3 B=60": (7, 2),
 }
 
-fig, ax = plt.subplots(figsize=(8, 5.5))
+CHAINS = [
+    (["n1", "n3", "n10"], "fixed"),
+    (["n1->n3", "n2->n6", "n3->n10"], "promote"),
+    (["TTTS n1 B=20", "TTTS n1 B=60"], "ttts1"),
+    (["TTTS n3 B=20", "TTTS n3 B=60"], "ttts3"),
+]
+
+plt.rcParams.update({"font.size": 11})
+fig, ax = plt.subplots(figsize=(6, 4.5))
+for chain, cat in CHAINS:
+    ax.plot([data[c]["seeds"] for c in chain], [data[c]["metric"] for c in chain],
+            color=CATS[cat][0], lw=1.4, alpha=0.55, zorder=1)
 for label, (cat, legend, short) in POL.items():
     d = data[label]
     color, marker = CATS[cat]
@@ -45,7 +58,7 @@ for label, (cat, legend, short) in POL.items():
                edgecolor="white", linewidth=0.8, label=legend)
     off = OFF[label]
     ax.annotate(short, (d["seeds"], d["metric"]), textcoords="offset points",
-                xytext=off, fontsize=8.5, color="#333",
+                xytext=off, fontsize=9, color="#333",
                 ha="right" if off[0] < 0 else "left")
 
 ax.set_xscale("log")
@@ -56,8 +69,10 @@ ax.set_ylabel("Expected true parent fitness")
 ax.grid(alpha=0.25)
 for sp in ("top", "right"):
     ax.spines[sp].set_visible(False)
-ax.legend(fontsize=8.5, loc="lower right", frameon=False)
+ax.legend(fontsize=9, loc="lower right", frameon=False, ncol=2, columnspacing=1.0,
+          handletextpad=0.4)
 fig.tight_layout()
 out = REPO / "figures/reeval_fitness_vs_seeds.pdf"
-fig.savefig(out); fig.savefig(out.with_suffix(".png"), dpi=150)
+fig.savefig(out)
+fig.savefig(SCRATCH / "reeval_fitness_vs_seeds.png", dpi=150)  # preview only
 print(f"saved {out}")
