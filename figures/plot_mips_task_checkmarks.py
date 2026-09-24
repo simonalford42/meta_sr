@@ -9,6 +9,7 @@ Recovery pools components across seeds. Original successes are excluded.
 so its column is labeled MIPS-evolved. Row order follows the discussion's
 approximate difficulty order; the last three tasks are unordered failures.
 """
+import argparse
 import json
 from pathlib import Path
 import sys
@@ -16,7 +17,6 @@ import sys
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 from matplotlib.path import Path as MarkerPath
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +42,11 @@ TASKS = [
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--style', choices=['plain', 'ruled'], default='plain')
+    parser.add_argument('--output', type=Path,
+                        default=ROOT / 'figures/mips_task_checkmarks.pdf')
+    args = parser.parse_args()
     reproduction = json.loads((ROOT / 'outputs/mips_reproduction_all/summary.json').read_text())
     original = {r['task'] for r in reproduction['tasks'] if r['independent_success']}
     methods = [inspect(ROOT / p, excluded_tasks=original) for p in DEFAULTS.values()]
@@ -70,8 +75,8 @@ def main():
     ax.plot([.08, 4.47], [14.38, 14.38], color=ink, lw=.9)
     for i, (task, label) in enumerate(TASKS):
         y = 13.75 - i
-        if i % 2 == 0:
-            ax.add_patch(Rectangle((.08, y-.48), 4.39, .96, facecolor='#F3F5F6', edgecolor='none'))
+        if args.style == 'ruled' and i < len(TASKS) - 1:
+            ax.plot([.08, 4.47], [y-.5, y-.5], color='#D7DCE0', lw=.4, zorder=0)
         ax.text(.12, y, label, color=ink, va='center')
         for x, successes, color in zip(xs, solved, colors):
             if task in successes:
@@ -85,7 +90,7 @@ def main():
     ax.text(.12, -.43, 'Solved / 14', fontweight='bold', color=ink, va='center')
     for x, total, color in zip(xs, totals, colors):
         ax.text(x, -.43, str(total), ha='center', va='center', fontweight='bold', color=color, fontsize=11)
-    output = ROOT / 'figures/mips_task_checkmarks.pdf'
+    output = args.output
     fig.savefig(output, metadata={'Title': 'MIPS task recovery',
         'Subject': 'Base PySR vs SRBench-evolved 709715 vs MIPS-evolved 709714; pooled ten-seed exact transition-table recovery'})
     plt.close(fig)

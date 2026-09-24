@@ -7,6 +7,7 @@ Regenerate inputs as needed:
 Then run:
     python figures/combine_neuron_mips.py
 """
+import argparse
 from pathlib import Path
 
 import pymupdf
@@ -16,8 +17,11 @@ FIGURES = Path(__file__).resolve().parent
 
 
 def main():
-    paths = [FIGURES / 'neuronbench_uninformative_all_fits.pdf',
-             FIGURES / 'mips_task_checkmarks.pdf']
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--mips', type=Path, default=FIGURES / 'mips_task_checkmarks.pdf')
+    parser.add_argument('--output', type=Path, default=FIGURES / 'neuron_mips_combined.pdf')
+    args = parser.parse_args()
+    paths = [FIGURES / 'neuronbench_uninformative_all_fits.pdf', args.mips]
     with pymupdf.open(paths[0]) as neuron, pymupdf.open(paths[1]) as mips:
         assert len(neuron) == len(mips) == 1, 'Expected single-page figures'
         height = neuron[0].rect.height
@@ -40,7 +44,7 @@ def main():
                                  fontname='PanelTitle', fontsize=14)
             output.set_metadata({'title': 'NeuronBench and MIPS',
                                  'subject': 'NeuronBench left; MIPS right'})
-            target = FIGURES / 'neuron_mips_combined.pdf'
+            target = args.output
             output.save(target, garbage=4, deflate=True)
     print(target)
 
