@@ -1,13 +1,17 @@
 # 90-second PySR reevaluation ablations
 
-Updated 2026-09-24T14:35:38.074860+00:00. Includes 13 completed method/seed combinations.
+Updated 2026-09-24T15:10:13.736300+00:00. Includes 13 completed method/seed combinations.
 
-`train_reevaluation_six_panels.pdf` compares n1 and n3 with population reevaluation,
-TTTS, and the n10 no-reevaluation reference in every panel. It shows reevaluated
+`train_reevaluation_six_panels.pdf` compares n1 and n3 with population reevaluation
+and TTTS, without n10. It shows reevaluated
 train score versus generation and cumulative evolution evaluations, plus winner's
 curse versus generation. `all_methods_eval_axis.pdf` compares all seven methods
 on both axes. Solid = seed 1; dashed = seed 2; dotted = seed 3 when complete.
 Each seed is a separate curve, not a seed average. Only completed runs are included.
+
+`n1_n3_n10_train_reevaluation.pdf` compares n1, n3 and n10 without selection
+reevaluation: reevaluated train score versus generation on the left and cumulative
+evolution evaluations on the right, using the same completed seeds.
 
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
 `[train reeval]` records in local run.log files (four-decimal logging precision).

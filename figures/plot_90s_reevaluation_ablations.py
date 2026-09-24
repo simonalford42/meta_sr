@@ -101,7 +101,7 @@ def plot():
                 writer.writerow({**{k:r[k] for k in ['method','seed','job_id','status']}, **p})
     plt.rcParams.update({'font.size':10, 'axes.spines.top':False, 'axes.spines.right':False, 'pdf.fonttype':42})
     fig, axes = plt.subplots(3, 2, figsize=(13, 12))
-    colors = ['#0072B2','#D55E00','#009E73', '#000000']
+    colors = ['#0072B2','#D55E00','#009E73']
     for row, group in enumerate(['n1','n3']):
         for col, xkey in enumerate(['generation','eval_idx']):
             draw(axes[row,col], records, group, xkey, 'train_reeval_score', colors)
@@ -122,6 +122,7 @@ def plot():
     fig.savefig(OUT / 'train_reevaluation_six_panels.pdf')
     plt.close(fig)
     plot_combined(records)
+    plot_initial_seeds(records)
     write_readme(records)
 
 
@@ -168,18 +169,59 @@ def plot_combined(records):
     plt.close(fig)
 
 
+def plot_initial_seeds(records):
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    methods = {'n1': '#0072B2', 'n3': '#CC79A7', 'n10': '#000000'}
+    selected = [r for r in records if r['method'] in methods]
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5), sharey=True)
+    for ax, xkey in zip(axes, ['generation', 'eval_idx']):
+        labeled = set()
+        for r in selected:
+            points = r['points']
+            ax.plot([p[xkey] for p in points], [p['train_reeval_score'] for p in points],
+                    color=methods[r['method']], ls=SEED_STYLES[r['seed']],
+                    marker='o', ms=3, lw=1.6, alpha=1 if r['seed'] == 1 else .75,
+                    label=r['method'] if r['method'] not in labeled else None)
+            labeled.add(r['method'])
+        ax.set_title('Reevaluated train score vs ' + ('generation' if xkey == 'generation' else 'evaluations'))
+        ax.set_xlabel('Generation' if xkey == 'generation' else 'Cumulative evolution evaluations (seed-runs)')
+        ax.set_ylabel('Reevaluated train score')
+        ax.set_ylim(.30, .90)
+        if xkey == 'generation':
+            ax.set_xlim(-.35, 15.35)
+            ax.set_xticks(range(0, 16, 3))
+        else:
+            ax.set_xlim(0, max(p['eval_idx'] for r in selected for p in r['points']) * 1.04)
+        ax.grid(alpha=.2)
+        ax.legend(ncol=3, frameon=False, loc='upper left')
+    fig.suptitle('n1 vs n3 vs n10 · no selection reevaluation', fontsize=16, y=.98)
+    handles = [Line2D([], [], color='0.25', ls=SEED_STYLES[seed], label=f'Seed {seed}')
+               for seed in sorted({r['seed'] for r in selected})]
+    fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(.5, .92), ncol=3, frameon=False)
+    fig.text(.06, .025, 'Best candidate reevaluated on training tasks with 10 fresh seeds. Completed seeds shown separately; missing diagnostics are not filled.\nEvaluations = cumulative evolution seed-runs, excluding diagnostics. One seed-run covers the training task set.', fontsize=9)
+    fig.tight_layout(rect=(0, .105, 1, .85))
+    fig.savefig(OUT / 'n1_n3_n10_train_reevaluation.pdf')
+    plt.close(fig)
+
+
 def write_readme(records):
     from datetime import datetime, timezone
     text = f"""# 90-second PySR reevaluation ablations
 
 Updated {datetime.now(timezone.utc).isoformat()}. Includes {len(records)} completed method/seed combinations.
 
-`train_reevaluation_six_panels.pdf` compares n1 and n3 with population reevaluation,
-TTTS, and the n10 no-reevaluation reference in every panel. It shows reevaluated
+`train_reevaluation_six_panels.pdf` compares n1 and n3 with population reevaluation
+and TTTS, without n10. It shows reevaluated
 train score versus generation and cumulative evolution evaluations, plus winner's
 curse versus generation. `all_methods_eval_axis.pdf` compares all seven methods
 on both axes. Solid = seed 1; dashed = seed 2; dotted = seed 3 when complete.
 Each seed is a separate curve, not a seed average. Only completed runs are included.
+
+`n1_n3_n10_train_reevaluation.pdf` compares n1, n3 and n10 without selection
+reevaluation: reevaluated train score versus generation on the left and cumulative
+evolution evaluations on the right, using the same completed seeds.
 
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
 `[train reeval]` records in local run.log files (four-decimal logging precision).
@@ -222,7 +264,7 @@ observations. Outputs are PDF only.
 
 
 def draw(ax, records, group, xkey, ykey, colors):
-    methods = [group,group+'-reeval',group+'-TTTS','n10']
+    methods = [group,group+'-reeval',group+'-TTTS']
     for method, color in zip(methods, colors):
         for r in records:
             if r['method'] != method:
