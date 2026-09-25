@@ -18,14 +18,14 @@ REPO = Path(__file__).resolve().parents[1]
 SCRATCH = Path("/tmp/claude-1603675/-home-sca63-meta-sr/23a64b6d-2223-4f23-baa1-bb18405fdba8/scratchpad")
 
 SHOW_NINIT = [1, 3]                       # which promote / TTTS bases to draw
-# Shared palette (also used by plot_reeval_combined.py): family = hue,
-# N_init = shade (light = 1, dark = 3; fixed-N line is the dark blue).
-# Print-safe: every adjacent pair has dE >= 15 (normal vision) and >= 13 (deutan).
-BLUES = {3: "#2a8ad4", 10: "#0d2f7a"}     # fixed N_init (real runs): mid blue vs navy
-BLUE = BLUES[10]
-ORANGES = {1: "#f29a2a", 3: "#cf5a00"}    # promote / uniform reeval, by N_init
-REDS = {1: "#e0707a", 3: "#a3122a"}       # TTTS, by N_init
-MARK = {"fixed": "o", "promote": "s", "ttts": "^"}
+# Shared palette (also used by plot_reeval_combined.py and plot_reeval_n1_n3_n10.py).
+# Color = method family. In the frontier, marker shape = N_init.
+C_N3, C_N10 = "tab:cyan", "tab:blue"      # fixed N_init runs
+C_REEVAL, C_TTTS = "tab:red", "tab:orange"
+BLUES = {3: C_N3, 10: C_N10}              # kept for plot_reeval_n1_n3_n10.py
+C_FIXED = C_N10                           # fixed-N frontier line
+NINIT_MARKER = {1: "^", 3: "s"}           # frontier: shape encodes N_init
+NINIT_MS = {1: 5.5, 3: 4.8}               # triangles read smaller than squares
 LINE_ALPHA = 0.9   # lines/markers slightly translucent so overlaps don't occlude
 BAND_ALPHA = 0.25  # +/- 1 SD shading
 
@@ -48,20 +48,20 @@ def draw_frontier(ax, D=None, legend_fontsize=9, legend_loc="lower right"):
     ax.text(0.45, oracle["metric"] + 0.0006, r"oracle ($N_{\mathrm{init}}=10$)", ha="left", va="bottom",
             fontsize=legend_fontsize + 2, color="#222", transform=ax.get_yaxis_transform())
     x, y = series("fixed")
-    ax.plot(x, y, color=BLUE, marker=MARK["fixed"], ms=5, lw=1.6, alpha=LINE_ALPHA)
+    ax.plot(x, y, color=C_FIXED, marker="o", ms=5, lw=1.6, alpha=LINE_ALPHA)
     for n in SHOW_NINIT:
-        x, y = series(f"promote n{n}")
-        ax.plot(x, y, color=ORANGES[n], marker=MARK["promote"], ms=4.5, lw=1.4, alpha=LINE_ALPHA)
-        x, y = series(f"ttts n{n}")
-        ax.plot(x, y, color=REDS[n], marker=MARK["ttts"], ms=5, lw=1.4, alpha=LINE_ALPHA)
+        for fam, color in (("promote", C_REEVAL), ("ttts", C_TTTS)):
+            x, y = series(f"{fam} n{n}")
+            ax.plot(x, y, color=color, marker=NINIT_MARKER[n], ms=NINIT_MS[n], lw=1.4,
+                    alpha=LINE_ALPHA)
 
-    handles = [Line2D([], [], color=BLUE, marker="o", ms=5, lw=1.6,
+    handles = [Line2D([], [], color=C_FIXED, marker="o", ms=5, lw=1.6,
                       label=r"$N_{\mathrm{init}} \in \{1,\dots,10\}$")]
     for n in SHOW_NINIT:
-        handles.append(Line2D([], [], color=ORANGES[n], marker="s", ms=4.5, lw=1.4,
+        handles.append(Line2D([], [], color=C_REEVAL, marker=NINIT_MARKER[n], ms=NINIT_MS[n], lw=1.4,
                               label=rf"$N_{{\mathrm{{init}}}}={n}$, $N_{{\mathrm{{reeval}}}} \in \{{1,\dots,{10-n}\}}$"))
     for n in SHOW_NINIT:
-        handles.append(Line2D([], [], color=REDS[n], marker="^", ms=5, lw=1.4,
+        handles.append(Line2D([], [], color=C_TTTS, marker=NINIT_MARKER[n], ms=NINIT_MS[n], lw=1.4,
                               label=rf"TTTS, $N_{{\mathrm{{init}}}}={n}$, $M \in \{{5,\dots,100\}}$"))
     ax.legend(handles=handles, fontsize=legend_fontsize, loc=legend_loc, frameon=False,
               handletextpad=0.5)
