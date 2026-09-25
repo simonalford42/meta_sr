@@ -5,7 +5,13 @@ from svgkit import Svg, C, OPS, OPNAME, text_w, vc
 from mockups2 import chevron, task_stack, TRACK
 from mockups3 import glyph_loss, seeds_ir, strategy_pill, INIT, REEV
 from mockups5 import robot, pareto2, prog
-from mockups6 import llm_box
+
+
+def llm_box(s, x, y, w, h):
+    """Neutral LLM box: same greys as the other blocks."""
+    s.rect(x, y, w, h, fill=C['white'], stroke=C['ink2'], rx=12, cls='w2')
+    robot(s, x + 15, y + h / 2 - 13, 1.15, color=C['ink'])
+    s.text(x + w - 12, y + h / 2 + 7, 'LLM', 's20 b', fill=C['ink'], anchor='e')
 
 W, H = 1100, 442
 MX0, MX1 = 16, 300
@@ -96,7 +102,7 @@ def mode_grid(s, x, y, active='refine', size=12, h=20, colw=88, rowh=24):
     for k, m in enumerate(['explore', 'refine', 'simplify', 'crossover']):
         xx, yy = x + (k % 2) * colw, y + (k // 2) * rowh
         if m == active:
-            s.chip(xx, yy, m, C['llm_t'], C['llm'], C['llm_d'], size=size, h=h, pad=7, cls='b')
+            s.chip(xx, yy, m, C['white'], C['llm'], C['llm_d'], size=size, h=h, pad=7, cls='b')
         else:
             s.chip(xx, yy, m, C['white'], C['line'], C['ink2'], size=size, h=h, pad=7, cls='')
 
@@ -106,8 +112,8 @@ def op_grid(s, x, y, active='surv', size=12, h=20, colw=88, rowh=28):
         xx, yy = x + (k % 2) * colw, y + (k // 2) * rowh
         w = text_w(OPNAME[op], size, 700 if op == active else 400) + 14
         if op == active:
-            s.rect(xx, yy, w, h, fill=C[op + '_t'], stroke=C['ink'], rx=h / 2, cls='w15')
-            s.text(xx + w / 2, yy + h / 2 + vc(size), OPNAME[op], f's{size} b', fill=C[op + '_d'], anchor='m')
+            s.rect(xx, yy, w, h, fill=C['white'], stroke=C['llm'], rx=h / 2, cls='w15')
+            s.text(xx + w / 2, yy + h / 2 + vc(size), OPNAME[op], f's{size} b', fill=C['llm_d'], anchor='m')
         else:
             s.rect(xx, yy, w, h, fill=C['white'], stroke=C['line'], rx=h / 2, cls='w12')
             s.text(xx + w / 2, yy + h / 2 + vc(size), OPNAME[op], f's{size}', fill=C['ink2'], anchor='m')
@@ -161,7 +167,7 @@ def track(s):
 
 def meta_mutation(s):
     x, y, w, h = MX0, Y0, MX1 - MX0, Y1 - Y0
-    s.panel(x, y, w, h, 'Meta-mutation', tab=C['llm_t'])
+    s.panel(x, y, w, h, 'Meta-mutation')
     llm_box(s, x + 12, TOP - 29, 104, 58)
     s.arrow([(x + 118, TOP), (x + 130, TOP)], cls='w2', head=7)
     s.code_card(x + 132, TOP - 25, 36, 50, header=False, bars=1, hi='surv')
