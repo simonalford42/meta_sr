@@ -15,16 +15,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'figures/reevaluation_ablations_90s'
 RUNS = [
-    ('n1', 1, '671962', '7wdnkqss'), ('n1', 2, '750244', 'kwxib4uc'),
-    ('n1-reeval', 1, '671963', 'hbonk3al'), ('n1-reeval', 2, '750245', 'iuqo0leg'),
-    ('n1-TTTS', 1, '750241', 'ubg1ir57'), ('n1-TTTS', 2, '980600', 'rpgjrcdd'),
-    ('n3', 1, '671964', 'm642yus3'), ('n3', 2, '980597', '0g6wvmco'),
-    ('n3-reeval', 1, '750239', 'igwan6cy'), ('n3-reeval', 2, '980598', 'k3xgq41q'),
-    ('n3-TTTS', 1, '750242', 'egg7h6w2'), ('n3-TTTS', 2, '980599', 'skg0nsbf'),
-    ('n10', 1, '64604', 'sifnivw6'), ('n10', 2, '64605', 'wftnv7sd'),
-    ('n1', 3, '64606', '4e15t4ig'),
+    ('n1', 1, '671962', '7wdnkqss'), ('n1', 2, '750244', 'kwxib4uc'), ('n1', 3, '353973', 'ixgef8qw'),
+    ('n1-reeval', 1, '671963', 'hbonk3al'), ('n1-reeval', 2, '750245', 'iuqo0leg'), ('n1-reeval', 3, '353974', 'k6u8j2dn'),
+    ('n1-TTTS', 1, '750241', 'ubg1ir57'), ('n1-TTTS', 2, '980600', 'rpgjrcdd'), ('n1-TTTS', 3, '353975', 'vxe94qyp'),
+    ('n3', 1, '671964', 'm642yus3'), ('n3', 2, '980597', '0g6wvmco'), ('n3', 3, '353972', '8vblymgo'),
+    ('n3-reeval', 1, '750239', 'igwan6cy'), ('n3-reeval', 2, '980598', 'k3xgq41q'), ('n3-reeval', 3, '203388', 'sn4gulhk'),
+    ('n3-TTTS', 1, '750242', 'egg7h6w2'), ('n3-TTTS', 2, '980599', 'skg0nsbf'), ('n3-TTTS', 3, '203389', 'ywc4nibs'),
+    ('n10', 1, '64604', 'sifnivw6'), ('n10', 2, '64605', 'wftnv7sd'), ('n10', 3, '192865', 'b7v0we9n'),
 ]
-RESUMED = {'980597': ('750247', '20af68tv')}
+# resumed job -> (parent job, parent wandb id); histories are stitched at the
+# resume boundary generation, where both eval_idx counters must agree.
+RESUMED = {
+    '980597': ('750247', '20af68tv'),   # n3 s2
+    '353972': ('192862', '5sxbf1bl'),   # n3 s3
+    '203388': ('192863', '9gmqw3d9'),   # n3-reeval s3
+    '203389': ('192864', 'lutbdbh6'),   # n3-TTTS s3
+    '353973': ('64606', '4e15t4ig'),    # n1 s3
+    '353974': ('64607', 'qq588neb'),    # n1-reeval s3
+}
 PATTERN = re.compile(r'\[train reeval\] gen (\d+) (.+?): reeval GT match rate=([\d.]+) \(live=([\d.]+), winners_curse=([+\-\d.]+)\)')
 
 
@@ -55,6 +63,7 @@ def refresh():
             continue
         run, history, points = read_source(job, run_id)
         sources = [dict(job_id=job, wandb_id=run_id)]
+        boundary = 0
         if job in RESUMED:
             parent_job, parent_id = RESUMED[job]
             _, prior_history, prior_points = read_source(parent_job, parent_id)
@@ -70,7 +79,7 @@ def refresh():
             sources.insert(0, dict(job_id=parent_job, wandb_id=parent_id))
         points.sort(key=lambda p: p['generation'])
         assert run.config['seed'] == seed
-        assert run.config['generations'] == (3 if job in RESUMED else 15)
+        assert run.config['generations'] == 15 - boundary, (job, run.config['generations'], boundary)
         assert run.config['timeout'] == 90 and run.config['val_n_runs'] == 10
         assert run.config['population_type'] == 'topk'
         assert run.config['population'] == run.config['offspring'] == 10
@@ -343,7 +352,7 @@ and cumulative evolution evaluations on the right, using the same mean/SD conven
 `n3_comparison_compact.pdf` is figure 5: generation above evolution evaluations,
 with n3 (green), n10 (blue), population reevaluation (red), and TTTS reevaluation
 (orange). It uses the same seed means and SD bands, a compact 5.5 × 6.5 inch layout,
-and no caption below the panels. n10 still has one completed seed and no SD band.
+and no caption below the panels.
 
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
 `[train reeval]` records in local run.log files (four-decimal logging precision).
@@ -362,8 +371,9 @@ budgets and 15 generations. Population reevaluation tops up n1 to 3 seeds and n3
 to 10; TTTS budgets are 10 and 30 per generation. n10 uses 10 initial seeds per
 candidate without selection reevaluation.
 
-The n3 seed-2 continuation merges original job 750247 with 980597. Their generation-12
-evaluation counters agree at 390; no offset is applied. This is one seed, not two.
+Some seeds were resumed after a failed or cancelled job (see RESUMED in the script);
+the original and resumed histories are merged at the resume generation, where both
+evaluation counters agree, so no offset is applied. Each merged pair is one seed.
 Failed attempts superseded by fresh retries are excluded. Completion requires a
 local final_eval_summary.json and a generation-15 W&B record.
 

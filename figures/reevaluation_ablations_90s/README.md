@@ -1,6 +1,6 @@
 # 90-second PySR reevaluation ablations
 
-Updated 2026-09-24T15:36:15.496488+00:00. Includes 13 completed method/seed combinations.
+Updated 2026-09-25T16:43:17.320206+00:00. Includes 21 completed method/seed combinations.
 
 `train_reevaluation_six_panels.pdf` compares n1 and n3 with population reevaluation
 and TTTS, without n10. It shows reevaluated
@@ -32,7 +32,7 @@ and cumulative evolution evaluations on the right, using the same mean/SD conven
 `n3_comparison_compact.pdf` is figure 5: generation above evolution evaluations,
 with n3 (green), n10 (blue), population reevaluation (red), and TTTS reevaluation
 (orange). It uses the same seed means and SD bands, a compact 5.5 × 6.5 inch layout,
-and no caption below the panels. n10 still has one completed seed and no SD band.
+and no caption below the panels.
 
 Scores are best-candidate training diagnostics on 10 fresh seeds, parsed from
 `[train reeval]` records in local run.log files (four-decimal logging precision).
@@ -51,8 +51,9 @@ budgets and 15 generations. Population reevaluation tops up n1 to 3 seeds and n3
 to 10; TTTS budgets are 10 and 30 per generation. n10 uses 10 initial seeds per
 candidate without selection reevaluation.
 
-The n3 seed-2 continuation merges original job 750247 with 980597. Their generation-12
-evaluation counters agree at 390; no offset is applied. This is one seed, not two.
+Some seeds were resumed after a failed or cancelled job (see RESUMED in the script);
+the original and resumed histories are merged at the resume generation, where both
+evaluation counters agree, so no offset is applied. Each merged pair is one seed.
 Failed attempts superseded by fresh retries are excluded. Completion requires a
 local final_eval_summary.json and a generation-15 W&B record.
 
@@ -60,19 +61,27 @@ local final_eval_summary.json and a generation-15 W&B record.
 |---|---:|---|---:|
 | n1 | 1 | 671962 | 15 |
 | n1 | 2 | 750244 | 15 |
+| n1 | 3 | 64606 → 353973 | 14 |
 | n1-reeval | 1 | 671963 | 15 |
 | n1-reeval | 2 | 750245 | 15 |
+| n1-reeval | 3 | 64607 → 353974 | 15 |
 | n1-TTTS | 1 | 750241 | 15 |
 | n1-TTTS | 2 | 980600 | 14 |
+| n1-TTTS | 3 | 353975 | 15 |
 | n3 | 1 | 671964 | 14 |
 | n3 | 2 | 750247 → 980597 | 15 |
+| n3 | 3 | 192862 → 353972 | 15 |
 | n3-reeval | 1 | 750239 | 15 |
 | n3-reeval | 2 | 980598 | 15 |
+| n3-reeval | 3 | 192863 → 203388 | 15 |
 | n3-TTTS | 1 | 750242 | 15 |
 | n3-TTTS | 2 | 980599 | 15 |
+| n3-TTTS | 3 | 192864 → 203389 | 15 |
 | n10 | 1 | 64604 | 15 |
+| n10 | 2 | 64605 | 15 |
+| n10 | 3 | 192865 | 15 |
 
-Configured but not complete at refresh: n10 seed 2 (job 64605), n1 seed 3 (job 64606).
+Configured but not complete at refresh: none.
 
 Reproduce offline: `python figures/plot_90s_reevaluation_ablations.py`.
 Add `--refresh` to reread local logs and W&B. `data.json` preserves the source

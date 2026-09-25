@@ -20,12 +20,14 @@ SCRATCH = Path("/tmp/claude-1603675/-home-sca63-meta-sr/23a64b6d-2223-4f23-baa1-
 SHOW_NINIT = [1, 3]                       # which promote / TTTS bases to draw
 # Shared palette (also used by plot_reeval_combined.py): family = hue,
 # N_init = shade (light = 1, dark = 3; fixed-N line is the dark blue).
-BLUES = {3: "#7fcdee", 10: "#1f4e9c"}     # fixed N_init (real runs): sky vs navy
+# Print-safe: every adjacent pair has dE >= 15 (normal vision) and >= 13 (deutan).
+BLUES = {3: "#2a8ad4", 10: "#0d2f7a"}     # fixed N_init (real runs): mid blue vs navy
 BLUE = BLUES[10]
-ORANGES = {1: "#ffc16b", 3: "#ff8c00"}    # promote / uniform reeval, by N_init
-REDS = {1: "#f4a3a3", 3: "#e03c3c"}     # TTTS, by N_init
+ORANGES = {1: "#f29a2a", 3: "#cf5a00"}    # promote / uniform reeval, by N_init
+REDS = {1: "#e0707a", 3: "#a3122a"}       # TTTS, by N_init
 MARK = {"fixed": "o", "promote": "s", "ttts": "^"}
-LINE_ALPHA = 0.8   # lines/markers slightly translucent so overlaps don't occlude
+LINE_ALPHA = 0.9   # lines/markers slightly translucent so overlaps don't occlude
+BAND_ALPHA = 0.25  # +/- 1 SD shading
 
 
 def load():
