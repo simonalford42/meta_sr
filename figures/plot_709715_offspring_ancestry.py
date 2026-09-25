@@ -37,6 +37,8 @@ TYPES = ('mutation', 'survival', 'selection', 'loss')
 BASELINE = ('add_constant_offset', 'age_regularized_survival', 'tournament_selection', 'mse_loss')
 COLORS = dict(mutation='#d62728', loss='#2878c8', selection='#e4bc24', survival='#2c9b49')
 BEST_LINE_STYLE = dict(color='#404040', linewidth=1.1 * SCALE, alpha=0.9)
+# Baseline PySR's original training fitness (3 seeds, initial evaluation log).
+PYSR_BASELINE_FITNESS = 0.5167
 
 
 def draw_ancestry_legend(ax, fontsize):
@@ -352,7 +354,7 @@ def add_ancestor_commentary(fig, ax, points):
 
 
 def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=False,
-           best_line=False):
+           best_line=False, baseline_line=False):
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 10 * SCALE,
                          'pdf.fonttype': 42, 'axes.labelsize': 12 * SCALE,
                          'xtick.labelsize': 10 * SCALE, 'ytick.labelsize': 10 * SCALE,
@@ -383,6 +385,11 @@ def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=Fal
             xs.append(generation)
             ys.append(best)
         ax.step(xs, ys, where='post', **BEST_LINE_STYLE, zorder=3)
+    if baseline_line:
+        ax.axhline(PYSR_BASELINE_FITNESS, color='#404040', linestyle=(0, (4, 3)),
+                   linewidth=0.9 * SCALE, alpha=0.9, zorder=1.9)
+        ax.text(45.5, PYSR_BASELINE_FITNESS - 0.012, 'PySR', ha='right', va='top',
+                fontsize=8 * SCALE, color='#404040', zorder=6)
     final_name = 'streamlined_niche_clone_tournament_gen43_3'
     for status in ('not_recorded_ancestor', 'ancestor', 'operator_origin'):
         group = [p for p in points if p['status'] == status and p['operator_name'] != final_name]
@@ -422,7 +429,8 @@ def main():
     if args.refresh_from:
         extract(args.refresh_from)
     points, summary = reconstruct(json.loads((OUT / 'lineage_records.json').read_text()))
-    render(points, filename=ROOT / 'pysr_evolution.pdf', commentary=True, best_line=True)
+    render(points, filename=ROOT / 'pysr_evolution.pdf', commentary=True, best_line=True,
+           baseline_line=True)
     with (OUT / 'plotted_offspring.csv').open('w', newline='') as handle:
         writer = csv.DictWriter(handle, fieldnames=list(points[0]))
         writer.writeheader()
