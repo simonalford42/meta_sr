@@ -69,5 +69,6 @@ python figures/plot_709715_offspring_ancestry.py
 ```
 
 Output is PDF only: `figures/pysr_evolution.pdf` (formerly
-`offspring_ancestry.pdf`), with a step line tracing the best fitness so far.
+`offspring_ancestry.pdf`), with a step line tracing the best fitness so far
+and the same ancestor contribution labels as the DAG PDF.
 Existing PNG/SVG files are older previews and are not regenerated.

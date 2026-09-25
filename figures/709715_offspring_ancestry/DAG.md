@@ -35,7 +35,7 @@ The selected final algorithm at generation 43 is shown as a larger yellow star; 
 
 Bundle-only ancestors use the same light grey dot style as other offspring; only ancestors of the final operators receive colored markers. Their ancestry relationships remain in the graph.
 
-The DAG PDF includes 7 of the 15 short ancestor descriptions plus a “Final best algorithm” label from `analysis/709715_crossover_recovery/ancestor_changes.json`, shared with the lineage report. Wrapped labels are packed into nonoverlapping rows above the original-size plotting area, with vertical black connectors. Adjust font size, wrapping width, and row spacing in `add_ancestor_commentary()` in the shared plotting script.
+The DAG PDF and `figures/pysr_evolution.pdf` include 7 of the 15 short ancestor descriptions plus a “Final best algorithm” label from `analysis/709715_crossover_recovery/ancestor_changes.json`, shared with the lineage report. Wrapped labels are packed into nonoverlapping rows above the original-size plotting area, with vertical black connectors. Adjust font size, wrapping width, and row spacing in `add_ancestor_commentary()` in the shared plotting script.
 
 Fitness now prefers the latest logged independent training reevaluation for each exact bundle, then the latest logged population seed top-up, then original evaluation if neither exists. This updates 156 of 459 points; 303 have no recorded reevaluation. `original_fitness`, `score_source`, `score_snapshot_generation`, and `score_log_line` preserve provenance in the CSV and graph JSON. Generation positions remain creation generations. Validation scores are not used on the fitness axis.
 

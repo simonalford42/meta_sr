@@ -430,7 +430,7 @@ def main():
     if args.refresh_from:
         extract(args.refresh_from)
     points, summary = reconstruct(json.loads((OUT / 'lineage_records.json').read_text()))
-    render(points, filename=ROOT / 'pysr_evolution.pdf', best_line=True)
+    render(points, filename=ROOT / 'pysr_evolution.pdf', commentary=True, best_line=True)
     with (OUT / 'plotted_offspring.csv').open('w', newline='') as handle:
         writer = csv.DictWriter(handle, fieldnames=list(points[0]))
         writer.writeheader()
