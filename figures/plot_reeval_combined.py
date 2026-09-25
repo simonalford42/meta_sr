@@ -43,7 +43,6 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
         ax.grid(alpha=.2)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
-    axl.set_ylabel('Reevaluated fitness, best algorithm')
     axl.set_xlabel('Generation'); axl.set_xlim(-.35, 15.35); axl.set_xticks(range(0, 16, 3))
     axc.set_xlabel('Cumulative evaluations')
     xmax = max(abl.aggregate(records, m, 'eval_idx', 'train_reeval_score')[0][-1] for m in colors)
@@ -53,8 +52,11 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
     axl.legend(frameon=False, fontsize=9, loc='upper left', handlelength=1.8)
 
     draw_frontier(axr, legend_fontsize=8.5)
-    for ax, tag in zip(axes, "abc"):
-        ax.set_title(f"({tag})", loc="left", fontsize=11)
+    axr.set_ylabel('')
+    titles = ['Reevaluated training fitness', 'Reevaluated training fitness',
+              'Expected true parent fitness']
+    for ax, tag, title in zip(axes, "abc", titles):
+        ax.set_title(f"({tag}) {title}", loc="left", fontsize=11)
     fig.tight_layout(w_pad=1.6)
     # (a) and (b) share a y-axis: pull (b) toward (a) and give the slack to (c).
     pl, pc = axl.get_position(), axc.get_position()
