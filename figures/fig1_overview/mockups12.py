@@ -166,9 +166,10 @@ def meta_mutation(s):
     s.arrow([(x + 118, TOP), (x + 130, TOP)], cls='w2', head=7)
     s.code_card(x + 132, TOP - 25, 36, 50, header=False, bars=1, hi='surv')
     s.arrow([(x + 170, TOP), (x + 182, TOP)], cls='w2', head=7)
-    s.rect(x + 184, TOP - 13, 84, 26, fill=C['surv_t'], stroke=C['surv'], rx=13, cls='w12')
-    s.check(x + 199, TOP, 5.5)
-    s.text(x + 210, TOP + 4.5, 'validate', 's13 b', fill=C['surv_d'])
+    # neutral pill, same style as the 'reeval strategy' pill
+    s.rect(x + 184, TOP - 13, 84, 26, fill=C['white'], stroke=C['ink2'], rx=13, cls='w12')
+    s.check(x + 199, TOP, 5.5, color=C['ink'])
+    s.text(x + 210, TOP + 4.5, 'validate', 's13 b', fill=C['ink'])
     s.arrow([(x + 270, TOP), (x + w - 2, TOP)], cls='w2', head=6)
     # prompt
     px, py, pw = x + 14, TOP + 50, w - 28
