@@ -1,0 +1,338 @@
+{
+  "source_variant": "n1_vs_n3_eval_axis",
+  "generations": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "runs": [
+    {
+      "n_init": 1,
+      "job_id": 89281,
+      "wandb_id": "e52xc7fs",
+      "cache_source": "plots/.cache/eval_axis_comparison/wandb_train2_e52xc7fs_311.pkl",
+      "points": [
+        {
+          "generation": 0,
+          "reeval_train_score": 0.44000000000000006,
+          "train_score_at_submit": 0.55
+        },
+        {
+          "generation": 4,
+          "reeval_train_score": 0.45124999999999993,
+          "train_score_at_submit": 0.6
+        },
+        {
+          "generation": 11,
+          "reeval_train_score": 0.475,
+          "train_score_at_submit": 0.631578947368421
+        }
+      ]
+    },
+    {
+      "n_init": 1,
+      "job_id": 825769,
+      "wandb_id": "om2qtpjg",
+      "cache_source": "plots/.cache/eval_axis_comparison/wandb_train2_om2qtpjg_311.pkl",
+      "points": [
+        {
+          "generation": 0,
+          "reeval_train_score": 0.43000000000000005,
+          "train_score_at_submit": 0.5
+        },
+        {
+          "generation": 1,
+          "reeval_train_score": 0.41,
+          "train_score_at_submit": 0.55
+        },
+        {
+          "generation": 4,
+          "reeval_train_score": 0.43000000000000005,
+          "train_score_at_submit": 0.6
+        },
+        {
+          "generation": 10,
+          "reeval_train_score": 0.5050000000000001,
+          "train_score_at_submit": 0.7
+        }
+      ]
+    },
+    {
+      "n_init": 1,
+      "job_id": 825773,
+      "wandb_id": "bt31cd3h",
+      "cache_source": "plots/.cache/eval_axis_comparison/wandb_train2_bt31cd3h_307.pkl",
+      "points": [
+        {
+          "generation": 0,
+          "reeval_train_score": 0.3711111111111111,
+          "train_score_at_submit": 0.45
+        },
+        {
+          "generation": 3,
+          "reeval_train_score": 0.43111111111111117,
+          "train_score_at_submit": 0.65
+        },
+        {
+          "generation": 6,
+          "reeval_train_score": 0.43500000000000005,
+          "train_score_at_submit": 0.7
+        }
+      ]
+    },
+    {
+      "n_init": 1,
+      "job_id": 825777,
+      "wandb_id": "xbd1n2dg",
+      "cache_source": "plots/.cache/eval_axis_comparison/wandb_train2_xbd1n2dg_310.pkl",
+      "points": [
+        {
+          "generation": 0,
+          "reeval_train_score": 0.36500000000000005,
+          "train_score_at_submit": 0.45
+        },
+        {
+          "generation": 1,
+          "reeval_train_score": 0.44000000000000006,
+          "train_score_at_submit": 0.55
+        },
+        {
+          "generation": 2,
+          "reeval_train_score": 0.41500000000000004,
+          "train_score_at_submit": 0.6
+        },
+        {
+          "generation": 7,
+          "reeval_train_score": 0.49000000000000005,
+          "train_score_at_submit": 0.7
+        }
+      ]
+    },
+    {
+      "n_init": 1,
+      "job_id": 825781,
+      "wandb_id": "dextk0hj",
+      "cache_source": "plots/.cache/eval_axis_comparison/wandb_train2_dextk0hj_310.pkl",
+      "points": [
+        {
+          "generation": 0,
+          "reeval_train_score": 0.375,
+          "train_score_at_submit": 0.55
+        },
+        {
+          "generation": 1,
+          "reeval_train_score": 0.36500000000000005,
+          "train_score_at_submit": 0.6
+        },
+        {
+          "generation": 3,
+          "reeval_train_score": 0.49000000000000005,
+          "train_score_at_submit": 0.65
+        },
+        {
+          "generation": 6,
+          "reeval_train_score": 0.51,
+          "train_score_at_submit": 0.7
+        }
+      ]
+    },
+    {
+      "n_init": 3,
+      "job_id": 89282,
+      "wandb_id": "80x737bk",
+      "cache_source": "plots/.cache/eval_axis_comparison/wandb_train2_80x737bk_931.pkl",
+      "points": [
+        {
+          "generation": 0,
+          "reeval_train_score": 0.45999999999999996,
+          "train_score_at_submit": 0.55
+        },
+        {
+          "generation": 1,
+          "reeval_train_score": 0.5399999999999999,
+          "train_score_at_submit": 0.5833333333333333
+        },
+        {
+          "generation": 3,
+          "reeval_train_score": 0.5199999999999999,
+          "train_score_at_submit": 0.6
+        },
+        {
+          "generation": 7,
+          "reeval_train_score": 0.5650000000000001,
+          "train_score_at_submit": 0.6166666666666666
+        },
+        {
+          "generation": 9,
+          "reeval_train_score": 0.62,
+          "train_score_at_submit": 0.6166666666666667
+        },
+        {
+          "generation": 10,
+          "reeval_train_score": 0.5905555555555555,
+          "train_score_at_submit": 0.6333333333333333
+        },
+        {
+          "generation": 11,
+          "reeval_train_score": 0.56,
+          "train_score_at_submit": 0.6499999999999999
+        },
+        {
+          "generation": 13,
+          "reeval_train_score": 0.545,
+          "train_score_at_submit": 0.6666666666666666
+        },
+        {
+          "generation": 15,
+          "reeval_train_score": 0.525,
+          "train_score_at_submit": 0.6833333333333333
+        }
+      ]
+    },
+    {
+      "n_init": 3,
+      "job_id": 825770,
+      "wandb_id": "5rsjgzfk",
+      "cache_source": "plots/.cache/eval_axis_comparison/wandb_train2_5rsjgzfk_928.pkl",
+      "points": [
+        {
+          "generation": 0,
+          "reeval_train_score": 0.43000000000000005,
+          "train_score_at_submit": 0.45
+        },
+        {
+          "generation": 1,
+          "reeval_train_score": 0.4638888888888889,
+          "train_score_at_submit": 0.5
+        },
+        {
+          "generation": 2,
+          "reeval_train_score": 0.485,
+          "train_score_at_submit": 0.5333333333333333
+        },
+        {
+          "generation": 3,
+          "reeval_train_score": 0.44000000000000006,
+          "train_score_at_submit": 0.5833333333333333
+        },
+        {
+          "generation": 7,
+          "reeval_train_score": 0.52,
+          "train_score_at_submit": 0.6333333333333333
+        },
+        {
+          "generation": 15,
+          "reeval_train_score": 0.4800000000000001,
+          "train_score_at_submit": 0.6833333333333333
+        }
+      ]
+    },
+    {
+      "n_init": 3,
+      "job_id": 825774,
+      "wandb_id": "0lbwyv9y",
+      "cache_source": "plots/.cache/eval_axis_comparison/wandb_train2_0lbwyv9y_931.pkl",
+      "points": [
+        {
+          "generation": 0,
+          "reeval_train_score": 0.375,
+          "train_score_at_submit": 0.4333333333333333
+        },
+        {
+          "generation": 1,
+          "reeval_train_score": 0.46785714285714286,
+          "train_score_at_submit": 0.4833333333333334
+        },
+        {
+          "generation": 2,
+          "reeval_train_score": 0.4149999999999999,
+          "train_score_at_submit": 0.5333333333333332
+        },
+        {
+          "generation": 3,
+          "reeval_train_score": 0.4149999999999999,
+          "train_score_at_submit": 0.5666666666666667
+        },
+        {
+          "generation": 7,
+          "reeval_train_score": 0.53,
+          "train_score_at_submit": 0.6
+        }
+      ]
+    },
+    {
+      "n_init": 3,
+      "job_id": 825778,
+      "wandb_id": "wxp5ixr2",
+      "cache_source": "plots/.cache/eval_axis_comparison/wandb_train2_wxp5ixr2_925.pkl",
+      "points": [
+        {
+          "generation": 0,
+          "reeval_train_score": 0.47750000000000004,
+          "train_score_at_submit": 0.45
+        },
+        {
+          "generation": 1,
+          "reeval_train_score": 0.49000000000000005,
+          "train_score_at_submit": 0.5166666666666666
+        },
+        {
+          "generation": 3,
+          "reeval_train_score": 0.42000000000000004,
+          "train_score_at_submit": 0.55
+        },
+        {
+          "generation": 5,
+          "reeval_train_score": 0.465,
+          "train_score_at_submit": 0.5666666666666667
+        },
+        {
+          "generation": 11,
+          "reeval_train_score": 0.5149999999999999,
+          "train_score_at_submit": 0.6
+        }
+      ]
+    },
+    {
+      "n_init": 3,
+      "job_id": 825782,
+      "wandb_id": "k91fhnpk",
+      "cache_source": "plots/.cache/eval_axis_comparison/wandb_train2_k91fhnpk_928.pkl",
+      "points": [
+        {
+          "generation": 0,
+          "reeval_train_score": 0.47000000000000003,
+          "train_score_at_submit": 0.5666666666666667
+        },
+        {
+          "generation": 1,
+          "reeval_train_score": 0.545,
+          "train_score_at_submit": 0.6333333333333333
+        },
+        {
+          "generation": 10,
+          "reeval_train_score": 0.535,
+          "train_score_at_submit": 0.65
+        },
+        {
+          "generation": 11,
+          "reeval_train_score": 0.5399999999999999,
+          "train_score_at_submit": 0.6666666666666666
+        }
+      ]
+    }
+  ]
+}
