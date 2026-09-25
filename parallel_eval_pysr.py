@@ -1426,9 +1426,13 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
             print(f"[{spec.dataset_name}] Custom loss loaded in {_time.time() - t2:.1f}s", flush=True)
         else:
             # Ensure no stale custom loss from a prior task is still active.
+            # Older autoresearch commits predate custom losses entirely.
             from juliacall import Main as jl
-            jl.seval("using SymbolicRegression.CustomLossModule")
-            jl.seval("clear_dynamic_losses!()")
+            jl.seval("""
+                if isdefined(SymbolicRegression, :CustomLossModule)
+                    SymbolicRegression.CustomLossModule.clear_dynamic_losses!()
+                end
+            """)
 
         # Always use safe x{i} variable names for PySR to avoid collisions
         # with reserved names (e.g., I, beta). Remap GT formula accordingly.

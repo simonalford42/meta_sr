@@ -375,6 +375,9 @@ def run_black_box(args, output_dir, source, manifest, run):
         bundle_names=getattr(args, "_bundle_names", None),
     )
     print(f"\nBlack-box results: {n_present}/{len(datasets)} dataset frontiers present.")
+    if datasets and n_present == 0:
+        copy_slurm_log(output_dir)
+        raise RuntimeError("Black-box evaluation produced no valid frontiers; inspect worker logs.")
     if run is not None:
         run.log({
             "srbench_black_box/n_frontiers": n_present,
@@ -1050,6 +1053,9 @@ def main(argv=None, *, force_srbench_2025=False):
     })
     n_present = sum(1 for e in keyed.values() if e["present"] and e["error"] is None)
     print(f"\nResults: {n_present}/{len(keyed)} runs present.")
+    if keyed and n_present == 0:
+        copy_slurm_log(output_dir)
+        raise RuntimeError("Ground-truth evaluation produced no valid runs; inspect worker logs.")
 
     metrics = srio.aggregate_metrics(keyed, args.noise_levels)
     print(srio.format_metrics_console(metrics, args.noise_levels))
