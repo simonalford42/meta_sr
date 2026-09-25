@@ -5,29 +5,40 @@
   "srbench_commit": "0db08cec0161e430356f3ef60feb3f49cbbfa3fd",
   "local_runs": {
     "PySR": {
-      "path": "runs/290227",
+      "path": "runs/pysr-base-srbench_full_9-22_10seed-90s",
       "manifest": {
         "mode": "baseline",
         "backend": "pysr",
         "srbench_edition": 2021,
         "method_meta": {},
-        "max_evals": 1000000,
-        "timeout_in_seconds": 500,
-        "timeout_source": "default",
+        "max_evals": 1000000000,
+        "timeout_in_seconds": 90,
+        "no_early_stop": true,
+        "frontier_snapshot_seconds": 10.0,
+        "frontier_snapshot_clock": "fit_wall_time",
+        "timeout_source": "--timeout",
         "max_samples": 1000,
-        "seed": 42,
+        "cpus_per_task": 1,
+        "baseline_l1_loss": false,
+        "maxsize_warmup": false,
+        "seed": 10000,
         "n_runs": 10,
+        "merge_run_frontiers": false,
+        "serial_restart_portfolio": null,
+        "bundle_names": {
+          "0": "baseline"
+        },
         "seeds": [
-          42,
-          43,
-          44,
-          45,
-          46,
-          47,
-          48,
-          49,
-          50,
-          51
+          10000,
+          10001,
+          10002,
+          10003,
+          10004,
+          10005,
+          10006,
+          10007,
+          10008,
+          10009
         ],
         "noise_levels": [
           0.0,
@@ -36,7 +47,7 @@
           0.1
         ],
         "split_file": "splits/srbench_all.txt",
-        "n_datasets": 133,
+        "n_datasets": 130,
         "datasets": [
           "feynman_I_10_7",
           "feynman_I_11_19",
@@ -58,12 +69,10 @@
           "feynman_I_18_4",
           "feynman_I_24_6",
           "feynman_I_25_13",
-          "feynman_I_26_2",
           "feynman_I_27_6",
           "feynman_I_29_16",
           "feynman_I_29_4",
           "feynman_I_30_3",
-          "feynman_I_30_5",
           "feynman_I_32_17",
           "feynman_I_32_5",
           "feynman_I_34_1",
@@ -138,7 +147,6 @@
           "feynman_III_8_54",
           "feynman_III_9_52",
           "feynman_test_1",
-          "feynman_test_10",
           "feynman_test_11",
           "feynman_test_12",
           "feynman_test_13",
@@ -181,28 +189,29 @@
           {
             "noise": 0.0,
             "batch_dir": "slurm_pysr/eval_0000",
-            "n_tasks": 1330
+            "n_tasks": 1300
           },
           {
             "noise": 0.001,
             "batch_dir": "slurm_pysr/eval_0001",
-            "n_tasks": 1330
+            "n_tasks": 1300
           },
           {
             "noise": 0.01,
             "batch_dir": "slurm_pysr/eval_0002",
-            "n_tasks": 1330
+            "n_tasks": 1300
           },
           {
             "noise": 0.1,
             "batch_dir": "slurm_pysr/eval_0003",
-            "n_tasks": 1330
+            "n_tasks": 1300
           }
         ],
         "evaluation_types": [
           "ground_truth",
           "black_box"
         ],
+        "ground_truth_protocol": "srbench",
         "black_box": {
           "n_datasets": 122,
           "datasets": [
@@ -331,407 +340,96 @@
           ],
           "n_runs": 10,
           "wall_limit": 1800,
-          "timeout_in_seconds": 1500,
+          "timeout_in_seconds": 90,
           "backend": "pysr",
           "batch_dir": "slurm_pysr/eval_0004",
           "max_train_samples": 10000
         }
       },
-      "results_sha256": "3d383f399b2372c208ef5ccfc9e25d088e762ba7bb1bc13bcd6a24c36ef0f484"
+      "results_sha256": "c63e8fe074618cd632278c7091ff7b227e179756dbf0acd3f8015de92f9385de"
     },
-    "BasicSR": {
-      "path": "runs/150814",
-      "manifest": {
-        "mode": "fullsr_baseline",
-        "backend": "fullsr",
-        "srbench_edition": 2021,
-        "method_meta": {
-          "source": "SymbolicRegression.jl/src/BasicSRConfig.jl"
-        },
-        "max_evals": 1000000,
-        "timeout_in_seconds": 500,
-        "timeout_source": "default",
-        "max_samples": 1000,
-        "seed": 42,
-        "n_runs": 10,
-        "seeds": [
-          42,
-          43,
-          44,
-          45,
-          46,
-          47,
-          48,
-          49,
-          50,
-          51
-        ],
-        "noise_levels": [
-          0.0,
-          0.001,
-          0.01,
-          0.1
-        ],
-        "split_file": "splits/srbench_all.txt",
-        "n_datasets": 133,
-        "datasets": [
-          "feynman_I_10_7",
-          "feynman_I_11_19",
-          "feynman_I_12_1",
-          "feynman_I_12_11",
-          "feynman_I_12_2",
-          "feynman_I_12_4",
-          "feynman_I_12_5",
-          "feynman_I_13_12",
-          "feynman_I_13_4",
-          "feynman_I_14_3",
-          "feynman_I_14_4",
-          "feynman_I_15_10",
-          "feynman_I_15_3t",
-          "feynman_I_15_3x",
-          "feynman_I_16_6",
-          "feynman_I_18_12",
-          "feynman_I_18_14",
-          "feynman_I_18_4",
-          "feynman_I_24_6",
-          "feynman_I_25_13",
-          "feynman_I_26_2",
-          "feynman_I_27_6",
-          "feynman_I_29_16",
-          "feynman_I_29_4",
-          "feynman_I_30_3",
-          "feynman_I_30_5",
-          "feynman_I_32_17",
-          "feynman_I_32_5",
-          "feynman_I_34_1",
-          "feynman_I_34_14",
-          "feynman_I_34_27",
-          "feynman_I_34_8",
-          "feynman_I_37_4",
-          "feynman_I_38_12",
-          "feynman_I_39_1",
-          "feynman_I_39_11",
-          "feynman_I_39_22",
-          "feynman_I_40_1",
-          "feynman_I_41_16",
-          "feynman_I_43_16",
-          "feynman_I_43_31",
-          "feynman_I_43_43",
-          "feynman_I_44_4",
-          "feynman_I_47_23",
-          "feynman_I_48_2",
-          "feynman_I_50_26",
-          "feynman_I_6_2",
-          "feynman_I_6_2a",
-          "feynman_I_6_2b",
-          "feynman_I_8_14",
-          "feynman_I_9_18",
-          "feynman_II_10_9",
-          "feynman_II_11_20",
-          "feynman_II_11_27",
-          "feynman_II_11_28",
-          "feynman_II_11_3",
-          "feynman_II_13_17",
-          "feynman_II_13_23",
-          "feynman_II_13_34",
-          "feynman_II_15_4",
-          "feynman_II_15_5",
-          "feynman_II_21_32",
-          "feynman_II_24_17",
-          "feynman_II_2_42",
-          "feynman_II_27_16",
-          "feynman_II_27_18",
-          "feynman_II_3_24",
-          "feynman_II_34_11",
-          "feynman_II_34_2",
-          "feynman_II_34_29a",
-          "feynman_II_34_29b",
-          "feynman_II_34_2a",
-          "feynman_II_35_18",
-          "feynman_II_35_21",
-          "feynman_II_36_38",
-          "feynman_II_37_1",
-          "feynman_II_38_14",
-          "feynman_II_38_3",
-          "feynman_II_4_23",
-          "feynman_II_6_11",
-          "feynman_II_6_15a",
-          "feynman_II_6_15b",
-          "feynman_II_8_31",
-          "feynman_II_8_7",
-          "feynman_III_10_19",
-          "feynman_III_12_43",
-          "feynman_III_13_18",
-          "feynman_III_14_14",
-          "feynman_III_15_12",
-          "feynman_III_15_14",
-          "feynman_III_15_27",
-          "feynman_III_17_37",
-          "feynman_III_19_51",
-          "feynman_III_21_20",
-          "feynman_III_4_32",
-          "feynman_III_4_33",
-          "feynman_III_7_38",
-          "feynman_III_8_54",
-          "feynman_III_9_52",
-          "feynman_test_1",
-          "feynman_test_10",
-          "feynman_test_11",
-          "feynman_test_12",
-          "feynman_test_13",
-          "feynman_test_14",
-          "feynman_test_15",
-          "feynman_test_16",
-          "feynman_test_17",
-          "feynman_test_18",
-          "feynman_test_19",
-          "feynman_test_2",
-          "feynman_test_20",
-          "feynman_test_3",
-          "feynman_test_4",
-          "feynman_test_5",
-          "feynman_test_6",
-          "feynman_test_7",
-          "feynman_test_8",
-          "feynman_test_9",
-          "strogatz_bacres1",
-          "strogatz_bacres2",
-          "strogatz_barmag1",
-          "strogatz_barmag2",
-          "strogatz_glider1",
-          "strogatz_glider2",
-          "strogatz_lv1",
-          "strogatz_lv2",
-          "strogatz_predprey1",
-          "strogatz_predprey2",
-          "strogatz_shearflow1",
-          "strogatz_shearflow2",
-          "strogatz_vdp1",
-          "strogatz_vdp2"
-        ],
-        "unsolvable_tasks": [
-          "feynman_test_10",
-          "feynman_I_26_2",
-          "feynman_I_30_5"
-        ],
-        "batches": [
-          {
-            "noise": "all",
-            "batch_dir": "slurm_fullsr/eval_0000",
-            "n_tasks": 5320
-          }
-        ],
-        "evaluation_types": [
-          "ground_truth",
-          "black_box"
-        ],
-        "black_box": {
-          "n_datasets": 122,
-          "datasets": [
-            "1027_ESL",
-            "1028_SWD",
-            "1029_LEV",
-            "1030_ERA",
-            "1089_USCrime",
-            "1096_FacultySalaries",
-            "1191_BNG_pbc",
-            "1193_BNG_lowbwt",
-            "1196_BNG_pharynx",
-            "1199_BNG_echoMonths",
-            "1201_BNG_breastTumor",
-            "1203_BNG_pwLinear",
-            "1595_poker",
-            "192_vineyard",
-            "195_auto_price",
-            "197_cpu_act",
-            "201_pol",
-            "207_autoPrice",
-            "210_cloud",
-            "215_2dplanes",
-            "218_house_8L",
-            "225_puma8NH",
-            "227_cpu_small",
-            "228_elusage",
-            "229_pwLinear",
-            "230_machine_cpu",
-            "294_satellite_image",
-            "344_mv",
-            "4544_GeographicalOriginalofMusic",
-            "485_analcatdata_vehicle",
-            "503_wind",
-            "505_tecator",
-            "519_vinnie",
-            "522_pm10",
-            "523_analcatdata_neavote",
-            "527_analcatdata_election2000",
-            "529_pollen",
-            "537_houses",
-            "542_pollution",
-            "547_no2",
-            "556_analcatdata_apnea2",
-            "557_analcatdata_apnea1",
-            "560_bodyfat",
-            "561_cpu",
-            "562_cpu_small",
-            "564_fried",
-            "573_cpu_act",
-            "574_house_16H",
-            "579_fri_c0_250_5",
-            "581_fri_c3_500_25",
-            "582_fri_c1_500_25",
-            "583_fri_c1_1000_50",
-            "584_fri_c4_500_25",
-            "586_fri_c3_1000_25",
-            "588_fri_c4_1000_100",
-            "589_fri_c2_1000_25",
-            "590_fri_c0_1000_50",
-            "591_fri_c1_100_10",
-            "592_fri_c4_1000_25",
-            "593_fri_c1_1000_10",
-            "594_fri_c2_100_5",
-            "595_fri_c0_1000_10",
-            "596_fri_c2_250_5",
-            "597_fri_c2_500_5",
-            "598_fri_c0_1000_25",
-            "599_fri_c2_1000_5",
-            "601_fri_c1_250_5",
-            "602_fri_c3_250_10",
-            "603_fri_c0_250_50",
-            "604_fri_c4_500_10",
-            "605_fri_c2_250_25",
-            "606_fri_c2_1000_10",
-            "607_fri_c4_1000_50",
-            "608_fri_c3_1000_10",
-            "609_fri_c0_1000_5",
-            "611_fri_c3_100_5",
-            "612_fri_c1_1000_5",
-            "613_fri_c3_250_5",
-            "615_fri_c4_250_10",
-            "616_fri_c4_500_50",
-            "617_fri_c3_500_5",
-            "618_fri_c3_1000_50",
-            "620_fri_c1_1000_25",
-            "621_fri_c0_100_10",
-            "622_fri_c2_1000_50",
-            "623_fri_c4_1000_10",
-            "624_fri_c0_100_5",
-            "626_fri_c2_500_50",
-            "627_fri_c2_500_10",
-            "628_fri_c3_1000_5",
-            "631_fri_c1_500_5",
-            "633_fri_c0_500_25",
-            "634_fri_c2_100_10",
-            "635_fri_c0_250_10",
-            "637_fri_c1_500_50",
-            "641_fri_c1_500_10",
-            "643_fri_c2_500_25",
-            "644_fri_c4_250_25",
-            "645_fri_c3_500_50",
-            "646_fri_c3_500_10",
-            "647_fri_c1_250_10",
-            "648_fri_c1_250_50",
-            "649_fri_c0_500_5",
-            "650_fri_c0_500_50",
-            "651_fri_c0_100_25",
-            "653_fri_c0_250_25",
-            "654_fri_c0_500_10",
-            "656_fri_c1_100_5",
-            "657_fri_c2_250_10",
-            "658_fri_c3_250_25",
-            "659_sleuth_ex1714",
-            "663_rabe_266",
-            "665_sleuth_case2002",
-            "666_rmftsa_ladata",
-            "678_visualizing_environmental",
-            "687_sleuth_ex1605",
-            "690_visualizing_galaxy",
-            "695_chatfield_4",
-            "706_sleuth_case1202",
-            "712_chscase_geyser1",
-            "banana",
-            "titanic"
-          ],
-          "n_runs": 10,
-          "wall_limit": 1800,
-          "timeout_in_seconds": 1500,
-          "backend": "fullsr",
-          "batch_dir": "slurm_fullsr/eval_0001",
-          "max_train_samples": 10000
-        }
-      },
-      "results_sha256": "4a9fcfa471de423f249f2b5692d151436a8cfd1c592139752bb23c51004dc901"
-    },
-    "Evolved BasicSR": {
-      "path": "runs/271625",
+    "BasicSR++ (GT/R2)": {
+      "path": "runs/fullsr-gtr2-229869-srbench_full_9-22_10seed-90s",
       "manifest": {
         "mode": "evolve_fullsr",
         "backend": "fullsr",
         "srbench_edition": 2021,
         "method_meta": {
-          "source": "runs/150815",
-          "select_by": "val",
-          "train_score": 0.975948167401356,
-          "val_score": 0.9602860240671915,
+          "source": "runs/229869",
+          "select_by": "train",
+          "train_score": 0.984424937336826,
+          "val_score": null,
           "functions": [
             {
               "slot": "loss_function",
-              "name": "correlation_aware_robust_loss_gen12_slot0",
-              "generation": 12
+              "name": "scale_invariant_robust_loss_gen45_slot0_gen45_slot0",
+              "generation": 45
             },
             {
               "slot": "survival",
-              "name": "survival_frontier_afpo_crowding_champions_gen18_slot4_gen18_slot1",
-              "generation": 18
+              "name": "compact_pareto_diversity_survival_gen68_slot8_gen71_slot5",
+              "generation": 71
             },
             {
               "slot": "selection",
-              "name": "diversity_driven_multimode_selection_gen17_slot9_gen23_slot3",
-              "generation": 23
+              "name": "pareto_frontier_youth_tournament_selection_gen60_slot5",
+              "generation": 60
             },
             {
               "slot": "mutation",
-              "name": "portfolio_subtree_point_insert_mutation_gen20_slot2",
-              "generation": 20
+              "name": "leaf_jitter_graft_wrap_mutation_gen43_slot1",
+              "generation": 43
             },
             {
               "slot": "acceptance",
-              "name": "hash_mdl_stagnation_acceptance_gen22_slot0",
-              "generation": 22
+              "name": "simple_pareto_mdl_tempered_acceptance_gen51_slot8",
+              "generation": 51
             },
             {
               "slot": "crossover",
-              "name": "residual_guided_homologous_patch_crossover_gen16_slot0_gen17_slot6",
-              "generation": 17
+              "name": "lean_residual_patch_crossover_gen48_slot0_gen49_slot0",
+              "generation": 49
             },
             {
               "slot": "update_population",
-              "name": "diversity_aware_ring_migration_with_stagnation_boost_update_population_gen29_slot1",
-              "generation": 29
+              "name": "simple_ring_elite_migration_gen76_slot8_gen76_slot1",
+              "generation": 76
             },
             {
               "slot": "update_state!",
-              "name": "update_state_live_incremental_pareto_hof!_gen1_slot6_gen2_slot2",
-              "generation": 2
+              "name": "pareto_archive_resweep!_gen79_slot7",
+              "generation": 79
             }
           ]
         },
-        "max_evals": 1000000,
-        "timeout_in_seconds": 500,
-        "timeout_source": "training run runs/150815",
+        "max_evals": 1000000000,
+        "timeout_in_seconds": 90,
+        "no_early_stop": false,
+        "frontier_snapshot_seconds": null,
+        "frontier_snapshot_clock": null,
+        "timeout_source": "--timeout",
         "max_samples": 1000,
-        "seed": 42,
+        "cpus_per_task": 1,
+        "baseline_l1_loss": false,
+        "maxsize_warmup": true,
+        "seed": 10000,
         "n_runs": 10,
+        "merge_run_frontiers": false,
+        "serial_restart_portfolio": null,
+        "bundle_names": {
+          "0": "evolve_fullsr"
+        },
         "seeds": [
-          42,
-          43,
-          44,
-          45,
-          46,
-          47,
-          48,
-          49,
-          50,
-          51
+          10000,
+          10001,
+          10002,
+          10003,
+          10004,
+          10005,
+          10006,
+          10007,
+          10008,
+          10009
         ],
         "noise_levels": [
           0.0,
@@ -740,7 +438,7 @@
           0.1
         ],
         "split_file": "splits/srbench_all.txt",
-        "n_datasets": 133,
+        "n_datasets": 130,
         "datasets": [
           "feynman_I_10_7",
           "feynman_I_11_19",
@@ -762,12 +460,10 @@
           "feynman_I_18_4",
           "feynman_I_24_6",
           "feynman_I_25_13",
-          "feynman_I_26_2",
           "feynman_I_27_6",
           "feynman_I_29_16",
           "feynman_I_29_4",
           "feynman_I_30_3",
-          "feynman_I_30_5",
           "feynman_I_32_17",
           "feynman_I_32_5",
           "feynman_I_34_1",
@@ -842,7 +538,6 @@
           "feynman_III_8_54",
           "feynman_III_9_52",
           "feynman_test_1",
-          "feynman_test_10",
           "feynman_test_11",
           "feynman_test_12",
           "feynman_test_13",
@@ -885,13 +580,14 @@
           {
             "noise": "all",
             "batch_dir": "slurm_fullsr/eval_0000",
-            "n_tasks": 5320
+            "n_tasks": 5200
           }
         ],
         "evaluation_types": [
           "ground_truth",
           "black_box"
         ],
+        "ground_truth_protocol": "srbench",
         "black_box": {
           "n_datasets": 122,
           "datasets": [
@@ -1020,16 +716,16 @@
           ],
           "n_runs": 10,
           "wall_limit": 1800,
-          "timeout_in_seconds": 1500,
+          "timeout_in_seconds": 90,
           "backend": "fullsr",
           "batch_dir": "slurm_fullsr/eval_0001",
           "max_train_samples": 10000
         }
       },
-      "results_sha256": "008c19b9e9856e6060478109389c9238e337689baffc0166325cee4ab8baf9a2"
+      "results_sha256": "3abb6794a26634c7d9ab2b568fb27ebf9d861d4284f685791a74698eb0eeacfb"
     },
-    "Evolved PySR": {
-      "path": "runs/973699",
+    "PySR++ (GT)": {
+      "path": "runs/pysr-gt-709715-srbench_full_9-22_10seed-90s",
       "manifest": {
         "mode": "evolve",
         "backend": "pysr",
@@ -1067,23 +763,34 @@
           ],
           "best_hparams": null
         },
-        "max_evals": 1000000,
-        "timeout_in_seconds": null,
-        "timeout_source": "disabled (--timeout 0)",
+        "max_evals": 1000000000,
+        "timeout_in_seconds": 90,
+        "no_early_stop": true,
+        "frontier_snapshot_seconds": 10.0,
+        "frontier_snapshot_clock": "fit_wall_time",
+        "timeout_source": "--timeout",
         "max_samples": 1000,
-        "seed": 42,
+        "cpus_per_task": 1,
+        "baseline_l1_loss": false,
+        "maxsize_warmup": false,
+        "seed": 10000,
         "n_runs": 10,
+        "merge_run_frontiers": false,
+        "serial_restart_portfolio": null,
+        "bundle_names": {
+          "0": "evolve"
+        },
         "seeds": [
-          42,
-          43,
-          44,
-          45,
-          46,
-          47,
-          48,
-          49,
-          50,
-          51
+          10000,
+          10001,
+          10002,
+          10003,
+          10004,
+          10005,
+          10006,
+          10007,
+          10008,
+          10009
         ],
         "noise_levels": [
           0.0,
@@ -1092,7 +799,7 @@
           0.1
         ],
         "split_file": "splits/srbench_all.txt",
-        "n_datasets": 133,
+        "n_datasets": 130,
         "datasets": [
           "feynman_I_10_7",
           "feynman_I_11_19",
@@ -1114,12 +821,10 @@
           "feynman_I_18_4",
           "feynman_I_24_6",
           "feynman_I_25_13",
-          "feynman_I_26_2",
           "feynman_I_27_6",
           "feynman_I_29_16",
           "feynman_I_29_4",
           "feynman_I_30_3",
-          "feynman_I_30_5",
           "feynman_I_32_17",
           "feynman_I_32_5",
           "feynman_I_34_1",
@@ -1194,7 +899,6 @@
           "feynman_III_8_54",
           "feynman_III_9_52",
           "feynman_test_1",
-          "feynman_test_10",
           "feynman_test_11",
           "feynman_test_12",
           "feynman_test_13",
@@ -1237,28 +941,29 @@
           {
             "noise": 0.0,
             "batch_dir": "slurm_pysr/eval_0000",
-            "n_tasks": 1330
+            "n_tasks": 1300
           },
           {
             "noise": 0.001,
             "batch_dir": "slurm_pysr/eval_0001",
-            "n_tasks": 1330
+            "n_tasks": 1300
           },
           {
             "noise": 0.01,
             "batch_dir": "slurm_pysr/eval_0002",
-            "n_tasks": 1330
+            "n_tasks": 1300
           },
           {
             "noise": 0.1,
             "batch_dir": "slurm_pysr/eval_0003",
-            "n_tasks": 1330
+            "n_tasks": 1300
           }
         ],
         "evaluation_types": [
           "ground_truth",
           "black_box"
         ],
+        "ground_truth_protocol": "srbench",
         "black_box": {
           "n_datasets": 122,
           "datasets": [
@@ -1387,13 +1092,13 @@
           ],
           "n_runs": 10,
           "wall_limit": 1800,
-          "timeout_in_seconds": null,
+          "timeout_in_seconds": 90,
           "backend": "pysr",
           "batch_dir": "slurm_pysr/eval_0004",
           "max_train_samples": 10000
         }
       },
-      "results_sha256": "95059bdcecfae1f248323fb80d6c72967e8a57e35780a1d32cac1fa16f432fe3"
+      "results_sha256": "ee912fd571d2cc591be9f1f8d82c33fad8bb5d15e9491ecdd47a297cdc4b6709"
     }
   },
   "mdlformer": {
@@ -1416,5 +1121,6 @@
     "feynman_I_26_2",
     "feynman_I_30_5",
     "feynman_test_10"
-  ]
+  ],
+  "scale": 1.0
 }

@@ -1,10 +1,12 @@
 # Extended SRBench ground-truth Figure 3
 
-`../figure3_extended.pdf` retains the 14 methods from the
+`../srbench_gt.pdf` retains the 14 methods from the
 [2021 SRBench Figure 3](https://datasets-benchmarks-proceedings.neurips.cc/paper_files/paper/2021/file/c0c7c76d30bd3dcaefc96f40275bdc0a-Paper-round1.pdf)
-and add MDLformer, BasicSR, PySR, evolved BasicSR trained on GT-R2, and evolved
-PySR from run 709715. The main plot has 19 methods.
-The four local methods have bold labels; MDLformer is labeled `mdlformer`.
+and adds MDLformer plus three local 90-second evaluations: PySR,
+BasicSR++ (GT/R2) from training run 229869, and PySR++ (GT) from training run
+709715. The main plot has 18 methods. The three local methods have bold labels.
+`../figure3_extended.pdf` is the earlier 1M-evaluation version (PySR, BasicSR,
+evolved BasicSR, evolved PySR); `figure3_extended_summary.csv` holds its scores.
 
 The plotting script extracts and executes the actual `compare` function from
 `srbench/postprocessing/groundtruth_results.ipynb`. It uses the notebook's
@@ -26,10 +28,9 @@ These three additional datasets are excluded from the figure.
 | Display name | Source |
 |---|---|
 | Original 14 methods | `srbench/results/symbolic_dataset_results_sum.csv.gz` |
-| PySR | `runs/290227` |
-| BasicSR | `runs/150814` |
-| Evolved BasicSR | `runs/271625`, evaluating training run `150815` |
-| Evolved PySR | `runs/973699`, evaluating training run `709715` |
+| PySR | `runs/pysr-base-srbench_full_9-22_10seed-90s` |
+| BasicSR++ (GT/R2) | `runs/fullsr-gtr2-229869-srbench_full_9-22_10seed-90s`, evaluating training run `229869` |
+| PySR++ (GT) | `runs/pysr-gt-709715-srbench_full_9-22_10seed-90s`, evaluating training run `709715` |
 | mdlformer | Author-released `SSSR` trials; see below |
 
 MDLformer results come from the
@@ -54,7 +55,7 @@ using Seaborn's default 1,000 resamples and fixed random seed 20260910. They are
 deviations across seeds. Rows are sorted by mean solution rate over datasets
 and noise levels, matching the notebook's ordering code.
 
-All four local runs have 5,320 complete trial results: 133 datasets, four
+All three local runs have 5,200 complete trial results: 130 datasets, four
 noise levels, and ten seeds. MDLformer has 5,307 available trials: 520
 dataset/noise cells have ten seeds, eleven cells have nine, and one cell has
 eight. It covers all 532 dataset/noise cells. Missing trials are not imputed.
@@ -63,9 +64,10 @@ one missing gplearn cell; its original available-cell convention is retained.
 Every plotted point's task and trial counts are recorded in the summary CSVs.
 
 This is a comparison of existing evaluations, not a new controlled rerun.
-Local runs use a 1M evaluation limit and their saved early-stopping settings.
-PySR, BasicSR, and evolved BasicSR have a 500-second search timeout; evolved
-PySR's soft timeout is disabled. Historical methods and MDLformer retain
+Local runs use a 90-second search timeout per trial on one CPU, with the
+evaluation limit set to 1e9 (effectively unlimited). PySR and PySR++ run
+without early stopping; BasicSR++ uses its saved early-stopping and maxsize
+warmup settings. Historical methods and MDLformer retain
 their respective published evaluation protocols, budgets, seeds, and solution
 checks. Shared task names do not imply identical compute or scoring protocols.
 Training and validation tasks remain included in the figure.
@@ -76,13 +78,18 @@ From the repository root:
 
 ```bash
 python -m pip install seaborn==0.13.2
-python figures/plot_srbench_figure3_extended.py
+python figures/plot_srbench_figure3_extended.py [--scale 1.0]
 ```
+
+`--scale` sets the size of fonts, markers and lines relative to the canvas
+(e.g. 1.2 makes them 20% larger). It shrinks the canvas rather than enlarging
+every element, so the scaling is uniform, including the notebook's fixed
+legend font size.
 
 No SLURM jobs, model evaluations, or downloads are performed by the plotting
 script. It uses the saved local runs, the local SRBench summary, and the
 committed MDLformer trial extract. `dataset_rates.csv` is the combined
-dataset-level snapshot; `figure3_extended_summary.csv` contains the plotted scores.
+dataset-level snapshot; `srbench_gt_summary.csv` contains the plotted scores.
 `provenance.json` records input hashes and the local run manifests.
 
 The PDF figure is written directly into `figures/`. Supporting data and provenance

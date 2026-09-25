@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Extend SRBench 2021 Figure 3 with local methods and released MDLformer trials.
+"""Extend SRBench 2021 Figure 3 with local 90-second methods and released MDLformer trials.
 
 Uses the original notebook's aggregation: mean over seeds within dataset/noise,
 then mean over datasets, then call the actual SRBench notebook plotting function (including its CIs).
 Inputs are existing artifacts; no evaluations or SLURM jobs are launched.
 """
+import argparse
 import ast
 import hashlib
 import json
@@ -26,11 +27,11 @@ import srbench_results_io as srio
 OUT = ROOT / "figures/srbench_figure3_extended"
 PDF_OUT = ROOT / "figures"
 LOCAL = {
-    "PySR": "290227",
-    "BasicSR": "150814",
-    "Evolved BasicSR": "271625",
-    "Evolved PySR": "973699",
+    "PySR": "pysr-base-srbench_full_9-22_10seed-90s",
+    "BasicSR++ (GT/R2)": "fullsr-gtr2-229869-srbench_full_9-22_10seed-90s",
+    "PySR++ (GT)": "pysr-gt-709715-srbench_full_9-22_10seed-90s",
 }
+STEM = "srbench_gt"
 MDL = "MDLformer"
 NOISE = [0, .001, .01, .1]
 MARKERS = ["o", "s", "x", "+"]
@@ -67,10 +68,11 @@ def collect():
     }
     for method, run in LOCAL.items():
         directory = ROOT / "runs" / run
-        manifest = srio.load_manifest(directory)
-        keyed = srio.load_keyed_results(directory)
-        assert manifest["max_evals"] == 1_000_000
-        assert len(keyed) == 5320
+        manifest, keyed = srio.standard_ground_truth_view(
+            srio.load_manifest(directory), srio.load_keyed_results(directory))
+        assert manifest["timeout_in_seconds"] == 90
+        assert manifest["max_evals"] >= 1_000_000_000
+        assert len(keyed) == 5200
         rows = []
         for entry in keyed.values():
             if not entry.get("present") or entry.get("error") is not None:
@@ -101,7 +103,7 @@ def collect():
     return all_rates, shared, provenance
 
 
-def render(data, stem):
+def render(data, stem, scale=1.0):
     # Execute the actual notebook function, not a reimplementation of its style.
     notebook_path = ROOT / "srbench/postprocessing/groundtruth_results.ipynb"
     notebook = json.loads(notebook_path.read_text())
@@ -141,8 +143,9 @@ def render(data, stem):
         hue_order=NOISE, seed=20260910, n_boot=1000,
         # Explicit discrete palette preserves old Seaborn's categorical noise colors.
         palette=dict(zip(NOISE, sns.color_palette("flare_r", 4))),
-        # Enlarge the canvas for extra rows and longer method labels.
-        height=max(5, 5 * data.method.nunique() / 14),
+        # Enlarge the canvas for extra rows and longer method labels. Shrinking
+        # the canvas by `scale` enlarges fonts, markers and lines relative to it.
+        height=max(5, 5 * data.method.nunique() / 14) / scale,
         aspect=.8,
     )
     assert len(captured) == 1
@@ -169,12 +172,18 @@ def render(data, stem):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--scale", type=float, default=1.0,
+                        help="Size of fonts, markers and lines relative to the canvas "
+                             "(>1 larger, <1 smaller)")
+    args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     rates, shared, provenance = collect()
+    provenance["scale"] = args.scale
     rates.to_csv(OUT / "dataset_rates.csv", index=False)
     (OUT / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
-    render(rates[rates.dataset.isin(shared)], "figure3_extended")
-    print(PDF_OUT / "figure3_extended.pdf")
+    render(rates[rates.dataset.isin(shared)], STEM, args.scale)
+    print(PDF_OUT / f"{STEM}.pdf")
 
 
 if __name__ == "__main__":
