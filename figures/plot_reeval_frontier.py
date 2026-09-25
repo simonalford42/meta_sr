@@ -1,6 +1,6 @@
 """Full oracle-replay frontier: expected true parent fitness vs total
 evaluations for fixed-N, promote (N_init -> N_init+N_reeval) and TTTS
-(N_init, B) policies. One line per family, shaded by N_init, no per-point
+(N_init, M) policies. One line per family, shaded by N_init, no per-point
 labels. Reads plots/oracle_replay/oracle_replay_frontier.json (written by
 scripts/oracle_replay_frontier.py).
 
@@ -60,7 +60,7 @@ def draw_frontier(ax, D=None, legend_fontsize=9, legend_loc="lower right"):
                               label=rf"$N_{{\mathrm{{init}}}}={n}$, $N_{{\mathrm{{reeval}}}} \in \{{1,\dots,{10-n}\}}$"))
     for n in SHOW_NINIT:
         handles.append(Line2D([], [], color=REDS[n], marker="^", ms=5, lw=1.4,
-                              label=rf"TTTS, $N_{{\mathrm{{init}}}}={n}$, $B \in \{{5,\dots,100\}}$"))
+                              label=rf"TTTS, $N_{{\mathrm{{init}}}}={n}$, $M \in \{{5,\dots,100\}}$"))
     ax.legend(handles=handles, fontsize=legend_fontsize, loc=legend_loc, frameon=False,
               handletextpad=0.5)
     ax.set_xlim(0, D["oracle_seeds"] * 1.04)

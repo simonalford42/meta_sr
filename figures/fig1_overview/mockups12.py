@@ -240,7 +240,7 @@ def evaluate(s):
 
 def reevaluation(s, x, y, w, h):
     s.panel(x, y, w, h, 'Reevaluation', tsize=15)
-    alloc = [5, 3, 2, 0]                     # reeval seeds handed out this generation (sum = B)
+    alloc = [5, 3, 2, 0]                     # reeval seeds handed out this generation (sum = M)
     fits = [0.66, 0.63, 0.60, 0.52]
     n_init = 3
     s.text(x + 14, y + 32, 'fitness ± err', 's12', fill=C['mute'])
@@ -268,14 +268,14 @@ def reevaluation(s, x, y, w, h):
     cut = (rows_y[2] + rows_y[3]) / 2
     s.line(x + 10, cut, x + 232, cut, stroke=C['mute'], cls='w1 dash')
     # budget -> strategy -> allocation
-    B = sum(alloc)
+    M = sum(alloc)
     cols = 5
-    bw_, bh_ = cols * 11 + 12, math.ceil(B / cols) * 11 + 12
+    bw_, bh_ = cols * 11 + 12, math.ceil(M / cols) * 11 + 12
     pcx = x + w - 76
     bx, by = pcx - bw_ / 2, y + 44
-    s.text(pcx, by - 7, 'budget B', 's12 b', fill=C['ink2'], anchor='m')
+    s.text(pcx, by - 7, 'budget M', 's12 b', fill=C['ink2'], anchor='m')
     s.rect(bx, by, bw_, bh_, fill=C['white'], stroke=REEV, rx=6, cls='w15')
-    for k in range(B):
+    for k in range(M):
         s.circle(bx + 11 + (k % cols) * 11, by + 11 + (k // cols) * 11, 3.8, fill=REEV, stroke='none', cls='w1')
     pw = strategy_pill(s, pcx, by + bh_ + 22, center=True)
     s.arrow([(pcx, by + bh_ + 2), (pcx, by + bh_ + 20)], color=REEV, cls='w15', head=6)

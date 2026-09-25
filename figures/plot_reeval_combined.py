@@ -17,7 +17,7 @@ sys.path.insert(0, str(HERE))
 import plot_90s_reevaluation_ablations as abl  # noqa: E402
 from plot_reeval_frontier import draw_frontier, SCRATCH, BLUES, ORANGES, REDS, LINE_ALPHA  # noqa: E402
 
-SCALE = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
+SCALE = float(sys.argv[1]) if len(sys.argv) > 1 else 0.95
 records = json.loads((abl.OUT / "data.json").read_text())
 
 colors = {'n3': BLUES[3], 'n10': BLUES[10], 'n3-reeval': ORANGES[3], 'n3-TTTS': REDS[3]}
@@ -25,7 +25,7 @@ labels = {
     'n3': r'$N_{\mathrm{init}} = 3$',
     'n10': r'$N_{\mathrm{init}} = 10$',
     'n3-reeval': r'$N_{\mathrm{init}} = 3$, uniform reeval, $N_{\mathrm{reeval}} = 7$',
-    'n3-TTTS': r'$N_{\mathrm{init}} = 3$, TTTS reeval, $B = 30$',
+    'n3-TTTS': r'$N_{\mathrm{init}} = 3$, TTTS reeval, $M = 30$',
 }
 
 with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
