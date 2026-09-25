@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
 
+# 9/25/26
+# Submitted: n3=353972, n1=353973, n1-reeval=353974, n1-TTTS=353975.
+# ablation_flags=(
+#     --operator-type all --population-type topk --population 10 --offspring 10 --seed 3
+#     --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270 --population-reeval-runs 3
+# )
+
+# n3_resume=$(sbatch --parsable --partition=default_partition --job-name=n3-s3-resume run.sh evolve_pysr.py "${ablation_flags[@]}" --generations 14 --n-runs 3 --reeval none --continue-from runs/192862 --continue-eval-idx 60) || exit 1
+# n1_resume=$(sbatch --parsable --partition=default_partition --dependency="afterany:$n3_resume" --job-name=n1-s3-resume run.sh evolve_pysr.py "${ablation_flags[@]}" --generations 2 --n-runs 1 --reeval none --continue-from runs/64606 --continue-eval-idx 138) || exit 1
+# n1_reeval_resume=$(sbatch --parsable --partition=default_partition --dependency="afterany:$n3_resume" --job-name=n1-reeval-s3-resume run.sh evolve_pysr.py "${ablation_flags[@]}" --generations 12 --n-runs 1 --reeval population --n-reevals 3 --continue-from runs/64607 --continue-eval-idx 76) || exit 1
+# n1_ttts=$(sbatch --parsable --partition=default_partition --dependency="afterany:$n3_resume" --job-name=n1-ttts-s3 run.sh evolve_pysr.py "${ablation_flags[@]}" --generations 15 --n-runs 1 --reeval TTTS --reeval-budget 10) || exit 1
+# printf '%s\n' "n3-s3-resume=$n3_resume" "n1-s3-resume=$n1_resume" "n1-reeval-s3-resume=$n1_reeval_resume" "n1-ttts-s3=$n1_ttts"
+
 # 9/24/26
 srb709715_flags=(
     --evolve-results runs/709715 --select-by val --ground-truth --black-box
