@@ -43,7 +43,8 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
         ax.grid(alpha=.2)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
-    axl.set_ylabel('Fitness (GT)')
+    axl.set_ylabel('Best offspring fitness (GT)')
+    axc.set_ylabel('Best offspring fitness (GT)')
     axl.set_xlabel('Generation'); axl.set_xlim(-.35, 15.35); axl.set_xticks(range(0, 16, 3))
     axc.set_xlabel('Cumulative evaluations')
     xmax = max(abl.aggregate(records, m, 'eval_idx', 'train_reeval_score')[0][-1] for m in colors)
@@ -53,18 +54,9 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
     axl.legend(frameon=False, fontsize=9, loc='upper left', handlelength=1.8)
 
     draw_frontier(axr, legend_fontsize=8.5)
-    axr.set_ylabel('')
-    titles = ['Best offspring fitness', 'Best offspring fitness',
-              'Expected true parent fitness']
-    for ax, tag, title in zip(axes, "abc", titles):
-        ax.set_title(f"({tag}) {title}", loc="left", fontsize=11)
+    for ax, tag in zip(axes, "abc"):
+        ax.set_title(f"({tag})", loc="left", fontsize=11)
     fig.tight_layout(w_pad=1.6)
-    # (a) and (b) share a y-axis: pull (b) toward (a) and give the slack to (c).
-    pl, pc = axl.get_position(), axc.get_position()
-    gap = pc.x0 - pl.x1
-    axc.set_position([pl.x1 + 0.3 * gap, pc.y0, pc.width, pc.height])
-    pc, pr = axc.get_position(), axr.get_position()
-    axr.set_position([pc.x1 + gap, pr.y0, pr.x1 - (pc.x1 + gap), pr.height])
     out = HERE / "reeval_combined.pdf"
     fig.savefig(out)
     SCRATCH.mkdir(parents=True, exist_ok=True)
