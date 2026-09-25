@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 # 9/25/26
+sbatch --partition=default_partition --time=48:00:00 --mem=20G -J srb90-autoresearch run.sh srbench_full_eval.py --autoresearch e425e7ed5894b0ebd7718fed0d77a252df2fa443 --ground-truth --black-box --max-evals 1000000000 --timeout 90 --black-box-timeout 90 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --black-box-max-samples 10000 --pysr-wall-limit 300 --black-box-wall-limit 1800 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5 --no-early-stop --no-maxsize-warmup --frontier-snapshot-seconds 10 --results-dir runs/autoresearch-e425e7e-srbench_full_9-25_10seed-90s
+
 # Submitted: n3=353972, n1=353973, n1-reeval=353974, n1-TTTS=353975.
 # Applied: cleared dependencies on 353973 and 353974; 353975 waits for the first of 353972/353973/353974 to finish.
 # ablation_flags=(
