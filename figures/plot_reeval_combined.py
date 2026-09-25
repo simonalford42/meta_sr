@@ -1,8 +1,8 @@
 """Combined reevaluation figure (1 x 3):
-  left/center: real 90 s ablation runs, reevaluated train score of the best
+  center/right: real 90 s ablation runs, reevaluated train score of the best
                algorithm vs generation and vs cumulative evaluations
                (same data/drawing as reevaluation_ablations_90s/n3_comparison_compact.pdf)
-  right:       synthetic oracle-replay frontier (plot_reeval_frontier.draw_frontier)
+  left:        synthetic oracle-replay frontier (plot_reeval_frontier.draw_frontier)
 
 Usage: python figures/plot_reeval_combined.py [SCALE]"""
 import json
@@ -34,8 +34,8 @@ BAR_DODGE = {'n10': 0.22, 'n3-reeval': -0.22}   # generations
 with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
                      'xtick.labelsize': 10, 'ytick.labelsize': 10}):
     fig, axes = plt.subplots(1, 3, figsize=(12.5 * SCALE, 3.9 * SCALE),
-                             gridspec_kw={'width_ratios': [1, 1, 1.15]})
-    axl, axc, axr = axes
+                             gridspec_kw={'width_ratios': [1.15, 1, 1]})
+    axr, axl, axc = axes  # oracle, generation, cumulative evaluations
     axc.sharey(axl)
     for ax, xkey in zip((axl, axc), ['generation', 'eval_idx']):
         for method, color in colors.items():
@@ -65,12 +65,6 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
     for ax, tag in zip(axes, "abc"):
         ax.set_title(f"({tag})", loc="left", fontsize=11)
     fig.tight_layout(w_pad=1.6)
-    # (a) and (b) share a y-axis: pull (b) toward (a) and give the slack to (c).
-    pl, pc = axl.get_position(), axc.get_position()
-    gap = pc.x0 - pl.x1
-    axc.set_position([pl.x1 + 0.3 * gap, pc.y0, pc.width, pc.height])
-    pc, pr = axc.get_position(), axr.get_position()
-    axr.set_position([pc.x1 + gap, pr.y0, pr.x1 - (pc.x1 + gap), pr.height])
     out = HERE / "reeval_combined.pdf"
     fig.savefig(out)
     SCRATCH.mkdir(parents=True, exist_ok=True)
