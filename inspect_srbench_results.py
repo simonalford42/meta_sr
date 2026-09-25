@@ -358,13 +358,8 @@ def format_summary_table(rows: "list[dict]") -> str:
     def _pct(x):
         return f"{x*100:.1f}" if x is not None else "-"
 
-    def _time(x):
-        return f"{x:.1f}s" if x is not None else "-"
-
     def _r2(x):
         return f"{x:.3f}" if x is not None else "-"
-
-    has_subset = any("train_pct" in r for r in rows)
 
     # (header, key-fn) for each column.
     cols = [
@@ -373,24 +368,12 @@ def format_summary_table(rows: "list[dict]") -> str:
         ("bundle", lambda r: str(r["bundle"])),
         ("completed", lambda r: f"{r['completed']}/{r['total']}"),
         ("mode", lambda r: str(r["mode"])),
-        ("max-evals", lambda r: (
-            f"{r['max_evals']:,}" if r.get("max_evals") is not None else "-"
-        )),
         ("bb_r2", lambda r: _r2(r.get("bb_r2"))),
-        ("all%", lambda r: _pct(r.get("all_pct"))),
-        ("all%(n0)", lambda r: _pct(r.get("all0_pct"))),
-        ("all_r2", lambda r: _r2(r.get("all_r2"))),
-        ("all_t", lambda r: _time(r.get("all_t"))),
+        ("all", lambda r: _pct(r.get("all_pct"))),
+        ("train", lambda r: _pct(r.get("train_pct"))),
+        ("val", lambda r: _pct(r.get("val_pct"))),
+        ("rest", lambda r: _pct(r.get("rest_pct"))),
     ]
-    if has_subset:
-        cols += [
-            (TRAIN_LABEL, lambda r: _pct(r.get("train_pct"))),
-            ("bu(n0)", lambda r: _pct(r.get("train0_pct"))),
-            (VAL_LABEL, lambda r: _pct(r.get("val_pct"))),
-            ("train(n0)", lambda r: _pct(r.get("clean_train0_pct"))),
-            ("val(n0)", lambda r: _pct(r.get("clean_val0_pct"))),
-            ("rest", lambda r: _pct(r.get("rest_pct"))),
-        ]
 
     headers = [h for h, _ in cols]
     table = [headers] + [[fn(r) for _, fn in cols] for r in rows]
@@ -479,7 +462,7 @@ def main():
     mode.add_argument("--run-id",
                       help="Run id / directory name under --runs-root.")
     mode.add_argument("--see-all", action="store_true",
-                      help="Inspect full-SRBench runs recursively under --runs-root, excluding archive/.")
+                      help="Inspect full-SRBench runs under --runs-root, excluding archive/.")
     mode.add_argument(
         "--official", action="store_true",
         help="Show the official baseline/HPO/PySR++/BasicSR++ comparison table.",
@@ -494,9 +477,9 @@ def main():
                         help="With --see-all or --v2, filter by manifest modification time.")
     parser.add_argument("--latest", type=int, metavar="N",
                         help="With --v2, show only the N most recent manifests, newest first.")
-    parser.add_argument("--discovery-depth", type=int, default=None, metavar="N",
+    parser.add_argument("--discovery-depth", type=int, default=1, metavar="N",
                         help="With --see-all or --v2, search N directory levels below "
-                             "--runs-root (default: unlimited for --see-all, 2 for --v2).")
+                             "--runs-root.")
     parser.add_argument("--runs-root", type=str, default="runs")
     parser.add_argument("--show-missing", type=int, default=50,
                         help="Max number of missing (task,seed,noise) triples to print.")
@@ -527,8 +510,7 @@ def main():
 
     if args.v2:
         run_dirs = find_srbench2_runs(args.runs_root, since_days=args.since,
-                                     latest=args.latest, max_depth=(
-                                         2 if args.discovery_depth is None else args.discovery_depth))
+                                     latest=args.latest, max_depth=args.discovery_depth)
         if not run_dirs:
             print(f"No SRBench 2.0 runs found under {args.runs_root}")
             sys.exit(1)

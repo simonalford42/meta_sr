@@ -95,7 +95,7 @@ class FindRunsTests(unittest.TestCase):
                 self.assertEqual(find_full_srbench_runs(root, max_depth=0), [])
                 output = io.StringIO()
                 with patch.object(sys, "argv", ["inspect_srbench_results.py", "--see-all",
-                                  "--runs-root", str(root), "--discovery-depth", "1"]):
+                                  "--runs-root", str(root)]):
                     with redirect_stdout(output):
                         main()
                 self.assertNotIn("bundle/nested", output.getvalue())
@@ -120,7 +120,8 @@ class FindRunsTests(unittest.TestCase):
                              sorted(runs_root / name for name in names))
             output = io.StringIO()
             with patch.object(sys, "argv", ["inspect_srbench_results.py",
-                              "--see-all", "--runs-root", str(runs_root)]):
+                              "--see-all", "--runs-root", str(runs_root),
+                              "--discovery-depth", "3"]):
                 with redirect_stdout(output):
                     main()
             for name in names:
@@ -301,7 +302,7 @@ class SummaryTableTests(unittest.TestCase):
             self.assertNotIn("Missing (", text)
             self.assertTrue(summarize_run(run_dir)["complete"])
 
-    def test_displays_manifest_max_evals(self):
+    def test_omits_manifest_max_evals(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "12345"
             run_dir.mkdir()
@@ -312,10 +313,10 @@ class SummaryTableTests(unittest.TestCase):
             table = format_summary_table([row])
 
             self.assertEqual(row["max_evals"], 1_000_000)
-            self.assertIn("max-evals", table)
-            self.assertIn("1,000,000", table)
+            self.assertNotIn("max-evals", table)
+            self.assertNotIn("1,000,000", table)
 
-    def test_missing_max_evals_is_shown_as_dash(self):
+    def test_missing_metrics_are_shown_as_dashes(self):
         row = {
             "slurm": "legacy",
             "bundle": "-",
@@ -329,7 +330,9 @@ class SummaryTableTests(unittest.TestCase):
         headers = [cell.strip() for cell in lines[1].split("│")[1:-1]]
         cells = [cell.strip() for cell in lines[3].split("│")[1:-1]]
 
-        self.assertEqual(cells[headers.index("max-evals")], "-")
+        self.assertEqual(headers, ["slurm", "bundle", "completed", "mode",
+                                   "bb_r2", "all", "train", "val", "rest"])
+        self.assertEqual(cells[4:], ["-"] * 5)
 
 
 class OfficialTableTests(unittest.TestCase):
