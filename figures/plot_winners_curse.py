@@ -22,13 +22,14 @@ sys.path.insert(0, str(HERE.parent / "scripts"))
 from plot_eval_axis_comparison import forward_fill_by_gen
 from plot_reeval_frontier import LINE_ALPHA
 
+SCALE = 0.85
 
 def main():
     data = json.loads((HERE / "winners_curse_data.json").read_text())
     gens = data["generations"]
     with plt.rc_context({"font.size": 11, "axes.labelsize": 12,
                          "xtick.labelsize": 10, "ytick.labelsize": 10}):
-        fig, axes = plt.subplots(2, 1, figsize=(5.2 * .95, 6.8 * .95), sharex=True)
+        fig, axes = plt.subplots(2, 1, figsize=(5.2 * SCALE, 6.8 * SCALE), sharex=True)
         for n, color in [(1, "tab:purple"), (3, "tab:cyan")]:
             runs = [r for r in data["runs"] if r["n_init"] == n]
             assert len(runs) == 5
@@ -50,19 +51,17 @@ def main():
                 ax.fill_between(gens, mean - std, mean + std, color=color, alpha=.18, linewidth=0)
             print(f"N={n}: final reevaluated fitness={np.mean(values[0], axis=0)[-1]:.3f}, "
                   f"winner's curse={np.mean(values[1], axis=0)[-1]:.3f}")
-        axes[0].set_ylabel("Reevaluated fitness, best algorithm")
         axes[0].set_ylim(.30, .70)
         axes[0].set_yticks([.3, .4, .5, .6, .7])
         axes[0].legend(frameon=False, fontsize=9, loc="upper left", handlelength=1.8)
-        axes[1].set_ylabel("Winner’s curse, best algorithm")
         axes[1].axhline(0, color="0.4", lw=.8, alpha=.5)
         axes[1].set_ylim(-.06, .36)
         axes[1].set_yticks([0, .1, .2, .3])
         axes[1].set_xlabel("Generation")
         axes[1].set_xlim(-.35, 15.35)
         axes[1].set_xticks(range(0, 16, 3))
-        for ax, tag in zip(axes, "ab"):
-            ax.set_title(f"({tag})", loc="left", fontsize=11)
+        for ax, tag, title in zip(axes, "ab", ["Reevaluated training fitness", "Winner’s curse"]):
+            ax.set_title(f"({tag}) {title}", loc="left", fontsize=11)
             ax.grid(alpha=.2)
             for spine in ("top", "right"):
                 ax.spines[spine].set_visible(False)
