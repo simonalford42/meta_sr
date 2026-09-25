@@ -20,7 +20,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scripts"))
 from plot_eval_axis_comparison import forward_fill_by_gen
-from plot_reeval_frontier import BLUES, LINE_ALPHA
+from plot_reeval_frontier import LINE_ALPHA
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
     with plt.rc_context({"font.size": 11, "axes.labelsize": 12,
                          "xtick.labelsize": 10, "ytick.labelsize": 10}):
         fig, axes = plt.subplots(2, 1, figsize=(5.2 * .95, 6.8 * .95), sharex=True)
-        for n, color in [(1, "#55a868"), (3, BLUES[3])]:
+        for n, color in [(1, "#e78ab5"), (3, "#58a9d6")]:
             runs = [r for r in data["runs"] if r["n_init"] == n]
             assert len(runs) == 5
             values = [[], []]
