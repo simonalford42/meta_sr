@@ -20,7 +20,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 METHODS = [
     ("Base PySR", "pysr-base-srbench_full_9-22_10seed-90s"),
-    ("709715\n(all operators)", "pysr-gt-709715-srbench_full_9-22_10seed-90s"),
+    ("All evolved\noperators", "pysr-gt-709715-srbench_full_9-22_10seed-90s"),
     *[(f"Base +\n{operator}", f"709715-only-{operator}-srbench_full_9-24_10seed-90s")
       for operator in ("loss", "mutation", "survival", "selection")],
 ]
