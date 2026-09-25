@@ -404,7 +404,7 @@ def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=Fal
     point = final[0]
     ax.scatter([point['generation']], [point['fitness']], marker='*', s=155 * SCALE**2,
                c=COLORS[point['color_operator']], edgecolors='black', linewidths=0.7 * SCALE, zorder=4.5)
-    ax.set(xlabel='Generation', ylabel='Fitness (GT)', xlim=(-1, 46), ylim=(0, 1))
+    ax.set(xlabel='Generation', ylabel='Train fitness (GT)', xlim=(-1, 46), ylim=(0, 1))
     ax.xaxis.set_major_locator(MultipleLocator(5))
     ax.grid(color='#e9ecf0', lw=0.8 * SCALE)
     ax.set_axisbelow(True)
