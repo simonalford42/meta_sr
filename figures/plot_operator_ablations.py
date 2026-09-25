@@ -55,7 +55,7 @@ def main():
 
     with plt.rc_context({"font.size": 10, "pdf.fonttype": 42,
                          "axes.spines.top": False, "axes.spines.right": False}):
-        fig, ax = plt.subplots(figsize=(10, 4.8))
+        fig, ax = plt.subplots(figsize=(8, 3.84))
         x = np.arange(len(METHODS))
         width = 0.25
         for offset, (label, key, color) in enumerate([
