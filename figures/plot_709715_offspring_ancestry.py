@@ -36,19 +36,22 @@ OUT = ROOT / '709715_offspring_ancestry'
 TYPES = ('mutation', 'survival', 'selection', 'loss')
 BASELINE = ('add_constant_offset', 'age_regularized_survival', 'tournament_selection', 'mse_loss')
 COLORS = dict(mutation='#d62728', loss='#2878c8', selection='#e4bc24', survival='#2c9b49')
+BEST_LINE_STYLE = dict(color='#404040', linewidth=1.1 * SCALE, alpha=0.9)
 
 
-def draw_ancestry_legend(ax, fontsize):
+def draw_ancestry_legend(ax, fontsize, best_line=False):
     """Right-align category labels beside the operator markers."""
     # Scale the custom legend in physical units when canvas or font size changes.
     width, height = ax.figure.get_size_inches()
     sx = (fontsize / 9) * (10.2 / width)
     sy = (fontsize / 9) * (5.6 / height)
+    # An extra bottom row for the best-so-far line shifts the other rows up.
+    extra = 0.045 if best_line else 0
     def lx(value):
         return 1.0 - (0.97 - value) * sx
     def ly(value):
-        return 0.025 + (value - 0.025) * sy
-    ax.add_patch(Rectangle((lx(0.73), ly(0.025)), 0.24 * sx, 0.27 * sy,
+        return 0.025 + (value + extra - 0.025) * sy
+    ax.add_patch(Rectangle((lx(0.73), 0.025), 0.24 * sx, (0.27 + extra) * sy,
                            transform=ax.transAxes, facecolor='white',
                            edgecolor='grey', linewidth=0.5 * SCALE, alpha=1, zorder=5))
     for i, (label, color) in enumerate(COLORS.items()):
@@ -64,6 +67,12 @@ def draw_ancestry_legend(ax, fontsize):
     mid = (0.255 + 0.120) / 2
     ax.text(lx(0.845), ly(mid), 'Ancestor', transform=ax.transAxes,
             ha='right', va='center', fontsize=fontsize, zorder=6)
+    if best_line:
+        y = ly(0.06 - extra)
+        ax.plot([lx(0.845), lx(0.875)], [y, y], transform=ax.transAxes, **BEST_LINE_STYLE,
+                zorder=6)
+        ax.text(lx(0.845) - 0.008 * sx, y, 'Best so far', transform=ax.transAxes,
+                ha='right', va='center', fontsize=fontsize, zorder=6)
 
 
 def extract(source):
@@ -350,7 +359,8 @@ def add_ancestor_commentary(fig, ax, points):
         assert not any(box.overlaps(other) for other in boxes[i + 1:])
 
 
-def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=False):
+def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=False,
+           best_line=False):
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 10 * SCALE,
                          'pdf.fonttype': 42, 'axes.labelsize': 12 * SCALE,
                          'xtick.labelsize': 10 * SCALE, 'ytick.labelsize': 10 * SCALE,
@@ -373,6 +383,14 @@ def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=Fal
                 linewidths=[e.get('line_width', 0.65 if emphasis else 0.4) * SCALE for e in group],
                 alpha=0.40 if emphasis else 0.13, zorder=1.7 if emphasis else 1.6,
                 linestyles=['dashed' if e['certainty'] == 'ambiguous' else 'solid' for e in group]))
+    if best_line:
+        # Running maximum over all plotted creation events, held until improved.
+        best, xs, ys = -math.inf, [], []
+        for generation in range(max(p['generation'] for p in points) + 1):
+            best = max([best] + [p['fitness'] for p in points if p['generation'] == generation])
+            xs.append(generation)
+            ys.append(best)
+        ax.step(xs, ys, where='post', **BEST_LINE_STYLE, zorder=3)
     final_name = 'streamlined_niche_clone_tournament_gen43_3'
     for status in ('not_recorded_ancestor', 'ancestor', 'operator_origin'):
         group = [p for p in points if p['status'] == status and p['operator_name'] != final_name]
@@ -395,7 +413,7 @@ def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=Fal
         ax.spines[spine].set_visible(False)
     for spine in ('bottom', 'left'):
         ax.spines[spine].set_color('#bfc5cd')
-    draw_ancestry_legend(ax, 8 * SCALE)
+    draw_ancestry_legend(ax, 8 * SCALE, best_line)
     if commentary:
         add_ancestor_commentary(fig, ax, points)
     fig.savefig(OUT / filename, facecolor='white')
@@ -412,7 +430,7 @@ def main():
     if args.refresh_from:
         extract(args.refresh_from)
     points, summary = reconstruct(json.loads((OUT / 'lineage_records.json').read_text()))
-    render(points)
+    render(points, filename=ROOT / 'pysr_evolution.pdf', best_line=True)
     with (OUT / 'plotted_offspring.csv').open('w', newline='') as handle:
         writer = csv.DictWriter(handle, fieldnames=list(points[0]))
         writer.writeheader()

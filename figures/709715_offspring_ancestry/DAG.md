@@ -6,7 +6,7 @@ Regenerate from the repository root:
 python figures/plot_709715_offspring_dag.py
 ```
 
-Output: `offspring_ancestry_dag.pdf`. The existing dots-only `offspring_ancestry.pdf` is preserved. Both use the same point positions and styling; `SCALE` in `figures/plot_709715_offspring_ancestry.py` controls their size.
+Output: `offspring_ancestry_dag.pdf`. The dots-only variant is `figures/pysr_evolution.pdf` (formerly `offspring_ancestry.pdf`). Both use the same point positions and styling; `SCALE` in `figures/plot_709715_offspring_ancestry.py` controls their size.
 
 `offspring_dag.json` stores 459 nodes and typed relationships. Node IDs are `(generation, index)`, with zero-based indices into the saved offspring array; generation 0 uses the initial evaluation log order, including the baseline. These indices are not necessarily the generation slot suffixes in operator names.
 

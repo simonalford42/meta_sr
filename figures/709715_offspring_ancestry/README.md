@@ -68,5 +68,6 @@ it 20% smaller and `1.2` makes it 20% larger. At scale 1 the canvas is
 python figures/plot_709715_offspring_ancestry.py
 ```
 
-Output is PDF only: `figures/709715_offspring_ancestry/offspring_ancestry.pdf`.
+Output is PDF only: `figures/pysr_evolution.pdf` (formerly
+`offspring_ancestry.pdf`), with a step line tracing the best fitness so far.
 Existing PNG/SVG files are older previews and are not regenerated.
