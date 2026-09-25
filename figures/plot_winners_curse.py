@@ -60,7 +60,7 @@ def main():
         axes[1].set_xlabel("Generation")
         axes[1].set_xlim(-.35, 15.35)
         axes[1].set_xticks(range(0, 16, 3))
-        for ax, tag, title in zip(axes, "ab", ["Reevaluated training fitness", "Winner’s curse"]):
+        for ax, tag, title in zip(axes, "ab", ["Reevaluated fitness of best offspring", "Winner’s curse"]):
             ax.set_title(f"({tag}) {title}", loc="left", fontsize=11)
             ax.grid(alpha=.2)
             for spine in ("top", "right"):

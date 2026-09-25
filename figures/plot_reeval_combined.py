@@ -53,7 +53,7 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
 
     draw_frontier(axr, legend_fontsize=8.5)
     axr.set_ylabel('')
-    titles = ['Reevaluated training fitness', 'Reevaluated training fitness',
+    titles = ['Reevaluated fitness of best offspring', 'Reevaluated fitness of best offspring',
               'Expected true parent fitness']
     for ax, tag, title in zip(axes, "abc", titles):
         ax.set_title(f"({tag}) {title}", loc="left", fontsize=11)
