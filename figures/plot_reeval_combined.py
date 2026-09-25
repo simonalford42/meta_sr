@@ -43,6 +43,7 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
         ax.grid(alpha=.2)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
+    axl.set_ylabel('Fitness (GT)')
     axl.set_xlabel('Generation'); axl.set_xlim(-.35, 15.35); axl.set_xticks(range(0, 16, 3))
     axc.set_xlabel('Cumulative evaluations')
     xmax = max(abl.aggregate(records, m, 'eval_idx', 'train_reeval_score')[0][-1] for m in colors)
@@ -53,7 +54,7 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
 
     draw_frontier(axr, legend_fontsize=8.5)
     axr.set_ylabel('')
-    titles = ['Best offspring fitness (oracle)', 'Best offspring fitness (oracle)',
+    titles = ['Best offspring fitness', 'Best offspring fitness',
               'Expected true parent fitness']
     for ax, tag, title in zip(axes, "abc", titles):
         ax.set_title(f"({tag}) {title}", loc="left", fontsize=11)
