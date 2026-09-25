@@ -39,19 +39,17 @@ COLORS = dict(mutation='#d62728', loss='#2878c8', selection='#e4bc24', survival=
 BEST_LINE_STYLE = dict(color='#404040', linewidth=1.1 * SCALE, alpha=0.9)
 
 
-def draw_ancestry_legend(ax, fontsize, best_line=False):
+def draw_ancestry_legend(ax, fontsize):
     """Right-align category labels beside the operator markers."""
     # Scale the custom legend in physical units when canvas or font size changes.
     width, height = ax.figure.get_size_inches()
     sx = (fontsize / 9) * (10.2 / width)
     sy = (fontsize / 9) * (5.6 / height)
-    # An extra bottom row for the best-so-far line shifts the other rows up.
-    extra = 0.045 if best_line else 0
     def lx(value):
         return 1.0 - (0.97 - value) * sx
     def ly(value):
-        return 0.025 + (value + extra - 0.025) * sy
-    ax.add_patch(Rectangle((lx(0.73), 0.025), 0.24 * sx, (0.27 + extra) * sy,
+        return 0.025 + (value - 0.025) * sy
+    ax.add_patch(Rectangle((lx(0.73), ly(0.025)), 0.24 * sx, 0.27 * sy,
                            transform=ax.transAxes, facecolor='white',
                            edgecolor='grey', linewidth=0.5 * SCALE, alpha=1, zorder=5))
     for i, (label, color) in enumerate(COLORS.items()):
@@ -67,12 +65,6 @@ def draw_ancestry_legend(ax, fontsize, best_line=False):
     mid = (0.255 + 0.120) / 2
     ax.text(lx(0.845), ly(mid), 'Ancestor', transform=ax.transAxes,
             ha='right', va='center', fontsize=fontsize, zorder=6)
-    if best_line:
-        y = ly(0.06 - extra)
-        ax.plot([lx(0.845), lx(0.875)], [y, y], transform=ax.transAxes, **BEST_LINE_STYLE,
-                zorder=6)
-        ax.text(lx(0.845) - 0.008 * sx, y, 'Best so far', transform=ax.transAxes,
-                ha='right', va='center', fontsize=fontsize, zorder=6)
 
 
 def extract(source):
@@ -413,7 +405,7 @@ def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=Fal
         ax.spines[spine].set_visible(False)
     for spine in ('bottom', 'left'):
         ax.spines[spine].set_color('#bfc5cd')
-    draw_ancestry_legend(ax, 8 * SCALE, best_line)
+    draw_ancestry_legend(ax, 8 * SCALE)
     if commentary:
         add_ancestor_commentary(fig, ax, points)
     fig.savefig(OUT / filename, facecolor='white')
