@@ -47,7 +47,7 @@ def main():
                 assert np.isfinite(rows).all()
                 mean, std = rows.mean(axis=0), rows.std(axis=0, ddof=0)
                 ax.plot(gens, mean, color=color, lw=1.8, marker="o", ms=3,
-                        alpha=LINE_ALPHA, label=rf"$N_{{\mathrm{{init}}}} = {n}$")
+                        alpha=LINE_ALPHA, label=rf"$N = {n}$")
                 ax.fill_between(gens, mean - std, mean + std, color=color, alpha=.18, linewidth=0)
             print(f"N={n}: final reevaluated fitness={np.mean(values[0], axis=0)[-1]:.3f}, "
                   f"winner's curse={np.mean(values[1], axis=0)[-1]:.3f}")
