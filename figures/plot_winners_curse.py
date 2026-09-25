@@ -62,8 +62,7 @@ def main():
         axes[1].set_xlabel("Generation")
         axes[1].set_xlim(-.35, 15.35)
         axes[1].set_xticks(range(0, 16, 3))
-        for ax, tag in zip(axes, "ab"):
-            ax.set_title(f"({tag})", loc="left", fontsize=11)
+        for ax in axes:
             ax.grid(alpha=.2)
             for spine in ("top", "right"):
                 ax.spines[spine].set_visible(False)
