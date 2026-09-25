@@ -28,8 +28,8 @@ OUT = ROOT / "figures/srbench_figure3_extended"
 PDF_OUT = ROOT / "figures"
 LOCAL = {
     "PySR": "pysr-base-srbench_full_9-22_10seed-90s",
-    "BasicSR++ (GT/R2)": "fullsr-gtr2-229869-srbench_full_9-22_10seed-90s",
-    "PySR++ (GT)": "pysr-gt-709715-srbench_full_9-22_10seed-90s",
+    "Evolved BasicSR (GT/$R^2$)": "fullsr-gtr2-229869-srbench_full_9-22_10seed-90s",
+    "Evolved PySR (GT)": "pysr-gt-709715-srbench_full_9-22_10seed-90s",
 }
 STEM = "srbench_gt"
 MDL = "MDLformer"
@@ -153,10 +153,6 @@ def render(data, stem, scale=1.0):
     for family, ax in grid.axes_dict.items():
         n_tasks = data.loc[data.family == family, "dataset"].nunique()
         ax.set_title(f"{family} (n={n_tasks})")
-    for ax in grid.axes.flat:
-        for label in ax.get_yticklabels():
-            if label.get_text() in LOCAL:
-                label.set_fontweight("bold")
     grid.tight_layout()
     grid.figure.savefig(PDF_OUT / f"{stem}.pdf", bbox_inches="tight")
     plt.close(grid.figure)

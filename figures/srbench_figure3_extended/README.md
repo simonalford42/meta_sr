@@ -3,8 +3,8 @@
 `../srbench_gt.pdf` retains the 14 methods from the
 [2021 SRBench Figure 3](https://datasets-benchmarks-proceedings.neurips.cc/paper_files/paper/2021/file/c0c7c76d30bd3dcaefc96f40275bdc0a-Paper-round1.pdf)
 and adds MDLformer plus three local 90-second evaluations: PySR,
-BasicSR++ (GT/R2) from training run 229869, and PySR++ (GT) from training run
-709715. The main plot has 18 methods. The three local methods have bold labels.
+Evolved BasicSR (GT/R²) from training run 229869, and Evolved PySR (GT) from
+training run 709715. The main plot has 18 methods.
 `../figure3_extended.pdf` is the earlier 1M-evaluation version (PySR, BasicSR,
 evolved BasicSR, evolved PySR); `figure3_extended_summary.csv` holds its scores.
 
@@ -29,8 +29,8 @@ These three additional datasets are excluded from the figure.
 |---|---|
 | Original 14 methods | `srbench/results/symbolic_dataset_results_sum.csv.gz` |
 | PySR | `runs/pysr-base-srbench_full_9-22_10seed-90s` |
-| BasicSR++ (GT/R2) | `runs/fullsr-gtr2-229869-srbench_full_9-22_10seed-90s`, evaluating training run `229869` |
-| PySR++ (GT) | `runs/pysr-gt-709715-srbench_full_9-22_10seed-90s`, evaluating training run `709715` |
+| Evolved BasicSR (GT/R²) | `runs/fullsr-gtr2-229869-srbench_full_9-22_10seed-90s`, evaluating training run `229869` |
+| Evolved PySR (GT) | `runs/pysr-gt-709715-srbench_full_9-22_10seed-90s`, evaluating training run `709715` |
 | mdlformer | Author-released `SSSR` trials; see below |
 
 MDLformer results come from the
@@ -65,8 +65,8 @@ Every plotted point's task and trial counts are recorded in the summary CSVs.
 
 This is a comparison of existing evaluations, not a new controlled rerun.
 Local runs use a 90-second search timeout per trial on one CPU, with the
-evaluation limit set to 1e9 (effectively unlimited). PySR and PySR++ run
-without early stopping; BasicSR++ uses its saved early-stopping and maxsize
+evaluation limit set to 1e9 (effectively unlimited). PySR and evolved PySR run
+without early stopping; evolved BasicSR uses its saved early-stopping and maxsize
 warmup settings. Historical methods and MDLformer retain
 their respective published evaluation protocols, budgets, seeds, and solution
 checks. Shared task names do not imply identical compute or scoring protocols.

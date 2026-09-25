@@ -348,7 +348,7 @@
       },
       "results_sha256": "c63e8fe074618cd632278c7091ff7b227e179756dbf0acd3f8015de92f9385de"
     },
-    "BasicSR++ (GT/R2)": {
+    "Evolved BasicSR (GT/$R^2$)": {
       "path": "runs/fullsr-gtr2-229869-srbench_full_9-22_10seed-90s",
       "manifest": {
         "mode": "evolve_fullsr",
@@ -724,7 +724,7 @@
       },
       "results_sha256": "3abb6794a26634c7d9ab2b568fb27ebf9d861d4284f685791a74698eb0eeacfb"
     },
-    "PySR++ (GT)": {
+    "Evolved PySR (GT)": {
       "path": "runs/pysr-gt-709715-srbench_full_9-22_10seed-90s",
       "manifest": {
         "mode": "evolve",
