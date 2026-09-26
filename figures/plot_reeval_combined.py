@@ -30,7 +30,7 @@ colors = {'n3': C_N3, 'n10': C_N10, 'n3-reeval': C_REEVAL, 'n3-TTTS': C_TTTS}
 labels = {
     'n3': r'$N_{\mathrm{init}} = 3$',
     'n10': r'$N_{\mathrm{init}} = 10$',
-    'n3-reeval': r'uniform $N_{\mathrm{reeval}} = 7$',
+    'n3-reeval': r'$N_{\mathrm{init}} = 3$, uniform $N_{\mathrm{reeval}} = 7$',
     'n3-TTTS': r'$N_{\mathrm{init}} = 3$, TTTS reeval, $M = 30$',
 }
 
