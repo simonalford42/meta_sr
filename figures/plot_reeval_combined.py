@@ -6,7 +6,10 @@
 Also saves reeval_combined2.pdf (center/right panels only, no panel letters) and
 reeval_offline_comparison.pdf (left panel only), each at its size in the full figure.
 
-Usage: python figures/plot_reeval_combined.py [SCALE]"""
+Usage: python figures/plot_reeval_combined.py [SCALE]
+SCALE defaults to 0.95 and multiplies canvas dimensions, leaving fonts fixed.
+Edit RC for font sizes, W/H for the panel area, and LEGEND_H for legend space.
+"""
 import json
 import sys
 from pathlib import Path
@@ -17,7 +20,7 @@ import matplotlib.pyplot as plt
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import plot_90s_reevaluation_ablations as abl  # noqa: E402
-from plot_reeval_frontier import (draw_frontier, SCRATCH, C_N3, C_N10,  # noqa: E402
+from plot_reeval_frontier import (draw_frontier, C_N3, C_N10,  # noqa: E402
                                   C_REEVAL, C_TTTS, LINE_ALPHA)
 
 SCALE = float(sys.argv[1]) if len(sys.argv) > 1 else 0.95
@@ -35,6 +38,7 @@ BAR_DODGE = {'n10': 0.22, 'n3-reeval': -0.22}   # generations
 
 RC = {'font.size': 11, 'axes.labelsize': 12, 'xtick.labelsize': 10, 'ytick.labelsize': 10}
 W, H = 12.5 * SCALE, 3.9 * SCALE
+LEGEND_H = 1.1 * SCALE
 RATIOS = [1.15, 1, 1]
 PANEL_W = [W * r / sum(RATIOS) for r in RATIOS]   # per-panel widths in the 1 x 3 figure
 
@@ -70,31 +74,44 @@ def draw_ablations(axl, axc):
 def save(fig, name):
     out = HERE / name
     fig.savefig(out)
-    SCRATCH.mkdir(parents=True, exist_ok=True)
-    fig.savefig(SCRATCH / out.with_suffix(".png").name, dpi=130)  # preview only
     plt.close(fig)
     print(f"saved {out}")
 
 
+def legends_above(fig, legend_axes):
+    """Reserve a top strip and move each group's legend out of the data area."""
+    fig.tight_layout(w_pad=1.6, rect=(0, 0, 1, H / (H + LEGEND_H)))
+    for ax in legend_axes:
+        legend = ax.get_legend()
+        handles = legend.legend_handles
+        texts = [text.get_text() for text in legend.get_texts()]
+        fontsize = legend.get_texts()[0].get_fontsize()
+        legend.remove()
+        fig.legend(handles, texts, loc='upper left',
+                   bbox_to_anchor=(ax.get_position().x0, .985),
+                   frameon=False, fontsize=fontsize, handlelength=1.8,
+                   handletextpad=.5, borderaxespad=0)
+
+
 with plt.rc_context(RC):
     # Full 1 x 3 figure: oracle, generation, cumulative evaluations.
-    fig, axes = plt.subplots(1, 3, figsize=(W, H), gridspec_kw={'width_ratios': RATIOS})
+    fig, axes = plt.subplots(1, 3, figsize=(W, H + LEGEND_H), gridspec_kw={'width_ratios': RATIOS})
     axr, axl, axc = axes
     draw_ablations(axl, axc)
     draw_frontier(axr, legend_fontsize=8.5)
     for ax, tag in zip(axes, "abc"):
         ax.set_title(f"({tag})", loc="left", fontsize=11)
-    fig.tight_layout(w_pad=1.6)
+    legends_above(fig, (axr, axl))
     save(fig, "reeval_combined.pdf")
 
     # Panels (b) and (c) only, untitled, at their size in the full figure.
-    fig, (axl, axc) = plt.subplots(1, 2, figsize=(PANEL_W[1] + PANEL_W[2], H))
+    fig, (axl, axc) = plt.subplots(1, 2, figsize=(PANEL_W[1] + PANEL_W[2], H + LEGEND_H))
     draw_ablations(axl, axc)
-    fig.tight_layout(w_pad=1.6)
+    legends_above(fig, (axl,))
     save(fig, "reeval_combined2.pdf")
 
     # Panel (a) only: offline oracle-replay comparison.
-    fig, ax = plt.subplots(figsize=(PANEL_W[0], H))
+    fig, ax = plt.subplots(figsize=(PANEL_W[0], H + LEGEND_H))
     draw_frontier(ax, legend_fontsize=8.5)
-    fig.tight_layout()
+    legends_above(fig, (ax,))
     save(fig, "reeval_offline_comparison.pdf")
