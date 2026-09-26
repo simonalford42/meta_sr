@@ -56,12 +56,12 @@ def main():
     plt.rcParams.update({"font.size": 11})
     fig, ax = plt.subplots(figsize=(5, 3.8))
     ax.scatter(fit, std, s=14, color="#4c72b0", alpha=0.35, linewidths=0,
-               label=f"Offspring ($n={len(fit)}$)", zorder=2)
+               label="Offspring", zorder=2)
     ax.axhline(std.mean(), color="0.35", ls="--", lw=1.2,
                label=f"Mean = {std.mean():.3f}", zorder=1)
     ax.plot(bx, by, color="#c44e52", marker="o", ms=6, lw=1.8,
             markeredgecolor="white", markeredgewidth=0.8,
-            label=f"Binned mean ({N_BINS} quantile bins)", zorder=3)
+            label="Binned mean", zorder=3)
 
     ax.set_xlabel("Offspring fitness (GT match rate)")
     ax.set_ylabel("Noise std across seeds")
