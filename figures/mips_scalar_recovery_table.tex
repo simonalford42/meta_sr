@@ -1,0 +1,25 @@
+% Add \usepackage{xcolor} to the document preamble.
+\begin{table}[t]
+\centering
+\begingroup
+\definecolor{mipsBase}{HTML}{317DA5}
+\definecolor{mipsSRBench}{HTML}{BB7A20}
+\definecolor{mipsEvolved}{HTML}{C33D3D}
+\begin{tabular}{lrr}
+\hline
+Method & Successful fits & Recovery rate \\
+\hline
+\textcolor{mipsBase}{Baseline PySR} & \textcolor{mipsBase}{203/390} & \textcolor{mipsBase}{52.05\%} \\
+\textcolor{mipsSRBench}{SRBench-evolved PySR} & \textcolor{mipsSRBench}{230/390} & \textcolor{mipsSRBench}{58.97\%} \\
+\textcolor{mipsEvolved}{MIPS-evolved PySR} & \textcolor{mipsEvolved}{245/390} & \textcolor{mipsEvolved}{62.82\%} \\
+\hline
+\end{tabular}
+\endgroup
+\caption{Exact scalar-relation recovery on the 12 MIPS tasks not solved in the original paper and included in our SR comparison. Each method is evaluated on 39 scalar subproblems with ten seeds, giving 390 fits. Successes count individual subproblem--seed pairs, without pooling across seeds. The five paper-solved task families are excluded. SRBench-evolved and MIPS-evolved PySR correspond to runs 709715 and 709714, respectively; the latter is evolved directly on MIPS.}
+\label{tab:mips-scalar-recovery}
+\end{table}
+
+% Raw results (gt_match_score == 1):
+% Baseline: runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000
+% SRBench-evolved: runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000
+% MIPS-evolved: runs/709714/final_eval/slurm_pysr/eval_0000
