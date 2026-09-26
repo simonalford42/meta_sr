@@ -6,6 +6,8 @@ Use original wandb IDs, not later continuation runs referencing the same folder.
 Hold diagnostics between submissions on generations 0--15; bands are ±1
 population SD across seeds. Winner's curse = original minus reevaluated fitness.
 
+Writes winners_curse.pdf (stacked) and winners_curse2.pdf (side by side).
+
 Run: python figures/plot_winners_curse.py
 """
 import json
@@ -24,12 +26,14 @@ from plot_reeval_frontier import LINE_ALPHA
 
 SCALE = 0.85
 
-def main():
-    data = json.loads((HERE / "winners_curse_data.json").read_text())
+def plot(data, side_by_side=False):
     gens = data["generations"]
     with plt.rc_context({"font.size": 11, "axes.labelsize": 12,
                          "xtick.labelsize": 10, "ytick.labelsize": 10}):
-        fig, axes = plt.subplots(2, 1, figsize=(5.2 * SCALE, 6.8 * SCALE), sharex=True)
+        if side_by_side:
+            fig, axes = plt.subplots(1, 2, figsize=(2 * 5.2 * SCALE, 3.6 * SCALE), sharex=True)
+        else:
+            fig, axes = plt.subplots(2, 1, figsize=(5.2 * SCALE, 6.8 * SCALE), sharex=True)
         for n, color in [(1, "tab:purple"), (3, "tab:cyan")]:
             runs = [r for r in data["runs"] if r["n_init"] == n]
             assert len(runs) == 5
@@ -59,18 +63,28 @@ def main():
         axes[1].axhline(0, color="0.4", lw=.8, alpha=.5)
         axes[1].set_ylim(-.06, .36)
         axes[1].set_yticks([0, .1, .2, .3])
-        axes[1].set_xlabel("Generation")
         axes[1].set_xlim(-.35, 15.35)
         axes[1].set_xticks(range(0, 16, 3))
+        for ax in axes if side_by_side else axes[1:]:
+            ax.set_xlabel("Generation")
         for ax in axes:
             ax.grid(alpha=.2)
             for spine in ("top", "right"):
                 ax.spines[spine].set_visible(False)
-        fig.tight_layout(h_pad=1.2)
-        out = HERE / "winners_curse.pdf"
+        if side_by_side:
+            fig.tight_layout(w_pad=2.0)
+        else:
+            fig.tight_layout(h_pad=1.2)
+        out = HERE / ("winners_curse2.pdf" if side_by_side else "winners_curse.pdf")
         fig.savefig(out)
         plt.close(fig)
         print(f"saved {out}")
+
+
+def main():
+    data = json.loads((HERE / "winners_curse_data.json").read_text())
+    plot(data)
+    plot(data, side_by_side=True)
 
 
 if __name__ == "__main__":
