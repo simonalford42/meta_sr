@@ -9,25 +9,47 @@
     "mips:rnn_parity_last4_numerical:hidden:2": 32,
     "mips:rnn_parity_last4_numerical:output:0": 16
   },
-  "example_input": [
-    1,
-    0,
-    1,
-    1,
-    0,
-    0,
-    1,
-    0
-  ],
-  "example_output": [
-    1,
-    1,
-    0,
-    1,
-    0,
-    0,
-    0,
-    1
+  "displayed_witnesses": [
+    {
+      "component": "mips:rnn_parity_last4_numerical:hidden:0",
+      "run_index": 8,
+      "raw_equation": "mips_min(((((mips_max(x1, x0) - x3) * x1) - x3) * x1) - (x3 + -1.9999999999723201), mips_abs(((mips_xor(x1 * (0.22724914540241767 - x3), x1) + x3) - mips_zero(x1)) * 4.000000000029303))",
+      "displayed_expression": "mips_min(((mips_max(x1,x0)-x3)*x1-x3)*x1-x3+2, 4*mips_abs(mips_xor(x1*(0.227249-x3),x1)+x3-mips_zero(x1)))",
+      "display_max_error": {
+        "train": 0.0,
+        "heldout": 0.0
+      }
+    },
+    {
+      "component": "mips:rnn_parity_last4_numerical:hidden:1",
+      "run_index": 2,
+      "raw_equation": "mips_floordiv(mips_min(mips_min((x3 * 2.985665753047986) + (0.6603629134576994 * x1), 2.3207348849653053) + (x3 * mips_max(3.0000060994436897, x1)), 9.320751003856932), 1.0)",
+      "displayed_expression": "mips_floordiv(mips_min(mips_min(2.98567*x3+0.660363*x1,2.32073)+x3*mips_max(3.00001,x1),9.32075),1)",
+      "display_max_error": {
+        "train": 0.0,
+        "heldout": 0.0
+      }
+    },
+    {
+      "component": "mips:rnn_parity_last4_numerical:hidden:2",
+      "run_index": 5,
+      "raw_equation": "mips_eq(mips_lt(x1, x0 + x0), x3) * 4.0",
+      "displayed_expression": "4*mips_eq(mips_lt(x1,2*x0),x3)",
+      "display_max_error": {
+        "train": 0.0,
+        "heldout": 0.0
+      }
+    },
+    {
+      "component": "mips:rnn_parity_last4_numerical:output:0",
+      "run_index": 8,
+      "raw_equation": "mips_min(1.0, x2)",
+      "displayed_expression": "mips_min(1,x2)",
+      "display_max_error": {
+        "train": 0.0,
+        "heldout": 0.0
+      }
+    }
   ],
   "methods": [
     {
