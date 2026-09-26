@@ -52,7 +52,6 @@ def main():
     bins = np.array_split(order, N_BINS)
     bx = np.array([fit[b].mean() for b in bins])
     by = np.array([std[b].mean() for b in bins])
-    be = np.array([std[b].std(ddof=1) / np.sqrt(len(b)) for b in bins])
 
     plt.rcParams.update({"font.size": 11})
     fig, ax = plt.subplots(figsize=(5, 3.8))
@@ -60,9 +59,9 @@ def main():
                label=f"Offspring ($n={len(fit)}$)", zorder=2)
     ax.axhline(std.mean(), color="0.35", ls="--", lw=1.2,
                label=f"Mean = {std.mean():.3f}", zorder=1)
-    ax.errorbar(bx, by, yerr=be, color="#c44e52", marker="o", ms=6, lw=1.8,
-                capsize=2.5, markeredgecolor="white", markeredgewidth=0.8,
-                label=f"Binned mean ({N_BINS} quantile bins, ±1 SE)", zorder=3)
+    ax.plot(bx, by, color="#c44e52", marker="o", ms=6, lw=1.8,
+            markeredgecolor="white", markeredgewidth=0.8,
+            label=f"Binned mean ({N_BINS} quantile bins)", zorder=3)
 
     ax.set_xlabel("Offspring fitness (GT match rate)")
     ax.set_ylabel("Noise std across seeds")
@@ -77,8 +76,8 @@ def main():
     SCRATCH.mkdir(parents=True, exist_ok=True)
     fig.savefig(SCRATCH / "offspring_noise_vs_fitness.png", dpi=150)  # preview only
     print(f"mean std={std.mean():.4f}, median={np.median(std):.4f}")
-    for x, y, e, b in zip(bx, by, be, bins):
-        print(f"  bin fit={x:.3f} [{fit[b].min():.3f},{fit[b].max():.3f}] n={len(b)}: std={y:.4f} ± {e:.4f}")
+    for x, y, b in zip(bx, by, bins):
+        print(f"  bin fit={x:.3f} [{fit[b].min():.3f},{fit[b].max():.3f}] n={len(b)}: std={y:.4f}")
     print(f"saved {out}")
 
 
