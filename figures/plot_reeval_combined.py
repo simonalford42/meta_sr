@@ -57,7 +57,7 @@ def draw_ablations(axl, axc):
             dx = BAR_DODGE.get(method, 0) if xkey == 'generation' else 0
             ax.errorbar(x[-1] + dx, mean[-1], yerr=std[-1], fmt='none', ecolor=color,
                         elinewidth=1.6, capsize=3.5, capthick=1.6, alpha=LINE_ALPHA, zorder=4)
-        ax.set_ylim(.30, .90)
+        ax.set_ylim(.15, .85)
         ax.grid(alpha=.2)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
