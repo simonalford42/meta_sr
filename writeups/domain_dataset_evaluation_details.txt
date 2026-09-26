@@ -1,4 +1,4 @@
-% Draft based on the repository's current protocols. Run-specific search budgets and seed counts are omitted; the EmpiricalBench paragraph follows the recent reviewed portfolio evaluation.
+% Draft based on the repository's current protocols. Run-specific search budgets and seed counts are included for MIPS run 709714; the EmpiricalBench paragraph follows the recent reviewed portfolio evaluation.
 
 \paragraph{SRBench.}
 We evaluate symbolic regression on the 133 ground-truth problems in SRBench, comprising 119 Feynman problems and 14 Strogatz problems. For each trial, we sample at most 1,000 observations and use a seeded $80/20$ training--validation split. Noise experiments add Gaussian noise to the training targets with standard deviation equal to a specified fraction of their root-mean-square magnitude, using noise levels $0$, $0.001$, $0.01$, and $0.1$; validation targets remain unperturbed. We assess equation recovery across the complete discovered Pareto frontier. A trial is successful if at least one expression passes the validation-$R^2$ threshold of $0.5$ and matches the reference equation under the symbolic checker's allowance for an additive or multiplicative constant. Recovery rates are averaged over problems and stochastic trials. We retain all 133 problems in the evaluation denominator, including three inverse-trigonometric targets that are outside the configured search vocabulary.
@@ -7,7 +7,45 @@ We evaluate symbolic regression on the 133 ground-truth problems in SRBench, com
 We evaluate on nine historical empirical relationships: Hubble, Kepler, Newton, Bode, Leavitt, Schechter, ideal gas, Planck, and Rydberg. The datasets preserve the benchmark's observation noise and target transformations, including logarithmic targets where specified, while inputs retain their original scales. Each search uses all available observations for fitting and assessment, reflecting the objective of recovering the underlying relationship from a fixed dataset. No additional target noise is introduced. Recovery is assessed across the discovered frontier using dataset-specific reference families: fitted constants are permitted where the reference allows them, while fixed powers and relative coefficients must match. The reviewed portfolio results use LLM-assisted equation assessment with documented manual corrections, and exclude near matches. This structural assessment is particularly important for Planck and Rydberg, for which predictive accuracy alone does not establish recovery. We report recovery frequency across independent trials and, for restart portfolios, cumulative recovery as a function of search time excluding warm-up.
 
 \paragraph{MIPS.}
-We formulate program extraction from recurrent neural networks as symbolic regression over the discrete transition relations produced by MIPS. After mapping continuous hidden states to integer lattice coordinates, each network is decomposed into scalar prediction problems: predicting a next-state coordinate from the previous state and current input, or predicting an output coordinate from the current state. Search uses arithmetic and protected discrete operators, including modular arithmetic, floor division, comparisons, and Boolean operations. Because the objective is exact reconstruction of the observed relation, fitting and intermediate scoring use the same selected rows. A candidate is counted as recovered only if it matches every row of the complete, uncapped relation, with absolute tolerance $10^{-9}$ and zero relative tolerance. Encodings that assign conflicting targets to identical inputs cannot receive an exact-recovery score. We additionally measure the fraction of correctly predicted entries to characterize partial solutions. These scores assess scalar relation recovery; they do not by themselves establish correctness on unseen input sequences.
+Mechanistic-Interpretability-based Program Synthesis (MIPS) extracts executable programs from recurrent neural networks trained on algorithmic tasks. The original pipeline searches for small, accurate networks, simplifies their representations, and uses Boolean or integer autoencoders to identify discrete hidden states. Regression then recovers symbolic expressions for the state-transition and output functions, which are assembled into Python programs. The authors report successful synthesis on 32 of 62 algorithmic tasks. We continue from the released pretrained networks and integer-state extraction pipeline, focusing on improving the symbolic-regression stage. Each network yields one scalar regression problem per hidden-state coordinate and output coordinate: predicting the next state from the previous state and current input, or predicting the output from the current state.
+
+\paragraph{Refining the state discretization.}
+The original integer encoding rounds continuous lattice coordinates $Z$ to $\mathrm{round}(Z)$. This can merge distinct states whose transitions or outputs differ, producing contradictory regression targets that no deterministic expression can recover exactly. We therefore retain the learned lattice basis but refine its resolution using $\mathrm{round}(kZ)$, testing powers of four from $k=1$ through $k=2^{24}$. We also test an encoding that concatenates the coarse state with a quantized within-cell residual. Among 17 tasks with conflicting original encodings, the sweep finds conflict-free representations for ten, of which six retain at most 1,024 observed states. Subsequent artifact construction and validation leave four additional tasks requiring symbolic regression: Parity-Last-4 ($k=4$), Div-7 ($k=16$), Div-5 ($k=256$), and Alternating-Last-3 ($k=2^{22}$). Parity-of-Index is solved by rounded linear regression, while Balanced-Parenthesis remains conflicted in the rebuilt artifacts and is excluded. The four retained tasks have deterministic relations across the generated training and held-out data and contribute 17 additional scalar problems, expanding our SR training collection from 34 to 51 problems. This establishes eligibility for exact relation recovery, rather than demonstrating that compact formulas or correct recurrent programs have already been recovered.
+
+\paragraph{Meta-training tasks and objective.}
+We evolve PySR on all 51 scalar problems from 17 RNN task families. These comprise three families whose reproduced MIPS programs used symbolic regression (absolute value, absolute difference, and addition modulo three), ten previously unsuccessful families with deterministic original encodings (Alternating-Last-4, base-$b$ addition for $b\in\{3,4,5,6,7\}$, maximum, minimum, Parity-Last-2, and Unique2), and the four refined families above. In run 709714, fitness is the exact-recovery rate averaged uniformly over the 51 scalar problems and three search seeds. A scalar problem is recovered when at least one expression in the discovered frontier matches every entry of its complete relation within absolute tolerance $10^{-9}$ and zero relative tolerance. Search uses at most 1,000 relation rows, with a budget of $10^6$ evaluations and a 500-second timeout per fit; claimed recovery is checked against the uncapped relation. Thus the objective rewards exact component recovery, rather than partial row accuracy or whole-program success. The run evolves mutation, survival, selection, and loss operators for 20 generations with ten offspring per generation and task-diverse survivor selection. No separate meta-validation or meta-test task split is used.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{llrr}
+\hline
+RNN task identifier & Encoding & Hidden coordinates & Scalar problems \\
+\hline
+\texttt{rnn\_abs\_value\_numerical} & Original & $0$ & 2 \\
+\texttt{rnn\_abs\_value\_of\_diff\_numerical} & Original & $0$--$1$ & 3 \\
+\texttt{rnn\_add\_mod\_3\_numerical} & Original & $0$ & 2 \\
+\texttt{rnn\_alternating\_last4\_numerical} & Original & $0$--$1$ & 3 \\
+\texttt{rnn\_base\_3\_addition} & Original & $0$--$1$ & 3 \\
+\texttt{rnn\_base\_4\_addition} & Original & $0$--$1$ & 3 \\
+\texttt{rnn\_base\_5\_addition} & Original & $0$--$1$ & 3 \\
+\texttt{rnn\_base\_6\_addition} & Original & $0$--$1$ & 3 \\
+\texttt{rnn\_base\_7\_addition} & Original & $0$--$1$ & 3 \\
+\texttt{rnn\_max\_numerical} & Original & $0$ & 2 \\
+\texttt{rnn\_min\_numerical} & Original & $0$ & 2 \\
+\texttt{rnn\_parity\_last2\_numerical} & Original & $0$ & 2 \\
+\texttt{rnn\_unique2\_numerical} & Original & $0$--$1$ & 3 \\
+\texttt{rnn\_parity\_last4\_numerical} & Refined & $0$--$2$ & 4 \\
+\texttt{rnn\_div\_7\_numerical} & Refined & $0$--$3$ & 5 \\
+\texttt{rnn\_div\_5\_numerical} & Refined & $0$--$3$ & 5 \\
+\texttt{rnn\_alternating\_last3\_numerical} & Refined & $0$--$1$ & 3 \\
+\hline
+\textbf{Total} & & \textbf{34} & \textbf{51} \\
+\hline
+\end{tabular}
+\caption{Exact MIPS meta-training tasks in run 709714. Each family includes output coordinate $0$ in addition to the listed hidden-state coordinates, giving 34 hidden-state and 17 output regression problems.}
+\label{tab:mips-meta-training}
+\end{table*}
 
 \paragraph{NeuronBench.}
 We use a fully observable adaptation of NeuronBench containing six membrane-dynamics worlds: \texttt{z\_rebound}, \texttt{h\_sag}, \texttt{na\_fatigue}, \texttt{ca\_rebound}, \texttt{d\_type}, and \texttt{textbook\_M}. Each task exposes the external current, membrane voltage, and all channel open fractions, and asks the symbolic regressor to recover the membrane vector field $\mathrm{d}V/\mathrm{d}t$. This converts the benchmark into a noiseless supervised equation-discovery problem without hidden gating-state inference or active experiment selection. We generate independent scrambled-Sobol designs containing 1,024 training states and 16,384 held-out states, spanning external currents in $[-40, 20]$, voltages in $[-95, 60]$, and channel open fractions in $[0, 1]$. Targets are divided by their training-set root-mean-square magnitude for numerical conditioning, and the search vocabulary contains addition, subtraction, and multiplication. Recovery is determined numerically over the entire discovered frontier: a trial succeeds if any expression achieves held-out RMSE divided by the held-out target RMS of at most $10^{-6}$. We also distinguish near-exact solutions at $10^{-3}$ and close solutions at $5 \times 10^{-2}$.
