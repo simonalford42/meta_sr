@@ -1,0 +1,297 @@
+{
+  "source": "/home/sca63/meta_sr/runs/708907/run_data.json",
+  "source_sha256": "5582f4edcf1aae11b7a1087d814855ad775e4cad1e6e95fd4290663649d8e94b",
+  "driver_job": "507077",
+  "array_jobs": [
+    "507079"
+  ],
+  "results_dir": "runs/708907-generation-eval-9-25",
+  "threshold": 1e-06,
+  "seeds": [
+    10000,
+    10001,
+    10002,
+    10003,
+    10004
+  ],
+  "completed": 450,
+  "errors": 0,
+  "timed_out": 0,
+  "selection": "Recorded best_name at the end of each generation",
+  "summary": [
+    {
+      "generation": 1,
+      "split": "Train",
+      "solved": 4,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 1,
+      "split": "Held out",
+      "solved": 20,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 2,
+      "split": "Train",
+      "solved": 2,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 2,
+      "split": "Held out",
+      "solved": 19,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 3,
+      "split": "Train",
+      "solved": 5,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 3,
+      "split": "Held out",
+      "solved": 19,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 4,
+      "split": "Train",
+      "solved": 2,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 4,
+      "split": "Held out",
+      "solved": 14,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 5,
+      "split": "Train",
+      "solved": 4,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 5,
+      "split": "Held out",
+      "solved": 19,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 6,
+      "split": "Train",
+      "solved": 4,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 6,
+      "split": "Held out",
+      "solved": 24,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 7,
+      "split": "Train",
+      "solved": 4,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 7,
+      "split": "Held out",
+      "solved": 24,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 8,
+      "split": "Train",
+      "solved": 4,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 8,
+      "split": "Held out",
+      "solved": 24,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 9,
+      "split": "Train",
+      "solved": 4,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 9,
+      "split": "Held out",
+      "solved": 24,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 10,
+      "split": "Train",
+      "solved": 4,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 10,
+      "split": "Held out",
+      "solved": 24,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 11,
+      "split": "Train",
+      "solved": 4,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 11,
+      "split": "Held out",
+      "solved": 24,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 12,
+      "split": "Train",
+      "solved": 5,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 12,
+      "split": "Held out",
+      "solved": 23,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 13,
+      "split": "Train",
+      "solved": 4,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 13,
+      "split": "Held out",
+      "solved": 24,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 14,
+      "split": "Train",
+      "solved": 4,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 14,
+      "split": "Held out",
+      "solved": 24,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    },
+    {
+      "generation": 15,
+      "split": "Train",
+      "solved": 5,
+      "complete": 5,
+      "errors": 0,
+      "pending": 0,
+      "expected": 5
+    },
+    {
+      "generation": 15,
+      "split": "Held out",
+      "solved": 21,
+      "complete": 25,
+      "errors": 0,
+      "pending": 0,
+      "expected": 25
+    }
+  ],
+  "notes": [
+    "Fresh evaluation: generation 15 held-out recovery is 21/25, compared with 23/25 in the previous figure.",
+    "Generations 5--10 and 13--14 have identical operator configurations. Their differing outcomes indicate repeat-run variability; do not interpret the generation 5--6 increase as an operator change."
+  ]
+}
