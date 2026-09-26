@@ -42,23 +42,14 @@ PYSR_BASELINE_FITNESS = 0.5167
 
 
 def draw_ancestry_legend(ax, fontsize):
-    """Operator-colored ancestors, then other offspring, outside the axes on the right."""
+    """Operator-colored ancestors, then non-ancestors, outside the axes on the right."""
     def handle(color, label, alpha=1.0):
         return Line2D([], [], marker='o', linestyle='', markersize=6.8 * SCALE,
                       markerfacecolor=color, markeredgecolor='none', alpha=alpha, label=label)
-    kwargs = dict(loc='upper left', frameon=False, fontsize=fontsize, handletextpad=0.3,
-                  borderaxespad=0, borderpad=0)
-    ancestors = ax.legend(handles=[handle(c, t.capitalize()) for t, c in COLORS.items()],
-                          title='Ancestor', title_fontsize=fontsize,
-                          bbox_to_anchor=(1.02, 1.0), alignment='left', **kwargs)
-    ax.add_artist(ancestors)
-    # Place the second legend just below the first once its extent is known.
-    fig = ax.figure
-    fig.canvas.draw()
-    box = ancestors.get_window_extent(fig.canvas.get_renderer()).transformed(ax.transAxes.inverted())
-    gap = 0.9 * fontsize / 72 / (ax.get_position().height * fig.get_size_inches()[1])
-    ax.legend(handles=[handle('#bdbdbd', 'Other\noffspring', alpha=0.70)],
-              bbox_to_anchor=(1.02, box.y0 - gap), **kwargs)
+    handles = [handle(c, t.capitalize()) for t, c in COLORS.items()]
+    handles.append(handle('#bdbdbd', 'Non-ancestor', alpha=0.70))
+    ax.legend(handles=handles, loc='upper left', bbox_to_anchor=(1.02, 1.0), frameon=False,
+              fontsize=fontsize, handletextpad=0.3, borderaxespad=0, borderpad=0)
 
 
 def extract(source):
@@ -315,7 +306,7 @@ def add_ancestor_commentary(fig, ax, points):
         xpixel = ax.transData.transform((point['generation'], 0))[0] + shift
         text.set_x(ax.transData.inverted().transform((xpixel, bounds.y0))[0])
         left, right = box.x0 + shift, box.x1 + shift
-        padding = 7 * SCALE * fig.dpi / 72
+        padding = 6 * SCALE * fig.dpi / 72
         row = next((i for i, intervals in enumerate(rows)
                     if all(right + padding < a or left > b + padding for a, b in intervals)), len(rows))
         if row == len(rows):
@@ -358,7 +349,7 @@ def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=Fal
     width, height = 7.2 * SCALE, 3.2 * SCALE
     fig, ax = plt.subplots(figsize=(width, height))
     # Margins in inches: left/bottom for tick labels, right for the outside legend.
-    fig.subplots_adjust(left=0.864 * SCALE / width, right=1 - 1.0 * SCALE / width,
+    fig.subplots_adjust(left=0.864 * SCALE / width, right=1 - 1.15 * SCALE / width,
                         bottom=0.672 * SCALE / height, top=1 - 0.126 * SCALE / height)
     if edges is not None:
         by_id = {p['node_id']: p for p in points}
