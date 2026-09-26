@@ -3,6 +3,8 @@
                algorithm vs generation and vs cumulative evaluations
                (same data/drawing as reevaluation_ablations_90s/n3_comparison_compact.pdf)
   left:        synthetic oracle-replay frontier (plot_reeval_frontier.draw_frontier)
+Also saves reeval_combined2.pdf (center/right panels only, no panel letters) and
+reeval_offline_comparison.pdf (left panel only), each at its size in the full figure.
 
 Usage: python figures/plot_reeval_combined.py [SCALE]"""
 import json
@@ -31,11 +33,14 @@ labels = {
 
 BAR_DODGE = {'n10': 0.22, 'n3-reeval': -0.22}   # generations
 
-with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
-                     'xtick.labelsize': 10, 'ytick.labelsize': 10}):
-    fig, axes = plt.subplots(1, 3, figsize=(12.5 * SCALE, 3.9 * SCALE),
-                             gridspec_kw={'width_ratios': [1.15, 1, 1]})
-    axr, axl, axc = axes  # oracle, generation, cumulative evaluations
+RC = {'font.size': 11, 'axes.labelsize': 12, 'xtick.labelsize': 10, 'ytick.labelsize': 10}
+W, H = 12.5 * SCALE, 3.9 * SCALE
+RATIOS = [1.15, 1, 1]
+PANEL_W = [W * r / sum(RATIOS) for r in RATIOS]   # per-panel widths in the 1 x 3 figure
+
+
+def draw_ablations(axl, axc):
+    """Generation (axl) and cumulative-evaluation (axc) panels of the 90 s ablations."""
     axc.sharey(axl)
     for ax, xkey in zip((axl, axc), ['generation', 'eval_idx']):
         for method, color in colors.items():
@@ -61,12 +66,35 @@ with plt.rc_context({'font.size': 11, 'axes.labelsize': 12,
     axc.tick_params(labelleft=False)
     axl.legend(frameon=False, fontsize=9, loc='upper left', handlelength=1.8)
 
+
+def save(fig, name):
+    out = HERE / name
+    fig.savefig(out)
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    fig.savefig(SCRATCH / out.with_suffix(".png").name, dpi=130)  # preview only
+    plt.close(fig)
+    print(f"saved {out}")
+
+
+with plt.rc_context(RC):
+    # Full 1 x 3 figure: oracle, generation, cumulative evaluations.
+    fig, axes = plt.subplots(1, 3, figsize=(W, H), gridspec_kw={'width_ratios': RATIOS})
+    axr, axl, axc = axes
+    draw_ablations(axl, axc)
     draw_frontier(axr, legend_fontsize=8.5)
     for ax, tag in zip(axes, "abc"):
         ax.set_title(f"({tag})", loc="left", fontsize=11)
     fig.tight_layout(w_pad=1.6)
-    out = HERE / "reeval_combined.pdf"
-    fig.savefig(out)
-    SCRATCH.mkdir(parents=True, exist_ok=True)
-    fig.savefig(SCRATCH / "reeval_combined.png", dpi=130)  # preview only
-    print(f"saved {out}")
+    save(fig, "reeval_combined.pdf")
+
+    # Panels (b) and (c) only, untitled, at their size in the full figure.
+    fig, (axl, axc) = plt.subplots(1, 2, figsize=(PANEL_W[1] + PANEL_W[2], H))
+    draw_ablations(axl, axc)
+    fig.tight_layout(w_pad=1.6)
+    save(fig, "reeval_combined2.pdf")
+
+    # Panel (a) only: offline oracle-replay comparison.
+    fig, ax = plt.subplots(figsize=(PANEL_W[0], H))
+    draw_frontier(ax, legend_fontsize=8.5)
+    fig.tight_layout()
+    save(fig, "reeval_offline_comparison.pdf")
