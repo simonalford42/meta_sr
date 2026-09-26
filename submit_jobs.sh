@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
 # 9/25/26
+if [[ "${1:-}" == "neuron-708907-generations" ]]; then
+    sbatch --partition=default_partition --time=24:00:00 --mem=8G -J neuron-708907-gens run.sh scripts/eval_neuron_generations.py --output-dir runs/708907-generation-eval-9-25
+    exit $?
+fi
+
 sbatch --partition=default_partition --time=48:00:00 --mem=20G -J srb90-autoresearch run.sh srbench_full_eval.py --autoresearch 82ea4c88e8273bcf3a0895ec38d4dc1729096a4a --ground-truth --black-box --max-evals 1000000000 --timeout 90 --black-box-timeout 90 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --black-box-max-samples 10000 --pysr-wall-limit 300 --black-box-wall-limit 1800 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 200 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5 --no-early-stop --results-dir runs/autoresearch-apr9-82ea4c88-srbench_full_9-25_10seed-90s-retry
 # sbatch --partition=default_partition --time=48:00:00 --mem=20G -J srb90-autoresearch run.sh srbench_full_eval.py --autoresearch 82ea4c88e8273bcf3a0895ec38d4dc1729096a4a --ground-truth --black-box --max-evals 1000000000 --timeout 90 --black-box-timeout 90 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --black-box-max-samples 10000 --pysr-wall-limit 300 --black-box-wall-limit 1800 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 200 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5 --no-early-stop --results-dir runs/autoresearch-apr9-82ea4c88-srbench_full_9-25_10seed-90s
 # sbatch --dependency=afterany:462696 --partition=default_partition --time=48:00:00 --mem=20G -J srb90-autoresearch run.sh srbench_full_eval.py --autoresearch 82ea4c88e8273bcf3a0895ec38d4dc1729096a4a --ground-truth --black-box --max-evals 1000000000 --timeout 90 --black-box-timeout 90 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --black-box-max-samples 10000 --pysr-wall-limit 300 --black-box-wall-limit 1800 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 200 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5 --no-early-stop --results-dir runs/autoresearch-apr9-82ea4c88-srbench_full_9-25_10seed-90s
