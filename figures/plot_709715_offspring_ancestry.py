@@ -14,7 +14,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
-from matplotlib.patches import Rectangle
+from matplotlib.lines import Line2D
 from matplotlib.ticker import MultipleLocator
 
 # Scale the entire figure: canvas, fonts, dots, and line widths.
@@ -42,31 +42,23 @@ PYSR_BASELINE_FITNESS = 0.5167
 
 
 def draw_ancestry_legend(ax, fontsize):
-    """Right-align category labels beside the operator markers."""
-    # Scale the custom legend in physical units when canvas or font size changes.
-    width, height = ax.figure.get_size_inches()
-    sx = (fontsize / 9) * (10.2 / width)
-    sy = (fontsize / 9) * (5.6 / height)
-    def lx(value):
-        return 1.0 - (0.97 - value) * sx
-    def ly(value):
-        return 0.025 + (value - 0.025) * sy
-    ax.add_patch(Rectangle((lx(0.73), ly(0.025)), 0.24 * sx, 0.27 * sy,
-                           transform=ax.transAxes, facecolor='white',
-                           edgecolor='grey', linewidth=0.5 * SCALE, alpha=1, zorder=5))
-    for i, (label, color) in enumerate(COLORS.items()):
-        y = 0.255 - i * 0.045
-        ax.scatter([lx(0.86)], [ly(y)], s=46 * SCALE**2, c=color, edgecolors='none',
-                   transform=ax.transAxes, zorder=6)
-        ax.text(lx(0.878), ly(y), label.capitalize(), transform=ax.transAxes,
-                va='center', fontsize=fontsize, zorder=6)
-    ax.scatter([lx(0.86)], [ly(0.06)], s=46 * SCALE**2, c='#bdbdbd', alpha=0.70,
-               edgecolors='none', transform=ax.transAxes, zorder=6)
-    ax.text(lx(0.845), ly(0.06), 'Other offspring', transform=ax.transAxes,
-            ha='right', va='center', fontsize=fontsize, zorder=6)
-    mid = (0.255 + 0.120) / 2
-    ax.text(lx(0.845), ly(mid), 'Ancestor', transform=ax.transAxes,
-            ha='right', va='center', fontsize=fontsize, zorder=6)
+    """Operator-colored ancestors, then other offspring, outside the axes on the right."""
+    def handle(color, label, alpha=1.0):
+        return Line2D([], [], marker='o', linestyle='', markersize=6.8 * SCALE,
+                      markerfacecolor=color, markeredgecolor='none', alpha=alpha, label=label)
+    kwargs = dict(loc='upper left', frameon=False, fontsize=fontsize, handletextpad=0.3,
+                  borderaxespad=0, borderpad=0)
+    ancestors = ax.legend(handles=[handle(c, t.capitalize()) for t, c in COLORS.items()],
+                          title='Ancestor', title_fontsize=fontsize,
+                          bbox_to_anchor=(1.02, 1.0), alignment='left', **kwargs)
+    ax.add_artist(ancestors)
+    # Place the second legend just below the first once its extent is known.
+    fig = ax.figure
+    fig.canvas.draw()
+    box = ancestors.get_window_extent(fig.canvas.get_renderer()).transformed(ax.transAxes.inverted())
+    gap = 0.9 * fontsize / 72 / (ax.get_position().height * fig.get_size_inches()[1])
+    ax.legend(handles=[handle('#bdbdbd', 'Other\noffspring', alpha=0.70)],
+              bbox_to_anchor=(1.02, box.y0 - gap), **kwargs)
 
 
 def extract(source):
@@ -363,8 +355,11 @@ def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=Fal
                          'xtick.major.width': 0.8 * SCALE, 'ytick.major.width': 0.8 * SCALE,
                          'xtick.major.pad': 3.5 * SCALE, 'ytick.major.pad': 3.5 * SCALE,
                          'axes.labelpad': 4 * SCALE})
-    fig, ax = plt.subplots(figsize=(7.2 * SCALE, 4.2 * SCALE))
-    fig.subplots_adjust(left=0.12, right=0.97, bottom=0.16, top=0.97)
+    width, height = 7.2 * SCALE, 3.2 * SCALE
+    fig, ax = plt.subplots(figsize=(width, height))
+    # Margins in inches: left/bottom for tick labels, right for the outside legend.
+    fig.subplots_adjust(left=0.864 * SCALE / width, right=1 - 1.0 * SCALE / width,
+                        bottom=0.672 * SCALE / height, top=1 - 0.126 * SCALE / height)
     if edges is not None:
         by_id = {p['node_id']: p for p in points}
         for emphasis in (False, True):
@@ -404,8 +399,9 @@ def render(points, edges=None, filename="offspring_ancestry.pdf", commentary=Fal
     point = final[0]
     ax.scatter([point['generation']], [point['fitness']], marker='*', s=155 * SCALE**2,
                c=COLORS[point['color_operator']], edgecolors='black', linewidths=0.7 * SCALE, zorder=4.5)
-    ax.set(xlabel='Generation', ylabel='Train fitness (GT)', xlim=(-1, 46), ylim=(0, 1))
+    ax.set(xlabel='Generation', ylabel='Train fitness (GT)', xlim=(-1, 46), ylim=(0.2, 1))
     ax.xaxis.set_major_locator(MultipleLocator(5))
+    ax.yaxis.set_major_locator(MultipleLocator(0.2))
     ax.grid(color='#e9ecf0', lw=0.8 * SCALE)
     ax.set_axisbelow(True)
     for spine in ('top', 'right'):
