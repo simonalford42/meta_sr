@@ -1,0 +1,29 @@
+[
+  {
+    "method": "Base",
+    "source": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000",
+    "successful_fits": 203,
+    "total_fits": 390,
+    "tasks_solved": 5,
+    "total_tasks": 12,
+    "task_criterion": "Every component recovered in at least one seed; seeds may differ"
+  },
+  {
+    "method": "Evolved",
+    "source": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000",
+    "successful_fits": 230,
+    "total_fits": 390,
+    "tasks_solved": 7,
+    "total_tasks": 12,
+    "task_criterion": "Every component recovered in at least one seed; seeds may differ"
+  },
+  {
+    "method": "MIPS-evolved",
+    "source": "runs/709714/final_eval/slurm_pysr/eval_0000",
+    "successful_fits": 245,
+    "total_fits": 390,
+    "tasks_solved": 9,
+    "total_tasks": 12,
+    "task_criterion": "Every component recovered in at least one seed; seeds may differ"
+  }
+]

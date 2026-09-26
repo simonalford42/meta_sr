@@ -99,7 +99,7 @@ def main():
     xs = [4.80, 6.10, 7.55]
     ax.text(.10, 3.88, 'Scalar relation', weight='bold', color=ink, va='center')
     ax.text(3.20, 3.88, 'Input-table size', weight='bold', ha='center', color=ink, va='center')
-    for x, label, color in zip(xs, ['Base\nPySR', 'SRBench-evolved\n709715', 'MIPS-evolved\n709714'], colors):
+    for x, label, color in zip(xs, ['Base', 'Evolved', 'MIPS-evolved'], colors):
         ax.text(x, 3.88, label, ha='center', va='center', fontsize=9, weight='bold', color=color)
     ax.text(9.00, 3.88, 'Discovered equation (MIPS-evolved)', va='center', weight='bold', color=ink)
     ax.plot([0, 16.5], [3.52, 3.52], color=ink, lw=.8)

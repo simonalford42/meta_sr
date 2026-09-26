@@ -1,0 +1,6 @@
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/mips_recovery_bars.pdf}
+\caption{MIPS recovery on twelve tasks not solved in the original paper. Solid bars show exact scalar-fit successes over 39 subproblems and ten seeds (390 fits); hatched bars show algorithmic tasks for which every component is recovered in at least one seed, allowing different seeds for different components (twelve tasks). Heights are percentages and annotations give raw counts. Base, Evolved, and MIPS-evolved denote baseline PySR, SRBench-evolved run 709715, and MIPS-evolved run 709714, respectively. The five paper-solved training task families are excluded. Each fit has a budget of $10^6$ evaluations and a 500-second timeout. Task recovery refers to the recorded component relations, without separate end-to-end validation of assembled programs.}
+\label{fig:mips-recovery-bars}
+\end{figure}
