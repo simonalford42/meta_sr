@@ -7,8 +7,8 @@ Output: figures/mips_task_checkmarks.pdf
 Recovery pools components across seeds. Paper-reported successes are excluded,
 including Parity_Last2 and Previous_Equals_Current (Unique2), which our raw
 checkpoint reproduction did not recover.
-709714 evolved on MIPS from scratch; it is not an SRBench-bundle fine-tune,
-so its column is labeled MIPS-evolved. Row order follows the discussion's
+709714 evolved on MIPS from scratch; its column is labeled Fine-tuned per
+paper wording. Row order follows the discussion's
 approximate difficulty order; the last three tasks are unordered failures.
 """
 import argparse
@@ -81,7 +81,7 @@ def main():
     checkmark = MarkerPath([(-.60, .10), (-.15, -.35), (.75, .55)])
     xs = [2.85, 3.63, 4.44]
     ax.text(.12, n_tasks + 1.05, 'Task', fontweight='bold', color=ink, va='center')
-    for x, label, color in zip(xs, ['Base', 'Evolved', 'MIPS-\nevolved'], colors):
+    for x, label, color in zip(xs, ['Base', 'Evolved', 'Fine-\ntuned'], colors):
         ax.text(x, n_tasks + 1.05, label, fontweight='bold', ha='center', va='center', color=color, linespacing=1.1)
     ax.plot([.08, 4.77], [n_tasks + .38, n_tasks + .38], color=ink, lw=.9)
     for i, (task, label) in enumerate(TASKS):
@@ -106,7 +106,7 @@ def main():
         ax.text(x, -1.30, str(total), ha='center', va='center', fontweight='bold', color=color, fontsize=12.5)
     output = args.output
     fig.savefig(output, metadata={'Title': 'MIPS task recovery',
-        'Subject': 'Base PySR vs SRBench-evolved 709715 vs MIPS-evolved 709714; pooled ten-seed exact transition-table recovery on 12 paper-unsolved tasks'})
+        'Subject': 'Base PySR vs SRBench-evolved 709715 vs MIPS-evolved (Fine-tuned) 709714; pooled ten-seed exact transition-table recovery on 12 paper-unsolved tasks'})
     plt.close(fig)
     print(output)
 
