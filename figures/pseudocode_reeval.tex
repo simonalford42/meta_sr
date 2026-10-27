@@ -34,7 +34,7 @@ $N_{\mathrm{val}}$ validation seeds.
     \State Draw $B$ members from $\name{archive}$ with probability $\propto \psi_x$
     \State Evaluate each drawn member on new seeds and update $\hat\mu_x, n_x$
     \State $\name{population} \gets \{\arg\max_{x\in\name{archive}} \hat\mu_x(t) \mid t\in T\}$ \Comment{MAP-Elites, one niche per task}
-    \State Fill remaining slots (up to $P$) by highest overall $\hat\mu_x$
+    \State Fill remaining slots by highest overall $\hat\mu_x$
 \EndFor
 \For{$x\in\name{population}$} \Comment{Final validation reevaluation}
     \State $\name{val}[x] \gets \Call{Evaluate}{x, T_{\mathrm{val}}, N_{\mathrm{val}}}$
