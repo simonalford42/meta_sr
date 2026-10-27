@@ -24,11 +24,10 @@ $N_{\mathrm{val}}$ validation seeds.
 \State $\name{archive} \gets \{\}$
 \For{$g = 1,\ldots,G$}
     \For{$o = 1,\ldots,O$} \Comment{Sample offspring}
-        \State $\name{target\_operator} \gets \Call{RandomChoice}{\mathcal{S}}$
+        \State $\name{operator} \gets \Call{RandomChoice}{\mathcal{S}}$
         \State $\name{mode} \gets \Call{RandomChoice}{\{\name{explore}, \name{refine}, \name{crossover}, \name{simplify}\}}$
         \State $\name{parents} \gets \Call{SampleParents}{\name{population}, \name{mode}}$
-        \State $\name{feedback} \gets \Call{TraceFeedback}{\name{parents}, T}$
-        \State $\name{prompt} \gets \Call{Prompt}{T, g, \name{parents}, \name{target\_operator}, \name{mode}, \name{feedback}}$
+        \State $\name{prompt} \gets \Call{Prompt}{T, g, \name{parents}, \name{operator}, \name{mode}}$
         \State $x_o \gets \Call{LLM}{\name{prompt}}$
         \State $\Call{Evaluate}{x_o, T, N_{\mathrm{init}}}$
         \State $\name{archive} \gets \name{archive}\cup\{x_o\}$
