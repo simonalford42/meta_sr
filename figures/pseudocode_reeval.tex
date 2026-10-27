@@ -17,7 +17,8 @@
 $P$ population size; tasks $T$;\\
 $N_{\mathrm{init}}$ initial seeds; $B$ TTTS seeds per generation;
 $N_{\mathrm{reeval}}$ uniform reevaluation seeds; $N_{\mathrm{val}}$ validation seeds;\\
-reevaluation $\name{strategy}\in\{\name{TTTS},\name{uniform}\}$.
+reevaluation $\name{strategy}\in\{\name{TTTS},\name{uniform}\}$.\\
+\textbf{Notation:} $\hat\mu_x$ ($\hat\mu_x(t)$) is the mean score of $x$ over its $n_x$ seeds so far (on task $t$).
 \medskip
 \begin{algorithmic}[1]
 \State $\name{population} \gets [\name{baseline}]$
@@ -30,9 +31,8 @@ reevaluation $\name{strategy}\in\{\name{TTTS},\name{uniform}\}$.
         \State $\Call{Evaluate}{x_o, T, N_{\mathrm{init}}}$
         \State $\name{archive} \gets \name{archive}\cup\{x_o\}$
     \EndFor
-    \State $\hat\mu_x \gets$ mean score of $x\in\name{archive}$ \Comment{Reevaluate}
-    \If{$\name{strategy} = \name{TTTS}$}
-        \State $\psi_x \gets$ top-two Thompson probability of $x$ under $\mathcal{N}(\hat\mu_x, \hat\sigma^2/n_x)$, $n_x$ seeds so far
+    \If{$\name{strategy} = \name{TTTS}$} \Comment{Reevaluate}
+        \State $\psi_x \gets$ top-two Thompson probability of $x$ under $\mathcal{N}(\hat\mu_x, \hat\sigma^2/n_x)$
         \State Draw $B$ members from $\name{archive}$ with probability $\propto \psi_x$
     \ElsIf{$\name{strategy} = \name{uniform}$}
         \State Draw each new member of $\name{population}$ $N_{\mathrm{reeval}}$ times
