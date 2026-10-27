@@ -32,7 +32,7 @@ $N_{\mathrm{val}}$ validation seeds; $F$ fitness metric.
     \If{$\name{strategy} = \name{uniform}$}
         \State Split $B$ seeds evenly over the top-$P$ members of $\name{archive}$ by $\hat\mu$
     \ElsIf{$\name{strategy} = \name{TTTS}$} \Comment{Top-two Thompson sampling}
-        \State $\psi_x \gets \Pr[x \text{ is best or runner-up}]$ under posterior $\mathcal{N}(\hat\mu_x, \hat\sigma^2/n_x)$
+        \State $\psi_x \gets$ top-two Thompson probability of $x$ under posterior $\mathcal{N}(\hat\mu_x, \hat\sigma^2/n_x)$
         \State Draw $B$ members from $\name{archive}$ with probability $\propto \psi_x$
     \EndIf
     \State Evaluate each drawn member on the new seeds; update $\hat\mu_x, n_x$
