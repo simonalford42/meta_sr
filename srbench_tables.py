@@ -145,7 +145,9 @@ def build_tables(runs_root="runs", project_root=None):
     evolved_dir = runs_root / evolved.get("training_id", "-")
     budgets = [
         ("1 million evaluations", baseline.get("gt_path"), evolved.get("gt_path")),
-        ("90 seconds", runs_root / "srbench_gt_baseline_90s", evolved_dir / "srbench_gt_90s"),
+        # Uncapped 90 s searches; srbench_gt_*_90s also capped each search at 1M evals.
+        ("90 seconds", runs_root / "pysr-base-srbench_full_9-22_10seed-90s",
+         runs_root / f"pysr-gt-{evolved.get('training_id', '-')}-srbench_full_9-22_10seed-90s"),
         ("15 minutes", runs_root / "srbench_gt_baseline_15m_single", evolved_dir / "srbench_gt_15m_single"),
         ("15m-portfolio", runs_root / "srbench_gt_baseline_15m_portfolio_1e6", evolved_dir / "srbench_gt_15m_portfolio_1e6"),
     ]

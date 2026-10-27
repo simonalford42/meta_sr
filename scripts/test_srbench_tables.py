@@ -52,8 +52,8 @@ def test_tables_group_order_subsets_budgets_and_missing(tmp_path):
     base, evolved = runs / "base", runs / "evolved"
     write_run(base)
     write_run(evolved)
-    write_run(runs / "srbench_gt_baseline_90s", solved=False)
-    write_run(runs / "709715/srbench_gt_90s", incomplete=True)
+    write_run(runs / "pysr-base-srbench_full_9-22_10seed-90s", solved=False)
+    write_run(runs / "pysr-gt-709715-srbench_full_9-22_10seed-90s", incomplete=True)
     columns = [dict(key="pysr_baseline", gt_path=str(base), bb_r2=.75,
                     bb_completed=1220),
                dict(key="pysrpp_gt", gt_path=str(evolved), training_id="709715")]
