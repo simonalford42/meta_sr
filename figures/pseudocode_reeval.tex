@@ -35,11 +35,10 @@ $N_{\mathrm{val}}$ validation seeds.
     \State Evaluate each drawn member on new seeds and update $\hat\mu_x, n_x$
     \State $\name{population} \gets \{\arg\max_{x\in\name{archive}} \hat\mu_x(t) \mid t\in T\}$ \Comment{MAP-Elites, one niche per task}
     \State Fill remaining slots by highest overall $\hat\mu_x$
+    \State $x^*_g \gets \arg\max_{x\in\name{population}} \hat\mu_x$ \Comment{Validate generation's best}
+    \State $\name{val}[x^*_g] \gets \Call{Evaluate}{x^*_g, T_{\mathrm{val}}, N_{\mathrm{val}}}$
 \EndFor
-\For{$x\in\name{population}$} \Comment{Final validation reevaluation}
-    \State $\name{val}[x] \gets \Call{Evaluate}{x, T_{\mathrm{val}}, N_{\mathrm{val}}}$
-\EndFor
-\State \Return $\arg\max_{x\in\name{population}} \name{val}[x]$
+\State \Return $\arg\max_{x} \name{val}[x]$
 \end{algorithmic}
 \end{algorithm}
 \end{document}
