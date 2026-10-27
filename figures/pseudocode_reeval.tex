@@ -35,7 +35,7 @@ reevaluation $\name{strategy}\in\{\name{TTTS},\name{uniform}\}$.
         \State $\psi_x \gets$ top-two Thompson probability of $x$ under $\mathcal{N}(\hat\mu_x, \hat\sigma^2/n_x)$, $n_x$ seeds so far
         \State Draw $B$ members from $\name{archive}$ with probability $\propto \psi_x$
     \ElsIf{$\name{strategy} = \name{uniform}$}
-        \State Draw each new member of $\name{population}$ $N_{\mathrm{reeval}} - N_{\mathrm{init}}$ times
+        \State Draw each new member of $\name{population}$ $N_{\mathrm{reeval}}$ times
     \EndIf
     \State Evaluate each drawn member on new seeds and update $\hat\mu_x$
     \State $\name{population} \gets \{\arg\max_{x\in\name{archive}} \hat\mu_x(t) \mid t\in T\}$ \Comment{MAP-Elites, one niche per task}
