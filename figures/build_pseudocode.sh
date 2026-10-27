@@ -2,5 +2,5 @@
 # Run from the repository root: bash figures/build_pseudocode.sh
 set -euo pipefail
 figure_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-tectonic --outdir "$figure_dir" "$figure_dir/pseudocode.tex"
-tectonic --outdir "$figure_dir" "$figure_dir/pseudocode_reeval.tex"
+tectonic --outdir "$figure_dir" "$figure_dir/pseudocode_long.tex"
+tectonic --outdir "$figure_dir" "$figure_dir/pseudocode_short.tex"

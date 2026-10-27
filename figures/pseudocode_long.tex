@@ -1,0 +1,84 @@
+\documentclass[10pt]{article}
+\usepackage[letterpaper,margin=0.6in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage[indLines=true,noEnd=false]{algpseudocodex}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\pagestyle{empty}
+\newcommand{\name}[1]{\textnormal{\texttt{#1}}}
+\algrenewcommand\algorithmiccomment[1]{\textcolor{gray}{\#\ #1}}
+% Typeset transcription of pseudocode.txt; algorithmic choices are preserved.
+\begin{document}
+\begin{algorithm}[H]
+\caption{Meta-evolution}
+\small
+\textbf{Inputs:} baseline; $G_{\mathrm{total}}$ total generations;
+$G_{\mathrm{simplify}}$ simplification generations;\\
+$O$ offspring; $P$ population size; training tasks $T$; validation tasks $T_{\mathrm{val}}$;
+$F$ fitness metric;\\
+$N_{\mathrm{init}}$ initial evaluation seeds; $N_{\mathrm{val}}$ validation seeds;
+reevaluation $\name{strategy}$: either \name{TTTS} with $B$ seeds\\
+per generation, or \name{uniform} with $N_{\mathrm{reeval}}$ extra seeds per new population member.
+\medskip
+\begin{algorithmic}[1]
+\State $\name{population} \gets [\name{baseline}]$
+\State $\name{archive} \gets \{\}$
+\State $\name{new\_members} \gets \{\}$
+\For{$i = 0,\ldots,G_{\mathrm{total}}-1$}
+    \Statex \hspace{\algorithmicindent}\Comment{Generate offspring}
+    \State $\name{offspring} \gets \{\}$
+    \For{$o = 0,\ldots,O-1$}
+        \State $\name{sr\_operator} \gets \Call{RandomChoice}{[\name{mutation},\name{survival},\name{selection},\name{loss}]}$
+        \If{$i = 0$}
+            \State $\name{mode} \gets \name{explore}$
+        \ElsIf{$G_{\mathrm{total}}-i \le G_{\mathrm{simplify}}$}
+            \State $\name{mode} \gets \name{simplify}$
+        \Else
+            \State $\name{mode} \gets \Call{RandomChoice}{[\name{explore},\name{refine},\name{crossover},\name{simplify}]}$
+        \EndIf
+        \State $\name{parent} \gets \Call{TournamentSelection}{\name{population},n=2}$
+        \If{$\name{mode} = \name{crossover}$}
+            \State $\name{parent2} \gets \Call{TournamentSelection}{\name{population},n=2}$
+        \EndIf
+        \State $\name{feedback} \gets \Call{GenerateTraceFeedback}{T,\name{parent}}$
+        \State $\name{prompt} \gets \Call{GeneratePrompt}{\name{sr\_operator},\name{mode},\name{parent},\name{feedback},\name{parent2}}$
+        \Repeat
+            \State $\name{x} \gets \name{LLM\_ensemble.sample().sample\_completion(prompt)}$
+        \Until{$\Call{PassesValidation}{\name{x}}$}
+        \State $\name{offspring} \gets \name{offspring}\cup\{\name{x}\}$
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\Comment{Choose reevaluations}
+    \If{$\name{strategy} = \name{TTTS}$}
+        \State $\psi_x \gets$ top-two Thompson probability of $x$ under $\mathcal{N}(\hat\mu_x, \hat\sigma^2/n_x)$, for $x\in\name{archive}$
+        \State $\name{reeval} \gets$ $B$ draws from $\name{archive}$ with probability $\propto \psi_x$
+    \Else
+        \State $\name{reeval} \gets \{x\!:\!N_{\mathrm{reeval}}\mid x\in\name{new\_members}\}$
+    \EndIf
+    \Statex \hspace{\algorithmicindent}\Comment{Parallel evaluation of offspring and reevaluations}
+    \State $\name{evaluation\_batch} \gets \{x\!:\!N_{\mathrm{init}}\mid x\in\name{offspring}\}\cup\name{reeval}$
+    \State $\Call{ParallelEvaluation}{\name{evaluation\_batch},T,F}$
+    \Statex \hspace{\algorithmicindent}\Comment{Update archive of scores, averaged over all seeds and tasks so far}
+    \For{$x\in\name{evaluation\_batch}$}
+        \State $\hat\mu_x \gets$ mean of $F(x,\text{task},\text{seed})$ over all evaluated tasks and seeds
+        \State $n_x \gets$ number of seeds evaluated
+        \State $\name{archive} \gets \name{archive}\cup\{x\}$
+    \EndFor
+    \If{$G_{\mathrm{total}}-i \le G_{\mathrm{simplify}}$} \quad\Comment{LOC versus score population}
+        \State Form the Pareto frontier of score versus LOC.
+        \State Fill remaining slots (up to $P$) with individuals selected by highest overall score.
+    \Else \quad\Comment{Task-based population}
+        \State For each task, add the individual with highest average score on that task to population.
+        \State Fill remaining slots (up to $P$) with individuals selected by highest overall score.
+    \EndIf
+    \State $\name{new\_members} \gets \{x\in\name{offspring}\mid x\in\name{population}\}$
+    \Statex \hspace{\algorithmicindent}\Comment{Validate the generation's best on held-out tasks}
+    \State $x^*_i \gets \operatorname*{arg\,max}_{x\in\name{population}}\hat\mu_x$
+    \State $\name{val}[x^*_i] \gets \frac{1}{N_{\mathrm{val}}|T_{\mathrm{val}}|}\sum_{\text{seeds},\,\text{task}\in T_{\mathrm{val}}} F(x^*_i,\text{task},\text{seed})$
+\EndFor
+\State $\name{best\_individual} \gets \operatorname*{arg\,max}_{x}\name{val}[x]$
+\State \Return $\name{best\_individual}$
+\end{algorithmic}
+\end{algorithm}
+\end{document}
