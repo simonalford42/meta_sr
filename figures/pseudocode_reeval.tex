@@ -15,7 +15,6 @@
 \small
 \textbf{Inputs:} baseline; $G$ generations; $O$ offspring per generation;
 $P$ population size; tasks $T$;\\
-$\mathcal{S}$ evolvable SR operators (e.g.\ selection, survival, mutation, loss);\\
 $N_{\mathrm{init}}$ initial seeds; $B$ reevaluation seeds per generation;
 $N_{\mathrm{val}}$ validation seeds.
 \medskip
@@ -24,11 +23,9 @@ $N_{\mathrm{val}}$ validation seeds.
 \State $\name{archive} \gets \{\}$
 \For{$g = 1,\ldots,G$}
     \For{$o = 1,\ldots,O$} \Comment{Sample offspring}
-        \State $\name{operator} \gets \Call{RandomChoice}{\mathcal{S}}$
-        \State $\name{mode} \gets \Call{RandomChoice}{\{\name{explore}, \name{refine}, \name{crossover}, \name{simplify}\}}$
-        \State $\name{parents} \gets \Call{SampleParents}{\name{population}, \name{mode}}$
-        \State $\name{prompt} \gets \Call{Prompt}{T, g, \name{parents}, \name{operator}, \name{mode}}$
-        \State $x_o \gets \Call{LLM}{\name{prompt}}$
+        \State $\name{parents} \gets \Call{SampleParents}{\name{population}}$
+        \State $\name{prompt} \sim \Call{Prompt}{T, g, \name{parents}}$
+        \State $x_o \sim \Call{LLM}{\name{prompt}}$
         \State $\Call{Evaluate}{x_o, T, N_{\mathrm{init}}}$
         \State $\name{archive} \gets \name{archive}\cup\{x_o\}$
     \EndFor
