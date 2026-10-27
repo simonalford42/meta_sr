@@ -24,7 +24,8 @@ $N_{\mathrm{val}}$ validation seeds.
 \For{$g = 1,\ldots,G$}
     \For{$o = 1,\ldots,O$} \Comment{Sample offspring}
         \State $\name{parents} \gets \Call{SampleParents}{\name{population}}$
-        \State $x_o \gets \Call{LLM}{\name{parents}}$
+        \State $\name{prompt} \gets \Call{Prompt}{T, g, \name{parents}, \name{target\_operator}, \name{mode}, \name{feedback}}$
+        \State $x_o \gets \Call{LLM}{\name{prompt}}$
         \State $\Call{Evaluate}{x_o, T, N_{\mathrm{init}}}$
         \State $\name{archive} \gets \name{archive}\cup\{x_o\}$
     \EndFor
