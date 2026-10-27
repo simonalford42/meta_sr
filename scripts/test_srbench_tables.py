@@ -69,11 +69,16 @@ def test_tables_group_order_subsets_budgets_and_missing(tmp_path):
     assert "without task-count rescaling" in output
     table2 = output.split("Table 2:")[1]
     train = next(line for line in table2.splitlines() if "Train tasks" in line)
-    rest = next(line for line in table2.splitlines() if "Excluding train" in line)
+    val = next(line for line in table2.splitlines() if "Val tasks" in line)
+    every = next(line for line in table2.splitlines() if "All tasks" in line)
     assert "n=1" in train and train.count("100.00%") == 2
-    assert "n=1" in rest and rest.count("0.00%") == 2
+    assert "n=0" in val and val.count("TBD") == 2
+    assert "n=2" in every and every.count("50.00%") == 2
+    # Budget rows score held-out tasks only.
+    full = next(line for line in table2.splitlines() if "1 million" in line)
+    assert full.count("0.00%") == 2 and "50.00%" not in full
     timed = next(line for line in table2.splitlines() if "90 seconds" in line)
-    assert "0.00%" in timed and "49.37%* (79/80)" in timed
+    assert "0.00%* (40/40)" in timed
     assert "missing and errored trials excluded" in output
     assert next(line for line in table2.splitlines() if "15 minutes" in line).count("TBD") == 2
 
@@ -110,12 +115,13 @@ def test_gt_excludes_both_train_and_validation_tasks(tmp_path):
     row = next(line for line in official.splitlines() if "excluding train & val" in line)
     assert row.split("│")[2].strip() == "10.0%"
     output = tables.build_tables(runs, tmp_path)
-    rows = [line for line in output.splitlines() if "GT (excluding train & val" in line]
+    rows = [line for line in output.splitlines()
+            if "GT (excluding train & val" in line or "1 million evaluations" in line]
     assert len(rows) == 2
     for row in rows:
         assert row.split("|")[2].strip() == "10.00%"
         assert row.split("|")[-2].strip() == "TBD"
-    assert "n=1" in rows[1]
+    assert "n=1" in output.split("Table 2:")[1].split("Budget rows")[1]
 
 
 def test_no_merged_portfolio_used_as_individual_searches(tmp_path):

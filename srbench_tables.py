@@ -113,6 +113,7 @@ def build_tables(runs_root="runs", project_root=None):
     train_names = _names(project_root / OFFICIAL_TRAIN_SPLIT)
     val_names = _names(project_root / OFFICIAL_VAL_SPLIT)
     train = train_names & canonical
+    val = val_names & canonical
     held_out = canonical - train_names - val_names
     have_splits = bool(train_names and val_names)
     columns = {column["key"]: column for column in build_official_columns(
@@ -148,26 +149,32 @@ def build_tables(runs_root="runs", project_root=None):
         ("15 minutes", runs_root / "srbench_gt_baseline_15m_single", evolved_dir / "srbench_gt_15m_single"),
         ("15m-portfolio", runs_root / "srbench_gt_baseline_15m_portfolio_1e6", evolved_dir / "srbench_gt_15m_portfolio_1e6"),
     ]
+    # Budget rows score held-out (test) tasks only; train/val/all rows follow at 1M evals.
     def budget_score(path):
+        if not have_splits:
+            return "TBD"
         result = complete(path)
         if result is not None:
-            return _format(_rate(result))
+            return _format(_rate(result, held_out))
         result = _complete_gt(path, canonical, allow_incomplete=True)
+        result = [row for row in result or [] if row["dataset"] in held_out]
         if not result:
             return "TBD"
-        return f"{_format(_rate(result))}* ({len(result)}/{len(canonical)*40})"
+        return f"{_format(_rate(result))}* ({len(result)}/{len(held_out)*40})"
 
     rows = [[label, budget_score(base), budget_score(evo)]
             for label, base, evo in budgets]
     base_rows, evo_rows = complete(baseline.get("gt_path")), complete(evolved.get("gt_path"))
     rows.append(None)
-    rows.append([f"GT (excluding train & val, n={len(held_out)})",
-                 _format(_rate(base_rows, held_out) if have_splits else None),
-                 _format(_rate(evo_rows, held_out) if have_splits else None)])
+    for label, datasets in [
+        (f"Train tasks (n={len(train)})", train if have_splits else set()),
+        (f"Val tasks (n={len(val)})", val if have_splits else set()),
+        (f"All tasks (n={len(canonical)})", canonical),
+    ]:
+        rows.append([label, _format(_rate(base_rows, datasets)),
+                     _format(_rate(evo_rows, datasets))])
     for label, datasets, noise in [
-        (f"Train tasks (n={len(train)})", train, None),
-        (f"Excluding train tasks (n={len(canonical-train)})", canonical-train, None),
-        *[(f"Noise {noise:g}", None, noise) for noise in [0, .001, .01, .1]],
+        (f"Noise {noise:g}", None, noise) for noise in [0, .001, .01, .1]
     ]:
         rows.append([label, _format(_rate(base_rows, datasets, noise)),
                      _format(_rate(evo_rows, datasets, noise))])
@@ -178,6 +185,6 @@ def build_tables(runs_root="runs", project_root=None):
             + " and " + OFFICIAL_VAL_SPLIT + "."
             + "\nMDLFormer GT: supplied reference score (40.5%), without task-count rescaling; BB unavailable."
             + "\n\nTable 2: PySR vs PySR++ GT (evolved=" + evolved.get("training_id", "TBD") + ")\n"
-            + table2 + "\nBreakdown below the divider uses 1M evaluations; 10 seeds."
+            + table2 + f"\nBudget rows: held-out test tasks only (n={len(held_out)}). Rows below the divider use 1M evaluations; 10 seeds."
             + "\n* = provisional solve rate over successful trials only (completed/expected); missing and errored trials excluded."
             + "\nTBD = unavailable or incomplete local evaluation.")
