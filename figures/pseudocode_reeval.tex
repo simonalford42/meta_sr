@@ -23,7 +23,7 @@ $N_{\mathrm{val}}$ validation seeds.
 \State $\name{archive} \gets \{\}$
 \For{$g = 1,\ldots,G$}
     \For{$o = 1,\ldots,O$} \Comment{Sample offspring}
-        \State $\name{parents} \gets \Call{SampleParents}{\name{population}}$
+        \State $\name{parents} \sim \Call{SampleParents}{\name{population}}$
         \State $\name{prompt} \sim \Call{Prompt}{T, g, \name{parents}}$
         \State $x_o \sim \Call{LLM}{\name{prompt}}$
         \State $\Call{Evaluate}{x_o, T, N_{\mathrm{init}}}$
