@@ -2,46 +2,40 @@
 \usepackage[letterpaper,margin=0.6in]{geometry}
 \usepackage{amsmath,amssymb}
 \usepackage{algorithm}
-\usepackage[indLines=true,noEnd=false]{algpseudocodex}
+\usepackage[indLines=true,noEnd=false,commentColor=gray]{algpseudocodex}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage{xcolor}
 \pagestyle{empty}
 \newcommand{\name}[1]{\textnormal{\texttt{#1}}}
-\algrenewcommand\algorithmiccomment[1]{\textcolor{gray}{\#\ #1}}
 % Condensed meta-evolution focusing on reevaluation and MAP-Elites population.
 \begin{document}
 \begin{algorithm}[H]
-\caption{Meta-evolution with reevaluation}
+\caption{Meta-evolution}
 \small
 \textbf{Inputs:} baseline; $G$ generations; $O$ offspring per generation;
 $P$ population size; tasks $T$;\\
 $N_{\mathrm{init}}$ initial seeds; $B$ reevaluation seeds per generation;
-$N_{\mathrm{val}}$ validation seeds; $F$ fitness metric.
+$N_{\mathrm{val}}$ validation seeds.
 \medskip
 \begin{algorithmic}[1]
-\State $\name{population} \gets [\name{baseline}]$;\quad $\name{archive} \gets \{\}$
+\State $\name{population} \gets [\name{baseline}]$
+\State $\name{archive} \gets \{\}$
 \For{$g = 1,\ldots,G$}
     \For{$o = 1,\ldots,O$} \Comment{Sample offspring}
         \State $\name{parents} \gets \Call{SampleParents}{\name{population}}$
-        \State $x_o \gets \Call{LLM}{\name{parents}}$;\quad $\Call{Evaluate}{x_o, T, N_{\mathrm{init}}}$
+        \State $x_o \gets \Call{LLM}{\name{parents}}$
+        \State $\Call{Evaluate}{x_o, T, N_{\mathrm{init}}}$
         \State $\name{archive} \gets \name{archive}\cup\{x_o\}$
     \EndFor
-    \Statex \Comment{Reevaluate: spend $B$ extra seeds across the archive}
-    \State $\hat\mu_x, n_x \gets$ mean score and seed count of each $x\in\name{archive}$
-    \If{$\name{strategy} = \name{uniform}$}
-        \State Split $B$ seeds evenly over the top-$P$ members of $\name{archive}$ by $\hat\mu$
-    \ElsIf{$\name{strategy} = \name{TTTS}$} \Comment{Top-two Thompson sampling}
-        \State $\psi_x \gets$ top-two Thompson probability of $x$ under posterior $\mathcal{N}(\hat\mu_x, \hat\sigma^2/n_x)$
-        \State Draw $B$ members from $\name{archive}$ with probability $\propto \psi_x$
-    \EndIf
-    \State Evaluate each drawn member on the new seeds; update $\hat\mu_x, n_x$
-    \Statex \Comment{MAP-Elites population: one niche per task}
-    \State $\name{population} \gets \{\arg\max_{x\in\name{archive}} \hat\mu_x(t) \mid t\in T\}$
+    \State $\hat\mu_x, n_x \gets$ mean score, seed count of $x\in\name{archive}$ \Comment{Reevaluate with TTTS}
+    \State $\psi_x \gets$ top-two Thompson probability of $x$ under $\mathcal{N}(\hat\mu_x, \hat\sigma^2/n_x)$
+    \State Draw $B$ members from $\name{archive}$ with probability $\propto \psi_x$
+    \State Evaluate each drawn member on new seeds and update $\hat\mu_x, n_x$
+    \State $\name{population} \gets \{\arg\max_{x\in\name{archive}} \hat\mu_x(t) \mid t\in T\}$ \Comment{MAP-Elites, one niche per task}
     \State Fill remaining slots (up to $P$) by highest overall $\hat\mu_x$
 \EndFor
-\Statex \Comment{Final reevaluation on validation tasks}
-\For{$x\in\name{population}$}
+\For{$x\in\name{population}$} \Comment{Final validation reevaluation}
     \State $\name{val}[x] \gets \Call{Evaluate}{x, T_{\mathrm{val}}, N_{\mathrm{val}}}$
 \EndFor
 \State \Return $\arg\max_{x\in\name{population}} \name{val}[x]$
