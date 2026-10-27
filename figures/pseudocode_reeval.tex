@@ -25,7 +25,7 @@ reevaluation $\name{strategy}\in\{\name{TTTS},\name{uniform}\}$.
 \For{$g = 1,\ldots,G$}
     \For{$o = 1,\ldots,O$} \Comment{Sample offspring}
         \State $\name{parents} \sim \Call{SampleParents}{\name{population}}$
-        \State $\name{prompt} \sim \Call{Prompt}{T, g, \name{parents}}$
+        \State $\name{prompt} \sim \Call{Prompt}{T, \name{parents}}$
         \State $x_o \sim \Call{LLM}{\name{prompt}}$
         \State $\hat\mu_{x_o} \gets \Call{Evaluate}{x_o, T, N_{\mathrm{init}}}$
         \State $n_{x_o} \gets N_{\mathrm{init}}$
