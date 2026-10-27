@@ -13,44 +13,36 @@
 \begin{algorithm}[H]
 \caption{Meta-evolution}
 \small
-\textbf{Inputs:} baseline; training tasks $T$; validation tasks $T_{\mathrm{val}}$;
-$G$ generations; $O$ offspring per generation;\\
-$P$ population size; $N_{\mathrm{init}}$ initial seeds; $N_{\mathrm{val}}$ validation seeds;
-reevaluation $\name{strategy}$: either \name{TTTS}\\
-with $B$ seeds per generation, or \name{uniform} with $N_{\mathrm{reeval}}$ seeds per new population member.
+\textbf{Inputs:} baseline; $G$ generations; $O$ offspring per generation;
+$P$ population size; tasks $T$;\\
+$N_{\mathrm{init}}$ initial seeds; $B$ TTTS seeds per generation;
+$N_{\mathrm{reeval}}$ uniform reevaluation seeds; $N_{\mathrm{val}}$ validation seeds;\\
+reevaluation $\name{strategy}\in\{\name{TTTS},\name{uniform}\}$.
 \medskip
 \begin{algorithmic}[1]
-\State $\Call{Evaluate}{\name{baseline}, N_{\mathrm{init}}}$
-\State $\name{archive} \gets \{\name{baseline}\}$
 \State $\name{population} \gets [\name{baseline}]$
+\State $\name{archive} \gets \{\}$
 \For{$g = 1,\ldots,G$}
     \For{$o = 1,\ldots,O$} \Comment{Sample offspring}
         \State $\name{parents} \sim \Call{SampleParents}{\name{population}}$
         \State $\name{prompt} \sim \Call{Prompt}{T, g, \name{parents}}$
         \State $x_o \sim \Call{LLM}{\name{prompt}}$
-        \State $\Call{Evaluate}{x_o, N_{\mathrm{init}}}$
+        \State $\Call{Evaluate}{x_o, T, N_{\mathrm{init}}}$
         \State $\name{archive} \gets \name{archive}\cup\{x_o\}$
     \EndFor
-    \State $\name{population} \gets \{\arg\max_{x\in\name{archive}} \hat\mu_x(t) \mid t\in T\}$ \Comment{MAP-Elites, one niche per task}
-    \State Fill remaining slots up to $P$ by highest $\hat\mu_x$
     \If{$\name{strategy} = \name{TTTS}$} \Comment{Reevaluate}
-        \State $\hat\sigma \gets$ pooled standard deviation of per-seed scores over $\name{archive}$
-        \State $\psi_x \gets$ top-two Thompson sampling probability of $x$ under posterior $\mathcal{N}(\hat\mu_x, \hat\sigma^2/n_x)$
-        \State $k \sim \mathrm{Multinomial}(B, \psi)$
-        \State $\Call{Evaluate}{x, k_x}$ for each $x\in\name{archive}$
+        \State $\psi_x \gets$ top-two Thompson sampling probability of $x$ given its scores so far
+        \State Draw $B$ members from $\name{archive}$ with probability $\propto \psi_x$
     \ElsIf{$\name{strategy} = \name{uniform}$}
-        \State $\Call{Evaluate}{x, N_{\mathrm{reeval}}}$ for each new member $x$ of $\name{population}$
+        \State Draw each new member of $\name{population}$ $N_{\mathrm{reeval}}$ times
     \EndIf
-    \State $x^*_g \gets \arg\max_{x\in\name{population}} \hat\mu_x$ \Comment{Validate generation's best}
-    \State $\name{val}[x^*_g] \gets$ mean score of $x^*_g$ on $T_{\mathrm{val}}$ over $N_{\mathrm{val}}$ seeds
+    \State Evaluate each drawn member on new seeds and update $\name{score}[x]$
+    \State $\name{population} \gets \{\arg\max_{x\in\name{archive}} \name{score}[x, t] \mid t\in T\}$ \Comment{MAP-Elites, one niche per task}
+    \State Fill remaining slots by highest $\name{score}[x]$
+    \State $x^*_g \gets \arg\max_{x\in\name{population}} \name{score}[x]$ \Comment{Validate generation's best}
+    \State $\name{val}[x^*_g] \gets \Call{Evaluate}{x^*_g, T_{\mathrm{val}}, N_{\mathrm{val}}}$
 \EndFor
 \State \Return $\arg\max_{x} \name{val}[x]$
-\Statex
-\Function{Evaluate}{$x, n$}
-    \State Run $x$ on each task in $T$ with $n$ new seeds, adding the per-seed scores to $S_x$
-    \State $\hat\mu_x, n_x \gets$ mean and size of $S_x$
-    \State $\hat\mu_x(t) \gets$ mean of $S_x$ on task $t$
-\EndFunction
 \end{algorithmic}
 \end{algorithm}
 \end{document}
