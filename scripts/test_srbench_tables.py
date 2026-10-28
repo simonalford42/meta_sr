@@ -80,7 +80,7 @@ def test_tables_group_order_subsets_budgets_and_missing(tmp_path):
     timed = next(line for line in table2.splitlines() if "90 seconds" in line)
     assert "0.00%* (40/40)" in timed and timed.split("|")[4].strip() == "+0.00*"
     assert "missing and errored trials excluded" in output
-    assert next(line for line in table2.splitlines() if "15 minutes" in line).count("TBD") == 2
+    assert next(line for line in table2.splitlines() if "15 minutes" in line).count("TBD") == 3
 
 
 def test_table1_does_not_replace_1m_with_newer_portfolio(tmp_path):
