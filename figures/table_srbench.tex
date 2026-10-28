@@ -1,0 +1,51 @@
+\begin{table}[t]
+\caption{Results on SRBench, averaged over 10 seeds. Ground-truth recoveries are averaged over four noise levels (0, 0.001, 0.01, 0.1) and 130 tasks. Black box $R^2$ is averaged over 122 tasks. Improved versions of PySR and BasicSR are evaluated with a 90 second timeout.}
+\label{tab:srbench}
+\centering
+% \small
+\scriptsize
+\begin{tabular}{llcc}
+\toprule
+
+\multicolumn{1}{l}{\multirow{2}{*}{Model}} &
+\multicolumn{1}{l}{Training} &
+\multicolumn{1}{c}{Black-box} &
+\multicolumn{1}{c}{Ground-truth} \\
+
+& \multicolumn{1}{l}{metric}
+ & \multicolumn{1}{c}{average $R^2$}
+& \multicolumn{1}{c}{average recovery rate (\%)} \\
+
+\midrule
+PySR &        & 0.814 & 50.6 \\
+\midrule
+
+\multirow[c]{3}{*}{Evolved PySR}
+& $R^2$    & 0.790 & 45.4 \\
+& GT-$R^2$ & 0.811 & 52.5 \\
+& GT       & 0.659 & \bf 58.6 \\
+
+\midrule
+BasicSR &        & -0.148   & 19.5 \\
+
+\midrule
+\multirow[c]{3}{*}{Evolved BasicSR}
+& $R^2$    & 0.742 & 46.0 \\
+& GT-$R^2$ & 0.817 & 50.8 \\
+& GT       & 0.715 & 39.3 \\
+
+\midrule
+\multirow[c]{3}{*}{HPO applied to PySR}
+& $R^2$    & 0.814 & 47.7 \\
+& GT-$R^2$ & \bf 0.823 & 50.6 \\
+& GT       & 0.813 & 50.8 \\
+
+\midrule
+Autoresearch applied to PySR & GT & 0.810  & 52.9 \\
+
+\midrule
+MDLFormer &  GT     & --    & 40.5 \\
+
+\bottomrule
+\end{tabular}
+\end{table}
