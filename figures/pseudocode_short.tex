@@ -33,7 +33,7 @@ reevaluation $\name{strategy}\in\{\name{TTTS},\name{uniform}\}$.
     \EndFor
     \If{$\name{strategy} = \name{TTTS}$} \Comment{Reevaluate}
         \State $\psi_x \gets$ top-two Thompson probability of $x$ under $\mathcal{N}(\hat\mu_x, \hat\sigma^2/n_x)$
-        \State Allocate $B$ seeds to members of $\name{archive}$, sampled with replacement $\propto \psi_x$
+        \State Allocate $B$ seeds by sampling members of $\name{archive}$ with replacement $\propto \psi_x$
     \ElsIf{$\name{strategy} = \name{uniform}$}
         \State Allocate $N_{\mathrm{reeval}}$ seeds to each new member of $\name{population}$
     \EndIf
