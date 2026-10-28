@@ -72,13 +72,13 @@ def test_tables_group_order_subsets_budgets_and_missing(tmp_path):
     val = next(line for line in table2.splitlines() if "Val tasks" in line)
     every = next(line for line in table2.splitlines() if "All tasks" in line)
     assert "n=1" in train and train.count("100.00%") == 2
-    assert "n=0" in val and val.count("TBD") == 2
-    assert "n=2" in every and every.count("50.00%") == 2
+    assert "n=0" in val and val.count("TBD") == 3
+    assert "n=2" in every and every.count("50.00%") == 2 and every.split("|")[4].strip() == "+0.00"
     # Budget rows score held-out tasks only.
     full = next(line for line in table2.splitlines() if "1 million" in line)
     assert full.count("0.00%") == 2 and "50.00%" not in full
     timed = next(line for line in table2.splitlines() if "90 seconds" in line)
-    assert "0.00%* (40/40)" in timed
+    assert "0.00%* (40/40)" in timed and timed.split("|")[4].strip() == "+0.00*"
     assert "missing and errored trials excluded" in output
     assert next(line for line in table2.splitlines() if "15 minutes" in line).count("TBD") == 2
 

@@ -153,34 +153,42 @@ def build_tables(runs_root="runs", project_root=None):
     ]
     # Budget rows score held-out (test) tasks only; train/val/all rows follow at 1M evals.
     def budget_score(path):
+        """Return (rate, text); provisional rates are marked with *."""
         if not have_splits:
-            return "TBD"
+            return None, "TBD"
         result = complete(path)
         if result is not None:
-            return _format(_rate(result, held_out))
+            rate = _rate(result, held_out)
+            return rate, _format(rate)
         result = _complete_gt(path, canonical, allow_incomplete=True)
         result = [row for row in result or [] if row["dataset"] in held_out]
         if not result:
-            return "TBD"
-        return f"{_format(_rate(result))}* ({len(result)}/{len(held_out)*40})"
+            return None, "TBD"
+        rate = _rate(result)
+        return rate, f"{_format(rate)}* ({len(result)}/{len(held_out)*40})"
 
-    rows = [[label, budget_score(base), budget_score(evo)]
-            for label, base, evo in budgets]
+    def delta(base, evo, provisional=False):
+        if base is None or evo is None:
+            return "TBD"
+        return f"{100 * (evo - base):+.2f}" + ("*" if provisional else "")
+
+    rows = []
+    for label, base, evo in budgets:
+        (base_rate, base_text), (evo_rate, evo_text) = budget_score(base), budget_score(evo)
+        rows.append([label, base_text, evo_text,
+                     delta(base_rate, evo_rate, "*" in base_text + evo_text)])
     base_rows, evo_rows = complete(baseline.get("gt_path")), complete(evolved.get("gt_path"))
     rows.append(None)
-    for label, datasets in [
-        (f"Train tasks (n={len(train)})", train if have_splits else set()),
-        (f"Val tasks (n={len(val)})", val if have_splits else set()),
-        (f"All tasks (n={len(canonical)})", canonical),
-    ]:
-        rows.append([label, _format(_rate(base_rows, datasets)),
-                     _format(_rate(evo_rows, datasets))])
     for label, datasets, noise in [
-        (f"Noise {noise:g}", None, noise) for noise in [0, .001, .01, .1]
+        (f"Train tasks (n={len(train)})", train if have_splits else set(), None),
+        (f"Val tasks (n={len(val)})", val if have_splits else set(), None),
+        (f"All tasks (n={len(canonical)})", canonical, None),
+        *[(f"Noise {noise:g}", None, noise) for noise in [0, .001, .01, .1]],
     ]:
-        rows.append([label, _format(_rate(base_rows, datasets, noise)),
-                     _format(_rate(evo_rows, datasets, noise))])
-    table2 = _grid([("", [""]), ("PySR", [""]), ("Evolved", [""])], rows, subheaders=False)
+        base_rate, evo_rate = _rate(base_rows, datasets, noise), _rate(evo_rows, datasets, noise)
+        rows.append([label, _format(base_rate), _format(evo_rate), delta(base_rate, evo_rate)])
+    table2 = _grid([("", [""]), ("PySR", [""]), ("Evolved", [""]), ("Delta (pp)", [""])],
+                   rows, subheaders=False)
     return ("Table 1: 1M-evaluation method comparison\n" + table1
             + "\nBlack box: mean test R2. Local ground truth: solve rate over 130 tasks and four noise levels."
             + "\nExcluding train & val: omit tasks in " + OFFICIAL_TRAIN_SPLIT
