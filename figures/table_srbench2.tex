@@ -1,23 +1,25 @@
-\caption{SRBench ground-truth recovery rates (\%) across 130 tasks 
-and 10 random seeds}
+\caption{SRBench ground-truth recovery rates (\%) over 10 random seeds. Rows above the line use
+the 90 held-out test tasks; rows below use 1 million evaluations. $\Delta$ is Evolved PySR minus PySR.}
 \label{tab:srbench2}
 
 % \scriptsize
 \footnotesize
-\begin{tabular}{lcc}
+\begin{tabular}{lccc}
 \toprule
-& \multicolumn{1}{c}{PySR} & \multicolumn{1}{c}{Evolved PySR} \\
+& \multicolumn{1}{c}{PySR} & \multicolumn{1}{c}{Evolved PySR} & \multicolumn{1}{c}{$\Delta$} \\
 \midrule
-1 million evaluations & 47.4 & 56.1 \\
-90 seconds & 50.6 & 58.6 \\
-15 minutes & 55.4 & 62.1 \\
-15 minutes + restarts & 60.6 & 63.9 \\
+1 million evaluations & 47.0 & 51.5 & +4.5 \\
+90 seconds & 50.2 & 54.3 & +4.1 \\
+15 minutes & 53.8 & 57.8 & +4.0 \\
+15 minutes + restarts & 56.9 & 59.6 & +2.7 \\
 \midrule
-Excluding train \& val & 47.0 & 51.5 \\
+Train tasks ($n=20$) & 43.6 & 70.8 & +27.2 \\
+Val tasks ($n=20$) & 52.5 & 62.0 & +9.5 \\
+All tasks ($n=130$) & 47.3 & 56.1 & +8.8 \\
 % \midrule
-% Noise 0 & 46.7 & 60.9 \\
-% Noise 0.001 & 49.4 & 59.3 \\
-% Noise 0.01 & 48.2 & 55.7 \\
-% Noise 0.1 & 45.2 & 48.5 \\
+% Noise 0 & 46.7 & 60.8 & +14.1 \\
+% Noise 0.001 & 49.4 & 59.3 & +9.9 \\
+% Noise 0.01 & 48.2 & 55.7 & +7.5 \\
+% Noise 0.1 & 45.2 & 48.5 & +3.3 \\
 \bottomrule
 \end{tabular}
