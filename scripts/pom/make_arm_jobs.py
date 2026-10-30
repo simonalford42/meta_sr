@@ -22,6 +22,9 @@ def main():
     ap.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3])
     ap.add_argument("--timeout", type=int, default=60)
     ap.add_argument("--top-k", type=int, default=1)
+    ap.add_argument("--all-of", default=None,
+                    help="use family <name>:i for every input i instead of the top-k selection (e.g. gradfield)")
+    ap.add_argument("--alpha", type=float, default=0.5, help="statistic weight for the stat_mse arm")
     ap.add_argument("--arms", nargs="+", default=["mse", "stat", "stat_mse"])
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
@@ -33,14 +36,18 @@ def main():
         best_val = max((f["r2_val"] or -1) for f in r["frontier"])
         if best_val >= 1 - 1e-9:
             continue
-        fams = [e["family"] for e in s["ranked"][: args.top_k]]
+        if args.all_of:
+            n_vars = sum(1 for e in s["ranked"] if e["family"].startswith("binmean:"))
+            fams = [f"{args.all_of}:{i}" for i in range(1, n_vars + 1)]
+        else:
+            fams = [e["family"] for e in s["ranked"][: args.top_k]]
         for seed in args.seeds:
             for arm in args.arms:
                 if arm == "mse":
                     loss = {"type": "mse"}
                 else:
                     loss = {"type": "stat", "families": fams,
-                            "alpha": 1.0 if arm == "stat" else 0.5}
+                            "alpha": 1.0 if arm == "stat" else args.alpha}
                 jobs.append({"id": f"{ds}__{arm}{args.tag}__s{seed}", "dataset": ds,
                              "seed": seed, "timeout": args.timeout, "arm": arm + args.tag,
                              "loss": loss})
