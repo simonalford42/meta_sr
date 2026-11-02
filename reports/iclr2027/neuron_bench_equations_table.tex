@@ -1,0 +1,59 @@
+% DATA PROVENANCE (generated 2026-11-02):
+% - Channel constants read from the pinned NeuronBench package
+%   (murphyk/neuronbench @ c354622458c460b419cab821d482c879f0578377) via
+%   scripts/neuronbench_fully_observable.py:world_spec(), and cross-checked
+%   against runs/neuronbench_fully_observable/data/manifest.json.
+% - Train/held-out split: splits/neuron_first1.txt (z_rebound) for
+%   meta-training; the other five worlds are held out (as in run 708907).
+% Required packages in the paper preamble: booktabs, tabularx.
+
+\begin{table}[t]
+  \caption{Fully observable NeuronBench tasks. Each task is a noiseless
+  regression from the external current $I_{\rm ext}$, membrane voltage $V$,
+  and every channel's open fraction $\phi_c$ to the membrane vector field
+  $\dot V$. All six worlds share the Hodgkin--Huxley sodium, potassium, and
+  leak currents,
+  $\dot V_{\rm HH} = I_{\rm ext} - 120\,\phi_{\rm Na}(V-50)
+      - 36\,\phi_{\rm K}(V+77) - 0.3\,(V+54.4)$,
+  with $\phi_{\rm Na}=m_{\rm Na}^3h_{\rm Na}$ and $\phi_{\rm K}=n_{\rm K}^4$,
+  and differ in one added channel (or, for \texttt{na\_fatigue}, a modified
+  $\phi_{\rm Na}$). Units are standard Hodgkin--Huxley (mV, ms,
+  $\mu$A\,cm$^{-2}$, mS\,cm$^{-2}$, $C_m=1\,\mu$F\,cm$^{-2}$). Inputs are
+  sampled by scrambled Sobol sequences over $I_{\rm ext}\in[-40,20]$,
+  $V\in[-95,60]$, and $\phi_c\in[0,1]$. \texttt{z\_rebound} is used for
+  meta-training; the other five worlds are held out.}
+  \label{tab:neuronbench-tasks}
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\linewidth}{@{}l>{$}l<{$}>{\raggedright\arraybackslash}X@{}}
+    \toprule
+    Task & \multicolumn{1}{l}{Ground-truth equation} & Description \\
+    \midrule
+    \texttt{z\_rebound} & \dot V = \dot V_{\rm HH} - 4\,\phi_{\rm Z}(V-120)
+      & Unidentified low-threshold inward current Z,
+        $\phi_{\rm Z}=m_{\rm Z}^2h_{\rm Z}$; de-inactivated by
+        hyperpolarization, producing depolarization block. \\
+    \texttt{h\_sag} & \dot V = \dot V_{\rm HH} - 5\,\phi_{\rm H}(V+30)
+      & Hyperpolarization-activated, non-inactivating inward current $I_h$,
+        $\phi_{\rm H}=m_{\rm H}$; produces voltage sag and post-inhibitory
+        rebound. \\
+    \texttt{na\_fatigue} & \dot V = \dot V_{\rm HH}
+      & No added current; $\phi_{\rm Na}=m_{\rm Na}^3h_{\rm Na}s_{\rm Na}$
+        includes a slow inactivation gate, producing use-dependent
+        spike-count run-down. \\
+    \texttt{ca\_rebound} & \dot V = \dot V_{\rm HH} - 3.2\,\phi_{\rm T}(V-120)
+      & Fast low-threshold T-type Ca$^{2+}$ current,
+        $\phi_{\rm T}=m_{\rm T}^2h_{\rm T}$; de-inactivated by
+        hyperpolarization, producing a rebound burst on release. \\
+    \texttt{d\_type} & \dot V = \dot V_{\rm HH} - 9\,\phi_{\rm D}(V+77)
+      & D-type K$^{+}$ current, $\phi_{\rm D}=m_{\rm D}h_{\rm D}$;
+        de-inactivated by hyperpolarization, producing delayed or
+        suppressed firing. \\
+    \texttt{textbook\_M} & \dot V = \dot V_{\rm HH} - 2.5\,\phi_{\rm M}(V+77)
+      & Textbook slow, non-inactivating M-type K$^{+}$ current,
+        $\phi_{\rm M}=m_{\rm M}$; produces spike-frequency adaptation. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
