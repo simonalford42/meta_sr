@@ -58,12 +58,12 @@ def main():
         'mips_min(1,x2)',
     ]
     equation_text = [
-        r'$\min(((\max(x_1,x_0)-x_3)x_1-x_3)x_1-x_3+2,$' + '\n' +
-        r'$\quad 4\,|\mathrm{xor}(x_1(0.227249-x_3),x_1)+x_3-\mathrm{zero}(x_1)|)$',
-        r'$\lfloor\min(\min(2.98567x_3+0.660363x_1,\,2.32073)$' + '\n' +
-        r'$\quad +\,x_3\max(3.00001,x_1),\,9.32075)\rfloor$',
-        r'$4\,\mathrm{eq}(\mathrm{lt}(x_1,2x_0),x_3)$',
-        r'$\min(1,x_2)$',
+        r"$\min(((\max(h_1,h_0)-x)h_1-x)h_1-x+2,$" + '\n' +
+        r"$\quad 4\,|\mathrm{xor}(h_1(0.227249-x),h_1)+x-\mathrm{zero}(h_1)|)$",
+        r"$\lfloor\min(\min(2.98567x+0.660363h_1,\,2.32073)$" + '\n' +
+        r"$\quad +\,x\,\max(3.00001,h_1),\,9.32075)\rfloor$",
+        r"$4\,\mathrm{eq}(\mathrm{lt}(h_1,2h_0),x)$",
+        r"$\min(1,h_2)$",
     ]
     witnesses = []
     namespace = MIPSTransitionDomain().predict_namespace()
@@ -104,8 +104,8 @@ def main():
     ax.text(9.00, 3.88, 'Discovered equation (MIPS-evolved)', va='center', weight='bold', color=ink)
     ax.plot([0, 16.5], [3.52, 3.52], color=ink, lw=.8)
     for i, y in enumerate([3.00, 2.08, 1.28, .70]):
-        formula = (rf'$h_{{t,{i}}}=f_{i}(h_{{t-1}},x_t)$' if i < 3
-                   else r'$y_t=g(h_t)$')
+        formula = (rf"$h_{i}'=f_{i}(h_0,h_1,h_2,x)$" if i < 3
+                   else r'$y=g(h_0,h_1,h_2)$')
         ax.text(.10, y, formula, va='center', color=ink, fontsize=10.5)
         size = '32 state-input pairs' if i < 3 else '16 states'
         ax.text(3.20, y, size, va='center', ha='center', color=ink, fontsize=9)
@@ -128,7 +128,7 @@ def main():
     caption = r'''\begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/mips_parity_last4_example.pdf}
-\caption{Four scalar regression problems for Parity-last 4 after refining the integer encoding by a factor of four. The observed state set has 16 states, yielding 32 state--input pairs for each transition relation and 16 inputs for the output relation. Entries give exact-recovery counts out of ten search seeds. Baseline PySR and SRBench-evolved PySR (709715) each recover three of four subproblems across seeds; MIPS-evolved PySR (709714) recovers all four. The last column shows recovered MIPS-evolved expressions from run indices 8, 2, 5, and 8, respectively. In transition expressions, $(x_0,x_1,x_2)=h_{t-1}$ and $x_3$ is the current input bit; in the output expression, $(x_0,x_1,x_2)=h_t$. Here $\mathrm{lt}(a,b)=\mathbf{1}[a<b]$, $\mathrm{eq}(a,b)=\mathbf{1}[|a-b|<0.5]$, $\mathrm{zero}(a)=\mathbf{1}[|a|<0.5]$, and $\mathrm{xor}(a,b)=(\mathrm{round}(a)+\mathrm{round}(b))\bmod 2$. Expressions are algebraically regrouped and constants rounded to six significant digits for display; the displayed forms are verified against the complete recorded training and held-out relations within absolute tolerance $10^{-9}$. Task recovery pools component successes across seeds; MIPS-evolved PySR also recovers all four components in the same run index (8). Each fit uses at most $10^6$ evaluations and a 500-second timeout. Run 709714 was evolved directly on MIPS.}
+\caption{Four scalar regression problems for Parity-last 4 after refining the integer encoding by a factor of four. The observed state set has 16 states, yielding 32 state--input pairs for each transition relation and 16 inputs for the output relation. Entries give exact-recovery counts out of ten search seeds. Baseline PySR and SRBench-evolved PySR (709715) each recover three of four subproblems across seeds; MIPS-evolved PySR (709714) recovers all four. The last column shows recovered MIPS-evolved expressions from run indices 8, 2, 5, and 8, respectively. $h=(h_0,h_1,h_2)$ is the integer-encoded hidden state, $x\in\{0,1\}$ is the scalar input bit, primes denote the next state, and $y$ is the output read from the (new) hidden state. Here $\mathrm{lt}(a,b)=\mathbf{1}[a<b]$, $\mathrm{eq}(a,b)=\mathbf{1}[|a-b|<0.5]$, $\mathrm{zero}(a)=\mathbf{1}[|a|<0.5]$, and $\mathrm{xor}(a,b)=(\mathrm{round}(a)+\mathrm{round}(b))\bmod 2$. Expressions are algebraically regrouped and constants rounded to six significant digits for display; the displayed forms are verified against the complete recorded training and held-out relations within absolute tolerance $10^{-9}$. Task recovery pools component successes across seeds; MIPS-evolved PySR also recovers all four components in the same run index (8). Each fit uses at most $10^6$ evaluations and a 500-second timeout. Run 709714 was evolved directly on MIPS.}
 \label{fig:mips-parity-last4-example}
 \end{figure*}
 '''
