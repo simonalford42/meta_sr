@@ -1,0 +1,521 @@
+{
+  "task": "rnn_base_4_addition",
+  "states": 8,
+  "input_table_sizes": {
+    "mips:rnn_base_4_addition:hidden:0": 128,
+    "mips:rnn_base_4_addition:hidden:1": 128,
+    "mips:rnn_base_4_addition:output:0": 8
+  },
+  "displayed_witnesses": [
+    {
+      "component": "mips:rnn_base_4_addition:hidden:0",
+      "run_index": 4,
+      "raw_equation": "3.255339906383876 - mips_min(mips_mod(-2.744660093606633, (x3 + x2) - mips_xor(x1, -0.7604611916038557)), (x2 + x3) - (1.7446600936239534 - x1))",
+      "displayed_expression": "3.25534-mips_min(mips_mod(-2.74466,a+b+h1-1),a+b+h1-1.74466)",
+      "display_max_error": 0.0
+    },
+    {
+      "component": "mips:rnn_base_4_addition:hidden:1",
+      "run_index": 3,
+      "raw_equation": "mips_eq(mips_min(((x3 + -1.9110675525483485) + x2) * (x1 + 0.43243235760681), 1.071758045755042), 1.0)",
+      "displayed_expression": "mips_eq(mips_min((a+b-1.91107)*(h1+0.432432),1.07176),1)",
+      "display_max_error": 0.0
+    },
+    {
+      "component": "mips:rnn_base_4_addition:output:0",
+      "run_index": 2,
+      "raw_equation": "mips_floordiv(3.0079836039067134 - (x0 - mips_not(x1)), 1.0) + mips_zero(x1)",
+      "displayed_expression": "3-h0+2*mips_zero(h1)",
+      "display_max_error": 0.0
+    }
+  ],
+  "methods": [
+    {
+      "method": "PySR",
+      "evaluation_path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000",
+      "exact_run_indices": {
+        "mips:rnn_base_4_addition:hidden:0": [],
+        "mips:rnn_base_4_addition:hidden:1": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "mips:rnn_base_4_addition:output:0": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ]
+      },
+      "joint_run_indices": [],
+      "raw_results": [
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000130.json",
+          "sha256": "4da02641cdaecd4df2e4228ca2f40f2e2f4d2d42b7f0dc4d079ed33b306b5310"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000131.json",
+          "sha256": "db26bfb75328021f070f35680021def7b26752582471fb9ee1d979f349a9456b"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000132.json",
+          "sha256": "74928394fd67e324019df4d1df24759869ce2e93298c865fc4d7e2ea6508eaa0"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000133.json",
+          "sha256": "29aa5995a33bed3f6ffb536be182d64e6bae70b9c0449e450cf5296b63be31a2"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000134.json",
+          "sha256": "5f9dd01677e6a76ffa28f15084200989d144c6db10fa382dca3617fb8d0abeb9"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000135.json",
+          "sha256": "f041c4746e7e095da4c01c60eda605c5839ba65d65ed4b348fb703e94ea84a77"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000136.json",
+          "sha256": "50aa6c23b4bf540f78e73bf51f3927f20230821e12a5575ea0049cc9bb5a2438"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000137.json",
+          "sha256": "cecf3e11c1abb8bcaf391868e8bc25c5bd44ba6af654cac91a132b4f4d9b7250"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000138.json",
+          "sha256": "62903ce4b2c02ca49b0989c9f10597f563b0d0ea1cb38e1d1ff8af070308de5b"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000139.json",
+          "sha256": "c2555dfc34757caf998194d09dc13494ba82b63de67da52299fb165c5a806448"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000140.json",
+          "sha256": "e04006f1e948af3aacdbfd06eb6416dc5795d0227050466df3f1537961bfc469"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000141.json",
+          "sha256": "a657454b67f87e0a45fd7c68e7b2ad954def5f3942912c803840213a68b8987d"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000142.json",
+          "sha256": "eb81d7ad8b21380bc633a6be0e0997e273357b02ef8155693a4ef62ed34365e8"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000143.json",
+          "sha256": "377217e62f51b90af146611586eb5dfad147586291d7bc6080681713585989c1"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000144.json",
+          "sha256": "6b4e4231af9a55e0b2396b7e16d3b2fae312ba57111c9a2414faa13d0deda9d3"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000145.json",
+          "sha256": "9cf995e3b31c60988b970bc8eb56c6bf3ff7312ccab70c637e35da4dc32da8e3"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000146.json",
+          "sha256": "3c7b1a7cf514ef6e9c88807bd482cc474ff9b056ed188873e01050d9858b1a93"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000147.json",
+          "sha256": "1d19b95e61365ae0bfbea6022f68a1fbefb6945284b5e09cbdce01251edabc4e"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000148.json",
+          "sha256": "0861492de46392ef01d8ce40f3bd8b7b105d80814b9cd166301adf6e7d43d8fa"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000149.json",
+          "sha256": "0bbcca88df5617834c0ac433be6ecd67f0aff30706523220838ca14e5aeb85f7"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000150.json",
+          "sha256": "76ebb650cb903bf514d671fe384013c27c2b712dd9400c83a745a55e9667af76"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000151.json",
+          "sha256": "8f62045d9e27e7564bb573819cda956eb86834dca9c17eb3e037a379af761935"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000152.json",
+          "sha256": "5a6a4df452648d6157975c2e5536e8a2827741a774e00c216ff0244815a7ae76"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000153.json",
+          "sha256": "387fe6fb1ea3be0d56d192ca2955742e66644478cd2895b1630dedf02ce4f1b4"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000154.json",
+          "sha256": "a4fe2045a5bb0a0b614c63a24f872f1d3a4f673910e956bbc328be9106c1d7e9"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000155.json",
+          "sha256": "4388a9f38dc1fa1c2be6c9d1eee3d72157494a8cb2d3580e7da84d096710bfe7"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000156.json",
+          "sha256": "e228f8bf8655906058a20eae8d7493f87b3ec5867ac27a5b180fa4c3c8f5a937"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000157.json",
+          "sha256": "2ad8bf7501c4ee449ac219b1accd73b0ff705666bab1d875ae00a90d12064e6f"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000158.json",
+          "sha256": "639656ca40bf5e5b0d835a55d2260f44da3abeeab18ac2b31bcf678e15f26cc7"
+        },
+        {
+          "path": "runs/709714/final_eval_baseline_10seed/slurm_pysr/eval_0000/results/task_000159.json",
+          "sha256": "301ac3f6a57a032c05e6ba0c4c0a57e53f0fe6cf61346a48a1486a509d4c587c"
+        }
+      ]
+    },
+    {
+      "method": "SRBench",
+      "evaluation_path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000",
+      "exact_run_indices": {
+        "mips:rnn_base_4_addition:hidden:0": [
+          0,
+          1,
+          3,
+          4,
+          5,
+          7,
+          8,
+          9
+        ],
+        "mips:rnn_base_4_addition:hidden:1": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "mips:rnn_base_4_addition:output:0": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ]
+      },
+      "joint_run_indices": [
+        0,
+        1,
+        3,
+        4,
+        5,
+        7,
+        8,
+        9
+      ],
+      "raw_results": [
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000130.json",
+          "sha256": "abd0af21e60dc89d43f3d29cbed3f7e857912cbe16a23382bea62a3207743a79"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000131.json",
+          "sha256": "198d698e52076914e6dc650398b105e2a51167dd68168267a6181e6e94f3c674"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000132.json",
+          "sha256": "7cb25bb4d6e1e678897eb70ff652b5fac6f36e5a487e7bcc1561bf11d2a70323"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000133.json",
+          "sha256": "e67ac219eecaff2db82631a30377752097fdd9acd6dbb9f114785833625d08d1"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000134.json",
+          "sha256": "0afc170e3a6d3a0218d65d5c7753ed43ea714662ce98bbb452108df0f2770e34"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000135.json",
+          "sha256": "f810dfb8f185b393c87925f4e082ec841b846d8e4e9d1acde768184ab7b90c4b"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000136.json",
+          "sha256": "b2022b1a5e3bb9fc567ffba2c53ebe64b054efcbf048203ec6ef23e941a9801d"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000137.json",
+          "sha256": "aab63411be2f7bf6d7fb8325d7f74bf020570355484ca07e24d6c5b2b9286ffd"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000138.json",
+          "sha256": "61d1ea3a672e5260e0d9b14347aa9d9b6305e9efcdae7fae6e6c63eaacd86b50"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000139.json",
+          "sha256": "55ebf9a766c896cf5327f0f9b4c5d23a4745393a9daffc0c3c4edc1572c2f6f2"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000140.json",
+          "sha256": "9bcbe4e61cf276486069cb4cca76ffeb0ad3f8cedf7e9a9c78eb8ee0ee868091"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000141.json",
+          "sha256": "9e9c454dddcc751e2b375a40b58b4823d5a01865d4d2d830346919a735b8e9e1"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000142.json",
+          "sha256": "2b2cdd01b988d4f26e3b174ac638c66ab47fee94baf62c45f15b202a1d699ade"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000143.json",
+          "sha256": "da1a855387ce1a2930cfc0488f9f618ccac573b9f8871db07b98f2cc273549a2"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000144.json",
+          "sha256": "f9bbf145ad3f1e2f786423ce0fbd037a5ec4337d95d6b47fc8dcafa5ac2e17b0"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000145.json",
+          "sha256": "05b69a8cd644f81f84ba354b34cd8ccf261b260a98a10cce6cb29531114902cc"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000146.json",
+          "sha256": "e38c78c06b90bfde4524d40ff26a7b1d1b40421f33c903e11b1fbc8c9d4eb976"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000147.json",
+          "sha256": "16262224a68cbb38d83ed120464f737dddcfbe3f0335cc7e0a9004499e58eed3"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000148.json",
+          "sha256": "e4c07b293f2e58de72195e037b9a86b8fd261b4ee876c7617e37f5d3b64de073"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000149.json",
+          "sha256": "b134db049d5b02d8a9aefbe52e05a7c69e71f86a61e41d6a02b1a163663073f6"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000150.json",
+          "sha256": "9cac4f205f182d93ccd3068391a50d8ef32206a9b5437e5c148f4c767a35385c"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000151.json",
+          "sha256": "d27232eec54ad43e2ae3b21b6f5d63e9076396cf3c99cbf7885fef7e2b73bc91"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000152.json",
+          "sha256": "bbf400b06de139b7d64875893e11a901277471fc31ef56754e0dfa8ff864e784"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000153.json",
+          "sha256": "277c7c906c021e10db1ec51ffd06d6996fb721e19c0074935dfc6bc58469836a"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000154.json",
+          "sha256": "81721b683e8c663210154bf56ca6fa85433aef2406d497991118db23b274d390"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000155.json",
+          "sha256": "6d0b3c6f9d3696eb69afa12a3d22a255c28eab1dc4f5d81cbf354275c7de6f93"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000156.json",
+          "sha256": "ff561ce3f599754060fdcaed7eacad2beabdb80a67103d9e369bba1b7a4cae48"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000157.json",
+          "sha256": "3f779f018f22683b3c01e53b996a2e09749268a2ec9166e972927279b917cc7b"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000158.json",
+          "sha256": "c22284ce08d2652e7b3fa9dd7a0cb20c45cc2636a5b57f4af38fadb3f60f5e79"
+        },
+        {
+          "path": "runs/709715/final_eval_mips_native_10seed/slurm_pysr/eval_0000/results/task_000159.json",
+          "sha256": "6229af66d375e9810ee89bc6aedee09eddb214dce4671be9f065b049337bee97"
+        }
+      ]
+    },
+    {
+      "method": "MIPS",
+      "evaluation_path": "runs/709714/final_eval/slurm_pysr/eval_0000",
+      "exact_run_indices": {
+        "mips:rnn_base_4_addition:hidden:0": [
+          4,
+          5,
+          9
+        ],
+        "mips:rnn_base_4_addition:hidden:1": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "mips:rnn_base_4_addition:output:0": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ]
+      },
+      "joint_run_indices": [
+        4,
+        5,
+        9
+      ],
+      "raw_results": [
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000130.json",
+          "sha256": "d551ae6f2df22e72eb8e7ad425fe7c57bc721c1a5bd2078ab1022c6f92c2e828"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000131.json",
+          "sha256": "ce273f6a5b15e9c172db19ce7a5df4873e1caab0eab615709e5a2af1a4cd9a30"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000132.json",
+          "sha256": "dfc10f53f089cc9246374300a4232cf2afb590f9d66df0a091c9544bdee91f94"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000133.json",
+          "sha256": "2c06951c2d3b9217f090f74e8c7dcf1680a5e5498cf8fde0aa8a10419a2ade43"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000134.json",
+          "sha256": "54e1c3f99315d6722ac91f976b118395a14c88840c433abf5672d77bd919e997"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000135.json",
+          "sha256": "b0c72a5129a2b4508c2da8329478a20c2fc811e4bd3c67d3c0aae6ec12ce74e0"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000136.json",
+          "sha256": "ce499373a7e2a675092e82a356e7ce0cc9fcc463eff6d3f44a0966f14e99ca23"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000137.json",
+          "sha256": "6618af0135ddf7d967f71c13ada8daa6f24eb74818989d42e3ee442343b65a16"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000138.json",
+          "sha256": "c9f84a85e85fafab1760587cf4262816f0b489e93f5a0f21a9703345d57735eb"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000139.json",
+          "sha256": "f28fbf481824dc640f09a6b820b00fe37fb7ba083d4cb9509c85acab386be9e0"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000140.json",
+          "sha256": "31c99d050f1c1cdbf65d6be78588cb71c8afee683c5c6ce6d8ec9884f315d148"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000141.json",
+          "sha256": "fdac92376fe75ef0678eaa3de30f0c4bb8445e879a824a06bc9d07fec9f13e5c"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000142.json",
+          "sha256": "5cb523d1378dae2c1cfa7225ae51b3e397414f5c2fc7f217077f296511e0c3b8"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000143.json",
+          "sha256": "db2d9c87708a03dac89b9dfcee4bbf2de85fd28ab6a24c41009b383d7e9d24da"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000144.json",
+          "sha256": "b20f073c29ce07d5e0f4b392116f096dce3c3276929a69d9884d4f12fb5619d6"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000145.json",
+          "sha256": "24cfd65e34f1ff1ecc172e0669ddc3265b945b38ab07ebd8ae5d5375b2157b32"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000146.json",
+          "sha256": "447e115d1b7e685cab216fe861d2980ba849f817cc18325d18f129025750fb39"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000147.json",
+          "sha256": "5d6835d7cdb51dc650b1b847ef6060e8f38a07c52782085d451e07460dd20230"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000148.json",
+          "sha256": "675d118e1c04e892262ea584f32fbec6193ab06f3b1e38b653f5f751b1562018"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000149.json",
+          "sha256": "71eead84b07de43a32b1468a41a61c6c13c7fb7fa156d0579c0304fca92536ac"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000150.json",
+          "sha256": "cc492a8ddb2e1b4641fac7f719cd8be49f3a541b5270c0992f1b057fcf014d41"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000151.json",
+          "sha256": "6a68109f336d11bc201db6b72d67ab1c4284aa1668eeac3a5fe95bf8fd496395"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000152.json",
+          "sha256": "2bc88e40cf9773a353678a109fd86dffedf4c05d79a8e4c4a9c96065e4bace1b"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000153.json",
+          "sha256": "90029e20b3c749eafd730ea0cf8c15e929c4934caa09eb9ba667272f7b62a403"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000154.json",
+          "sha256": "4c81fc5fbba101c3e18e890d438a5fe0f276300f3eeb71ff919259e38e769267"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000155.json",
+          "sha256": "c18ee4ef60eb95662de4882ae5e1fc684a0f5ee786621176395c5ac482520c76"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000156.json",
+          "sha256": "30899ded801b9eab919cf849ded6c9f38d111b7a3b6bb9e67706ef2e81f35674"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000157.json",
+          "sha256": "a3aa55fee5a1a36aa77ece60496027be68548456519a81e005eb9dc7e8b27037"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000158.json",
+          "sha256": "36760229750da911b2a9ce817bce6d72018581ab37f8a8425eb3f0759d1faa71"
+        },
+        {
+          "path": "runs/709714/final_eval/slurm_pysr/eval_0000/results/task_000159.json",
+          "sha256": "6907a1e9cdb72b5953b9183474a2b862756578f63b4c3159fc821e44e626e17e"
+        }
+      ]
+    }
+  ]
+}
