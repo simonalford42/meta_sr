@@ -1,0 +1,23 @@
+% NeuronBench example ground-truth equation (z_rebound), generated 2026-11-02.
+% Constants from the pinned NeuronBench package via
+% scripts/neuronbench_fully_observable.py:world_spec().
+% Required packages in the paper preamble: amsmath.
+
+\begin{table}[t]
+  \caption{Example fully observable NeuronBench task (\texttt{z\_rebound}).
+  The target is the membrane vector field $\dot V$, regressed from the
+  external current $I_{\rm ext}$, voltage $V$, and channel open fractions
+  $\phi_{\rm Na}=m_{\rm Na}^3h_{\rm Na}$, $\phi_{\rm K}=n_{\rm K}^4$, and
+  $\phi_{\rm Z}=m_{\rm Z}^2h_{\rm Z}$. Every task shares the Hodgkin--Huxley
+  sodium, potassium, and leak currents and adds one channel; here, a
+  low-threshold inward current Z that is de-inactivated by hyperpolarization.}
+  \label{tab:neuronbench-example}
+  \centering
+  \small
+  \[
+    \dot V \;=\;
+    \underbrace{I_{\rm ext} - 120\,\phi_{\rm Na}(V-50) - 36\,\phi_{\rm K}(V+77)
+      - 0.3\,(V+54.4)}_{\text{shared Hodgkin--Huxley currents}}
+    \;\underbrace{-\;4\,\phi_{\rm Z}(V-120)}_{\text{new channel}}
+  \]
+\end{table}
