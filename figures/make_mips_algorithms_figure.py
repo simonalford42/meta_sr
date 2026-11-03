@@ -82,31 +82,27 @@ def main():
              r'% Preamble: \usepackage{amsmath,amssymb,booktabs,xcolor,tabularx}',
              r'\begin{figure*}[p]', r'\centering', r'\begingroup', COLORS,
              r'\footnotesize', r'\setlength{\tabcolsep}{3pt}', r'\renewcommand{\arraystretch}{1.35}',
-             r'\begin{tabularx}{\textwidth}{@{}c ccc p{2.5in} >{\raggedright\arraybackslash}X@{}}',
+             r'\begin{tabularx}{\textwidth}{@{}c ccc X@{}}',
              r'\toprule',
              r' & \textcolor{parityBase}{\textbf{Base}} & \textcolor{paritySRBench}{\textbf{Evol.}}'
-             r' & \textcolor{parityMIPS}{\textbf{MIPS}} & \textbf{Discovered equation (MIPS-evolved)} & \textbf{Description} \\']
+             r' & \textcolor{parityMIPS}{\textbf{MIPS}} & \textbf{Discovered equation (MIPS-evolved)} \\']
     for t, spec in enumerate(TASKS):
         audit = json.loads((ROOT / f"figures/mips_{spec['short']}_example.json").read_text())
         methods = audit['methods']
         assert [m['method'] for m in methods] == ['PySR', 'SRBench', 'MIPS']
         comps = list(methods[0]['exact_run_indices'])
         lines.append(r'\midrule' if t == 0 else r'\midrule[\heavyrulewidth]')
-        lines.append(rf'\multicolumn{{6}}{{@{{}}p{{\textwidth}}@{{}}}}{{\textbf{{{spec["title"]}.}} {spec["summary"]}}} \\')
-        lines.append(r'\cmidrule(l{0pt}r{0pt}){1-6}')
-        for suffix, label, eq, desc in spec['rows']:
+        lines.append(rf'\multicolumn{{5}}{{@{{}}p{{\textwidth}}@{{}}}}{{\textbf{{{spec["title"]}.}} {spec["summary"]}}} \\')
+        lines.append(r'\cmidrule(l{0pt}r{0pt}){1-5}')
+        for suffix, label, eq, _desc in spec['rows']:
             comp = next(c for c in comps if c.endswith(':' + suffix))
             counts = [len(m['exact_run_indices'][comp]) for m in methods]
             lines.append(f'{label} & ' + ' & '.join(cell(n, 10, c) for n, c in zip(counts, colors))
-                         + f' & {eq} & {desc} \\\\')
-        n = len(comps)
-        totals = [sum(bool(m['exact_run_indices'][c]) for c in comps) for m in methods]
+                         + f' & {eq} \\\\')
         joint = [len(m['joint_run_indices']) for m in methods]
         lines.append(r'\addlinespace[1pt]')
-        lines.append(r'\textit{all} & ' + ' & '.join(cell(x, n, c) for x, c in zip(totals, colors))
-                     + r' & \multicolumn{2}{l}{\textit{subproblems recovered in any seed}} \\')
         lines.append(r'\textit{joint} & ' + ' & '.join(cell(x, 10, c) for x, c in zip(joint, colors))
-                     + r' & \multicolumn{2}{l}{\textit{seeds recovering all subproblems together}} \\')
+                     + r' & \textit{seeds recovering all subproblems together} \\')
     lines += [r'\bottomrule', r'\end{tabularx}', r'\endgroup',
               r'\caption{Programs recovered from RNNs by MIPS-evolved PySR on three MIPS tasks. '
               r'Each task is split into scalar regression problems, one per next-state coordinate '

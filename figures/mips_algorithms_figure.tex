@@ -10,37 +10,34 @@
 \footnotesize
 \setlength{\tabcolsep}{3pt}
 \renewcommand{\arraystretch}{1.35}
-\begin{tabularx}{\textwidth}{@{}c ccc p{2.5in} >{\raggedright\arraybackslash}X@{}}
+\begin{tabularx}{\textwidth}{@{}c ccc X@{}}
 \toprule
- & \textcolor{parityBase}{\textbf{Base}} & \textcolor{paritySRBench}{\textbf{Evol.}} & \textcolor{parityMIPS}{\textbf{MIPS}} & \textbf{Discovered equation (MIPS-evolved)} & \textbf{Description} \\
+ & \textcolor{parityBase}{\textbf{Base}} & \textcolor{paritySRBench}{\textbf{Evol.}} & \textcolor{parityMIPS}{\textbf{MIPS}} & \textbf{Discovered equation (MIPS-evolved)} \\
 \midrule
-\multicolumn{6}{@{}p{\textwidth}@{}}{\textbf{Parity-last 4.} $y=$ parity of the last 4 input bits. $h_0\in\{0,2,3,4,8\}$, $h_1\in\{0,1,2,5,7,9\}$, $h_2\in\{0,4\}$ (16 states), $x,y\in\{0,1\}$. State: $(h_0,h_1)$ holds the last 3 bits, $h_2=4\cdot$parity of the last 4.} \\
-\cmidrule(l{0pt}r{0pt}){1-6}
-$h_0'$ & \textcolor{gray}{0/10} & \textcolor{gray}{0/10} & \textcolor{parityMIPS}{\textbf{1/10}} & $\begin{aligned}[t]&\min\bigl(((\max(h_1,h_0)-x)h_1-x)h_1-x+2,\\&\;\;4\,|\op{xor}(h_1(0.227249-x),h_1)+x-\op{zero}(h_1)|\bigr)\end{aligned}$ & Shift register (first coordinate); a lookup on $(h_1,x)$, see text. \\
-$h_1'$ & \textcolor{parityBase}{\textbf{5/10}} & \textcolor{paritySRBench}{\textbf{3/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $\begin{aligned}[t]&\bigl\lfloor\min\bigl(\min(2.98567x+0.660363h_1,2.32073)\\&\;\;+x\max(3.00001,h_1),\,9.32075\bigr)\bigr\rfloor\end{aligned}$ & Shift register: $h_1$ codes the last two bits; shift and push in $x$. \\
-$h_2'$ & \textcolor{parityBase}{\textbf{10/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $4\,\op{eq}(\op{lt}(h_1,2h_0),x)$ & New parity $=$ parity(last 3) $\oplus\,x$; $h_1<2h_0$ iff the last 3 bits have even parity. \\
-$y$ & \textcolor{parityBase}{\textbf{10/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $\min(1,h_2)$ & Read out the parity bit. \\
+\multicolumn{5}{@{}p{\textwidth}@{}}{\textbf{Parity-last 4.} $y=$ parity of the last 4 input bits. $h_0\in\{0,2,3,4,8\}$, $h_1\in\{0,1,2,5,7,9\}$, $h_2\in\{0,4\}$ (16 states), $x,y\in\{0,1\}$. State: $(h_0,h_1)$ holds the last 3 bits, $h_2=4\cdot$parity of the last 4.} \\
+\cmidrule(l{0pt}r{0pt}){1-5}
+$h_0'$ & \textcolor{gray}{0/10} & \textcolor{gray}{0/10} & \textcolor{parityMIPS}{\textbf{1/10}} & $\begin{aligned}[t]&\min\bigl(((\max(h_1,h_0)-x)h_1-x)h_1-x+2,\\&\;\;4\,|\op{xor}(h_1(0.227249-x),h_1)+x-\op{zero}(h_1)|\bigr)\end{aligned}$ \\
+$h_1'$ & \textcolor{parityBase}{\textbf{5/10}} & \textcolor{paritySRBench}{\textbf{3/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $\begin{aligned}[t]&\bigl\lfloor\min\bigl(\min(2.98567x+0.660363h_1,2.32073)\\&\;\;+x\max(3.00001,h_1),\,9.32075\bigr)\bigr\rfloor\end{aligned}$ \\
+$h_2'$ & \textcolor{parityBase}{\textbf{10/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $4\,\op{eq}(\op{lt}(h_1,2h_0),x)$ \\
+$y$ & \textcolor{parityBase}{\textbf{10/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $\min(1,h_2)$ \\
 \addlinespace[1pt]
-\textit{all} & \textcolor{parityBase}{\textbf{3/4}} & \textcolor{paritySRBench}{\textbf{3/4}} & \textcolor{parityMIPS}{\textbf{4/4}} & \multicolumn{2}{l}{\textit{subproblems recovered in any seed}} \\
-\textit{joint} & \textcolor{gray}{0/10} & \textcolor{gray}{0/10} & \textcolor{parityMIPS}{\textbf{1/10}} & \multicolumn{2}{l}{\textit{seeds recovering all subproblems together}} \\
+\textit{joint} & \textcolor{gray}{0/10} & \textcolor{gray}{0/10} & \textcolor{parityMIPS}{\textbf{1/10}} & \textit{seeds recovering all subproblems together} \\
 \midrule[\heavyrulewidth]
-\multicolumn{6}{@{}p{\textwidth}@{}}{\textbf{Alternating-last 4.} $y=1$ iff the last 4 bits alternate. $h_0\in\{0,1,6,7,8,31,32,37,38\}$, $h_1\in\{0,1\}$ (11 states), $x,y\in\{0,1\}$. State: $h_0$ holds the last bit and alternating run length $L$; $h_1=\mathbf 1[L\ge4]$.} \\
-\cmidrule(l{0pt}r{0pt}){1-6}
-$h_0'$ & \textcolor{parityBase}{\textbf{1/10}} & \textcolor{gray}{0/10} & \textcolor{parityMIPS}{\textbf{5/10}} & $\begin{aligned}[t]&\lfloor\op{eq}(\op{not}(h_0),x)+30\,\op{not}(x)\\&\;\;-0.203372\,h_0+7.82772\rfloor\end{aligned}$ & Affine ``flip'' $h_0\mapsto7.83-h_0/5\,(+30$ if $x{=}0)$ updates last bit and run length. \\
-$h_1'$ & \textcolor{parityBase}{\textbf{1/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $\begin{aligned}[t]&\op{zero}(\op{xor}(\op{lt}(x,h_0),x))\\&\;\;\cdot\max(h_0-37,\max(\op{zero}(x),h_1))\end{aligned}$ & Set flag iff run length was $\ge3$ and $x$ continues the alternation. \\
-$y$ & \textcolor{parityBase}{\textbf{10/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $h_1$ & Read out the flag. \\
+\multicolumn{5}{@{}p{\textwidth}@{}}{\textbf{Alternating-last 4.} $y=1$ iff the last 4 bits alternate. $h_0\in\{0,1,6,7,8,31,32,37,38\}$, $h_1\in\{0,1\}$ (11 states), $x,y\in\{0,1\}$. State: $h_0$ holds the last bit and alternating run length $L$; $h_1=\mathbf 1[L\ge4]$.} \\
+\cmidrule(l{0pt}r{0pt}){1-5}
+$h_0'$ & \textcolor{parityBase}{\textbf{1/10}} & \textcolor{gray}{0/10} & \textcolor{parityMIPS}{\textbf{5/10}} & $\begin{aligned}[t]&\lfloor\op{eq}(\op{not}(h_0),x)+30\,\op{not}(x)\\&\;\;-0.203372\,h_0+7.82772\rfloor\end{aligned}$ \\
+$h_1'$ & \textcolor{parityBase}{\textbf{1/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $\begin{aligned}[t]&\op{zero}(\op{xor}(\op{lt}(x,h_0),x))\\&\;\;\cdot\max(h_0-37,\max(\op{zero}(x),h_1))\end{aligned}$ \\
+$y$ & \textcolor{parityBase}{\textbf{10/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $h_1$ \\
 \addlinespace[1pt]
-\textit{all} & \textcolor{parityBase}{\textbf{3/3}} & \textcolor{paritySRBench}{\textbf{2/3}} & \textcolor{parityMIPS}{\textbf{3/3}} & \multicolumn{2}{l}{\textit{subproblems recovered in any seed}} \\
-\textit{joint} & \textcolor{gray}{0/10} & \textcolor{gray}{0/10} & \textcolor{parityMIPS}{\textbf{5/10}} & \multicolumn{2}{l}{\textit{seeds recovering all subproblems together}} \\
+\textit{joint} & \textcolor{gray}{0/10} & \textcolor{gray}{0/10} & \textcolor{parityMIPS}{\textbf{5/10}} & \textit{seeds recovering all subproblems together} \\
 \midrule[\heavyrulewidth]
-\multicolumn{6}{@{}p{\textwidth}@{}}{\textbf{Base-5 addition.} Inputs $a,b\in\{0,\ldots,4\}$ are digits of two numbers (least significant first); $y\in\{0,\ldots,4\}$ is the sum digit. $h_0\in\{0,\ldots,6\}$, $h_1\in\{0,1\}$ (10 states). State: column sum $s=a+b+c_{\mathrm{in}}$ as carry $h_1=\mathbf 1[s\ge5]$ and digit coordinate $h_0=6-s+3h_1$.} \\
-\cmidrule(l{0pt}r{0pt}){1-6}
-$h_0'$ & \textcolor{gray}{0/10} & \textcolor{paritySRBench}{\textbf{2/10}} & \textcolor{parityMIPS}{\textbf{3/10}} & $\begin{aligned}[t]&\lfloor\max(6.06243-(a{+}b{+}h_1),\\&\;\;\op{mod}(0.243552-(a{+}b{+}h_1),\,4.38026))\rfloor\end{aligned}$ & Digit coordinate of $s=a+b+h_1$: linear branch for $s<5$, mod branch wraps $s\ge5$. \\
-$h_1'$ & \textcolor{parityBase}{\textbf{8/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $\begin{aligned}[t]&\op{eq}(1,\max(0.119279(a{+}b),\\&\;\;\op{mod}(-1.03325,\,0.25413(a{+}b)h_1)))\end{aligned}$ & Carry: $\mathbf 1[a+b+h_1\ge5]$. \\
-$y$ & \textcolor{parityBase}{\textbf{10/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{9/10}} & $|h_0+h_1-6|-h_1$ & Sum digit $s\bmod5$. \\
+\multicolumn{5}{@{}p{\textwidth}@{}}{\textbf{Base-5 addition.} Inputs $a,b\in\{0,\ldots,4\}$ are digits of two numbers (least significant first); $y\in\{0,\ldots,4\}$ is the sum digit. $h_0\in\{0,\ldots,6\}$, $h_1\in\{0,1\}$ (10 states). State: column sum $s=a+b+c_{\mathrm{in}}$ as carry $h_1=\mathbf 1[s\ge5]$ and digit coordinate $h_0=6-s+3h_1$.} \\
+\cmidrule(l{0pt}r{0pt}){1-5}
+$h_0'$ & \textcolor{gray}{0/10} & \textcolor{paritySRBench}{\textbf{2/10}} & \textcolor{parityMIPS}{\textbf{3/10}} & $\begin{aligned}[t]&\lfloor\max(6.06243-(a{+}b{+}h_1),\\&\;\;\op{mod}(0.243552-(a{+}b{+}h_1),\,4.38026))\rfloor\end{aligned}$ \\
+$h_1'$ & \textcolor{parityBase}{\textbf{8/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{10/10}} & $\begin{aligned}[t]&\op{eq}(1,\max(0.119279(a{+}b),\\&\;\;\op{mod}(-1.03325,\,0.25413(a{+}b)h_1)))\end{aligned}$ \\
+$y$ & \textcolor{parityBase}{\textbf{10/10}} & \textcolor{paritySRBench}{\textbf{10/10}} & \textcolor{parityMIPS}{\textbf{9/10}} & $|h_0+h_1-6|-h_1$ \\
 \addlinespace[1pt]
-\textit{all} & \textcolor{parityBase}{\textbf{2/3}} & \textcolor{paritySRBench}{\textbf{3/3}} & \textcolor{parityMIPS}{\textbf{3/3}} & \multicolumn{2}{l}{\textit{subproblems recovered in any seed}} \\
-\textit{joint} & \textcolor{gray}{0/10} & \textcolor{paritySRBench}{\textbf{2/10}} & \textcolor{parityMIPS}{\textbf{3/10}} & \multicolumn{2}{l}{\textit{seeds recovering all subproblems together}} \\
+\textit{joint} & \textcolor{gray}{0/10} & \textcolor{paritySRBench}{\textbf{2/10}} & \textcolor{parityMIPS}{\textbf{3/10}} & \textit{seeds recovering all subproblems together} \\
 \bottomrule
 \end{tabularx}
 \endgroup
