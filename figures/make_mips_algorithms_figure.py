@@ -101,7 +101,7 @@ def main():
                          + f' & {eq} \\\\')
         joint = [len(m['joint_run_indices']) for m in methods]
         lines.append(r'\addlinespace[1pt]')
-        lines.append(r'\textit{joint} & ' + ' & '.join(cell(x, 10, c) for x, c in zip(joint, colors))
+        lines.append(' & ' + ' & '.join(cell(x, 10, c) for x, c in zip(joint, colors))
                      + r' & \textit{seeds recovering all subproblems together} \\')
     lines += [r'\bottomrule', r'\end{tabularx}', r'\endgroup',
               r'\caption{Programs recovered from RNNs by MIPS-evolved PySR on three MIPS tasks. '
