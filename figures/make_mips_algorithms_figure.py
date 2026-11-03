@@ -73,7 +73,7 @@ def main():
              r'\small', r'\setlength{\tabcolsep}{4pt}', r'\renewcommand{\arraystretch}{1.25}',
              r'\begin{tabularx}{\textwidth}{@{}c ccc X@{}}',
              r'\toprule',
-             r' & \textcolor{parityBase}{\textbf{Base}} & \textcolor{paritySRBench}{\textbf{Evol.}}'
+             r' & \textcolor{parityBase}{\textbf{Base}} & \textcolor{paritySRBench}{\textbf{Evolved}}'
              r' & \textcolor{parityMIPS}{\textbf{MIPS}} & \textbf{Discovered equation (MIPS-evolved)} \\']
     for t, spec in enumerate(TASKS):
         audit = json.loads((ROOT / f"figures/mips_{spec['short']}_example.json").read_text())
@@ -98,7 +98,7 @@ def main():
               r'\caption{Programs recovered from RNNs by MIPS-evolved PySR on three MIPS tasks. '
               r'Each task is split into scalar regression problems, one per next-state coordinate '
               r"($h_i'$) and one for the output ($y$). Counts give exact recovery out of ten search seeds "
-              r'for baseline PySR (Base), SRBench-evolved PySR (Evol.), and MIPS-evolved PySR (MIPS). '
+              r'for baseline PySR (Base), SRBench-evolved PySR (Evolved), and MIPS-evolved PySR (MIPS). '
               r'Equations are regrouped, simplified using the observed value sets, and rounded to six '
               r'significant digits; each displayed form is verified on the complete recorded relation. '
               r'Operators: $\op{lt}(u,v)=\mathbf 1[u<v]$, $\op{eq}(u,v)=\mathbf 1[|u-v|<0.5]$, '
