@@ -19,35 +19,7 @@ from the new state. To interpret each program we labeled every lattice state wit
 histories that reach it, and then checked each recovered equation case by case against that
 labeling.
 
-\paragraph{Parity-last 4.}
-The 16 states correspond to the 16 windows $d\,a\,b\,c$ of the last four bits (oldest to newest).
-The coordinate $h_2$ equals $4\cdot\op{parity}(d,a,b,c)$; the factor of four is only the lattice
-refinement scale used for this task (the unrefined lattice merges states), so $h_2\in\{0,4\}$
-and the output $y=\min(1,h_2)$ simply reads out the parity bit. The pair $(h_0,h_1)$ is a shift
-register over the last three bits $a\,b\,c$:
-\[
-\begin{array}{c|cccccccc}
-abc & 000 & 100 & 010 & 110 & 001 & 101 & 011 & 111\\\hline
-(h_0,h_1) & (2|3,0) & (0,1) & (0,2) & (4,2) & (0,5) & (3|4,5) & (8,7) & (4,9)
-\end{array}
-\]
-where $2|3$ and $3|4$ mark small RNN-induced variation that depends on the bit just dropped.
-The parity update is the algorithmic core. The next window is $a\,b\,c\,x$, so the new parity
-is $\op{parity}(a,b,c)\oplus x$ and does not depend on the old $h_2$. On this embedding the
-three-bit parity is linearly separable: $h_1<2h_0$ holds exactly when $\op{parity}(a,b,c)=0$.
-The recovered $h_2'=4\,\op{eq}(\op{lt}(h_1,2h_0),x)$ therefore computes XNOR of this test with
-$x$, i.e.\ $4\,(\op{parity}(a,b,c)\oplus x)$. The coordinate $h_1$ essentially encodes the last
-two bits $(b,c)$ ($\{0,1\}\!\to\!00$, $2\!\to\!10$, $5\!\to\!01$, $\{7,9\}\!\to\!11$), and $h_1'$ shifts
-this code and pushes in $x$: for $x=0$ it reduces to $\lfloor\min(0.66h_1,2.32)\rfloor$, and for
-$x=1$ to $\lfloor\min(2.32+\max(3,h_1),9.32)\rfloor$ (the $2.98567x$ term is inactive because the
-inner minimum saturates). The values of $h_0$ follow no simple bit pattern, and the recovered
-$h_0'$ acts as a lookup table: its cubic branch in $h_1$ is small only for $h_1\in\{0,1\}$, and
-it also handles the single case in which $h_0'$ depends on $h_0$ through $\max(h_1,h_0)$, while
-the second branch supplies the values $\{0,4,8\}$ for $h_1\ge2$, with the constant $0.227$ chosen
-so that the rounded products have the required parity. This is the only subproblem that
-neither baseline nor SRBench-evolved PySR recovers.
-
-\paragraph{Parity-last 4 (second version).}
+\paragraph{Parity-last 4.} The algorithm returns the parity of the last four bits of the input.
 The hidden state has three coordinates, $h_0\in\{0,2,3,4,8\}$, $h_1\in\{0,1,2,5,7,9\}$, and
 $h_2\in\{0,4\}$; the input $x$ and output $y$ are binary. Of all combinations of these values,
 only 16 states are observed, and they correspond exactly to the 16 windows $d\,a\,b\,c$ of the
@@ -63,15 +35,11 @@ where $2|3$ and $3|4$ denote two lattice points for the same three bits, dependi
 $d$ that is about to be dropped. The coordinate $h_2$ stores the parity of all four bits.
 
 \emph{Parity update.} When $x$ arrives, the new window is $a\,b\,c\,x$, so the new parity is
-$\op{parity}(a,b,c)\oplus x$. On this embedding the three-bit parity is linearly separable:
+$\op{parity}(a,b,c)\oplus x$. With the embedding of $(a, b, c)$ into $(h_0, h_1)$, the three-bit parity is linearly separable:
 $\op{parity}(a,b,c)=0$ exactly when $h_1<2h_0$. The recovered update
 $h_2'=4\,\op{eq}(\op{lt}(h_1,2h_0),x)$ therefore equals $4\,(\op{parity}(a,b,c)\oplus x)$: the
 indicator $\op{lt}(h_1,2h_0)=1-\op{parity}(a,b,c)$ is compared with $x$, and the result is
-multiplied by four. The output $y=\min(1,h_2)$ maps $\{0,4\}$ back to $\{0,1\}$. The factor of
-four is not part of the algorithm. It comes from the lattice refinement in the state
-discretization step of the RNN interpretation pipeline: at the original lattice scale several
-of the 16 states share integer coordinates, so the lattice is subdivided by a factor of four,
-which multiplies every coordinate, including the parity bit, by four.
+multiplied by four. The output $y=\min(1,h_2)$ maps $\{0,4\}$ back to $\{0,1\}$. The extra factor of four is an artifact of the lattice refinement during the state space discretization step of the RNN interpretation pipeline.
 
 \emph{Shift-register update.} $h_1$ encodes the last two bits $(b,c)$:
 $00\mapsto\{0,1\}$, $10\mapsto2$, $01\mapsto5$, $11\mapsto\{7,9\}$, where the alternatives depend on
@@ -81,7 +49,7 @@ to $\lfloor\min(0.66h_1,2.32)\rfloor$, which maps $\{0,1\}\mapsto0$ ($c\,x=00$),
 older bit $1$), and $\{5,7,9\}\mapsto2$ ($c\,x=10$). For $x=1$ it reduces to
 $\lfloor\min(2.32+\max(3,h_1),9.32)\rfloor$, which maps $h_1\le2\mapsto5$ ($01$), $5\mapsto7$, and
 $\{7,9\}\mapsto9$ (both $11$). The $2.98567x$ term in the recovered expression is inactive, because
-the inner minimum saturates at $2.32$ whenever $x=1$. Finally, the values of $h_0$ follow no
+the inner minimum saturates at $2.32$ whenever $x=1$. The values of $h_0$ follow no
 simple bit pattern, and the recovered $h_0'$ acts as a lookup table that reproduces them from
 $(h_1,x)$, using $h_0$ only in the single case where $h_1$ alone is ambiguous.
 
