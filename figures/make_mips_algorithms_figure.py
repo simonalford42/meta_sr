@@ -17,51 +17,40 @@ OUT = ROOT / 'figures/mips_algorithms_figure.tex'
 
 TASKS = [
     dict(short='parity_last4', title='Parity-last 4',
-         summary=r'$y=$ parity of the last 4 input bits. '
-                 r'$h_0\in\{0,2,3,4,8\}$, $h_1\in\{0,1,2,5,7,9\}$, $h_2\in\{0,4\}$ (16 states), $x,y\in\{0,1\}$. '
-                 r'State: $(h_0,h_1)$ holds the last 3 bits, $h_2=4\cdot$parity of the last 4.',
+         summary=[r'$y=$ parity of the last 4 input bits $x$.',
+                  r'$h_0\in\{0,2,3,4,8\}$, \ $h_1\in\{0,1,2,5,7,9\}$, \ $h_2\in\{0,4\}$ \ (16 states); \ $x,y\in\{0,1\}$.',
+                  r'State: $(h_0,h_1)$ holds the last 3 bits; $h_2=4\cdot{}$parity of the last 4.'],
          rows=[
              ('hidden:0', r"$h_0'$",
               r'$\begin{aligned}[t]&\min\bigl(((\max(h_1,h_0)-x)h_1-x)h_1-x+2,\\'
-              r'&\;\;4\,|\op{xor}(h_1(0.227249-x),h_1)+x-\op{zero}(h_1)|\bigr)\end{aligned}$',
-              r'Shift register (first coordinate); a lookup on $(h_1,x)$, see text.'),
+              r'&\qquad 4\,|\op{xor}(h_1(0.227249-x),h_1)+x-\op{zero}(h_1)|\bigr)\end{aligned}$'),
              ('hidden:1', r"$h_1'$",
               r'$\begin{aligned}[t]&\bigl\lfloor\min\bigl(\min(2.98567x+0.660363h_1,2.32073)\\'
-              r'&\;\;+x\max(3.00001,h_1),\,9.32075\bigr)\bigr\rfloor\end{aligned}$',
-              r'Shift register: $h_1$ codes the last two bits; shift and push in $x$.'),
-             ('hidden:2', r"$h_2'$", r'$4\,\op{eq}(\op{lt}(h_1,2h_0),x)$',
-              r'New parity $=$ parity(last 3) $\oplus\,x$; $h_1<2h_0$ iff the last 3 bits have even parity.'),
-             ('output:0', r'$y$', r'$\min(1,h_2)$', r'Read out the parity bit.'),
+              r'&\qquad +x\max(3.00001,h_1),\,9.32075\bigr)\bigr\rfloor\end{aligned}$'),
+             ('hidden:2', r"$h_2'$", r'$4\,\op{eq}(\op{lt}(h_1,2h_0),x)$'),
+             ('output:0', r'$y$', r'$\min(1,h_2)$'),
          ]),
     dict(short='alternating_last4', title='Alternating-last 4',
-         summary=r'$y=1$ iff the last 4 bits alternate. '
-                 r'$h_0\in\{0,1,6,7,8,31,32,37,38\}$, $h_1\in\{0,1\}$ (11 states), $x,y\in\{0,1\}$. '
-                 r'State: $h_0$ holds the last bit and alternating run length $L$; $h_1=\mathbf 1[L\ge4]$.',
+         summary=[r'$y=1$ iff the last 4 input bits $x$ alternate.',
+                  r'$h_0\in\{0,1,6,7,8,31,32,37,38\}$, \ $h_1\in\{0,1\}$ \ (11 states); \ $x,y\in\{0,1\}$.',
+                  r'State: $h_0$ holds the last bit and the alternating run length $L$; $h_1=\mathbf 1[L\ge4]$.'],
          rows=[
              ('hidden:0', r"$h_0'$",
-              r'$\begin{aligned}[t]&\lfloor\op{eq}(\op{not}(h_0),x)+30\,\op{not}(x)\\'
-              r'&\;\;-0.203372\,h_0+7.82772\rfloor\end{aligned}$',
-              r"Affine ``flip'' $h_0\mapsto7.83-h_0/5\,(+30$ if $x{=}0)$ updates last bit and run length."),
+              r'$\lfloor\op{eq}(\op{not}(h_0),x)+30\,\op{not}(x)-0.203372\,h_0+7.82772\rfloor$'),
              ('hidden:1', r"$h_1'$",
-              r'$\begin{aligned}[t]&\op{zero}(\op{xor}(\op{lt}(x,h_0),x))\\'
-              r'&\;\;\cdot\max(h_0-37,\max(\op{zero}(x),h_1))\end{aligned}$',
-              r'Set flag iff run length was $\ge3$ and $x$ continues the alternation.'),
-             ('output:0', r'$y$', r'$h_1$', r'Read out the flag.'),
+              r'$\op{zero}(\op{xor}(\op{lt}(x,h_0),x))\cdot\max(h_0-37,\,\max(\op{zero}(x),h_1))$'),
+             ('output:0', r'$y$', r'$h_1$'),
          ]),
     dict(short='base5_addition', title='Base-5 addition',
-         summary=r'Inputs $a,b\in\{0,\ldots,4\}$ are digits of two numbers (least significant first); $y\in\{0,\ldots,4\}$ is the sum digit. '
-                 r'$h_0\in\{0,\ldots,6\}$, $h_1\in\{0,1\}$ (10 states). '
-                 r'State: column sum $s=a+b+c_{\mathrm{in}}$ as carry $h_1=\mathbf 1[s\ge5]$ and digit coordinate $h_0=6-s+3h_1$.',
+         summary=[r'Inputs $a,b$ are digits of two numbers (least significant first); $y$ is the sum digit.',
+                  r'$h_0\in\{0,\ldots,6\}$, \ $h_1\in\{0,1\}$ \ (10 states); \ $a,b,y\in\{0,\ldots,4\}$.',
+                  r'State: column sum $s=a+b+c_{\mathrm{in}}$, stored as carry $h_1=\mathbf 1[s\ge5]$ and digit $h_0=6-s+3h_1$.'],
          rows=[
              ('hidden:0', r"$h_0'$",
-              r'$\begin{aligned}[t]&\lfloor\max(6.06243-(a{+}b{+}h_1),\\'
-              r'&\;\;\op{mod}(0.243552-(a{+}b{+}h_1),\,4.38026))\rfloor\end{aligned}$',
-              r'Digit coordinate of $s=a+b+h_1$: linear branch for $s<5$, mod branch wraps $s\ge5$.'),
+              r'$\lfloor\max(6.06243-(a+b+h_1),\,\op{mod}(0.243552-(a+b+h_1),\,4.38026))\rfloor$'),
              ('hidden:1', r"$h_1'$",
-              r'$\begin{aligned}[t]&\op{eq}(1,\max(0.119279(a{+}b),\\'
-              r'&\;\;\op{mod}(-1.03325,\,0.25413(a{+}b)h_1)))\end{aligned}$',
-              r'Carry: $\mathbf 1[a+b+h_1\ge5]$.'),
-             ('output:0', r'$y$', r'$|h_0+h_1-6|-h_1$', r'Sum digit $s\bmod5$.'),
+              r'$\op{eq}(1,\,\max(0.119279(a+b),\,\op{mod}(-1.03325,\,0.25413(a+b)h_1)))$'),
+             ('output:0', r'$y$', r'$|h_0+h_1-6|-h_1$'),
          ]),
 ]
 
@@ -81,7 +70,7 @@ def main():
     lines = [r'% Generated by figures/make_mips_algorithms_figure.py -- do not edit by hand.',
              r'% Preamble: \usepackage{amsmath,amssymb,booktabs,xcolor,tabularx}',
              r'\begin{figure*}[p]', r'\centering', r'\begingroup', COLORS,
-             r'\footnotesize', r'\setlength{\tabcolsep}{3pt}', r'\renewcommand{\arraystretch}{1.35}',
+             r'\small', r'\setlength{\tabcolsep}{4pt}', r'\renewcommand{\arraystretch}{1.25}',
              r'\begin{tabularx}{\textwidth}{@{}c ccc X@{}}',
              r'\toprule',
              r' & \textcolor{parityBase}{\textbf{Base}} & \textcolor{paritySRBench}{\textbf{Evol.}}'
@@ -92,17 +81,19 @@ def main():
         assert [m['method'] for m in methods] == ['PySR', 'SRBench', 'MIPS']
         comps = list(methods[0]['exact_run_indices'])
         lines.append(r'\midrule' if t == 0 else r'\midrule[\heavyrulewidth]')
-        lines.append(rf'\multicolumn{{5}}{{@{{}}p{{\textwidth}}@{{}}}}{{\textbf{{{spec["title"]}.}} {spec["summary"]}}} \\')
+        lines.append(r'\addlinespace[3pt]')
+        summary = r'\newline '.join([rf'\textbf{{{spec["title"]}.}} ' + spec['summary'][0], *spec['summary'][1:]])
+        lines.append(rf'\multicolumn{{5}}{{@{{}}p{{\textwidth}}@{{}}}}{{{summary}}} \\')
+        lines.append(r'\addlinespace[2pt]')
         lines.append(r'\cmidrule(l{0pt}r{0pt}){1-5}')
-        for suffix, label, eq, _desc in spec['rows']:
+        for suffix, label, eq in spec['rows']:
             comp = next(c for c in comps if c.endswith(':' + suffix))
             counts = [len(m['exact_run_indices'][comp]) for m in methods]
             lines.append(f'{label} & ' + ' & '.join(cell(n, 10, c) for n, c in zip(counts, colors))
-                         + f' & {eq} \\\\')
+                         + f' & {eq} \\\\[4pt]')
         joint = [len(m['joint_run_indices']) for m in methods]
-        lines.append(r'\addlinespace[1pt]')
         lines.append(' & ' + ' & '.join(cell(x, 10, c) for x, c in zip(joint, colors))
-                     + r' & \textit{seeds recovering all subproblems together} \\')
+                     + r' & \textit{seeds recovering all subproblems together} \\[3pt]')
     lines += [r'\bottomrule', r'\end{tabularx}', r'\endgroup',
               r'\caption{Programs recovered from RNNs by MIPS-evolved PySR on three MIPS tasks. '
               r'Each task is split into scalar regression problems, one per next-state coordinate '
