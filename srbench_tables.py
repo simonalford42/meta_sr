@@ -106,6 +106,16 @@ def _rate(rows, datasets=None, noise=None):
     return sum(values)/len(values) if values else None
 
 
+def _mean_r2(rows, datasets=None):
+    """Mean test R2 (clipped at 0, as in the R2 objective) over GT trials."""
+    if rows is None:
+        return None
+    values = [max(0.0, float(row["test_r2"])) for row in rows
+              if (datasets is None or row["dataset"] in datasets)
+              and row.get("test_r2") is not None and math.isfinite(float(row["test_r2"]))]
+    return sum(values)/len(values) if values else None
+
+
 def build_tables(runs_root="runs", project_root=None):
     project_root = Path(project_root) if project_root else Path(__file__).resolve().parent
     runs_root = Path(runs_root)
@@ -127,7 +137,7 @@ def build_tables(runs_root="runs", project_root=None):
         return cache[key]
 
     keys = [key for _, subs in GROUPS for _, key in subs]
-    bb, gt, gt_held_out = [], [], []
+    bb, gt, gt_held_out, gt_r2, gt_train_r2 = [], [], [], [], []
     for key in keys:
         column = columns.get(key, {})
         bb.append(_format(column.get("bb_r2") if column.get("bb_completed") == BLACK_BOX_TOTAL
@@ -136,9 +146,17 @@ def build_tables(runs_root="runs", project_root=None):
                           else _rate(complete(column.get("gt_path")))))
         gt_held_out.append(_format(
             _rate(complete(column.get("gt_path")), held_out) if have_splits else None))
+        gt_rows = complete(column.get("gt_path"))
+        r2_all = _mean_r2(gt_rows)
+        r2_train = _mean_r2(gt_rows, train) if have_splits else None
+        gt_r2.append("N/A" if r2_all is None else _format(r2_all, rate=False))
+        gt_train_r2.append("N/A" if r2_train is None else _format(r2_train, rate=False))
     table1 = _grid([("", [""])] + [(label, [sub for sub, _ in subs]) for label, subs in GROUPS],
                    [["SRBench black box (R2)", *bb], ["SRBench ground truth", *gt],
-                    ["GT (excluding train & val)", *gt_held_out]])
+                    ["GT (excluding train & val)", *gt_held_out],
+                    None,
+                    ["SRBench ground truth (R2)", *gt_r2],
+                    [f"GT train tasks (R2, n={len(train)})", *gt_train_r2]])
 
     baseline = columns.get("pysr_baseline", {})
     evolved = columns.get("pysrpp_gt", {})
@@ -193,6 +211,7 @@ def build_tables(runs_root="runs", project_root=None):
             + "\nBlack box: mean test R2. Local ground truth: solve rate over 130 tasks and four noise levels."
             + "\nExcluding train & val: omit tasks in " + OFFICIAL_TRAIN_SPLIT
             + " and " + OFFICIAL_VAL_SPLIT + "."
+            + "\nGT R2 rows: mean test R2 (clipped at 0) over GT trials; train = " + OFFICIAL_TRAIN_SPLIT + "; N/A = no data."
             + "\nMDLFormer GT: supplied reference score (40.5%), without task-count rescaling; BB unavailable."
             + "\n\nTable 2: PySR vs PySR++ GT (evolved=" + evolved.get("training_id", "TBD") + ")\n"
             + table2 + f"\nBudget rows: held-out test tasks only (n={len(held_out)}). Rows below the divider use 1M evaluations; 10 seeds."
