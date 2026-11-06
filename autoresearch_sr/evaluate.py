@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
 """Fixed PySR autoresearch evaluation harness.
 
-Quick evaluation uses three paired seeds on the official training split.
-Confirmation uses ten fresh seeds on the same training split. Validation data
-is never evaluated by this harness, so it cannot influence model selection.
+Every experiment is scored by a single evaluation: 10 runs per task on the
+official training split (splits/barely_unsolvable.txt), with fixed seed 42 so
+candidates are paired. Validation data is never evaluated by this harness.
 The selected SymbolicRegression.jl commit is run in an isolated sandbox.
+
+Run-scoped mode (used for budgeted runs): when AUTORESEARCH_RUN_DIR is set, the
+SymbolicRegression.jl worktree, results.tsv, sandboxes, and eval outputs all
+live under that run directory, every evaluation is appended to
+<run_dir>/experiment_log.jsonl (used for wall-clock / cost accounting), and the
+harness refuses to evaluate more than max_experiments distinct candidate
+commits (the run's base commit, i.e. the baseline, is not counted).
 """
 
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -21,10 +30,22 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SUBMODULE = ROOT / "SymbolicRegression.jl"
-RESULTS_TSV = ROOT / "autoresearch_sr" / "results.tsv"
-SANDBOXES = ROOT / "outputs" / "autoresearch_pysr_sandboxes"
 TRAIN = "splits/barely_unsolvable.txt"
+SEED = 42
+N_RUNS = 10
+
+RUN_DIR = Path(os.environ["AUTORESEARCH_RUN_DIR"]).resolve() \
+    if os.environ.get("AUTORESEARCH_RUN_DIR") else None
+if RUN_DIR is not None:
+    SUBMODULE = RUN_DIR / "SymbolicRegression.jl"
+    RESULTS_TSV = RUN_DIR / "results.tsv"
+    SANDBOXES = ROOT / "outputs" / "autoresearch_pysr_sandboxes" / RUN_DIR.name
+    EVAL_ROOT = RUN_DIR / "eval_results"
+else:
+    SUBMODULE = ROOT / "SymbolicRegression.jl"
+    RESULTS_TSV = ROOT / "autoresearch_sr" / "results.tsv"
+    SANDBOXES = ROOT / "outputs" / "autoresearch_pysr_sandboxes"
+    EVAL_ROOT = ROOT / "autoresearch_sr" / "eval_results"
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,14 +54,19 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--target", default="latest",
                         help="Commit/branch, latest, best, or expN")
-    parser.add_argument("--confirm", action="store_true",
-                        help="Use 10 fresh seeds on the training split")
-    parser.add_argument("--seed", type=int, default=None,
-                        help="Override the protocol seed")
-    parser.add_argument("--n-runs", type=int, default=None,
-                        help="Override the protocol run count")
     parser.add_argument("--output-dir", default=None)
     return parser.parse_args()
+
+
+def _log_records(log_path: Path) -> list[dict]:
+    if not log_path.exists():
+        return []
+    return [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+
+
+def _append(log_path: Path, record: dict) -> None:
+    with log_path.open("a") as handle:
+        handle.write(json.dumps(record) + "\n")
 
 
 def main() -> None:
@@ -49,13 +75,38 @@ def main() -> None:
     from autoresearch_pysr import resolve_commit
 
     commit = resolve_commit(args.target, SUBMODULE, RESULTS_TSV)
-    seed = args.seed if args.seed is not None else (43 if args.confirm else 42)
-    n_runs = args.n_runs if args.n_runs is not None else (10 if args.confirm else 3)
-    split = TRAIN
-    phase = "confirm" if args.confirm else "quick"
+
+    run_cfg, log_path, lock_handle, exp_index = {}, None, None, None
+    if RUN_DIR is not None:
+        run_cfg = json.loads((RUN_DIR / "run.json").read_text())
+        log_path = RUN_DIR / "experiment_log.jsonl"
+        lock_handle = (RUN_DIR / ".eval.lock").open("w")
+        try:
+            fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            sys.exit("ERROR: another evaluation is already running for this run. "
+                     "Evaluations must run one at a time.")
+        records = _log_records(log_path)
+        seen = []
+        for rec in records:
+            if rec["event"] == "start" and rec["commit"] != run_cfg["base_commit"] \
+                    and rec["commit"] not in seen:
+                seen.append(rec["commit"])
+        max_exp = int(run_cfg["max_experiments"])
+        if commit == run_cfg["base_commit"]:
+            exp_index = 0
+        elif commit in seen:
+            exp_index = seen.index(commit) + 1
+        elif len(seen) >= max_exp:
+            print(f"BUDGET EXHAUSTED: {len(seen)}/{max_exp} experiments already evaluated. "
+                  "No further evaluations are allowed. The run is over; stop now.")
+            sys.exit(3)
+        else:
+            exp_index = len(seen) + 1
+        print(f"experiment:    {exp_index} of {max_exp} (baseline = 0)", flush=True)
+
     output_dir = Path(args.output_dir) if args.output_dir else (
-        ROOT / "autoresearch_sr" / "eval_results" / commit[:12]
-        / f"{phase}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        EVAL_ROOT / commit[:12] / f"eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
 
     command = [
@@ -65,9 +116,9 @@ def main() -> None:
         "--autoresearch-submodule", str(SUBMODULE),
         "--autoresearch-results", str(RESULTS_TSV),
         "--autoresearch-sandboxes", str(SANDBOXES),
-        "--splits", split,
-        "--n-runs", str(n_runs),
-        "--seed", str(seed),
+        "--splits", TRAIN,
+        "--n-runs", str(N_RUNS),
+        "--seed", str(SEED),
         "--max-evals", "1000000",
         "--max-samples", "1000",
         "--timeout", "500",
@@ -78,31 +129,46 @@ def main() -> None:
         "--output-dir", str(output_dir),
     ]
     print(f"commit: {commit}", flush=True)
-    print(f"phase: {phase}  seed: {seed}  n_runs: {n_runs}", flush=True)
+    print(f"seed: {SEED}  n_runs: {N_RUNS}", flush=True)
     print("command: " + " ".join(command), flush=True)
     env = dict(os.environ)
     env.setdefault("WANDB_MODE", "disabled")
-    subprocess.run(command, cwd=ROOT, env=env, check=True)
 
+    start = time.time()
+    if log_path is not None:
+        _append(log_path, {"event": "start", "exp": exp_index, "commit": commit,
+                           "time": start, "output_dir": str(output_dir)})
+    proc = subprocess.run(command, cwd=ROOT, env=env)
+    end = time.time()
+
+    score, datasets, datasets_fail = None, 0, 0
     summary_path = output_dir / "eval_summary.json"
-    summary = json.loads(summary_path.read_text())
+    if proc.returncode == 0 and summary_path.exists():
+        summary = json.loads(summary_path.read_text())
+        name = Path(TRAIN).stem
+        values = summary[name].get("per_run_gt_avgs") or []
+        details = summary[name].get("result_details") or []
+        score = float(np.mean(values)) if values else 0.0
+        datasets = len(details)
+        datasets_fail = sum(
+            detail.get("n_successful_runs", 0) < N_RUNS for detail in details
+        )
+    if log_path is not None:
+        _append(log_path, {"event": "end", "exp": exp_index, "commit": commit,
+                           "time": end, "returncode": proc.returncode, "score": score,
+                           "datasets": datasets, "datasets_fail": datasets_fail})
+    if score is None:
+        sys.exit(f"ERROR: evaluation failed (returncode {proc.returncode})")
+
     print("\n--- autoresearch result ---")
     print(f"commit:        {commit}")
-    print(f"phase:         {phase}")
-    name = Path(split).stem
-    values = summary[name].get("per_run_gt_avgs") or []
-    details = summary[name].get("result_details") or []
-    score = float(np.mean(values)) if values else 0.0
-    datasets = len(details)
-    datasets_fail = sum(
-        detail.get("n_successful_runs", 0) < n_runs for detail in details
-    )
     print(f"score:         {score:.6f}")
     print(f"datasets:      {datasets}")
     print(f"datasets_ok:   {datasets - datasets_fail}")
     print(f"datasets_fail: {datasets_fail}")
     print("metric:        gt")
-    print(f"n_runs:        {n_runs}")
+    print(f"n_runs:        {N_RUNS}")
+    print(f"eval_seconds:  {end - start:.0f}")
     print(f"summary:       {summary_path}")
 
 

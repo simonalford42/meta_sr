@@ -25,3 +25,7 @@ reference/
 caches/
 out/
 .claude
+
+# Budgeted runs (worktrees, logs, eval outputs)
+live/
+runs/*/eval_results/
