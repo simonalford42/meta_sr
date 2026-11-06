@@ -2087,6 +2087,8 @@ def run_bundle_evolution(
             f"\nGenerated {len(offspring_bundles)} offspring bundles "
             f"[timing: offspring generation {_fmt_elapsed(offspring_gen_elapsed)}]"
         )
+        if len(offspring_bundles) == 0:
+            raise RuntimeError("Failed to generate any valid offspring bundles")
 
         offspring_eval_start = time.perf_counter()
         generation_result_details = []
