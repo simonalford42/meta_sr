@@ -14,6 +14,12 @@ Usage:
     python inspect_srbench_results.py --see-all
     python inspect_srbench_results.py --see-all --since 7
     python inspect_srbench_results.py --official
+    python inspect_srbench_results.py --tables
+    python inspect_srbench_results.py --v2
+    python inspect_srbench_results.py --v2 --since 7 --latest 5
+
+SRBench 2021 scores and completion counts exclude the three inverse-trig
+tasks by default, including when reading historical 133-task evaluations.
 """
 
 import argparse
@@ -31,6 +37,15 @@ VAL_SPLIT = "splits/barely_unsolvable_val2.txt"
 CLEAN_TRAIN_SPLIT = "splits/train.txt"
 CLEAN_VAL_SPLIT = "splits/val.txt"
 
+V2_REVIEW_CODES = {
+    "exact": "E",
+    "near": "N",
+    "miss": "M",
+    "phenomenological_match": "P",
+    "not_applicable": "-",
+    "error": "!",
+}
+
 
 def _load_split_set(split_file: str) -> "set[str] | None":
     try:
@@ -39,9 +54,9 @@ def _load_split_set(split_file: str) -> "set[str] | None":
         return None
 
 
-# Computed once; labels are the split-file stems (the "real names").
-TRAIN_LABEL = Path(TRAIN_SPLIT).stem
-VAL_LABEL = Path(VAL_SPLIT).stem
+# Computed once; short column labels for the barely-unsolvable splits.
+TRAIN_LABEL = "bu"
+VAL_LABEL = "bu_val2"
 TRAIN_SET = _load_split_set(TRAIN_SPLIT)
 VAL_SET = _load_split_set(VAL_SPLIT)
 CLEAN_TRAIN_SET = _load_split_set(CLEAN_TRAIN_SPLIT)
@@ -67,19 +82,32 @@ def subset_solve_rate(keyed: "dict", datasets: "set[str]",
 
 
 def find_full_srbench_runs(
-    runs_root: "str | Path", since_days: "int | None" = None
+    runs_root: "str | Path", since_days: "int | None" = None,
+    max_depth: "int | None" = None,
 ) -> "list[Path]":
     """Return all run directories under ``runs_root`` that are full-SRBench runs.
 
     A full-SRBench run is identified by the ground-truth manifest grid or by a
     black-box evaluation marker written by ``srbench_full_eval.py``. If
     ``since_days`` is provided, only manifests modified within that many days
-    are included.
+    are included. Search nested bundle directories too, excluding the archive
+    directly under ``runs_root``. ``max_depth=1`` checks only immediate run
+    directories; None preserves the recursive search.
     """
     runs_root = Path(runs_root)
     cutoff = time.time() - since_days * 24 * 60 * 60 if since_days is not None else None
     found = []
-    for manifest_path in sorted(runs_root.glob("*/manifest.json")):
+    manifest_paths = (
+        manifest_path
+        for child in runs_root.iterdir()
+        if child.is_dir() and child.name != "archive"
+        for manifest_path in (
+            child.rglob("manifest.json") if max_depth is None else
+            (path for depth in range(max_depth)
+             for path in child.glob("*/" * depth + "manifest.json"))
+        )
+    ) if runs_root.is_dir() else ()
+    for manifest_path in sorted(manifest_paths):
         if cutoff is not None and manifest_path.stat().st_mtime < cutoff:
             continue
         try:
@@ -96,6 +124,41 @@ def find_full_srbench_runs(
         if is_ground_truth or is_black_box:
             found.append(manifest_path.parent)
     return found
+
+
+def find_srbench2_runs(
+    runs_root: "str | Path", since_days: "int | None" = None,
+    latest: "int | None" = None, max_depth: int = 2,
+) -> "list[Path]":
+    """Find evaluations without descending into their bulky task artifacts.
+
+    Depth 2 covers runs/<eval> and runs/<bundle>/<eval>. A custom root can
+    itself be an evaluation; increase max_depth for deeper custom layouts.
+    Recency uses manifest modification time, as with --see-all --since.
+    """
+    found = []
+    root = Path(runs_root)
+    cutoff = time.time() - since_days * 86400 if since_days is not None else None
+    candidates = [root / "manifest.json"]
+    for depth in range(1, max_depth + 1):
+        candidates.extend(root.glob("*/" * depth + "manifest.json"))
+    for manifest_path in candidates:
+        if "archive" in manifest_path.relative_to(root).parts[:-1]:
+            continue
+        try:
+            modified = manifest_path.stat().st_mtime
+            if cutoff is not None and modified < cutoff:
+                continue
+            manifest = srio.load_manifest(manifest_path.parent)
+        except Exception:
+            continue
+        if manifest.get("srbench_edition") == 2025:
+            found.append((modified, manifest_path.parent))
+    if latest is not None or since_days is not None:
+        found.sort(reverse=True)
+    else:
+        found.sort(key=lambda item: item[1])
+    return [path for _, path in found[:latest]]
 
 
 def bundle_id(manifest: dict) -> str:
@@ -150,6 +213,87 @@ def _black_box_summary(run_dir: Path, manifest: dict) -> tuple[int, int, float |
     return completed, expected, mean_r2
 
 
+def _v2_review_strings(run_dir: Path, manifest: dict, keyed: dict) -> dict[str, str]:
+    """Return compact per-seed manual-review codes for each GT dataset."""
+    review_path = run_dir / "codex_frontier_review.json"
+    reviewed = {}
+    api_review_path = run_dir / "manual_solve_check_results.json"
+    if api_review_path.exists():
+        with open(api_review_path) as f:
+            for item in json.load(f).get("reviews") or []:
+                reviewed.setdefault(item["dataset"], {})[int(item["seed"])] = (
+                    V2_REVIEW_CODES.get(item["classification"], "?")
+                )
+    if review_path.exists():
+        with open(review_path) as f:
+            payload = json.load(f)
+        for dataset in payload.get("datasets") or []:
+            reviewed.setdefault(dataset["dataset"], {}).update({
+                int(item["seed"]): V2_REVIEW_CODES.get(item["classification"], "?")
+                for item in dataset.get("reviews") or []
+            })
+
+    strings = {}
+    seeds = [int(seed) for seed in manifest.get("seeds") or []]
+    for dataset in manifest.get("datasets") or []:
+        codes = []
+        for seed in seeds:
+            if seed in reviewed.get(dataset, {}):
+                codes.append(reviewed[dataset][seed])
+                continue
+            entries = [entry for entry in keyed.values()
+                       if entry.get("dataset") == dataset
+                       and int(entry.get("seed", -1)) == seed]
+            if any(entry.get("present") and entry.get("error") for entry in entries):
+                codes.append("!")
+            elif any(entry.get("present") for entry in entries):
+                codes.append("?")
+            else:
+                codes.append(".")
+        strings[dataset] = "".join(codes)
+    return strings
+
+
+def format_srbench2_runs(run_dirs: "list[Path]") -> str:
+    """Render SRBench 2.0 completion and ground-truth manual-review status."""
+    sections = []
+    for run_dir in run_dirs:
+        manifest = srio.load_manifest(run_dir)
+        keyed = srio.load_keyed_results(run_dir)
+        if keyed is None and manifest.get("batches"):
+            keyed = srio.build_keyed_results(run_dir, manifest)
+        keyed = keyed or {}
+        expected = (srio.expected_keys(manifest, keyed)
+                    if manifest.get("datasets") and manifest.get("seeds") else [])
+        gt_completed = sum(
+            1 for key in expected
+            if keyed.get(key, {}).get("present") and keyed[key].get("error") is None
+        )
+        bb_completed, bb_expected, _ = _black_box_summary(run_dir, manifest)
+        reviewed = _v2_review_strings(run_dir, manifest, keyed)
+
+        sections.append(
+            f"Run: {run_dir}  (bundle={bundle_id(manifest)}, "
+            f"mode={manifest.get('mode') or '-'})"
+        )
+        sections.append(
+            f"Completed: GT {gt_completed}/{len(expected)}  |  "
+            f"BB {bb_completed}/{bb_expected}"
+        )
+        if reviewed:
+            sections.extend(["Ground truth:", *(
+                f"  {dataset:<36} {codes}" for dataset, codes in reviewed.items()
+            )])
+        else:
+            sections.append("Ground truth: not requested")
+        sections.append("")
+    sections.extend([
+        "Legend: E exact, N near, M miss, P phenomenological match,",
+        "        - not applicable, ? completed but not reviewed, ! error, . missing",
+    ])
+    return "\n".join(sections)
+
+
 def summarize_run(run_dir: Path) -> dict:
     """One row of summary stats, including partially completed evaluations."""
     manifest = srio.load_manifest(run_dir)
@@ -160,12 +304,14 @@ def summarize_run(run_dir: Path) -> dict:
         keyed = srio.build_keyed_results(run_dir, manifest)
     keyed = keyed or {}
 
-    expected = srio.expected_keys(manifest) if manifest.get("datasets") else []
+    manifest, keyed = srio.standard_ground_truth_view(manifest, keyed)
+    expected = srio.expected_keys(manifest, keyed) if manifest.get("datasets") else []
     present = sum(1 for k, e in keyed.items()
                   if e.get("present") and e.get("error") is None)
     bb_present, bb_expected, bb_r2 = _black_box_summary(run_dir, manifest)
 
     row = {
+        "slurm": run_dir.name,
         "bundle": bundle_id(manifest),
         "mode": manifest.get("mode") or "-",
         "max_evals": manifest.get("max_evals"),
@@ -178,12 +324,11 @@ def summarize_run(run_dir: Path) -> dict:
         return row
 
     metrics = srio.aggregate_metrics(keyed, noise_levels)
-    # solve%/run and mean solve time for all / feynman / strogatz.
-    for fam in ("all", "feynman", "strogatz"):
-        m = metrics[fam]["all"]
-        row[f"{fam}_pct"] = m["solve_rate_per_run"]
-        row[f"{fam}_t"] = m["solve_time_mean_all"]
-        row[f"{fam}_r2"] = m["test_r2_mean"]
+    # solve%/run and mean solve time over all tasks.
+    m = metrics["all"]["all"]
+    row["all_pct"] = m["solve_rate_per_run"]
+    row["all_t"] = m["solve_time_mean_all"]
+    row["all_r2"] = m["test_r2_mean"]
     # solve%/run over all tasks at the noise=0 (clean) bucket only.
     m0 = metrics["all"].get(srio.fmt_noise(0))
     row["all0_pct"] = m0["solve_rate_per_run"] if m0 else None
@@ -213,50 +358,30 @@ def format_summary_table(rows: "list[dict]") -> str:
     def _pct(x):
         return f"{x*100:.1f}" if x is not None else "-"
 
-    def _time(x):
-        return f"{x:.1f}s" if x is not None else "-"
-
     def _r2(x):
         return f"{x:.3f}" if x is not None else "-"
 
-    has_subset = any("train_pct" in r for r in rows)
-
     # (header, key-fn) for each column.
     cols = [
+        # --see-all uses paths relative to runs_root, including bundle parents.
+        ("slurm", lambda r: str(r.get("slurm", "-"))),
         ("bundle", lambda r: str(r["bundle"])),
         ("completed", lambda r: f"{r['completed']}/{r['total']}"),
         ("mode", lambda r: str(r["mode"])),
-        ("max-evals", lambda r: (
-            f"{r['max_evals']:,}" if r.get("max_evals") is not None else "-"
-        )),
         ("bb_r2", lambda r: _r2(r.get("bb_r2"))),
-        ("all%", lambda r: _pct(r.get("all_pct"))),
-        ("all%(n0)", lambda r: _pct(r.get("all0_pct"))),
-        ("all_r2", lambda r: _r2(r.get("all_r2"))),
-        ("all_t", lambda r: _time(r.get("all_t"))),
-        ("feyn%", lambda r: _pct(r.get("feynman_pct"))),
-        ("feyn_t", lambda r: _time(r.get("feynman_t"))),
-        ("strog%", lambda r: _pct(r.get("strogatz_pct"))),
-        ("strog_t", lambda r: _time(r.get("strogatz_t"))),
+        ("all", lambda r: _pct(r.get("all_pct"))),
+        ("train", lambda r: _pct(r.get("train_pct"))),
+        ("val", lambda r: _pct(r.get("val_pct"))),
+        ("rest", lambda r: _pct(r.get("rest_pct"))),
     ]
-    if has_subset:
-        cols += [
-            (TRAIN_LABEL, lambda r: _pct(r.get("train_pct"))),
-            ("bu(n0)", lambda r: _pct(r.get("train0_pct"))),
-            (VAL_LABEL, lambda r: _pct(r.get("val_pct"))),
-            ("bu2(n0)", lambda r: _pct(r.get("val0_pct"))),
-            ("train(n0)", lambda r: _pct(r.get("clean_train0_pct"))),
-            ("val(n0)", lambda r: _pct(r.get("clean_val0_pct"))),
-            ("rest", lambda r: _pct(r.get("rest_pct"))),
-        ]
 
     headers = [h for h, _ in cols]
     table = [headers] + [[fn(r) for _, fn in cols] for r in rows]
     widths = [max(len(row[i]) for row in table) for i in range(len(headers))]
 
     def _fmt_row(cells):
-        # First two columns left-aligned (text), the rest right-aligned (numbers).
-        parts = [cells[i].ljust(widths[i]) if i in (0, 2) else cells[i].rjust(widths[i])
+        # Text columns left-aligned, the rest right-aligned (numbers).
+        parts = [cells[i].ljust(widths[i]) if i in (0, 1, 3) else cells[i].rjust(widths[i])
                  for i in range(len(cells))]
         return "│ " + " │ ".join(parts) + " │"
 
@@ -280,16 +405,23 @@ def inspect_run(run_dir: Path, args) -> None:
         print("(srbench_full_results.json absent — rebuilding from batch artifacts)")
         keyed = srio.build_keyed_results(run_dir, manifest)
 
+    manifest, keyed = srio.standard_ground_truth_view(manifest, keyed)
     # ---- completion ----
-    expected = srio.expected_keys(manifest)
+    expected = srio.expected_keys(manifest, keyed)
     n_expected = len(expected)
     present = {k for k, e in keyed.items() if e.get("present") and e.get("error") is None}
     errored = {k for k, e in keyed.items() if e.get("present") and e.get("error") is not None}
     missing = [k for k in expected if k not in keyed or not keyed[k].get("present")]
 
     print(f"Run: {run_dir}  (mode={manifest.get('mode')})")
-    print(f"Grid: {manifest['n_datasets']} tasks x {manifest['n_runs']} seeds "
-          f"x {len(noise_levels)} noise = {n_expected} runs")
+    is_merged = bool(keyed and any("n_searches" in e for e in keyed.values()))
+    if manifest.get("merge_run_frontiers") and is_merged:
+        print(f"Grid: {manifest['n_datasets']} tasks x 1 merged portfolio "
+              f"({manifest['n_runs']} searches) x {len(noise_levels)} noise "
+              f"= {n_expected} results")
+    else:
+        print(f"Grid: {manifest['n_datasets']} tasks x {manifest['n_runs']} seeds "
+              f"x {len(noise_levels)} noise = {n_expected} runs")
     print(f"Completed: {len(present)}/{n_expected}   "
           f"(errored: {len(errored)}, missing: {len(missing)})")
 
@@ -304,16 +436,9 @@ def inspect_run(run_dir: Path, args) -> None:
     # ---- stats ----
     metrics = srio.aggregate_metrics(keyed, noise_levels)
     print("\n" + "=" * 70)
-    print("STATS (all 133 tasks)")
+    print(f"STATS ({manifest['n_datasets']} tasks)")
     print("=" * 70)
     print(srio.format_metrics_console(metrics, noise_levels))
-
-    if args.exclude_unsolvable:
-        metrics_excl = srio.aggregate_metrics(keyed, noise_levels, exclude_unsolvable=True)
-        print("\n" + "=" * 70)
-        print(f"STATS (excluding {len(srio.UNSOLVABLE_TASKS)} inverse-trig unsolvables)")
-        print("=" * 70)
-        print(srio.format_metrics_console(metrics_excl, noise_levels))
 
     if args.wandb:
         from wandb_utils import init_wandb, finish_wandb
@@ -337,45 +462,77 @@ def main():
     mode.add_argument("--run-id",
                       help="Run id / directory name under --runs-root.")
     mode.add_argument("--see-all", action="store_true",
-                      help="Inspect every full-SRBench run under --runs-root.")
+                      help="Inspect full-SRBench runs under --runs-root, excluding archive/.")
     mode.add_argument(
         "--official", action="store_true",
         help="Show the official baseline/HPO/PySR++/BasicSR++ comparison table.",
     )
+    mode.add_argument("--tables", action="store_true",
+                      help="Show the method comparison and PySR/evolved budget tables.")
+    mode.add_argument(
+        "--v2", action="store_true",
+        help="Show SRBench 2.0 completion and per-problem frontier reviews.",
+    )
     parser.add_argument("--since", type=int, metavar="NDAYS",
-                        help="With --see-all, only include runs from the past NDAYS days.")
+                        help="With --see-all or --v2, filter by manifest modification time.")
+    parser.add_argument("--latest", type=int, metavar="N",
+                        help="With --v2, show only the N most recent manifests, newest first.")
+    parser.add_argument("--discovery-depth", type=int, default=1, metavar="N",
+                        help="With --see-all or --v2, search N directory levels below "
+                             "--runs-root.")
     parser.add_argument("--runs-root", type=str, default="runs")
     parser.add_argument("--show-missing", type=int, default=50,
                         help="Max number of missing (task,seed,noise) triples to print.")
     parser.add_argument("--exclude-unsolvable", action="store_true",
-                        help="Also report stats excluding the 3 inverse-trig tasks.")
+                        help="Compatibility flag: the 3 inverse-trig tasks are now excluded by default.")
     parser.add_argument("--wandb", action="store_true",
                         help="Re-log the results table + metrics to wandb.")
     args = parser.parse_args()
 
     if args.since is not None and args.since < 0:
         parser.error("--since must be non-negative")
-    if args.since is not None and not args.see_all:
-        parser.error("--since requires --see-all")
+    if args.since is not None and not (args.see_all or args.v2):
+        parser.error("--since requires --see-all or --v2")
+    if args.latest is not None and (not args.v2 or args.latest < 1):
+        parser.error("--latest requires --v2 and a positive count")
+    if args.discovery_depth is not None and args.discovery_depth < 0:
+        parser.error("--discovery-depth must be non-negative")
 
     if args.official:
         from srbench_official_results import build_official_table
         print(build_official_table(args.runs_root))
         return
 
+    if args.tables:
+        from srbench_tables import build_tables
+        print(build_tables(args.runs_root))
+        return
+
+    if args.v2:
+        run_dirs = find_srbench2_runs(args.runs_root, since_days=args.since,
+                                     latest=args.latest, max_depth=args.discovery_depth)
+        if not run_dirs:
+            print(f"No SRBench 2.0 runs found under {args.runs_root}")
+            sys.exit(1)
+        print(format_srbench2_runs(run_dirs))
+        return
+
     if args.see_all:
-        run_dirs = find_full_srbench_runs(args.runs_root, since_days=args.since)
+        run_dirs = find_full_srbench_runs(args.runs_root, since_days=args.since,
+                                          max_depth=args.discovery_depth)
         if not run_dirs:
             suffix = f" from the past {args.since} day(s)" if args.since is not None else ""
             print(f"No full-SRBench runs found under {args.runs_root}{suffix}")
             sys.exit(1)
         rows = []
         for run_dir in run_dirs:
+            run_label = str(run_dir.relative_to(args.runs_root))
             try:
                 summary = summarize_run(run_dir)
             except Exception as e:
-                print(f"{run_dir.name}: ERROR {e}")
+                print(f"{run_label}: ERROR {e}")
                 continue
+            summary["slurm"] = run_label
             rows.append(summary)
         # Keep completed runs first and move unfinished runs to the bottom.
         rows.sort(key=lambda row: not row["complete"])
@@ -386,7 +543,7 @@ def main():
         return
 
     if not args.run_id:
-        parser.error("one of --run-id, --see-all, or --official is required")
+        parser.error("one of --run-id, --see-all, --official, --tables, or --v2 is required")
 
     run_dir = Path(args.runs_root) / args.run_id
     if not run_dir.is_dir():

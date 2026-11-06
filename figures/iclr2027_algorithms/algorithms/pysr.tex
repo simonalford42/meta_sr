@@ -1,0 +1,50 @@
+\begin{algorithm}[H]
+\caption{PySR search with four evolvable operator slots}
+\label{alg:pysr}
+\io{Input}{Data $D=(X,y)$; expression grammar; search budget; populations $P_1,\ldots,P_J$;
+size limit $c_{\max}$; tournament size $k$; crossover probability $p_\times$.}
+\begin{algorithmic}[1]
+\State Initialize and score random expressions; initialize hall of fame $H$ and size frequencies $f$
+\While{search budget and iteration allowance remain}
+  \State Choose a population $P$ to evolve \quad\Comment{Population workers may run concurrently}
+  \For{each inner cycle, with scheduled temperature $T$}
+    \For{$e=1,\ldots,\lceil |P|/k\rceil$}
+      \If{$\Unif(0,1)<p_\times$}
+        \State $a,b\gets\slot{Select}(P,f),\slot{Select}(P,f)$
+        \State $C\gets\fn{ConstrainedSubtreeCrossover}(a,b)$
+        \State Score both children using $\slot{Loss}(\cdot,D)$ and the cost transform
+      \Else
+        \State $a\gets\slot{Select}(P,f)$
+        \State Draw a feasible mutation from the weighted menu, including $\slot{Mutate}$
+        \State $C\gets\fn{ProposeAndAccept}(a,T,f,c_{\max},\slot{Loss})$
+      \EndIf
+      \If{the proposal succeeds}
+        \State $I\gets\fn{DistinctVictims}(P,|C|,\slot{Survive})$
+        \State Replace members at $I$ with $C$, assigning offspring birth times and lineage
+      \EndIf
+    \EndFor
+    \State Retain the best expression at each complexity in a local hall of fame
+  \EndFor
+  \State Simplify expressions; probabilistically optimize constants; refresh scores
+  \State Merge local and population champions into $H$; update size frequencies $f$
+  \State If enabled, inject migrants from population elites and the Pareto frontier of $H$
+  \State Advance the size-limit schedule and the frequency window
+\EndWhile
+\State \Return the loss--complexity Pareto frontier of $H$
+\end{algorithmic}
+\algnotes{\slotsnote\ When supplied, the mutation slot adds a move to PySR's weighted menu
+(tree edits, constant changes, simplification, and other configured moves);
+selection, survival, and loss replace their respective hooks. $\slot{Survive}$ returns a
+replacement index, not a new population. For crossover, both victims are chosen before insertion,
+with the first index excluded from the second call.}
+\algnotes{\textbf{Baseline hooks.} Loss is the configured pointwise regression loss (MSE by
+default); cost normalizes loss and adds parsimony. Selection ranks a size-$k$ sample by
+cost, optionally multiplied by $\exp(\lambda f_c)$, and draws rank
+$r$ with probability proportional to $p(1-p)^{r-1}$. Survival removes the oldest eligible member.}
+\algnotes{\textbf{Acceptance.} Ordinary tree mutations pass constraints and a non-NaN cost check,
+then optional annealing and size-frequency tests. Their acceptance probability is
+$\min\{1,\exp[-(C_{\rm child}-C_{\rm parent})/(\alpha T)]\,
+f_{c_{\rm parent}}/f_{c_{\rm child}}\}$ when both options are enabled.
+Crossover uses constraints without this test. Some built-in moves return immediately.
+The default failure policy skips unsuccessful proposals.}
+\end{algorithm}

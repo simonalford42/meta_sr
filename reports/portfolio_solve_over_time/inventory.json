@@ -1,0 +1,82 @@
+{
+  "Base PySR|0": {
+    "expected": 1330,
+    "complete": 1330,
+    "final_merged_solved": 827,
+    "restarts": 116731,
+    "restart_frontier_rows": 844743,
+    "restart_traces": 0,
+    "failed_restarts": 0,
+    "max_search_budget_overshoot_seconds": 4.7522501945495605
+  },
+  "Base PySR|0.001": {
+    "expected": 1330,
+    "complete": 1330,
+    "final_merged_solved": 821,
+    "restarts": 30624,
+    "restart_frontier_rows": 498072,
+    "restart_traces": 0,
+    "failed_restarts": 0,
+    "max_search_budget_overshoot_seconds": 5.437964200973511
+  },
+  "Base PySR|0.01": {
+    "expected": 1330,
+    "complete": 1330,
+    "final_merged_solved": 810,
+    "restarts": 24770,
+    "restart_frontier_rows": 471919,
+    "restart_traces": 0,
+    "failed_restarts": 0,
+    "max_search_budget_overshoot_seconds": 5.56569766998291
+  },
+  "Base PySR|0.1": {
+    "expected": 1330,
+    "complete": 1330,
+    "final_merged_solved": 695,
+    "restarts": 25714,
+    "restart_frontier_rows": 478147,
+    "restart_traces": 0,
+    "failed_restarts": 0,
+    "max_search_budget_overshoot_seconds": 6.5141942501068115
+  },
+  "709715|0": {
+    "expected": 1330,
+    "complete": 1330,
+    "final_merged_solved": 903,
+    "restarts": 17071,
+    "restart_frontier_rows": 276468,
+    "restart_traces": 0,
+    "failed_restarts": 0,
+    "max_search_budget_overshoot_seconds": 12.238444328308105
+  },
+  "709715|0.001": {
+    "expected": 1330,
+    "complete": 1330,
+    "final_merged_solved": 901,
+    "restarts": 21162,
+    "restart_frontier_rows": 437840,
+    "restart_traces": 0,
+    "failed_restarts": 0,
+    "max_search_budget_overshoot_seconds": 7.742828369140625
+  },
+  "709715|0.01": {
+    "expected": 1330,
+    "complete": 1330,
+    "final_merged_solved": 835,
+    "restarts": 18000,
+    "restart_frontier_rows": 367979,
+    "restart_traces": 0,
+    "failed_restarts": 0,
+    "max_search_budget_overshoot_seconds": 8.982797861099243
+  },
+  "709715|0.1": {
+    "expected": 1330,
+    "complete": 1330,
+    "final_merged_solved": 682,
+    "restarts": 17302,
+    "restart_frontier_rows": 348489,
+    "restart_traces": 0,
+    "failed_restarts": 0,
+    "max_search_budget_overshoot_seconds": 8.19374966621399
+  }
+}

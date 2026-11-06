@@ -35,6 +35,13 @@ Usage:
         --evolve-results outputs/evolve_mutation_*/run_data.json \
         --splits splits/train.txt splits/val.txt splits/test.txt \
         --n-runs 10
+
+    # Train/validation task performance from serial 90-second restarts (40 max)
+    python evaluate_new_pysr.py \
+        --evolve-results runs/709715 \
+        --splits splits/barely_unsolvable.txt splits/barely_unsolvable_val2.txt \
+        --portfolio-time-limit 3600 --portfolio-restart-timeout 90 \
+        --portfolio-restart-count 40 --pysr-wall-limit 270
 """
 
 import argparse
@@ -44,7 +51,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -184,6 +191,13 @@ def _bundle_summary_fields(bundle) -> Dict[str, Any]:
     return fields
 
 
+def _without_early_stopping(config: PySRConfig) -> PySRConfig:
+    """Return a config with PySR's loss-based early stop disabled."""
+    pysr_kwargs = dict(config.pysr_kwargs)
+    pysr_kwargs.pop("early_stop_condition", None)
+    return replace(config, pysr_kwargs=pysr_kwargs)
+
+
 # =============================================================================
 # Evaluation
 # =============================================================================
@@ -220,24 +234,82 @@ def _classification_avgs(summary: EvalSummary, n_runs: int) -> Tuple[float, floa
 def evaluate_config(
     evaluator: PySRSlurmEvaluator,
     dataset_names: List[str],
-    config: PySRConfig,
+    config: Any,
     seed: int,
     n_runs: int,
     name: str,
     target_noise_map: Optional[Dict[str, float]] = None,
     fitness_metric: str = "r2",
+    merge_run_frontiers: bool = False,
 ) -> EvalSummary:
     """Evaluate a PySRConfig and return summary. Cache stats tracked on evaluator."""
-    config.name = name
-    results = evaluator.evaluate_configs(
-        [config], dataset_names, seed=seed, n_runs=n_runs,
-        target_noise_map=target_noise_map,
-        fitness_metric=fitness_metric,
-    )
-
+    configs = config if isinstance(config, list) else [config]
+    for item in configs:
+        item.name = name
+    portfolio = len(configs) > 1
+    evaluate_kwargs = {
+        "seed": seed,
+        "n_runs": 1 if portfolio else n_runs,
+        "target_noise_map": target_noise_map,
+        "fitness_metric": fitness_metric,
+    }
+    if portfolio:
+        evaluate_kwargs["run_index_start_per_config"] = list(range(len(configs)))
+    results = evaluator.evaluate_configs(configs, dataset_names, **evaluate_kwargs)
     avg_r2, r2_vector, result_details = results[0]
-    per_run_r2_avgs = compute_per_run_avgs(result_details, n_runs, "run_r2_scores")
-    per_run_gt_avgs = compute_per_run_avgs(result_details, n_runs, "run_gt_scores")
+    if portfolio:
+        combined = []
+        for dataset_index, dataset_name in enumerate(dataset_names):
+            details = [entry[2][dataset_index] for entry in results]
+            combined.append({
+                "dataset": dataset_name,
+                "run_pareto_frontiers": [
+                    (detail.get("run_pareto_frontiers") or [None])[0]
+                    for detail in details
+                ],
+                "execution_traces": sum(
+                    (detail.get("execution_traces") or [] for detail in details), []
+                ),
+                "errors": [error for detail in details for error in (detail.get("errors") or [])],
+            })
+        result_details = combined
+        merge_run_frontiers = True
+    if merge_run_frontiers:
+        from frontier_aggregation import merge_frontiers
+        merged_details = []
+        merged_vector = []
+        for detail in result_details:
+            frontiers = detail.get("run_pareto_frontiers") or []
+            frontier = merge_frontiers(frontiers, sources=[{
+                "source_run_index": i, "source_seed": seed + i,
+            } for i in range(len(frontiers))])
+            best = frontier[-1] if frontier else None
+            gt = 1.0 if any(row.get("solved") for row in frontier) else 0.0
+            r2 = float(best.get("r2", 0.0)) if best else -1.0
+            acc = best.get("accuracy") if best else None
+            if fitness_metric == "gt":
+                score = gt
+            elif fitness_metric in ("acc", "gt-acc"):
+                score = 1.0 if fitness_metric == "gt-acc" and gt else float(acc or 0.0)
+            else:
+                score = 1.0 if fitness_metric == "gt-r2" and gt else r2
+            merged = dict(detail)
+            merged.update({
+                "avg_r2": r2, "avg_r2c": r2, "avg_gt": gt,
+                "avg_acc": acc, "run_r2_scores": [r2],
+                "run_r2c_scores": [r2], "run_gt_scores": [gt],
+                "run_acc_scores": ([] if acc is None else [float(acc)]),
+                "merged_pareto_frontier": frontier,
+                "n_constituent_searches": len(frontiers),
+            })
+            merged_details.append(merged)
+            merged_vector.append(score)
+        result_details = merged_details
+        r2_vector = merged_vector
+        avg_r2 = float(np.mean(merged_vector)) if merged_vector else -1.0
+    output_runs = 1 if merge_run_frontiers else n_runs
+    per_run_r2_avgs = compute_per_run_avgs(result_details, output_runs, "run_r2_scores")
+    per_run_gt_avgs = compute_per_run_avgs(result_details, output_runs, "run_gt_scores")
     return EvalSummary(
         split_name=name,
         avg_r2=avg_r2,
@@ -347,6 +419,11 @@ def run_final_evaluation(
     black_box: bool = False,
     domain: Optional[str] = None,
     fitness_metric: Optional[str] = None,
+    portfolio_time_limit: Optional[float] = None,
+    portfolio_restart_max_evals: Optional[int] = None,
+    portfolio_restart_timeout: Optional[float] = None,
+    portfolio_restart_count: Optional[int] = None,
+    no_early_stop: bool = False,
 ) -> Dict[str, "EvalSummary"]:
     """Run final evaluation on requested splits after an evolution, OpenEvolve, or HPO run.
 
@@ -426,10 +503,17 @@ def run_final_evaluation(
         pysr_wall_limit=pysr_wall_limit,
         black_box=black_box,
         domain=domain,
+        portfolio_time_limit_seconds=portfolio_time_limit,
+        portfolio_restart_max_evals=portfolio_restart_max_evals,
+        portfolio_restart_timeout_seconds=portfolio_restart_timeout,
+        portfolio_restart_count=portfolio_restart_count,
     )
 
     # Single converter: bundle -> PySRConfig (merges custom code + HPO hparams).
     config = bundle.to_pysr_config(pysr_kwargs)
+    if no_early_stop:
+        config = _without_early_stopping(config)
+        print("  Early stopping: disabled")
     for t, op in bundle.operators.items():
         if op is not None:
             print(f"  Loaded [{t}] {op.name}")
@@ -547,6 +631,17 @@ def run_final_evaluation(
         "black_box": black_box,
         "domain": domain,
         "fitness_metric": fitness_metric,
+        "no_early_stop": no_early_stop,
+        "serial_restart_portfolio": (
+            None if portfolio_time_limit is None else {
+                "total_search_budget_seconds": portfolio_time_limit,
+                "restart_max_evals": portfolio_restart_max_evals,
+                "restart_timeout_seconds": portfolio_restart_timeout,
+                "restart_count": portfolio_restart_count,
+                "warmup_excluded_from_budget": True,
+                "frontier_loss_key": "loss",
+            }
+        ),
     }
     summary_data.update(_bundle_summary_fields(bundle))
     for split_name, s in split_summaries.items():
@@ -627,6 +722,23 @@ def main() -> None:
                         help="Split files (autoresearch defaults to the official train/val splits)")
     parser.add_argument("--n-runs", type=int, default=10,
                         help="Number of seeds/runs per config per dataset")
+    parser.add_argument("--merge-run-frontiers", action="store_true",
+                        help="Collapse the N fresh searches into one final frontier")
+    parser.add_argument(
+        "--portfolio-time-limit", type=float, default=None, metavar="SECONDS",
+        help="Run serial restarts under one shared search-time budget per "
+             "dataset/trial; startup and scoring are excluded.",
+    )
+    portfolio_restart = parser.add_mutually_exclusive_group()
+    portfolio_restart.add_argument(
+        "--portfolio-restart-max-evals", type=int, default=None, metavar="N",
+    )
+    portfolio_restart.add_argument(
+        "--portfolio-restart-timeout", type=float, default=None, metavar="SECONDS",
+    )
+    parser.add_argument("--portfolio-restart-count", type=int, default=None)
+    parser.add_argument("--task-population-bundles", type=int, default=None, metavar="N",
+                        help="Run N cyclic slots from an evolve_pysr task population once each")
     parser.add_argument("--seed", type=int, default=42,
                         help="Base seed for evaluation")
     parser.add_argument("--max-samples", type=int, default=1000,
@@ -637,6 +749,11 @@ def main() -> None:
                         help="PySR timeout in seconds (PySR's own timeout_in_seconds)")
     parser.add_argument("--wall-clock-only", action="store_true",
                         help="Stop PySR on wall-clock timeout only (drop max_evals)")
+    parser.add_argument(
+        "--no-early-stop",
+        action="store_true",
+        help="Remove PySR's loss-based early_stop_condition after loading the method",
+    )
     parser.add_argument("--noise", type=float, default=0.0,
                         help="Per-target Gaussian noise level applied uniformly to all datasets")
     parser.add_argument("--random-target-noise", action="store_true",
@@ -670,6 +787,31 @@ def main() -> None:
                              "pysr_kwargs saved by an evolve run (useful for cross-domain evals)")
 
     args = parser.parse_args()
+
+    if args.portfolio_time_limit is not None:
+        if args.portfolio_time_limit <= 0:
+            parser.error("--portfolio-time-limit must be positive")
+        if ((args.portfolio_restart_max_evals is None)
+                == (args.portfolio_restart_timeout is None)):
+            parser.error(
+                "--portfolio-time-limit requires exactly one restart budget"
+            )
+        if args.portfolio_restart_count is not None and args.portfolio_restart_count <= 0:
+            parser.error("--portfolio-restart-count must be positive")
+        if args.merge_run_frontiers or args.task_population_bundles:
+            parser.error(
+                "serial portfolio mode cannot be combined with the legacy "
+                "parallel frontier or task-population portfolios"
+            )
+        if (args.portfolio_restart_timeout is not None
+                and args.portfolio_restart_timeout >= args.pysr_wall_limit):
+            parser.error(
+                "--portfolio-restart-timeout must be below --pysr-wall-limit"
+            )
+    elif (args.portfolio_restart_max_evals is not None
+          or args.portfolio_restart_timeout is not None
+          or args.portfolio_restart_count is not None):
+        parser.error("portfolio restart options require --portfolio-time-limit")
 
     if args.splits is None:
         args.splits = (
@@ -715,6 +857,19 @@ def main() -> None:
     from domains import get_domain
     domain_obj = get_domain(domain)
 
+    portfolio_configs = None
+    portfolio_bundles = None
+    if args.task_population_bundles:
+        if not args.evolve_results:
+            parser.error("--task-population-bundles requires --evolve-results")
+        from bundle_loader import load_task_population_bundles
+        portfolio_bundles = load_task_population_bundles(
+            args.evolve_results, args.task_population_bundles
+        )
+        args.n_runs = len(portfolio_bundles)
+        args.merge_run_frontiers = True
+        method_label += f"_task_portfolio{args.n_runs}"
+
     args.output_dir = resolve_run_dir(args.output_dir, label="eval_pysr")
 
     output_dir = Path(args.output_dir)
@@ -725,11 +880,22 @@ def main() -> None:
         "method": method_label,
         "splits": args.splits,
         "n_runs": args.n_runs,
+        "merge_run_frontiers": args.merge_run_frontiers,
+        "serial_restart_portfolio": (
+            None if args.portfolio_time_limit is None else {
+                "total_search_budget_seconds": args.portfolio_time_limit,
+                "restart_max_evals": args.portfolio_restart_max_evals,
+                "restart_timeout_seconds": args.portfolio_restart_timeout,
+                "restart_count": args.portfolio_restart_count,
+                "frontier_loss_key": "loss",
+            }
+        ),
         "seed": args.seed,
         "max_samples": args.max_samples,
         "max_evals": args.max_evals,
         "timeout": args.timeout,
         "wall_clock_only": args.wall_clock_only,
+        "no_early_stop": args.no_early_stop,
         "noise": args.noise,
         "random_target_noise": args.random_target_noise,
         "pysr_wall_limit": args.pysr_wall_limit,
@@ -773,6 +939,11 @@ def main() -> None:
         pysr_kwargs.pop("max_evals", None)
         pysr_kwargs.pop("timeout_in_seconds", None)
 
+    if portfolio_bundles is not None:
+        portfolio_configs = [
+            item.to_pysr_config(pysr_kwargs) for item in portfolio_bundles
+        ]
+
     evaluator_kwargs: Dict[str, Any] = {}
     if autoresearch_sandbox is not None:
         evaluator_kwargs.update({
@@ -792,11 +963,23 @@ def main() -> None:
         use_cache=not args.no_cache,
         pysr_wall_limit=args.pysr_wall_limit,
         domain=domain,
+        retain_pareto_frontier=args.merge_run_frontiers,
+        fixed_data_split_across_runs=args.merge_run_frontiers,
+        portfolio_time_limit_seconds=args.portfolio_time_limit,
+        portfolio_restart_max_evals=args.portfolio_restart_max_evals,
+        portfolio_restart_timeout_seconds=args.portfolio_restart_timeout,
+        portfolio_restart_count=args.portfolio_restart_count,
         **evaluator_kwargs,
     )
 
     # Single converter: bundle -> PySRConfig (merges custom code + HPO hparams).
-    config = bundle.to_pysr_config(pysr_kwargs)
+    config = portfolio_configs or bundle.to_pysr_config(pysr_kwargs)
+    if args.no_early_stop:
+        if isinstance(config, list):
+            config = [_without_early_stopping(item) for item in config]
+        else:
+            config = _without_early_stopping(config)
+        print("Early stopping: disabled")
     if bundle.best_hparams:
         print(f"Applied {len(bundle.best_hparams)} HPO-tuned hparam(s) from bundle: "
               f"{sorted(bundle.best_hparams.keys())}")
@@ -835,6 +1018,7 @@ def main() -> None:
             args.seed, args.n_runs, f"{split_name}_{method_label}",
             target_noise_map=target_noise_map,
             fitness_metric=fitness_metric,
+            merge_run_frontiers=args.merge_run_frontiers,
         )
         split_summaries[split_name] = summary
 
@@ -848,7 +1032,7 @@ def main() -> None:
                 f"{split_name}/avg_gt": avg_gt,
                 f"{split_name}/n_datasets": len(datasets),
             })
-            for seed_idx in range(args.n_runs):
+            for seed_idx in range(1 if args.merge_run_frontiers else args.n_runs):
                 if seed_idx < len(summary.per_run_r2_avgs):
                     wandb.log({
                         f"{split_name}/seed_{seed_idx}_r2": summary.per_run_r2_avgs[seed_idx],
@@ -864,7 +1048,8 @@ def main() -> None:
         extra_summary[f"{split_name}_avg_gt"] = avg_gt
 
     # Print results
-    print_results(split_summaries, args.n_runs, method_label)
+    print_results(split_summaries, 1 if args.merge_run_frontiers else args.n_runs,
+                  method_label)
 
     # Log final summary to wandb (includes SR eval cache stats from evaluator)
     log_wandb_summary(wandb_run, evaluator=evaluator, extra_summary=extra_summary)
@@ -889,6 +1074,8 @@ def main() -> None:
         "total_cached": total_cached,
         "domain": domain,
         "fitness_metric": fitness_metric,
+        "no_early_stop": args.no_early_stop,
+        "serial_restart_portfolio": wandb_config["serial_restart_portfolio"],
     }
     if autoresearch_commit is not None:
         summary_data["autoresearch"] = {

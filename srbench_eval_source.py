@@ -100,6 +100,75 @@ def apply_soft_timeout(config, backend: str, timeout: Optional[int]):
     return replace(config, **{_kwargs_field(backend): kwargs})
 
 
+def apply_srbench2_exact_recovery_protocol(
+    config,
+    *,
+    cpus_per_task: int = 1,
+    baseline_l1_loss: bool = False,
+    no_maxsize_warmup: bool = False,
+):
+    """Apply the fixed PySR search space used for SRBench-2 recovery runs.
+
+    Method-specific mutation, selection, survival, and loss code lives outside
+    ``pysr_kwargs`` and is therefore preserved for evolved configurations.
+    """
+    from dataclasses import replace
+
+    if cpus_per_task <= 0:
+        raise ValueError("cpus_per_task must be positive")
+
+    kwargs = dict(config.pysr_kwargs)
+    for key in ("early_stop_condition", "elementwise_loss"):
+        kwargs.pop(key, None)
+    kwargs.update({
+        "niterations": 1_000_000_000,
+        "populations": 15,
+        "population_size": 33,
+        "maxsize": 30,
+        "maxdepth": 20,
+        "binary_operators": ["+", "-", "*", "/"],
+        "unary_operators": ["square", "cube", "exp", "log", "sqrt"],
+        "constraints": {
+            "square": 13,
+            "cube": 13,
+            "exp": 13,
+            "log": 13,
+            "sqrt": 13,
+            "/": (-1, 13),
+            "*": (-1, -1),
+            "+": (-1, -1),
+            "-": (-1, -1),
+        },
+        "nested_constraints": {
+            "/": {"/": 2},
+            "exp": {"exp": 0, "log": 1, "sqrt": 0},
+            "square": {"square": 1, "cube": 1, "log": 0, "sqrt": 0},
+            "cube": {"cube": 1, "square": 1},
+            "log": {"log": 0, "exp": 1},
+            "sqrt": {"sqrt": 1, "exp": 1, "square": 0},
+        },
+        "batching": False,
+        "precision": 64,
+        "model_selection": "best",
+        "warmup_maxsize_by": 0.0 if no_maxsize_warmup else 0.002,
+    })
+    if cpus_per_task == 1:
+        kwargs.update({
+            "procs": 0,
+            "parallelism": "serial",
+            "deterministic": True,
+        })
+    else:
+        kwargs.update({
+            "procs": int(cpus_per_task),
+            "parallelism": "multiprocessing",
+        })
+        kwargs.pop("deterministic", None)
+    if baseline_l1_loss and config.custom_loss_code is None:
+        kwargs["elementwise_loss"] = "L1DistLoss()"
+    return replace(config, pysr_kwargs=kwargs)
+
+
 def scale_soft_timeout(timeout: Optional[int], from_wall: int, to_wall: int) -> Optional[int]:
     """Rescale a soft timeout for a different hard wall, preserving their ratio.
 
@@ -153,6 +222,12 @@ def load_evaluation_source(args) -> EvaluationSource:
 
 
 def _load_evaluation_source(args) -> EvaluationSource:
+    only_operator = getattr(args, "only_operator", None)
+    if only_operator and (
+        not args.evolve_results
+        or detect_evolve_backend(args.evolve_results) != "pysr"
+    ):
+        raise ValueError("--only-operator requires a PySR --evolve-results source")
     if getattr(args, "fullsr_baseline", False):
         from parallel_eval_fullsr import (
             FullSRConfig,
@@ -246,6 +321,14 @@ def load_pysr_evaluation_config(args):
         bundle = OperatorBundle.create_default()
         mode, source = "baseline", None
 
+    only_operator = getattr(args, "only_operator", None)
+    if only_operator:
+        operator = bundle.operators.get(only_operator)
+        if operator is None:
+            raise ValueError(f"Source bundle has no evolved {only_operator} operator")
+        # Start from baseline hyperparameters; retain just the selected operator.
+        bundle = OperatorBundle(operators={only_operator: operator})
+
     config = bundle.to_pysr_config(pysr_kwargs)
     config.name = mode
     method_meta = {}
@@ -275,4 +358,7 @@ def load_pysr_evaluation_config(args):
             ],
             "best_hparams": bundle.best_hparams,
         }
+    if only_operator:
+        config.name = f"evolve_only_{only_operator}"
+        method_meta["only_operator"] = only_operator
     return config, mode, method_meta

@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """Regression tests for SRBench result inspection."""
 
+import io
 import json
 import os
 import sys
 import tempfile
 import time
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -16,6 +20,10 @@ from inspect_srbench_results import (
     _black_box_summary,
     find_full_srbench_runs,
     format_summary_table,
+    format_srbench2_runs,
+    find_srbench2_runs,
+    inspect_run,
+    main,
     summarize_run,
 )
 from srbench_official_results import (
@@ -71,13 +79,66 @@ class BlackBoxSummaryTests(unittest.TestCase):
 
 
 class FindRunsTests(unittest.TestCase):
+    def test_depth_limits_discovery_without_recursive_scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("top", "bundle/nested", "archive/old"):
+                directory = root / name
+                directory.mkdir(parents=True)
+                (directory / "manifest.json").write_text(json.dumps({
+                    "datasets": [], "noise_levels": [], "batches": [],
+                }))
+            with patch.object(Path, "rglob", side_effect=AssertionError("recursive scan")):
+                self.assertEqual(find_full_srbench_runs(root, max_depth=1), [root / "top"])
+                self.assertEqual(find_full_srbench_runs(root, max_depth=2),
+                                 [root / "bundle/nested", root / "top"])
+                self.assertEqual(find_full_srbench_runs(root, max_depth=0), [])
+                output = io.StringIO()
+                with patch.object(sys, "argv", ["inspect_srbench_results.py", "--see-all",
+                                  "--runs-root", str(root)]):
+                    with redirect_stdout(output):
+                        main()
+                self.assertNotIn("bundle/nested", output.getvalue())
+                self.assertIn("top", output.getvalue())
+
+    def test_nested_runs_exclude_archive_and_keep_distinct_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs_root = Path(tmp)
+            names = ["baseline", "709715/srbench_gt_90s",
+                     "120458/srbench_gt_90s", "bundle/deeper/evaluation"]
+            for name in names + ["archive/old", "archive/bundle/evaluation"]:
+                run_dir = runs_root / name
+                run_dir.mkdir(parents=True)
+                (run_dir / "manifest.json").write_text(json.dumps({
+                    "datasets": [], "noise_levels": [], "batches": [],
+                }))
+            (runs_root / "invalid").mkdir()
+            (runs_root / "invalid/manifest.json").write_text("invalid json")
+            (runs_root / "unrelated").mkdir()
+            (runs_root / "unrelated/manifest.json").write_text("{}")
+            self.assertEqual(find_full_srbench_runs(runs_root),
+                             sorted(runs_root / name for name in names))
+            output = io.StringIO()
+            with patch.object(sys, "argv", ["inspect_srbench_results.py",
+                              "--see-all", "--runs-root", str(runs_root),
+                              "--discovery-depth", "3"]):
+                with redirect_stdout(output):
+                    main()
+            for name in names:
+                self.assertIn(name, output.getvalue())
+            self.assertNotIn("archive/", output.getvalue())
+
+    def test_missing_root_returns_no_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(find_full_srbench_runs(Path(tmp) / "missing"), [])
+
     def test_since_filters_by_manifest_modification_time(self):
         with tempfile.TemporaryDirectory() as tmp:
             runs_root = Path(tmp)
             now = time.time()
-            for run_id, age_days in (("recent", 3), ("old", 10)):
+            for run_id, age_days in (("bundle/recent", 3), ("bundle/old", 10)):
                 run_dir = runs_root / run_id
-                run_dir.mkdir()
+                run_dir.mkdir(parents=True)
                 manifest_path = run_dir / "manifest.json"
                 with open(manifest_path, "w") as f:
                     json.dump({"datasets": [], "noise_levels": [], "batches": []}, f)
@@ -86,16 +147,162 @@ class FindRunsTests(unittest.TestCase):
 
             self.assertEqual(
                 find_full_srbench_runs(runs_root, since_days=7),
-                [runs_root / "recent"],
+                [runs_root / "bundle/recent"],
             )
             self.assertEqual(
                 find_full_srbench_runs(runs_root),
-                [runs_root / "old", runs_root / "recent"],
+                [runs_root / "bundle/old", runs_root / "bundle/recent"],
             )
+
+    def test_v2_finds_nested_runs_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs_root = Path(tmp)
+            v2 = runs_root / "709715" / "srbench2_ground_truth"
+            v2.mkdir(parents=True)
+            (runs_root / "old").mkdir()
+            for path, edition in ((v2, 2025), (runs_root / "old", 2021)):
+                with open(path / "manifest.json", "w") as f:
+                    json.dump({"srbench_edition": edition}, f)
+            self.assertEqual(find_srbench2_runs(runs_root), [v2])
+
+    def test_v2_bounds_discovery_and_filters_recent_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = time.time()
+            for name, age in [("recent", 1), ("bundle/old", 10),
+                              ("bundle/deeper/custom", 2), ("archive/hidden", 0)]:
+                path = root / name / "manifest.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(json.dumps({"srbench_edition": 2025}))
+                os.utime(path, (now - age * 86400, now - age * 86400))
+            self.assertEqual(find_srbench2_runs(root),
+                             [root / "bundle/old", root / "recent"])
+            self.assertEqual(find_srbench2_runs(root, since_days=7), [root / "recent"])
+            self.assertEqual(find_srbench2_runs(root, latest=1), [root / "recent"])
+            self.assertEqual(find_srbench2_runs(root, latest=2, max_depth=3),
+                             [root / "recent", root / "bundle/deeper/custom"])
+            self.assertEqual(find_srbench2_runs(root / "missing"), [])
+            output = io.StringIO()
+            with patch.object(sys, "argv", ["inspect_srbench_results.py", "--v2",
+                              "--since", "7", "--latest", "1", "--runs-root", str(root)]):
+                with redirect_stdout(output):
+                    main()
+            self.assertIn(str(root / "recent"), output.getvalue())
+            self.assertNotIn(str(root / "bundle/old"), output.getvalue())
+
+
+class SRBench2TableTests(unittest.TestCase):
+    def test_completion_and_manual_seed_codes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "v2"
+            run_dir.mkdir()
+            manifest = {
+                "srbench_edition": 2025,
+                "mode": "baseline",
+                "datasets": ["first_principles_hubble"],
+                "seeds": [10000, 10001, 10002, 10003, 10004],
+                "noise_levels": [0.0],
+                "batches": [],
+                "evaluation_types": ["ground_truth"],
+            }
+            with open(run_dir / "manifest.json", "w") as f:
+                json.dump(manifest, f)
+            results = {}
+            for seed in manifest["seeds"]:
+                results[f"first_principles_hubble|{seed}|0"] = {
+                    "dataset": "first_principles_hubble", "seed": seed,
+                    "present": True, "error": None,
+                }
+            with open(run_dir / "srbench_full_results.json", "w") as f:
+                json.dump({"results": results}, f)
+            with open(run_dir / "codex_frontier_review.json", "w") as f:
+                json.dump({"datasets": [{
+                    "dataset": "first_principles_hubble",
+                    "reviews": [
+                        {"seed": seed, "classification": classification}
+                        for seed, classification in zip(
+                            manifest["seeds"],
+                            ["exact", "exact", "exact", "near", "miss"],
+                        )
+                    ],
+                }]}, f)
+
+            table = format_srbench2_runs([run_dir])
+            self.assertIn("Completed: GT 5/5  |  BB 0/0", table)
+            line = next(line for line in table.splitlines()
+                        if "first_principles_hubble" in line)
+            self.assertEqual(line.split()[-1], "EEENM")
+
+            # API batch reviews fill unreviewed seeds; curated reviews win.
+            (run_dir / "manual_solve_check_results.json").write_text(json.dumps({
+                "reviews": [
+                    {"dataset": "first_principles_hubble", "seed": 10000,
+                     "classification": "miss"},
+                    {"dataset": "first_principles_hubble", "seed": 10005,
+                     "classification": "exact"},
+                ],
+            }))
+            manifest["seeds"].append(10005)
+            (run_dir / "manifest.json").write_text(json.dumps(manifest))
+            table = format_srbench2_runs([run_dir])
+            line = next(line for line in table.splitlines()
+                        if "first_principles_hubble" in line)
+            self.assertEqual(line.split()[-1], "EEENME")
 
 
 class SummaryTableTests(unittest.TestCase):
-    def test_displays_manifest_max_evals(self):
+    def test_merged_frontier_completion_uses_collapsed_grid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "merged"
+            run_dir.mkdir()
+            manifest = {
+                "mode": "baseline",
+                "n_datasets": 2,
+                "n_runs": 3,
+                "datasets": ["feynman_a", "strogatz_b"],
+                "seeds": [10000, 10001, 10002],
+                "noise_levels": [0.0, 0.1],
+                "batches": [],
+                "merge_run_frontiers": True,
+            }
+            with open(run_dir / "manifest.json", "w") as f:
+                json.dump(manifest, f)
+            results = {}
+            for dataset in manifest["datasets"]:
+                for noise in manifest["noise_levels"]:
+                    key = f"{dataset}|10000|{noise:g}"
+                    results[key] = {
+                        "dataset": dataset,
+                        "family": ("Feynman" if "feynman" in dataset
+                                   else "Strogatz"),
+                        "seed": 10000,
+                        "noise": noise,
+                        "present": True,
+                        "error": None,
+                        "solved": False,
+                        "test_r2": None,
+                        "runtime_seconds": None,
+                        "n_searches": 3,
+                    }
+            with open(run_dir / "srbench_full_results.json", "w") as f:
+                json.dump({"results": results}, f)
+
+            output = io.StringIO()
+            args = SimpleNamespace(show_missing=50, exclude_unsolvable=False,
+                                   wandb=False)
+            with redirect_stdout(output):
+                inspect_run(run_dir, args)
+
+            text = output.getvalue()
+            self.assertIn(
+                "Grid: 2 tasks x 1 merged portfolio (3 searches) x 2 noise = 4 results",
+                text,
+            )
+            self.assertIn("Completed: 4/4   (errored: 0, missing: 0)", text)
+            self.assertNotIn("Missing (", text)
+            self.assertTrue(summarize_run(run_dir)["complete"])
+
+    def test_omits_manifest_max_evals(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "12345"
             run_dir.mkdir()
@@ -106,10 +313,10 @@ class SummaryTableTests(unittest.TestCase):
             table = format_summary_table([row])
 
             self.assertEqual(row["max_evals"], 1_000_000)
-            self.assertIn("max-evals", table)
-            self.assertIn("1,000,000", table)
+            self.assertNotIn("max-evals", table)
+            self.assertNotIn("1,000,000", table)
 
-    def test_missing_max_evals_is_shown_as_dash(self):
+    def test_missing_metrics_are_shown_as_dashes(self):
         row = {
             "slurm": "legacy",
             "bundle": "-",
@@ -123,7 +330,9 @@ class SummaryTableTests(unittest.TestCase):
         headers = [cell.strip() for cell in lines[1].split("│")[1:-1]]
         cells = [cell.strip() for cell in lines[3].split("│")[1:-1]]
 
-        self.assertEqual(cells[headers.index("max-evals")], "-")
+        self.assertEqual(headers, ["slurm", "bundle", "completed", "mode",
+                                   "bb_r2", "all", "train", "val", "rest"])
+        self.assertEqual(cells[4:], ["-"] * 5)
 
 
 class OfficialTableTests(unittest.TestCase):
@@ -228,8 +437,14 @@ class OfficialTableTests(unittest.TestCase):
             self.assertEqual(column["gt_rate"], 1 / 3)
             self.assertEqual(column["gt_any_seed_rate"], 1 / 3)
             self.assertEqual(column["gt_10m_rate"], 0.0)
+            self.assertEqual(column["gt_10m_completed"], 1)
             self.assertEqual(column["bb_r2"], 0.8)
-            self.assertIn("3/5320", table)
+            self.assertIn("GT completed", table)
+            self.assertIn("GT completed (90s)", table)
+            self.assertIn("GT completed (15m)", table)
+            self.assertNotIn("10M", table)
+            self.assertIn("3/5200", table)
+            self.assertNotIn("1/5200", table)
             self.assertIn("1/1220", table)
 
     def test_official_table_omits_eval_slurm_and_split_rows(self):
@@ -246,6 +461,7 @@ class OfficialTableTests(unittest.TestCase):
             "gt_any_seed_rate": None,
             "gt_10m_rate": None,
             "gt_completed": 0,
+            "gt_10m_completed": 0,
             "bb_completed": 0,
         }]
 
@@ -266,7 +482,7 @@ class OfficialTableTests(unittest.TestCase):
             "test_gt": 0.5, "test_r2": 0.6,
             "gt_rate": 0.7, "gt_any_seed_rate": 0.8,
             "gt_10m_rate": 0.9, "bb_r2": 1.0,
-            "gt_completed": 1, "bb_completed": 1,
+            "gt_completed": 1, "gt_10m_completed": 1, "bb_completed": 1,
         }
 
         table = format_official_table([column])
@@ -284,23 +500,27 @@ class OfficialTableTests(unittest.TestCase):
             metric_rows,
         )
         self.assertLess(labels.index("test R2"), labels.index("SRBench GT solve (all)"))
-        self.assertLess(labels.index("SRBench GT solve (all, 10M)"),
+        self.assertLess(labels.index("SRBench GT solve (all, 15m)"),
                         labels.index("SRBench BB R2"))
 
     def test_official_table_marks_only_fully_completed_evaluations(self):
         column = {
+            "key": "pysr_baseline", "gt_15m_completed": GT_TOTAL - 1,
             "label": "method", "training_id": "1",
             "train_gt": None, "val_gt": None, "test_gt": None,
             "train_r2": None, "val_r2": None, "test_r2": None,
             "gt_rate": None, "gt_any_seed_rate": None,
             "gt_10m_rate": None, "bb_r2": None,
             "gt_completed": GT_TOTAL,
+            "gt_10m_completed": GT_TOTAL - 1,
             "bb_completed": BLACK_BOX_TOTAL - 1,
         }
 
         table = format_official_table([column])
 
         self.assertIn(f"✓ {GT_TOTAL}/{GT_TOTAL}", table)
+        self.assertIn(f"{GT_TOTAL - 1}/{GT_TOTAL}", table)
+        self.assertNotIn(f"✓ {GT_TOTAL - 1}/{GT_TOTAL}", table)
         self.assertIn(f"{BLACK_BOX_TOTAL - 1}/{BLACK_BOX_TOTAL}", table)
         self.assertNotIn(f"✓ {BLACK_BOX_TOTAL - 1}/{BLACK_BOX_TOTAL}", table)
 
@@ -308,7 +528,7 @@ class OfficialTableTests(unittest.TestCase):
         self.assertEqual(
             [column[0] for column in OFFICIAL_COLUMNS],
             [
-                "pysr_baseline", "basicsr_baseline",
+                "pysr_baseline", "autoresearch_gt", "basicsr_baseline",
                 "hpo_gt", "pysrpp_gt", "basicsrpp_gt",
                 "hpo_gt_r2", "pysrpp_gt_r2", "basicsrpp_gt_r2",
                 "hpo_r2", "pysrpp_r2", "basicsrpp_r2",

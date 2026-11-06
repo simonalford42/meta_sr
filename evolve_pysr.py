@@ -59,6 +59,7 @@ from operator_types import (
     append_validation_log,
     generate_operator_code_batch,
     OperatorGenerationSpec,
+    _signature_positional_arity,
 )
 from bundle_loader import (
     load_resume_state,
@@ -99,10 +100,16 @@ MODEL_ENSEMBLE_PRESETS: Dict[str, str] = {
         "google/gemini-3.7-flash:0.20,"
         "anthropic/claude-sonnet-5:0.20"
     ),
+    "best3": (
+        "openai/gpt-6-astra:0.25,"
+        "openai/gpt-5.6-sol:0.25,"
+        "anthropic/claude-fable-5.1:0.25,"
+        "anthropic/claude-opus-5:0.25"
+    ),
 }
 
 
-# Reasoning effort paired with each model preset: cheaper ensembles think less.
+# Reasoning effort paired with each model preset.
 # Used when --reasoning-effort=auto (the default).
 MODEL_ENSEMBLE_PRESET_EFFORT: Dict[str, str] = {
     "cheap": "low",
@@ -111,6 +118,7 @@ MODEL_ENSEMBLE_PRESET_EFFORT: Dict[str, str] = {
     "cheap2": "low",
     "medium2": "medium",
     "best2": "high",
+    "best3": "low",
 }
 
 
@@ -124,14 +132,26 @@ def resolve_models_arg(value: str) -> str:
 def resolve_reasoning_effort(effort_arg: str, models_arg: str) -> str:
     """Resolve --reasoning-effort to a concrete level.
 
-    When "auto", derive from the --models preset name (cheap/medium/best and
-    their *2 variants); for
-    a raw ensemble string or unknown preset, fall back to "high" (the prior
+    When "auto", derive from the --models preset name; for a raw ensemble
+    string or unknown preset, fall back to "high" (the prior
     default). An explicit low/medium/high always wins.
     """
     if effort_arg != "auto":
         return effort_arg
     return MODEL_ENSEMBLE_PRESET_EFFORT.get(models_arg, "high")
+
+
+from population_reevaluation import PopulationReevaluation, POPULATION_REEVAL_SEED_OFFSET
+
+
+def _wandb_log_at_eval_step(data, step, *, commit=None):
+    """Keep W&B history monotonic when asynchronous diagnostics commit extra rows.
+
+    eval_idx retains the true evolution seed count; W&B's internal row index
+    may advance beyond it while diagnostics drain after the final generation.
+    """
+    import wandb
+    wandb.log({"eval_idx": step, **data}, step=max(step, wandb.run.step), commit=commit)
 
 
 from evolution_helpers import (
@@ -153,6 +173,7 @@ from evolution_helpers import (
     select_unsolved_task_with_trace,
     format_pareto_trace_for_task,
     select_survivors,
+    select_population_reeval_members,
     select_survivors_diverse,
     select_survivors_complexity,
     initialize_complexity_population,
@@ -209,6 +230,19 @@ def _describe_operator_kind(type_name: str, code: str) -> str:
         if a.strip()
     ]
     return "smart mutation" if "dataset" in arg_names else "mutation"
+
+
+def _uses_data_aware_mutation_signature(
+    type_name: str,
+    code: str,
+) -> bool:
+    """Whether candidate code uses the five-argument mutation interface."""
+    if type_name != "mutation":
+        return False
+    match = re.search(r"function\s+\w+\s*\(", code)
+    if match is None:
+        return False
+    return _signature_positional_arity(code, match.end() - 1) == 5
 
 
 def _make_complexity_pareto_figure(population: List[OperatorBundle], generation: int):
@@ -469,7 +503,7 @@ def _finalize_smart_reeval(
             log["smart/offspring_EI"] = offspring_EI
         if reeval_actual_improvement is not None:
             log["smart/reeval_actual_improvement"] = reeval_actual_improvement
-        wandb.log(log, step=eval_log_state["idx"])
+        _wandb_log_at_eval_step(log, step=eval_log_state["idx"])
 
 
 def evaluate_baseline(
@@ -742,6 +776,7 @@ def run_bundle_evolution(
     lambda_target: int = 1,
     reeval_budget: int = 20,
     n_reevals: int = 0,
+    reeval_topk: int = 2,
     smart_sigma: Optional[float] = DEFAULT_SMART_SIGMA,
     max_concurrent_jobs: Optional[int] = None,
     llm_max_workers: int = 16,
@@ -751,6 +786,7 @@ def run_bundle_evolution(
     val_split: Optional[str] = None,
     test_split: Optional[str] = None,
     val_n_runs: int = 10,
+    population_reeval_runs: int = 3,
     identify_topk: int = 10,
     pysr_wall_limit: int = 600,
     val_pysr_wall_limit: Optional[int] = None,
@@ -758,6 +794,8 @@ def run_bundle_evolution(
     split_label: Optional[str] = None,
     mutation_mode: str = "random",
     simplify_cooldown: int = 0,
+    excluded_mutation_modes: Optional[List[str]] = None,
+    allow_data_aware_mutations: bool = True,
     domain: str = "srbench",
     uninformative_prompts: bool = False,
     black_box: bool = False,
@@ -781,6 +819,13 @@ def run_bundle_evolution(
     """
     rng = random.Random(seed)
     np.random.seed(seed)
+
+    excluded_mutation_modes = list(excluded_mutation_modes or [])
+    allowed_mutation_modes = [
+        mode for mode in META_MUTATION_MODES if mode not in excluded_mutation_modes
+    ]
+    if not allowed_mutation_modes:
+        raise ValueError("At least one meta-mutation mode must remain enabled")
 
     if simplify_cooldown < 0 or simplify_cooldown > n_generations:
         raise ValueError(
@@ -814,7 +859,7 @@ def run_bundle_evolution(
         score = bundle.score if bundle.score is not None else float("nan")
         if score == score and score > _eval_log_state["best"]:  # score == score: NaN guard
             _eval_log_state["best"] = score
-        wandb.log({
+        _wandb_log_at_eval_step({
             "eval_idx": _eval_log_state["idx"],
             "eval_score": score,
             "eval_running_best": _eval_log_state["best"],
@@ -869,18 +914,23 @@ def run_bundle_evolution(
         "lambda_target": lambda_target,
         "reeval_budget": reeval_budget,
         "n_reevals": n_reevals,
+        "reeval_topk": reeval_topk,
         "smart_sigma": smart_sigma,
         "identify_topk": identify_topk,
+        "population_reeval_runs": population_reeval_runs,
         "llm_max_workers": llm_max_workers,
         "execution_feedback_n": execution_feedback_n,
         "execution_feedback_prob": execution_feedback_prob,
         "mutation_mode": mutation_mode,
+        "excluded_mutation_modes": excluded_mutation_modes,
+        "allow_data_aware_mutations": allow_data_aware_mutations,
         "simplify_cooldown": simplify_cooldown,
     })
     metric_label = {
         "r2": "frontier R²",
         "gt": "GT match rate",
         "gt-r2": "GT+R² reward",
+        "gt-r2-v2": "3×GT + frontier R² reward",
         "acc": "accuracy",
         "gt-acc": "GT+accuracy reward",
     }.get(fitness_metric, "GT match rate")
@@ -897,13 +947,16 @@ def run_bundle_evolution(
     #   population          — every offspring gets n_runs initial seeds; each
     #                         generation the current population (= last gen's
     #                         survivors) is topped up to n_reevals total seeds.
+    #   topk                — as population, but only the reeval_topk highest-
+    #                         scoring current population members are topped up.
     VALID_REEVAL = ("none", "heuristic", "TTTS", "KG", "uniform",
-                    "TTTS-dynamic", "KG-dynamic", "population")
+                    "TTTS-dynamic", "KG-dynamic", "population", "topk")
     if reeval not in VALID_REEVAL:
         raise ValueError(f"unknown reeval={reeval!r} (want one of {VALID_REEVAL})")
     dynamic_on = reeval in ("TTTS-dynamic", "KG-dynamic")
     fixed_on = reeval in ("TTTS", "KG", "uniform")
-    pop_reeval_on = reeval == "population"
+    pop_reeval_on = reeval in ("population", "topk")
+    topk_pop_reeval_on = reeval == "topk"
     smart_policy = "kg" if reeval == "KG-dynamic" else "ttts"
     fixed_alloc = {"TTTS": "ttts", "KG": "kg", "uniform": "uniform"}.get(reeval)
     if (dynamic_on or fixed_on) and reeval_budget <= 0:
@@ -916,9 +969,11 @@ def run_bundle_evolution(
     if pop_reeval_on:
         if n_reevals <= n_runs:
             raise ValueError(
-                f"--reeval population requires --n-reevals > --n-runs "
+                f"--reeval {reeval} requires --n-reevals > --n-runs "
                 f"(got n_reevals={n_reevals}, n_runs={n_runs})"
             )
+        if topk_pop_reeval_on and reeval_topk <= 0:
+            raise ValueError("--reeval topk requires --reeval-topk > 0")
     if racing_on and (dynamic_on or fixed_on or pop_reeval_on):
         # The CLI already forbids this pairing; guard library callers too.
         # Both paths compute run_index_start from seeds_evaluated before either
@@ -946,6 +1001,9 @@ def run_bundle_evolution(
             f"per-bundle cap={n_runs_max}*λ. "
             f"Survivors selected from all-time archive."
         )
+
+    if population_reeval_runs < 0:
+        raise ValueError("--population-reeval-runs must be nonnegative")
 
     # All-time archive of every bundle ever evaluated. Survivor selection draws
     # from this archive when racing is on (HoF default); otherwise it's used
@@ -1004,17 +1062,16 @@ def run_bundle_evolution(
             f"training run_index range (up to {_max_train_run_index})"
         )
 
-    # Periodic background validation on a held-out split.
-    # Submits a single-bundle SLURM eval on `val_split` each generation
-    # whenever the current best bundle has changed. Runs on a background
-    # thread so the evolution loop isn't blocked.
+    # Periodic background validation on a held-out split. Each completed
+    # generation gets a generation-specific seed band, even when the same best
+    # bundle survives, so repeated diagnostics cannot become cache hits.
+    VAL_REEVAL_SEED_OFFSET = 200_000
     val_state: Dict[str, Any] = {
         "enabled": False,
         "dataset_names": None,
         "noise_map": None,
         "executor": None,
         "pending_future": None,
-        "last_bundle_name": None,
     }
     if val_split:
         val_dataset_names = load_dataset_names_from_split(val_split)
@@ -1043,6 +1100,9 @@ def run_bundle_evolution(
             target_noise_map=val_state["noise_map"],
             fitness_metric=fitness_metric,
             pysr_wall_limit=val_pysr_wall_limit,
+            run_index_start_per_config=[
+                VAL_REEVAL_SEED_OFFSET + gen_submitted * val_n_runs
+            ],
         )
         batch_results = evaluator.collect_batches([handle])
         avg, vec, details = batch_results[0][0] if batch_results and batch_results[0] else (-1.0, [], [])
@@ -1063,7 +1123,7 @@ def run_bundle_evolution(
         )
         if wandb_run is not None:
             import wandb
-            wandb.log({
+            _wandb_log_at_eval_step({
                 "val_eval/avg_score": avg,
                 "val_eval/gen_submitted": info["gen_submitted"],
             }, step=_eval_log_state["idx"])
@@ -1087,9 +1147,6 @@ def run_bundle_evolution(
             return
         if val_state["pending_future"] is not None and not val_state["pending_future"].done():
             return
-        if bundle.display_name == val_state["last_bundle_name"]:
-            return
-        val_state["last_bundle_name"] = bundle.display_name
         val_state["pending_future"] = val_state["executor"].submit(
             _run_val_eval, bundle, gen,
         )
@@ -1102,7 +1159,6 @@ def run_bundle_evolution(
     train_reeval_state: Dict[str, Any] = {
         "executor": ThreadPoolExecutor(max_workers=1, thread_name_prefix="train-reeval"),
         "pending_future": None,
-        "last_bundle_name": None,
     }
     print(
         f"Train reeval: enabled ({val_n_runs} runs/bundle, "
@@ -1117,7 +1173,9 @@ def run_bundle_evolution(
             seed=seed, n_runs=val_n_runs,
             target_noise_map=target_noise_map,
             fitness_metric=fitness_metric,
-            run_index_start_per_config=[TRAIN_REEVAL_SEED_OFFSET],
+            run_index_start_per_config=[
+                TRAIN_REEVAL_SEED_OFFSET + gen_submitted * val_n_runs
+            ],
         )
         batch_results = evaluator.collect_batches([handle])
         avg, vec, details = batch_results[0][0] if batch_results and batch_results[0] else (-1.0, [], [])
@@ -1151,7 +1209,7 @@ def run_bundle_evolution(
                 log["val_eval/train_score_at_submit"] = live
             if delta is not None:
                 log["val_eval/train_winners_curse_delta"] = delta
-            wandb.log(log, step=_eval_log_state["idx"])
+            _wandb_log_at_eval_step(log, step=_eval_log_state["idx"])
 
     def _check_train_reeval_future(wait: bool = False) -> None:
         fut = train_reeval_state["pending_future"]
@@ -1169,9 +1227,6 @@ def run_bundle_evolution(
     def _maybe_submit_train_reeval(bundle: OperatorBundle, gen: int) -> None:
         if train_reeval_state["pending_future"] is not None and not train_reeval_state["pending_future"].done():
             return
-        if bundle.display_name == train_reeval_state["last_bundle_name"]:
-            return
-        train_reeval_state["last_bundle_name"] = bundle.display_name
         # Snapshot the live train score now — racing may overwrite bundle.score
         # before the future resolves.
         train_score_at_submit = bundle.score
@@ -1180,13 +1235,110 @@ def run_bundle_evolution(
         )
         print(f"\n[train reeval] submitted for gen {gen} best={bundle.display_name} (background)")
 
-    # Evaluate baseline (default operators)
+    # Diagnostic-only estimates for every population entrant. One worker queues
+    # ALL generations; unlike best-only diagnostics no generation is skipped.
+    population_diagnostic = None
+    population_diagnostic_executor = None
+    population_diagnostic_futures = []
+    if population_reeval_runs:
+        last_generation = (resume_state["start_gen"] if resume_state else 1) + n_generations
+        if max(_max_train_run_index, VAL_REEVAL_SEED_OFFSET + (last_generation + 1) * val_n_runs) >= POPULATION_REEVAL_SEED_OFFSET:
+            raise ValueError("Population diagnostic seed range would overlap another evaluation")
+        resume_diagnostic = (
+            Path(resume_state["source_path"]).parent / "population_reeval.json"
+            if resume_state else None
+        )
+        population_diagnostic = PopulationReevaluation(
+            Path(output_dir) / "population_reeval.json",
+            n_runs=population_reeval_runs, resume_path=resume_diagnostic,
+            context={"seed": seed, "dataset_names": dataset_names,
+                     "fitness_metric": fitness_metric, "domain": domain,
+                     "black_box": black_box, "max_samples": max_samples,
+                     "target_noise": target_noise, "target_noise_map": target_noise_map,
+                     "eval_noise_levels": eval_noise_levels, "pysr_kwargs": pysr_kwargs,
+                     "pysr_wall_limit": pysr_wall_limit},
+        )
+        population_diagnostic_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="population-reeval")
+        if wandb_run is not None:
+            import wandb
+            for metric in ("eval_score", "eval_running_best", "eval_bundle_loc"):
+                wandb.define_metric(metric, step_metric="eval_idx")
+            wandb.define_metric("val_eval/pop_reeval_gen_submitted")
+            for metric in (
+                "val_eval/pop_avg_score", "val_eval/expected_parent_score",
+                "val_eval/pop_reeval_failed", "val_eval/pop_reeval_new_members",
+                "val_eval/pop_reeval_new_seed_runs", "val_eval/pop_reeval_population_size",
+            ):
+                wandb.define_metric(metric, step_metric="val_eval/pop_reeval_gen_submitted")
+        print(f"Population diagnostic: {population_reeval_runs} fresh train seeds per new member")
+
+    def _evaluate_population_diagnostic(configs, starts, diagnostic_n_runs):
+        handle = evaluator.submit_configs(
+            configs, dataset_names, seed=seed, n_runs=diagnostic_n_runs,
+            target_noise_map=target_noise_map, fitness_metric=fitness_metric,
+            run_index_start_per_config=starts,
+        )
+        return evaluator.collect_batches([handle])[0]
+
+    def _queue_population_diagnostic(gen, pop_type, mode):
+        if population_diagnostic is None:
+            return
+        effective_mode = (
+            "simplify" if mode == "random" and allowed_mutation_modes == ["simplify"] else mode
+        )
+        snapshot = population_diagnostic.snapshot(
+            population, pysr_kwargs, generation=gen,
+            population_type=pop_type, mutation_mode=effective_mode,
+        )
+        future = population_diagnostic_executor.submit(
+            population_diagnostic.observe, snapshot, _evaluate_population_diagnostic)
+        population_diagnostic_futures.append((gen, future))
+
+    def _check_population_diagnostics(wait=False):
+        while population_diagnostic_futures:
+            gen, future = population_diagnostic_futures[0]
+            if not wait and not future.done():
+                break
+            population_diagnostic_futures.pop(0)
+            try:
+                result = future.result()
+            except Exception as exc:
+                print(f"\n[population reeval] gen {gen} failed: {exc}")
+                # Never publish a partial-population average as a complete estimate.
+                if wandb_run is not None:
+                    import wandb
+                    _wandb_log_at_eval_step({"val_eval/pop_reeval_gen_submitted": gen,
+                               "val_eval/pop_reeval_failed": 1}, step=_eval_log_state["idx"], commit=True)
+                continue
+            print(f"\n[population reeval] gen {gen}: mean={result['avg_score']:.4f} "
+                  f"expected parent={result['expected_parent_score']:.4f} "
+                  f"new members={result['new_members']} seeds={result['new_seed_runs']}")
+            if wandb_run is not None:
+                import wandb
+                _wandb_log_at_eval_step({"val_eval/pop_reeval_gen_submitted": gen,
+                           "val_eval/pop_reeval_failed": 0,
+                           "val_eval/pop_avg_score": result["avg_score"],
+                           "val_eval/expected_parent_score": result["expected_parent_score"],
+                           "val_eval/pop_reeval_new_members": result["new_members"],
+                           "val_eval/pop_reeval_new_seed_runs": result["new_seed_runs"],
+                           "val_eval/pop_reeval_population_size": len(result["members"])},
+                          step=_eval_log_state["idx"], commit=True)
+
+    # Compare against the supplied seed bundle, or default PySR without one.
     baseline_details: Optional[List[Dict]] = None
     if resume_state is None:
         print("=" * 60)
-        print("Evaluating baseline (default operators)...")
+        eval_baseline = (
+            copy.deepcopy(baseline_bundle)
+            if baseline_bundle is not None else OperatorBundle.create_default()
+        )
+        baseline_label = (
+            eval_baseline.display_name
+            if baseline_bundle is not None else "default operators"
+        )
+        print(f"Evaluating baseline ({baseline_label})...")
         print("=" * 60)
-        eval_baseline = OperatorBundle.create_default()
         baseline_config = eval_baseline.to_pysr_config(pysr_kwargs)
         baseline_results = _evaluate_configs_with_noise_map(
             evaluator=evaluator,
@@ -1245,7 +1397,7 @@ def run_bundle_evolution(
 
     if wandb_run is not None:
         import wandb
-        wandb.log({"baseline_score": baseline_score, "generation": 0}, step=_eval_log_state["idx"])
+        _wandb_log_at_eval_step({"baseline_score": baseline_score, "generation": 0}, step=_eval_log_state["idx"])
         log_cpu_usage(wandb_run)
 
     if resume_state is not None:
@@ -1274,7 +1426,7 @@ def run_bundle_evolution(
         print("=" * 60)
         if wandb_run is not None:
             import wandb
-            wandb.log({"best_score": best.score, "generation": start_gen - 1}, step=_eval_log_state["idx"])
+            _wandb_log_at_eval_step({"best_score": best.score, "generation": start_gen - 1}, step=_eval_log_state["idx"])
     else:
         start_gen = 1
         init_pop_start = time.perf_counter()
@@ -1373,7 +1525,16 @@ def run_bundle_evolution(
                 # Initial-pop mode: explore by default, but `mutation_mode`
                 # forces a single mode for the whole run. simplify/refine need
                 # a parent — fall back to explore if the baseline lacks one.
-                init_mode = "explore" if mutation_mode == "random" else mutation_mode
+                if mutation_mode == "random":
+                    # Preserve historical initialization unless explore is the
+                    # ablated mode. Crossover needs two distinct parents and is
+                    # therefore not usable in a fresh initial population.
+                    init_choices = [
+                        mode for mode in allowed_mutation_modes if mode != "crossover"
+                    ]
+                    init_mode = "explore" if "explore" in init_choices else rng.choice(init_choices)
+                else:
+                    init_mode = mutation_mode
                 if init_mode in ("refine", "simplify") and baseline_op is None:
                     init_mode = "explore"
                 specs.append(OperatorGenerationSpec(
@@ -1389,6 +1550,7 @@ def run_bundle_evolution(
                     temperature=temperature,
                     use_cache=use_cache,
                     reasoning_effort=reasoning_effort,
+                    allow_data_aware_mutations=allow_data_aware_mutations,
                     log_prompt_dir=prompts_log_dir,
                     log_generation=0,
                 ))
@@ -1414,7 +1576,13 @@ def run_bundle_evolution(
                     unique_name = f"{func_name}_init_{bundle_idx}"
                     code = _rename_function_identifier(code, func_name, unique_name)
 
-                    is_valid, error = validate_julia_code(unique_name, code, op_type)
+                    if (
+                        not allow_data_aware_mutations
+                        and _uses_data_aware_mutation_signature(type_name, code)
+                    ):
+                        is_valid, error = False, "data-aware mutation disabled by ablation"
+                    else:
+                        is_valid, error = validate_julia_code(unique_name, code, op_type)
                     append_validation_log(
                         prompts_log_dir, op_type, spec.mode, 0,
                         bundle_idx * 100 + attempt,
@@ -1536,10 +1704,12 @@ def run_bundle_evolution(
 
         if wandb_run is not None:
             import wandb
-            wandb.log({"best_score": best.score, "generation": 0}, step=_eval_log_state["idx"])
+            _wandb_log_at_eval_step({"best_score": best.score, "generation": 0}, step=_eval_log_state["idx"])
 
         _maybe_submit_val(best, gen=0)
         _maybe_submit_train_reeval(best, gen=0)
+
+    _queue_population_diagnostic(start_gen - 1, population_type, mutation_mode)
 
     # Smart-reeval state. Offspring posterior means from the last K generations
     # form the empirical distribution for offspring EI. Plots go under
@@ -1563,8 +1733,10 @@ def run_bundle_evolution(
         print(f"Reeval enabled [{reeval}]: B={reeval_budget} seeds/gen over the "
               f"archive, allocation={fixed_alloc}.")
     elif pop_reeval_on:
-        print(f"Population reeval enabled: offspring get {n_runs} initial seeds; "
-              f"each generation's survivors are topped up to {n_reevals} seeds.")
+        scope = (f"the top {reeval_topk} survivors" if topk_pop_reeval_on
+                 else "each generation's survivors")
+        print(f"Population reeval enabled [{reeval}]: offspring get {n_runs} initial "
+              f"seeds; {scope} are topped up to {n_reevals} seeds.")
 
     if simplify_cooldown:
         cooldown_start = start_gen + n_generations - simplify_cooldown
@@ -1831,20 +2003,25 @@ def run_bundle_evolution(
                 pop_futs.append((member, fut))
                 pop_extras_per_member.append(extra)
         elif pop_reeval_on:
-            # Population reeval: top up every current population member (= the
-            # survivors selected at the end of the previous generation) to
-            # n_reevals total seeds. Submitted up-front so the reevals run on
-            # SLURM while the LLM generates this generation's offspring; the
-            # merged scores land before this generation's survivor selection.
-            # Members already at n_reevals seeds (long-time survivors) cost 0.
+            # Population reeval: top up either every current population member
+            # or only its highest-scoring reeval_topk members. These are the
+            # survivors selected at the end of the previous generation.
+            # Submitted up-front so reevaluation overlaps LLM generation and
+            # offspring evaluation, with merged scores available for selection.
+            reeval_members = (
+                select_population_reeval_members(
+                    population, reeval_topk, target_seeds=n_reevals
+                )
+                if topk_pop_reeval_on else population
+            )
             to_top_up = [
                 (member, n_reevals - int(getattr(member, "seeds_evaluated", 0) or 0))
-                for member in population
+                for member in reeval_members
             ]
             to_top_up = [(m, extra) for m, extra in to_top_up if extra > 0]
             print(
-                f"\nPopulation reeval gen {gen}: topping up "
-                f"{len(to_top_up)}/{len(population)} members to {n_reevals} seeds "
+                f"\nPopulation reeval gen {gen} [{reeval}]: topping up "
+                f"{len(to_top_up)}/{len(reeval_members)} selected members to {n_reevals} seeds "
                 f"({sum(e for _, e in to_top_up)} extra seeds)."
             )
             for member, extra in to_top_up:
@@ -1889,7 +2066,16 @@ def run_bundle_evolution(
             # retries for this slot so a failure doesn't silently shift the
             # type mix.
             current_type_name = target_types[slot_idx]
-            parent_bundle = select_parent(population, rng)
+            parent_bundle = select_parent(
+                population, rng,
+                population_type=generation_population_type,
+                mutation_mode=(
+                    "simplify"
+                    if generation_mutation_mode == "random"
+                    and allowed_mutation_modes == ["simplify"]
+                    else generation_mutation_mode
+                ),
+            )
             parent_op = parent_bundle.get_operator(current_type_name)
             task_info: Optional[Dict[str, str]] = None
 
@@ -1901,17 +2087,25 @@ def run_bundle_evolution(
             # an operator from any population member that has one. If the
             # population can't supply enough parents for the chosen mode, fall
             # back along: crossover -> refine -> explore, simplify -> explore.
-            if generation_mutation_mode == "random":
-                mode = rng.choice(["explore", "refine", "simplify", "crossover"])
-            else:
-                mode = generation_mutation_mode
-            parent = None
-            parent2 = None
             type_candidates = [
                 b.get_operator(current_type_name)
                 for b in population
                 if b.get_operator(current_type_name) is not None
             ]
+            if generation_mutation_mode == "random":
+                feasible_modes = ["explore"]
+                if type_candidates:
+                    feasible_modes.extend(["refine", "simplify"])
+                if len(type_candidates) >= 2:
+                    feasible_modes.append("crossover")
+                mode = rng.choice([
+                    candidate for candidate in feasible_modes
+                    if candidate in allowed_mutation_modes
+                ])
+            else:
+                mode = generation_mutation_mode
+            parent = None
+            parent2 = None
             if mode in ("refine", "simplify"):
                 if parent_op is not None:
                     parent = parent_op
@@ -1981,6 +2175,7 @@ def run_bundle_evolution(
                     temperature=temperature,
                     use_cache=use_cache,
                     reasoning_effort=reasoning_effort,
+                    allow_data_aware_mutations=allow_data_aware_mutations,
                     task_info=cand["task_info"],
                     log_prompt_dir=prompts_log_dir if gen <= log_prompt_gens_max else None,
                     log_generation=gen,
@@ -2014,7 +2209,13 @@ def run_bundle_evolution(
                     unique_name = f"{func_name}_gen{gen}_{slot_idx}"
                     code = _rename_function_identifier(code, func_name, unique_name)
 
-                    is_valid, error = validate_julia_code(unique_name, code, current_op_type)
+                    if (
+                        not allow_data_aware_mutations
+                        and _uses_data_aware_mutation_signature(current_type_name, code)
+                    ):
+                        is_valid, error = False, "data-aware mutation disabled by ablation"
+                    else:
+                        is_valid, error = validate_julia_code(unique_name, code, current_op_type)
                     append_validation_log(
                         prompts_log_dir if gen <= log_prompt_gens_max else None,
                         current_op_type, mode, gen, variation_seed,
@@ -2201,8 +2402,8 @@ def run_bundle_evolution(
             elif pop_reeval_on:
                 # Select over the re-scored current population plus fresh
                 # offspring using the configured survivor policy. Task-diverse
-                # selection compares solve rates because incumbents have
-                # n_reevals seeds while fresh offspring have n_runs seeds.
+                # selection compares solve rates even when incumbents and
+                # offspring have unequal seed counts.
                 # Dropped bundles do not re-enter, so their reeval seeds stop
                 # accumulating.
                 if generation_population_type == "task":
@@ -2426,13 +2627,20 @@ def run_bundle_evolution(
                 frac = sum(pop_meta_counts[c][m] for c in META_COMPONENTS) / denom
                 log_data[f"meta_mix/by_type/{m}"] = frac
             log_data["meta_mix/total_count"] = meta_total
-            wandb.log(log_data, step=_eval_log_state["idx"])
+            _wandb_log_at_eval_step(log_data, step=_eval_log_state["idx"])
             log_cpu_usage(wandb_run)
 
+        _check_population_diagnostics(wait=False)
+        _queue_population_diagnostic(gen, generation_population_type, generation_mutation_mode)
         _check_val_future(wait=False)
         _maybe_submit_val(best, gen=gen)
         _check_train_reeval_future(wait=False)
         _maybe_submit_train_reeval(best, gen=gen)
+
+    if population_diagnostic_executor is not None:
+        print("\nWaiting for population diagnostics to complete...")
+        _check_population_diagnostics(wait=True)
+        population_diagnostic_executor.shutdown(wait=True)
 
     if val_state["enabled"]:
         if val_state["pending_future"] is not None:
@@ -2445,21 +2653,25 @@ def run_bundle_evolution(
     _check_train_reeval_future(wait=True)
     train_reeval_state["executor"].shutdown(wait=True)
 
-    # Population reeval: the loop tops up the *previous* generation's survivors
-    # at the start of each generation, so the final population's newest
-    # entrants still sit at n_runs seeds. Top them up here so the end-of-run
-    # scores (and the identification pass's shrunk ranking) use the full
-    # n_reevals seed count.
+    # Population reeval tops up the previous generation's survivors at the
+    # start of each generation. Apply the same full-population or limited-top-k
+    # policy once more to the final population's newest entrants.
     if pop_reeval_on:
+        final_reeval_members = (
+            select_population_reeval_members(
+                population, reeval_topk, target_seeds=n_reevals
+            )
+            if topk_pop_reeval_on else population
+        )
         to_top_up = [
             (b, n_reevals - int(getattr(b, "seeds_evaluated", 0) or 0))
-            for b in population
+            for b in final_reeval_members
         ]
         to_top_up = [(b, extra) for b, extra in to_top_up if extra > 0]
         if to_top_up:
             print("\n" + "=" * 60)
-            print(f"Final population reeval: topping up {len(to_top_up)}/"
-                  f"{len(population)} members to {n_reevals} seeds")
+            print(f"Final population reeval [{reeval}]: topping up {len(to_top_up)}/"
+                  f"{len(final_reeval_members)} selected members to {n_reevals} seeds")
             print("=" * 60)
             final_executor = ThreadPoolExecutor(
                 max_workers=min(32, len(to_top_up)),
@@ -2562,7 +2774,7 @@ def run_bundle_evolution(
             best = winner
             if wandb_run is not None:
                 import wandb
-                wandb.log({
+                _wandb_log_at_eval_step({
                     "identification/best_fresh_score": float(fresh[order[0]]),
                     "identification/live_argmax_fresh_score": float(
                         fresh[int(np.argmax([b.score for b in candidates]))]
@@ -2611,9 +2823,13 @@ def main():
                         help="Offspring per generation. Default 20, except under "
                              "--reeval smart* where it defaults to --population // 2.")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--population-reeval-runs", type=int, default=3,
+                        help="Diagnostic fresh train seeds per new population member (default 3; "
+                             "0 disables). Cached across generations, never used for selection. "
+                             "Logs population mean and selection-weighted parent fitness.")
     parser.add_argument("--n-runs", type=int, default=10)
     parser.add_argument("--fitness-metric", type=str, default=None,
-                        choices=["r2", "gt", "gt-r2", "acc", "gt-acc"],
+                        choices=["r2", "gt", "gt-r2", "gt-r2-v2", "acc", "gt-acc"],
                         help="Meta-evolution fitness metric: "
                              "'gt' = domain-defined whole-frontier ground-truth recovery "
                              "rate (symbolic match for SRBench; NRMSE <= 1e-6 for neuron); "
@@ -2621,8 +2837,9 @@ def main():
                              "1..maxsize (frontier-averaged R²); "
                              "'gt-r2' = 1.0 if the task is solved (gt match), else "
                              "the frontier-averaged R²; "
-                             "'acc' = validation accuracy of the model_selection='best' "
-                             "equation (bit-wise for Boolean domains; exact-integer for MIPS); "
+                             "'gt-r2-v2' = 3 * solved + frontier-averaged R²; "
+                             "'acc' = maximum validation accuracy across frontier "
+                             "equations (bit-wise for Boolean domains; exact-integer for MIPS); "
                              "'gt-acc' = 1.0 if solved, else that accuracy. "
                              "Defaults to gt-acc for Boolean/MIPS, r2 for canonical SRBench "
                              "black-box splits, otherwise gt.")
@@ -2677,6 +2894,10 @@ def main():
                              "mean, instead of trusting the curse-inflated live argmax. "
                              "0 disables.")
     parser.add_argument("--max-samples", type=int, default=1000)
+    parser.add_argument("--maxsize", type=int, default=None,
+                        help="Override the domain's maximum PySR expression complexity.")
+    parser.add_argument("--maxdepth", type=int, default=None,
+                        help="Override the domain's maximum PySR expression depth.")
     parser.add_argument("--target-noise", type=float, default=0.0)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--random-target-noise", action="store_true")
@@ -2684,10 +2905,10 @@ def main():
     parser.set_defaults(random_target_noise=False)
     parser.add_argument("--eval-all-noise-levels", action="store_true",
                         help=f"Evaluate every task at all noise levels {TARGET_NOISE_LEVELS} "
-                             "sequentially in one SLURM task and score as the mean across levels "
-                             "(~4x compute per eval). Overrides --random-target-noise. SLURM "
-                             "per-task wall and --job-timeout scale up automatically; the per-fit "
-                             "--pysr-wall-limit is unchanged.")
+                             "in separate SLURM tasks, using the same seed at each level, and "
+                             "average their scores (~4x tasks/compute per eval). --n-runs is "
+                             "the number of seeds per dataset/noise pair. Overrides "
+                             "--random-target-noise; per-fit time limits are unchanged.")
 
     parser.add_argument("--max-evals", type=int, default=1000000,
                         help="Maximum evaluations per PySR run (eval-budget mode; the default). "
@@ -2716,7 +2937,7 @@ def main():
         f"{name}={spec!r}" for name, spec in MODEL_ENSEMBLE_PRESETS.items()
     )
     parser.add_argument("--models", type=str, default="best",
-                        help="Ensemble of models with weights, or a preset name. "  # cheap, medium, best, cheap2, medium2, best2
+                        help="Ensemble of models with weights, or a preset name. "
                              "Overrides --model when set. "
                              f"Presets: {preset_help}")
     parser.add_argument("--temperature", type=float, default=0.0)
@@ -2724,7 +2945,7 @@ def main():
                         choices=["auto", "low", "medium", "high"],
                         help="LLM reasoning effort for operator generation. "
                              "'auto' derives it from the --models preset "
-                             "(cheap/cheap2=low, medium/medium2=medium, "
+                             "(cheap/cheap2/best3=low, medium/medium2=medium, "
                              "best/best2=high); a raw "
                              "ensemble string defaults to high. An explicit "
                              "value overrides the preset pairing.")
@@ -2760,10 +2981,11 @@ def main():
                              "'complexity' = complexity-aware Pareto (bucket by total bundle LOC, "
                              "best per bucket, then drop Pareto-dominated buckets). "
                              "'task' and 'complexity' are incompatible with heuristic/archive "
-                             "racing; both are supported with '--reeval population'.")
+                             "racing; both are supported with '--reeval population' and "
+                             "'--reeval topk'.")
     parser.add_argument("--reeval", type=str, default="none",
                         choices=["none", "heuristic", "TTTS", "KG", "uniform",
-                                 "TTTS-dynamic", "KG-dynamic", "population"],
+                                 "TTTS-dynamic", "KG-dynamic", "population", "topk"],
                         help="Reevaluation strategy. 'none' (default): each offspring is "
                              "evaluated once on n_runs seeds, no reevaluation. "
                              "'heuristic': qualifier-based racing reeval driven by "
@@ -2777,15 +2999,20 @@ def main():
                              "(leftover is unspent); allocation via TTTS / KG. "
                              "'population': offspring get n_runs initial seeds; anything in "
                              "the population at the end of a generation is topped up to "
-                             "--n-reevals total seeds.")
+                             "--n-reevals total seeds. 'topk': the same asynchronous "
+                             "population top-up, limited to the --reeval-topk highest-scoring "
+                             "current population members.")
     parser.add_argument("--reeval-budget", type=int, default=20,
                         help="Per-generation archive reeval budget (seeds). Spent verbatim "
                              "by TTTS/KG/uniform; caps the B* plan for *-dynamic modes.")
     parser.add_argument("--n-reevals", type=int, default=0,
                         help="Total seed count each population member is topped up to under "
-                             "--reeval population (must be > --n-runs). E.g. --n-runs 3 "
+                             "--reeval population/topk (must be > --n-runs). E.g. --n-runs 3 "
                              "--n-reevals 10 --reeval population: every offspring gets 3 "
                              "seeds; survivors accumulate up to 10.")
+    parser.add_argument("--reeval-topk", type=int, default=2,
+                        help="Number of highest-scoring current population members to top up "
+                             "per generation under --reeval topk (default: 2).")
     parser.add_argument("--smart-sigma", type=float, default=DEFAULT_SMART_SIGMA,
                         help="Per-seed noise σ used in reeval planning (both --reeval smart "
                              "B*/TTTS and --reeval heuristic qualifier racing). By default a fixed "
@@ -2814,9 +3041,13 @@ def main():
                              "Writes to a new output dir; --generations N means N ADDITIONAL generations. "
                              "Works for all variants (racing, population_type, etc.). "
                              "Config flags should match the prior run; mismatches are warned, not enforced.")
+    parser.add_argument("--continue-eval-idx", type=int, default=None,
+                        help="Exact cumulative evolution evaluation count at the resume checkpoint, "
+                             "if known. Overrides reconstruction from saved bundles, which can "
+                             "miss discarded initial candidates in older checkpoints.")
 
     parser.add_argument("--baseline", type=str, default=None,
-                        help="Path to a baseline operator to seed the initial population. "
+                        help="Path to a baseline operator used for the baseline score and to seed the initial population. "
                              "Accepts: evolve_pysr output dir or run_data.json, "
                              "openevolve best_program.py, or a raw .jl file.")
 
@@ -2832,6 +3063,18 @@ def main():
                              "The final generations are overridden when --simplify-cooldown is set. "
                              "Default 'random' picks uniformly each time, matching prior behavior. "
                              "If a non-'random' mode requires a parent the bundle lacks, falls back to explore.")
+    parser.add_argument(
+        "--exclude-mutation-mode",
+        action="append",
+        default=[],
+        choices=list(META_MUTATION_MODES),
+        help="Exclude one meta-mutation mode from --mutation-mode random. May be repeated.",
+    )
+    parser.add_argument(
+        "--no-data-aware-mutations",
+        action="store_true",
+        help="Restrict evolved mutation operators to the structural four-argument interface.",
+    )
 
     parser.add_argument(
         "--neuron-full-eval",
@@ -2848,12 +3091,29 @@ def main():
                         help="Per-fit evaluation budget for automatic NeuronBench full evaluation")
 
     args = parser.parse_args()
+    if args.continue_eval_idx is not None:
+        if not args.continue_from:
+            parser.error("--continue-eval-idx requires --continue-from")
+        if args.continue_eval_idx < 0:
+            parser.error("--continue-eval-idx must be nonnegative")
+    if args.population_reeval_runs < 0:
+        parser.error("--population-reeval-runs must be nonnegative")
 
+    if args.maxsize is not None and args.maxsize < 7:
+        parser.error("--maxsize must be at least 7 (PySR minimum)")
+    if args.maxdepth is not None and args.maxdepth < 1:
+        parser.error("--maxdepth must be positive")
     if args.simplify_cooldown < 0 or args.simplify_cooldown > args.generations:
         parser.error(
             "--simplify-cooldown must be between 0 and --generations "
             f"(got {args.simplify_cooldown} for {args.generations} generations)"
         )
+    if args.mutation_mode != "random" and args.exclude_mutation_mode:
+        parser.error("--exclude-mutation-mode requires --mutation-mode random")
+    if len(set(args.exclude_mutation_mode)) >= len(META_MUTATION_MODES):
+        parser.error("--exclude-mutation-mode cannot exclude every mode")
+    if args.simplify_cooldown > 0 and "simplify" in args.exclude_mutation_mode:
+        parser.error("--simplify-cooldown conflicts with excluding simplify")
     if args.final_eval_runs < 1:
         parser.error("--final-eval-runs must be at least 1")
 
@@ -2979,19 +3239,21 @@ def main():
             parser.error("--lambda-target only applies to heuristic racing")
         if args.reeval_budget <= 0:
             parser.error(f"--reeval {args.reeval} requires --reeval-budget > 0")
-    elif args.reeval == "population":
+    elif args.reeval in ("population", "topk"):
         if args.n_reevals <= args.n_runs:
             parser.error(
-                f"--reeval population requires --n-reevals > --n-runs "
+                f"--reeval {args.reeval} requires --n-reevals > --n-runs "
                 f"(got --n-reevals {args.n_reevals}, --n-runs {args.n_runs})"
             )
+        if args.reeval == "topk" and args.reeval_topk <= 0:
+            parser.error("--reeval topk requires --reeval-topk > 0")
         if args.lambda_target != 1:
             parser.error("--lambda-target only applies to heuristic racing")
     else:  # none
         if args.n_runs_max != 0 or args.lambda_target != 1:
             parser.error("--n-runs-max / --lambda-target only apply with --reeval heuristic")
-    if args.n_reevals != 0 and args.reeval != "population":
-        parser.error("--n-reevals only applies with --reeval population")
+    if args.n_reevals != 0 and args.reeval not in ("population", "topk"):
+        parser.error("--n-reevals only applies with --reeval population/topk")
 
     # Parse operator type(s)
     if args.operator_type == "all":
@@ -3060,6 +3322,10 @@ def main():
     # The domain owns the base PySR config (operators, loss, size limits);
     # budget fields layer on top only where they apply.
     pysr_kwargs = domain_obj.base_pysr_kwargs()
+    for key in ("maxsize", "maxdepth"):
+        value = getattr(args, key)
+        if value is not None:
+            pysr_kwargs[key] = value
     if domain_obj.uses_run_budget:
         pysr_kwargs["max_evals"] = budget["max_evals"]
         pysr_kwargs["timeout_in_seconds"] = budget["timeout_in_seconds"]
@@ -3083,6 +3349,8 @@ def main():
     resume_state = None
     if args.continue_from:
         resume_state = load_resume_state(args.continue_from)
+        if args.continue_eval_idx is not None:
+            resume_state["eval_idx"] = args.continue_eval_idx
         prior_ops = resume_state["prior_config"].get("operator_types", [])
         if prior_ops and list(prior_ops) != list(operator_type_names):
             print(f"WARNING: operator_types differ from prior run: "
@@ -3133,13 +3401,17 @@ def main():
         val_split=args.val_split,
         test_split=args.test_split,
         val_n_runs=args.val_n_runs,
+        population_reeval_runs=args.population_reeval_runs,
         identify_topk=args.identify_topk,
         reeval_budget=args.reeval_budget,
         n_reevals=args.n_reevals,
+        reeval_topk=args.reeval_topk,
         val_pysr_wall_limit=args.val_pysr_wall_limit,
         val_pysr_timeout=args.val_pysr_timeout,
         mutation_mode=args.mutation_mode,
         simplify_cooldown=args.simplify_cooldown,
+        excluded_mutation_modes=args.exclude_mutation_mode,
+        allow_data_aware_mutations=not args.no_data_aware_mutations,
         domain=args.domain,
         uninformative_prompts=args.uninformative_prompts,
         black_box=args.black_box,
@@ -3170,6 +3442,7 @@ def main():
         "identify_topk": args.identify_topk,
         "reeval_budget": args.reeval_budget,
         "n_reevals": args.n_reevals,
+        "reeval_topk": args.reeval_topk,
         "max_samples": args.max_samples,
         "target_noise": args.target_noise,
         "random_target_noise": args.random_target_noise,
@@ -3188,6 +3461,7 @@ def main():
         "baseline": args.baseline,
         "no_cache": args.no_cache,
         "population_type": args.population_type,
+        "population_reeval_runs": args.population_reeval_runs,
         "reeval": args.reeval,
         "n_extra_runs": args.n_extra_runs,
         "n_runs_max": args.n_runs_max,
@@ -3197,6 +3471,8 @@ def main():
         "exec_feedback_prob": args.exec_feedback_prob,
         "continue_from": args.continue_from,
         "mutation_mode": args.mutation_mode,
+        "excluded_mutation_modes": list(args.exclude_mutation_mode),
+        "allow_data_aware_mutations": not args.no_data_aware_mutations,
         "simplify_cooldown": args.simplify_cooldown,
         "neuron_full_eval": args.neuron_full_eval,
         "neuron_eval_runs": args.neuron_eval_runs,

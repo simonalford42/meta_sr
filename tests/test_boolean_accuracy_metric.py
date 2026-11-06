@@ -5,9 +5,12 @@ aggregation, the multi-noise combiner, the reeval merge, and the cache
 round-trip — i.e. every place an acc_score has to survive.
 """
 
+import hashlib
+import json
 import unittest
 
 import numpy as np
+import pandas as pd
 
 from domains import get_domain
 from evolution_helpers import merge_result_details
@@ -29,6 +32,66 @@ def _spec(**kw):
     )
     base.update(kw)
     return PySRTaskSpec(**base)
+
+
+class TestFrontierAccuracy(unittest.TestCase):
+    def test_old_discrete_accuracy_cache_keys_are_not_reused(self):
+        from evaluation_cache import PySRCacheDB
+
+        cache = PySRCacheDB.__new__(PySRCacheDB)
+        for name in ("mips:example:hidden:0", "bool:parity3",
+                     "boolformer_noisy:example", "pmlb_classification:example",
+                     "continuous_example"):
+            old_key_data = {
+                "config_hash": cache._make_config_hash({}, {}, None, False),
+                "dataset_name": name, "seed": 1, "data_seed": 1,
+                "max_samples": 1000, "run_index": 0,
+                "pysr_model_kwargs": None, "target_noise": 0.0,
+            }
+            old_key = hashlib.sha256(json.dumps(
+                old_key_data, sort_keys=True, ensure_ascii=True,
+            ).encode()).hexdigest()
+            new_key = cache._make_cache_key(
+                {}, {}, name, 1, 1, 1000, 0, None, False,
+            )
+            self.assertEqual(old_key == new_key, name == "continuous_example")
+
+    def test_uses_most_accurate_expression_not_lowest_loss(self):
+        frontier = pd.DataFrame({"loss": [0.01, 2.0]}, index=[3, 9])
+        predictions = {3: np.array([0.1, 1.1, 2.1]),
+                       9: np.array([0.0, 1.0, 4.0])}
+        score = get_domain("mips").frontier_accuracy(
+            equations_df=frontier, predict_fn=predictions.__getitem__,
+            y_val=np.array([0.0, 1.0, 2.0]),
+        )
+        self.assertEqual(score, 2 / 3)
+
+    def test_does_not_combine_correct_rows_from_different_expressions(self):
+        predictions = {0: np.array([0.0, 0.0]), 1: np.array([1.0, 1.0])}
+        score = get_domain("boolean").frontier_accuracy(
+            equations_df=pd.DataFrame(index=[0, 1]),
+            predict_fn=predictions.__getitem__, y_val=np.array([0.0, 1.0]),
+        )
+        self.assertEqual(score, 0.5)
+
+    def test_bad_expression_does_not_hide_valid_expression(self):
+        def predict(idx):
+            if idx == 0:
+                raise ValueError("invalid expression")
+            return np.array([0.0, 1.0])
+        score = get_domain("mips").frontier_accuracy(
+            equations_df=pd.DataFrame(index=[0, 1]), predict_fn=predict,
+            y_val=np.array([0.0, 1.0]),
+        )
+        self.assertEqual(score, 1.0)
+
+    def test_continuous_domain_does_not_evaluate_frontier(self):
+        def predict(idx):
+            self.fail("continuous domain should not predict for accuracy")
+        self.assertIsNone(get_domain("srbench").frontier_accuracy(
+            equations_df=pd.DataFrame(index=[0]), predict_fn=predict,
+            y_val=np.array([0.0]),
+        ))
 
 
 class TestDomainAccuracyHook(unittest.TestCase):

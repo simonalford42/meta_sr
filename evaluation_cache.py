@@ -500,6 +500,10 @@ class PySRCacheDB:
         }
         if hof_n_steps > 0:
             key_data["hof_n_steps"] = hof_n_steps
+        # Older discrete-domain results score only the selected equation.
+        # Keep continuous-domain cache identities unchanged.
+        if dataset_name.startswith(("bool:", "boolformer_noisy:", "pmlb_classification:", "mips:")):
+            key_data["accuracy_scoring"] = "frontier_max_v1"
         key_str = json.dumps(key_data, sort_keys=True, ensure_ascii=True)
         return hashlib.sha256(key_str.encode()).hexdigest()
 

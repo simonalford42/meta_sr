@@ -1,0 +1,219 @@
+"""Compact SRBench method and compute-budget tables for the inspector."""
+import math
+from pathlib import Path
+
+import srbench_results_io as srio
+from srbench_official_results import (
+    build_official_columns, BLACK_BOX_TOTAL, OFFICIAL_TRAIN_SPLIT, OFFICIAL_VAL_SPLIT,
+)
+
+
+# User-supplied benchmark reference, not recomputed from the released trial snapshot.
+# Keep this value unchanged when local SRBench task denominators change.
+MDLFORMER_REFERENCE_GT = 0.405
+
+GROUPS = [
+    ("PySR", [("", "pysr_baseline")]),
+    ("PySR++", [("R2", "pysrpp_r2"), ("GT-R2", "pysrpp_gt_r2"), ("GT", "pysrpp_gt")]),
+    ("BasicSR", [("", "basicsr_baseline")]),
+    ("BasicSR++", [("R2", "basicsrpp_r2"), ("GT-R2", "basicsrpp_gt_r2"), ("GT", "basicsrpp_gt")]),
+    ("HPO", [("R2", "hpo_r2"), ("GT-R2", "hpo_gt_r2"), ("GT", "hpo_gt")]),
+    ("Autoresearch", [("", "autoresearch_gt")]),
+    ("MDLFormer", [("", "mdlformer")]),
+]
+
+
+def _names(path):
+    if not path.exists():
+        return set()
+    return {line.strip() for line in path.read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")}
+
+
+def _format(value, *, rate=True):
+    if value is None or not math.isfinite(value):
+        return "TBD"
+    if rate:
+        return f"{100 * value:.2f}%"
+    return f"{value:.3e}" if abs(value) >= 10000 else f"{value:.3f}"
+
+
+def _grid(groups, rows, *, subheaders=True):
+    """Render grouped column headings; None rows insert a horizontal divider."""
+    widths = [max(len(sub), 6, *(len(row[i]) for row in rows if row is not None))
+              for i, sub in enumerate(sub for _, subs in groups for sub in subs)]
+    spans = []
+    offset = 0
+    for label, subs in groups:
+        width = sum(widths[offset:offset+len(subs)]) + 3*len(subs)-1
+        if len(label)+2 > width:
+            widths[offset] += len(label)+2-width
+            width = len(label)+2
+        spans.append(width)
+        offset += len(subs)
+    rule = "+" + "+".join("-"*(width+2) for width in widths) + "+"
+    lines = ["+" + "+".join("-"*span for span in spans) + "+",
+             "|" + "|".join(label.center(span) for (label, _), span in zip(groups, spans)) + "|"]
+    if subheaders:
+        lines.append("| " + " | ".join(sub.center(width) for sub, width in zip(
+            (sub for _, subs in groups for sub in subs), widths)) + " |")
+    lines.append(rule)
+    for row in rows:
+        if row is None:
+            lines.append(rule)
+        else:
+            lines.append("| " + " | ".join(
+                value.ljust(width) if i == 0 else value.rjust(width)
+                for i, (value, width) in enumerate(zip(row, widths))) + " |")
+    lines.append(rule)
+    return "\n".join(lines)
+
+
+def _complete_gt(path, canonical, *, allow_incomplete=False):
+    """Return a full ten-seed/four-noise grid, or None for unfinished/missing runs."""
+    if path is None:
+        return None
+    path = Path(path)
+    if not (path / "manifest.json").exists():
+        return None
+    manifest = srio.load_manifest(path)
+    keyed = srio.load_keyed_results(path)
+    if keyed is None and manifest.get("batches"):
+        keyed = srio.build_keyed_results(path, manifest)
+    manifest, keyed = srio.standard_ground_truth_view(manifest, keyed or {})
+    if (set(manifest.get("datasets", [])) != canonical
+            or len(manifest.get("seeds", [])) != 10
+            or set(manifest.get("noise_levels", [])) != {0, .001, .01, .1}
+            or any("n_searches" in entry for entry in keyed.values())):
+        return None
+    expected = srio.expected_keys(manifest, keyed)
+    if len(expected) != len(canonical)*40:
+        return None
+    completed = [keyed[key] for key in expected if
+        keyed.get(key, {}).get("present") and keyed[key].get("error") is None
+    ]
+    if not allow_incomplete and len(completed) != len(expected):
+        return None
+    return completed
+
+
+def _rate(rows, datasets=None, noise=None):
+    if rows is None:
+        return None
+    values = [bool(row["solved"]) for row in rows
+              if (datasets is None or row["dataset"] in datasets)
+              and (noise is None or float(row["noise"]) == noise)]
+    return sum(values)/len(values) if values else None
+
+
+def _mean_r2(rows, datasets=None):
+    """Mean test R2 (clipped at 0, as in the R2 objective) over GT trials."""
+    if rows is None:
+        return None
+    values = [max(0.0, float(row["test_r2"])) for row in rows
+              if (datasets is None or row["dataset"] in datasets)
+              and row.get("test_r2") is not None and math.isfinite(float(row["test_r2"]))]
+    return sum(values)/len(values) if values else None
+
+
+def build_tables(runs_root="runs", project_root=None):
+    project_root = Path(project_root) if project_root else Path(__file__).resolve().parent
+    runs_root = Path(runs_root)
+    canonical = _names(project_root / "splits/srbench_all.txt") - set(srio.UNSOLVABLE_TASKS)
+    train_names = _names(project_root / OFFICIAL_TRAIN_SPLIT)
+    val_names = _names(project_root / OFFICIAL_VAL_SPLIT)
+    train = train_names & canonical
+    val = val_names & canonical
+    held_out = canonical - train_names - val_names
+    have_splits = bool(train_names and val_names)
+    columns = {column["key"]: column for column in build_official_columns(
+        runs_root, project_root, single_search_only=True)}
+    cache = {}
+
+    def complete(path):
+        key = str(path) if path is not None else None
+        if key not in cache:
+            cache[key] = _complete_gt(path, canonical)
+        return cache[key]
+
+    keys = [key for _, subs in GROUPS for _, key in subs]
+    bb, gt, gt_held_out, gt_r2, gt_train_r2 = [], [], [], [], []
+    for key in keys:
+        column = columns.get(key, {})
+        bb.append(_format(column.get("bb_r2") if column.get("bb_completed") == BLACK_BOX_TOTAL
+                          else None, rate=False))
+        gt.append(_format(MDLFORMER_REFERENCE_GT if key == "mdlformer"
+                          else _rate(complete(column.get("gt_path")))))
+        gt_held_out.append(_format(
+            _rate(complete(column.get("gt_path")), held_out) if have_splits else None))
+        gt_rows = complete(column.get("gt_path"))
+        r2_all = _mean_r2(gt_rows)
+        r2_train = _mean_r2(gt_rows, train) if have_splits else None
+        gt_r2.append("N/A" if r2_all is None else _format(r2_all, rate=False))
+        gt_train_r2.append("N/A" if r2_train is None else _format(r2_train, rate=False))
+    table1 = _grid([("", [""])] + [(label, [sub for sub, _ in subs]) for label, subs in GROUPS],
+                   [["SRBench black box (R2)", *bb], ["SRBench ground truth", *gt],
+                    ["GT (excluding train & val)", *gt_held_out],
+                    None,
+                    ["SRBench ground truth (R2)", *gt_r2],
+                    [f"GT train tasks (R2, n={len(train)})", *gt_train_r2]])
+
+    baseline = columns.get("pysr_baseline", {})
+    evolved = columns.get("pysrpp_gt", {})
+    evolved_dir = runs_root / evolved.get("training_id", "-")
+    budgets = [
+        ("1 million evaluations", baseline.get("gt_path"), evolved.get("gt_path")),
+        # Uncapped 90 s searches; srbench_gt_*_90s also capped each search at 1M evals.
+        ("90 seconds", runs_root / "pysr-base-srbench_full_9-22_10seed-90s",
+         runs_root / f"pysr-gt-{evolved.get('training_id', '-')}-srbench_full_9-22_10seed-90s"),
+        ("15 minutes", runs_root / "srbench_gt_baseline_15m_single", evolved_dir / "srbench_gt_15m_single"),
+        ("15m-portfolio", runs_root / "srbench_gt_baseline_15m_portfolio_1e6", evolved_dir / "srbench_gt_15m_portfolio_1e6"),
+    ]
+    # Budget rows score held-out (test) tasks only; train/val/all rows follow at 1M evals.
+    def budget_score(path):
+        """Return (rate, text); provisional rates are marked with *."""
+        if not have_splits:
+            return None, "TBD"
+        result = complete(path)
+        if result is not None:
+            rate = _rate(result, held_out)
+            return rate, _format(rate)
+        result = _complete_gt(path, canonical, allow_incomplete=True)
+        result = [row for row in result or [] if row["dataset"] in held_out]
+        if not result:
+            return None, "TBD"
+        rate = _rate(result)
+        return rate, f"{_format(rate)}* ({len(result)}/{len(held_out)*40})"
+
+    def delta(base, evo, provisional=False):
+        if base is None or evo is None:
+            return "TBD"
+        return f"{100 * (evo - base):+.2f}" + ("*" if provisional else "")
+
+    rows = []
+    for label, base, evo in budgets:
+        (base_rate, base_text), (evo_rate, evo_text) = budget_score(base), budget_score(evo)
+        rows.append([label, base_text, evo_text,
+                     delta(base_rate, evo_rate, "*" in base_text + evo_text)])
+    base_rows, evo_rows = complete(baseline.get("gt_path")), complete(evolved.get("gt_path"))
+    rows.append(None)
+    for label, datasets, noise in [
+        (f"Train tasks (n={len(train)})", train if have_splits else set(), None),
+        (f"Val tasks (n={len(val)})", val if have_splits else set(), None),
+        (f"All tasks (n={len(canonical)})", canonical, None),
+        *[(f"Noise {noise:g}", None, noise) for noise in [0, .001, .01, .1]],
+    ]:
+        base_rate, evo_rate = _rate(base_rows, datasets, noise), _rate(evo_rows, datasets, noise)
+        rows.append([label, _format(base_rate), _format(evo_rate), delta(base_rate, evo_rate)])
+    table2 = _grid([("", [""]), ("PySR", [""]), ("Evolved", [""]), ("Delta (pp)", [""])],
+                   rows, subheaders=False)
+    return ("Table 1: 1M-evaluation method comparison\n" + table1
+            + "\nBlack box: mean test R2. Local ground truth: solve rate over 130 tasks and four noise levels."
+            + "\nExcluding train & val: omit tasks in " + OFFICIAL_TRAIN_SPLIT
+            + " and " + OFFICIAL_VAL_SPLIT + "."
+            + "\nGT R2 rows: mean test R2 (clipped at 0) over GT trials; train = " + OFFICIAL_TRAIN_SPLIT + "; N/A = no data."
+            + "\nMDLFormer GT: supplied reference score (40.5%), without task-count rescaling; BB unavailable."
+            + "\n\nTable 2: PySR vs PySR++ GT (evolved=" + evolved.get("training_id", "TBD") + ")\n"
+            + table2 + f"\nBudget rows: held-out test tasks only (n={len(held_out)}). Rows below the divider use 1M evaluations; 10 seeds."
+            + "\n* = provisional solve rate over successful trials only (completed/expected); missing and errored trials excluded."
+            + "\nTBD = unavailable or incomplete local evaluation.")

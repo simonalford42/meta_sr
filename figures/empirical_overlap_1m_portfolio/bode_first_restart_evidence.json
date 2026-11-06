@@ -1,0 +1,162 @@
+[
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10000,
+    "first_restart_seconds": 11.103481769561768,
+    "equation": "exp(x0 - 4.044050209652926)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10001,
+    "first_restart_seconds": 10.958137512207031,
+    "equation": "exp(x0 + -4.04401420842229)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10002,
+    "first_restart_seconds": 11.189368486404419,
+    "equation": "exp(x0) * 0.017526529677282826",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10003,
+    "first_restart_seconds": 11.897109508514404,
+    "equation": "exp(x0) / 57.05687243248591",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10004,
+    "first_restart_seconds": 11.167243480682373,
+    "equation": "exp(x0) * 0.017525700245686587",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10005,
+    "first_restart_seconds": 11.126513242721558,
+    "equation": "exp(x0) / 57.054257135555396",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10006,
+    "first_restart_seconds": 11.083542585372925,
+    "equation": "exp(x0) * 0.017526884607638283",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10007,
+    "first_restart_seconds": 11.323872566223145,
+    "equation": "exp(x0) * 0.017526686451894525",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10008,
+    "first_restart_seconds": 10.535598993301392,
+    "equation": "exp(x0) * 0.01752657478949361",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "Baseline",
+    "dataset": "first_principles_bode",
+    "seed": 10009,
+    "first_restart_seconds": 11.371355772018433,
+    "equation": "exp(x0) / 57.05669977795935",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10000,
+    "first_restart_seconds": 62.63599181175232,
+    "equation": "exp(x0)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10001,
+    "first_restart_seconds": 63.0038046836853,
+    "equation": "exp(x0)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10002,
+    "first_restart_seconds": 39.45036816596985,
+    "equation": "exp(x0)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10003,
+    "first_restart_seconds": 39.058388233184814,
+    "equation": "exp(x0)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10004,
+    "first_restart_seconds": 39.62709188461304,
+    "equation": "exp(x0)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10005,
+    "first_restart_seconds": 40.238521337509155,
+    "equation": "exp(x0)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10006,
+    "first_restart_seconds": 40.91203236579895,
+    "equation": "exp(x0)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10007,
+    "first_restart_seconds": 40.16007709503174,
+    "equation": "exp(x0)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10008,
+    "first_restart_seconds": 24.52726459503174,
+    "equation": "exp(x0)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  },
+  {
+    "method": "709715",
+    "dataset": "first_principles_bode",
+    "seed": 10009,
+    "first_restart_seconds": 25.559040307998657,
+    "equation": "exp(x0)",
+    "criterion": "c0+c1*exp(c2*x0), including zero offset; archived broad Bode rubric"
+  }
+]

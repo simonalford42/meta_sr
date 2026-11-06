@@ -1,0 +1,20 @@
+% Paste into ICLR Overleaf; requires \usepackage{booktabs,graphicx}.
+\begin{table}[t]
+\centering
+\caption{SRBench results. Black-box $R^2$ is the mean over trials of the maximum test $R^2$ on each stored frontier (the \texttt{--official} convention). GT is the per-run solve percentage pooled over all datasets, seeds, and four noise levels. For the first three methods, black box uses $R^2$-trained variants and GT uses GT-trained variants. --- denotes unavailable or unreported results; MDLformer has no official entry. 1M denotes an evaluation cap, not a 1.5-minute time budget; wall-clock limits differ. PySR GT uses the complete original 1M run (290227); the current official selector instead picks an incomplete 15-minute restart portfolio. BasicSR has catastrophic negative-$R^2$ outliers; its mean is reported without clipping.}
+\label{tab:srbench-table1}
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrr}
+\toprule
+Metric & PySR++ & BasicSR++ & HPO & PySR & BasicSR & MDLformer \\
+\midrule
+Black box $R^2$ & \textbf{0.821} & 0.819 & 0.818 & 0.798 & $-8.14\!\times\!10^{10}$ & --- \\
+GT solve (\%), 1M evals. & \textbf{54.8} & 42.1 & 48.7 & 46.3 & 21.2 & --- \\
+GT solve (\%), 15 min & --- & --- & --- & --- & --- & --- \\
+GT solve (\%), 15 min + restarts & --- & --- & --- & --- & --- & --- \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

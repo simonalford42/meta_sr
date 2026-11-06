@@ -1,0 +1,23 @@
+\usepackage{times}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage[indLines=true,noEnd=true]{algpseudocodex}
+\usepackage{booktabs,tabularx}
+\definecolor{commentink}{gray}{0.48}
+\definecolor{slotink}{RGB}{35,66,86}
+\algrenewcommand\algorithmiccomment[1]{\textcolor{commentink}{\#\ #1}}
+\algrenewcommand\alglinenumber[1]{\scriptsize\textcolor{commentink}{#1}}
+\algrenewcommand\algorithmicindent{1em}
+\newcommand{\slot}[1]{\textcolor{slotink}{\text{\sffamily\bfseries #1}}}
+\newcommand{\fn}[1]{\operatorname{\textnormal{\textsc{#1}}}}
+\newcommand{\Unif}{\operatorname{Unif}}
+\newcommand{\argmin}{\operatorname*{arg\,min}}
+\newcommand{\argmax}{\operatorname*{arg\,max}}
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\ind}{\mathbf{1}}
+\newcommand{\io}[2]{\noindent\textbf{#1}\enspace #2\par\smallskip}
+\newcommand{\algnotes}[1]{\par\smallskip\noindent{\small #1}\par}
+\newcommand{\slotsnote}{\textcolor{slotink}{\textsf{\textbf{Bold sans-serif}}} marks an evolvable operator slot.}
+\floatname{algorithm}{Algorithm}

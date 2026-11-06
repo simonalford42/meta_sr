@@ -1,0 +1,15 @@
+mips:rnn_div_7_numerical:hidden:0
+mips:rnn_div_7_numerical:hidden:1
+mips:rnn_div_7_numerical:hidden:2
+mips:rnn_div_7_numerical:hidden:3
+mips:rnn_div_5_numerical:hidden:0
+mips:rnn_div_5_numerical:hidden:1
+mips:rnn_div_5_numerical:hidden:2
+mips:rnn_div_5_numerical:hidden:3
+mips:rnn_alternating_last3_numerical:hidden:0
+mips:rnn_alternating_last3_numerical:hidden:1
+mips:rnn_alternating_last4_numerical:hidden:1
+mips:rnn_abs_value_numerical:output:0
+mips:rnn_base_5_addition:output:0
+mips:rnn_base_5_addition:hidden:0
+mips:rnn_base_4_addition:output:0

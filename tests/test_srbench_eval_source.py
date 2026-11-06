@@ -198,3 +198,22 @@ def test_skeleton_bundle_round_trips_full_file_module_body():
     restored = SkeletonBundle.from_dict(bundle.to_dict())
 
     assert restored.raw_module_body == bundle.raw_module_body
+
+
+@pytest.mark.parametrize('slot', ['mutation', 'loss', 'selection', 'survival'])
+def test_only_operator_uses_baseline_with_one_evolved_component(tmp_path, slot):
+    from operator_types import JuliaOperator, OperatorBundle
+    from parallel_eval_pysr import get_default_pysr_kwargs
+
+    bundle = OperatorBundle(operators={
+        name: JuliaOperator(name=f'evolved_{name}', code=f'function evolved_{name}()\nend')
+        for name in ('mutation', 'loss', 'selection', 'survival')
+    })
+    bundle.best_hparams = {'population_size': 999}
+    (tmp_path / 'run_data.json').write_text(json.dumps({'best_bundle': bundle.to_dict()}))
+    source = load_evaluation_source(_args(tmp_path, select_by='train', only_operator=slot, timeout=90))
+    active = [name for name in bundle.operators if getattr(source.config, f'custom_{name}_code')]
+    assert active == [slot]
+    assert source.config.pysr_kwargs['population_size'] == get_default_pysr_kwargs()['population_size']
+    assert source.config.pysr_kwargs['timeout_in_seconds'] == 90
+    assert source.method_meta['only_operator'] == slot

@@ -2,7 +2,8 @@
 """Submit a full SRBench evaluation (all tasks x seeds x noise levels).
 
 Drives the native evaluator for the loaded method (PySR or FullSR) over every
-task in a split file. PySR modes retain caching, SLURM array chunking, retries,
+task in a split file, excluding the three inverse-trig tasks for SRBench 2021
+(130 ground-truth tasks by default). PySR modes retain caching, chunking, retries,
 and bad-node handling.
 
     # baseline PySR
@@ -13,6 +14,16 @@ and bad-node handling.
 
     # an evolved bundle
     python srbench_full_eval.py --evolve-results runs/<run_id> --max-evals 1000000
+
+    # one continuous hour on one core (one independent portfolio trial)
+    python srbench_full_eval.py --ground-truth --noise-levels 0 --n-runs 1 \
+        --portfolio-time-limit 3600 --portfolio-restart-timeout 3600 \
+        --portfolio-restart-count 1 --pysr-wall-limit 3900
+
+    # serial 1M-evaluation restarts, merged under the same one-hour budget
+    python srbench_full_eval.py --ground-truth --noise-levels 0 --n-runs 1 \
+        --portfolio-time-limit 3600 --portfolio-restart-max-evals 1000000 \
+        --pysr-wall-limit 600
 
 ``--evolve-results`` auto-detects both evolve_pysr.py OperatorBundles and
 evolve_fullsr.py SkeletonBundles from their run_data.json schema.
@@ -32,6 +43,11 @@ for ground truth, and 122 datasets x 10 seeds for --black-box. ``--2025``
 switches those selections to the 12 first-principles or 12 black-box problems
 from the 2025 Call for Action paper. Trial counts come from
 --n-trials-per-dataset.
+
+Seeds default to 10000..10009 -- a band held out from evolution, which runs at
+seed 42 (seeds 42..~51) plus the 100k/200k train/val reeval bands. Old results
+produced under the previous default (42) reused evolution's exact train/test
+splits on the training tasks at noise 0.0; pass --seed 42 to reproduce them.
 Results land in ``runs/<run_id>/`` (manifest.json + srbench_full_results.json)
 and are logged to the "meta-sr" wandb project as a Table plus solve-rate /
 solve-time metrics for srbench(all) / feynman / strogatz per noise level.
@@ -127,7 +143,8 @@ def _envelope(rows, grid):
 
 
 def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000,
-                           n_trials=1):
+                           n_trials=1, merge_run_frontiers=False,
+                           base_seed=10_000, bundle_names=None):
     """Persist per-dataset per-trial test frontiers and plot their envelope.
 
     Each dataset is run `n_trials` times (distinct seeds -> distinct 75/25
@@ -142,12 +159,24 @@ def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000,
         if result.get("error") or not result.get("pareto_frontier"):
             continue
         trials = datasets.setdefault(result["dataset_name"], {})
-        trials[int(result.get("run_index") or 0)] = _test_pareto(
-            result["pareto_frontier"]
+        rows = result["pareto_frontier"]
+        trials[int(result.get("run_index") or 0)] = (
+            list(rows) if merge_run_frontiers else _test_pareto(rows)
         )
     datasets = {
         name: [trials[i] for i in sorted(trials)] for name, trials in datasets.items()
     }
+    if merge_run_frontiers:
+        from frontier_aggregation import merge_frontiers
+        datasets = {
+            name: [merge_frontiers(frontiers, sources=[{
+                "source_run_index": index,
+                "source_seed": base_seed + index,
+                **({"source_bundle": bundle_names[index]}
+                   if bundle_names and index in bundle_names else {}),
+            } for index in range(len(frontiers))])]
+            for name, frontiers in datasets.items()
+        }
 
     payload = {
         "protocol": {
@@ -156,8 +185,13 @@ def save_black_box_results(output_dir, batch_dir, max_train_samples=10_000,
             "scale_x": True,
             "scale_y": True,
             "max_train_samples": max_train_samples,
-            "selection": "test R2/complexity Pareto frontier",
+            "selection": (
+                "minimum native training loss per complexity across searches"
+                if merge_run_frontiers else
+                "test R2/complexity Pareto frontier"
+            ),
             "layout": "datasets[name] = list of per-trial frontiers",
+            "merge_run_frontiers": bool(merge_run_frontiers),
         },
         "n_trials_present": {name: len(t) for name, t in datasets.items()},
         "datasets": datasets,
@@ -245,6 +279,13 @@ def run_black_box(args, output_dir, source, manifest, run):
             f"--black-box-timeout"
         )
     config = apply_soft_timeout(source.config, source.backend, soft_timeout)
+    portfolio_configs = getattr(args, "_portfolio_configs", [source.config])
+    configs = [
+        apply_soft_timeout(item, source.backend, soft_timeout)
+        for item in portfolio_configs
+    ]
+    runs_per_config = getattr(args, "_runs_per_config", n_trials)
+    run_index_starts = getattr(args, "_run_index_starts", None)
     print(f"Black-box: {len(datasets)} datasets x {n_trials} trials = "
           f"{len(datasets) * n_trials} runs  |  per-fit wall limit: {wall_limit}s"
           f"  |  soft timeout: {soft_timeout if soft_timeout is not None else 'none'}")
@@ -262,13 +303,16 @@ def run_black_box(args, output_dir, source, manifest, run):
             job_timeout=args.job_timeout,
             wall_limit=wall_limit,
             max_retries=args.max_retries,
+            retain_pareto_frontier=args.merge_run_frontiers,
+            fixed_data_split_across_runs=args.merge_run_frontiers,
         )
         before = set(evaluator.slurm_dir.glob("eval_*"))
         evaluator.evaluate_configs(
-            configs=[config],
+            configs=configs,
             dataset_names=datasets,
             seed=args.seed,
-            n_runs=n_trials,
+            n_runs=runs_per_config,
+            run_index_start_per_config=run_index_starts,
             fitness_metric="r2",
             fullsr_wall_limit=wall_limit,
             split_label="srbench_black_box",
@@ -296,12 +340,15 @@ def run_black_box(args, output_dir, source, manifest, run):
             max_retries=args.max_retries,
             repo_root=source.repo_root,
             cache_namespace=source.cache_namespace,
+            retain_pareto_frontier=args.merge_run_frontiers,
+            fixed_data_split_across_runs=args.merge_run_frontiers,
         )
         handle = evaluator.submit_configs(
-            configs=[config],
+            configs=configs,
             dataset_names=datasets,
             seed=args.seed,
-            n_runs=n_trials,
+            n_runs=runs_per_config,
+            run_index_start_per_config=run_index_starts,
             fitness_metric="r2",
             black_box=True,
         )
@@ -323,9 +370,14 @@ def run_black_box(args, output_dir, source, manifest, run):
     with open(Path(output_dir) / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
     n_present = save_black_box_results(
-        output_dir, batch_dir, args.black_box_max_samples, n_trials=n_trials
+        output_dir, batch_dir, args.black_box_max_samples, n_trials=n_trials,
+        merge_run_frontiers=args.merge_run_frontiers, base_seed=args.seed,
+        bundle_names=getattr(args, "_bundle_names", None),
     )
     print(f"\nBlack-box results: {n_present}/{len(datasets)} dataset frontiers present.")
+    if datasets and n_present == 0:
+        copy_slurm_log(output_dir)
+        raise RuntimeError("Black-box evaluation produced no valid frontiers; inspect worker logs.")
     if run is not None:
         run.log({
             "srbench_black_box/n_frontiers": n_present,
@@ -346,6 +398,23 @@ def build_config(args):
     return load_pysr_evaluation_config(args)
 
 
+def load_evaluation_datasets(args):
+    """Select the task grid, applying SRBench 2021's three GT exclusions."""
+    from utils import load_dataset_names_from_split
+
+    if args.datasets:
+        datasets = [d.strip() for d in args.datasets.split(",") if d.strip()]
+    elif args.srbench_2025:
+        datasets = load_ground_truth_datasets_2025()
+    else:
+        datasets = load_dataset_names_from_split(args.split_file)
+    if not args.srbench_2025 and (args.ground_truth or not args.black_box):
+        datasets = [name for name in datasets if name not in srio.UNSOLVABLE_TASKS]
+        if not datasets:
+            raise ValueError("No ground-truth tasks remain after SRBench inverse-trig exclusions")
+    return datasets
+
+
 def cache_report(args) -> None:
     """Print what a rerun of this command would actually execute.
 
@@ -364,7 +433,6 @@ def cache_report(args) -> None:
 
     from srbench_eval_source import (apply_soft_timeout, load_evaluation_source,
                                      scale_soft_timeout)
-    from utils import load_dataset_names_from_split
 
     source = load_evaluation_source(args)
     if source.backend != "fullsr":
@@ -400,12 +468,7 @@ def cache_report(args) -> None:
             print(f"    ... and {len(uncached) - 10} more")
         shutil.rmtree(scratch, ignore_errors=True)
 
-    if args.datasets:
-        datasets = [d.strip() for d in args.datasets.split(",") if d.strip()]
-    elif args.srbench_2025:
-        datasets = load_ground_truth_datasets_2025()
-    else:
-        datasets = load_dataset_names_from_split(args.split_file)
+    datasets = load_evaluation_datasets(args)
 
     if args.ground_truth or not args.black_box:
         _report("ground truth", datasets, source.config,
@@ -413,8 +476,10 @@ def cache_report(args) -> None:
                 args.max_samples, args.noise_levels, False, "gt")
 
     if args.black_box:
-        bb_datasets = (datasets if args.datasets
-                       else load_black_box_datasets(args.srbench_2025))
+        bb_datasets = (
+            [d.strip() for d in args.datasets.split(",") if d.strip()]
+            if args.datasets else load_black_box_datasets(args.srbench_2025)
+        )
         bb_wall = args.black_box_wall_limit
         if args.black_box_timeout is not None:
             bb_timeout = args.black_box_timeout if args.black_box_timeout > 0 else None
@@ -426,7 +491,7 @@ def cache_report(args) -> None:
                 bb_wall, args.black_box_max_samples, None, True, "r2")
 
 
-def main():
+def main(argv=None, *, force_srbench_2025=False):
     parser = argparse.ArgumentParser(
         description="Submit a full SRBench evaluation.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -452,6 +517,8 @@ def main():
                              "score (default) or training score. Val falls back "
                              "to train for runs without persisted val data.")
 
+    parser.add_argument("--only-operator", choices=["mutation", "loss", "selection", "survival"],
+                        help="Use baseline PySR plus only this evolved operator.")
     parser.add_argument("--split-file", type=str, default="splits/srbench_all.txt")
     parser.add_argument("--ground-truth", action="store_true",
                         help="Evaluate ground-truth problems (the default unless "
@@ -468,15 +535,58 @@ def main():
     parser.add_argument("--datasets", type=str, default=None,
                         help="Comma-separated dataset override (for smoke tests).")
     parser.add_argument("--max-evals", type=int, default=1_000_000)
+    parser.add_argument("--no-early-stop", action="store_true",
+                        help="Disable loss-based early stopping after loading the method.")
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--black-box-max-samples", type=int, default=10_000,
                         help="Training-row cap for black-box datasets (SRBench protocol).")
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=10_000,
+                        help="Base seed. Held-out by default: evolution runs at "
+                             "seed 42 (run_index 0..n_reevals-1, so seeds 42..~51) "
+                             "plus the 100k/200k train/val reeval bands, so the "
+                             "10k band never reuses a seed seen during evolution. "
+                             "Also seeds dataset subsampling (data_seed).")
     parser.add_argument("--n-trials-per-dataset", "--n-runs", type=int, default=10,
                         dest="n_trials_per_dataset",
                         help="Seeds per dataset, for both ground-truth (per "
                              "task/noise) and black-box evaluation (actual "
                              "seeds = seed .. seed+n_trials-1).")
+    parser.add_argument(
+        "--merge-run-frontiers", action="store_true",
+        help="Treat the N searches as one restart portfolio and score their "
+             "native-training-loss/complexity merged Pareto frontier.",
+    )
+    parser.add_argument(
+        "--portfolio-time-limit", type=float, default=None, metavar="SECONDS",
+        help="Run independent PySR restarts serially in each one-core worker "
+             "under one shared search-time budget. Startup/warm-up and scoring "
+             "are excluded; --n-runs remains the number of independent portfolio trials.",
+    )
+    restart_budget = parser.add_mutually_exclusive_group()
+    restart_budget.add_argument(
+        "--portfolio-restart-max-evals", type=int, default=None, metavar="N",
+        help="Evaluation cap for each serial restart (for example 1000000).",
+    )
+    restart_budget.add_argument(
+        "--portfolio-restart-timeout", type=float, default=None, metavar="SECONDS",
+        help="Soft time cap for each serial restart; the final restart also "
+             "receives no more than the shared remaining budget.",
+    )
+    parser.add_argument(
+        "--portfolio-restart-count", type=int, default=None, metavar="N",
+        help="Launch exactly this many restarts unless the shared budget is "
+             "exhausted. Omit to keep restarting until the budget is used.",
+    )
+    parser.add_argument(
+        "--no-portfolio-warmup", action="store_true",
+        help="Do not run the default one-second compile warm-up outside the budget.",
+    )
+    parser.add_argument(
+        "--task-population-bundles", type=int, default=None, metavar="N",
+        help="Evaluate N cyclic slots drawn from the unique task winners in an "
+             "evolve_pysr --population-type task run, once each, then merge. "
+             "Implies --merge-run-frontiers.",
+    )
     parser.add_argument("--noise-levels", type=float, nargs="+", default=DEFAULT_NOISE_LEVELS)
 
     parser.add_argument("--partition", type=str, default="default_partition")
@@ -484,6 +594,9 @@ def main():
                         help="Maximum simultaneously running tasks in each array.")
     parser.add_argument("--time-limit", type=str, default="02:00:00")
     parser.add_argument("--mem-per-cpu", type=str, default="8G")
+    parser.add_argument("--cpus-per-task", type=int, default=1,
+                        help="CPU cores allocated to each PySR worker; values above "
+                             "one use PySR multiprocessing.")
     parser.add_argument("--job-timeout", type=float, default=None)
     parser.add_argument("--pysr-wall-limit", type=int, default=600)
     parser.add_argument("--fullsr-wall-limit", type=int, default=600,
@@ -510,6 +623,11 @@ def main():
     parser.add_argument("--max-retries", type=int, default=5,
                         help="Retry rounds for transient/missing tasks per batch.")
     parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument(
+        "--pysr-progress", action="store_true",
+        help="Enable PySR's progress display. This is also useful when topping "
+             "off historical runs whose cache identity recorded progress=True.",
+    )
     parser.add_argument("--cache-report", action="store_true",
                         help="Print how many of this command's runs are already "
                              "in the FullSR cache (i.e. how much work a rerun "
@@ -518,7 +636,57 @@ def main():
     parser.add_argument("--results-dir", type=str, default=None,
                         help="Run directory (default: runs/<SLURM_JOB_ID> or local_*).")
     parser.add_argument("--no-wandb", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument('--frontier-snapshot-seconds', type=float, default=None,
+                        help='Copy native PySR frontiers at this wall-time interval; portfolios capture the first real restart only.')
+    parser.add_argument("--srbench2-exact-recovery", action="store_true",
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--baseline-l1-loss", action="store_true",
+                        help="Use L1DistLoss for a baseline SRBench 2.0 exact-recovery run.")
+    parser.add_argument("--no-maxsize-warmup", action="store_true",
+                        help="Disable PySR's gradual max-size warm-up.")
+    args = parser.parse_args(argv)
+    if args.only_operator and (not args.evolve_results or args.task_population_bundles):
+        parser.error("--only-operator requires --evolve-results and cannot use --task-population-bundles")
+    if args.cpus_per_task <= 0:
+        parser.error("--cpus-per-task must be positive")
+    if force_srbench_2025:
+        args.srbench_2025 = True
+    if args.task_population_bundles is not None:
+        if args.task_population_bundles <= 0:
+            parser.error("--task-population-bundles must be positive")
+        if not args.evolve_results:
+            parser.error("--task-population-bundles requires --evolve-results")
+        args.merge_run_frontiers = True
+    if args.frontier_snapshot_seconds is not None:
+        import math
+        if not math.isfinite(args.frontier_snapshot_seconds) or args.frontier_snapshot_seconds <= 0:
+            parser.error('--frontier-snapshot-seconds must be positive and finite')
+    if args.portfolio_time_limit is not None:
+        if args.portfolio_time_limit <= 0:
+            parser.error("--portfolio-time-limit must be positive")
+        if ((args.portfolio_restart_max_evals is None)
+                == (args.portfolio_restart_timeout is None)):
+            parser.error(
+                "--portfolio-time-limit requires exactly one of "
+                "--portfolio-restart-max-evals or --portfolio-restart-timeout"
+            )
+        if args.portfolio_restart_count is not None and args.portfolio_restart_count <= 0:
+            parser.error("--portfolio-restart-count must be positive")
+        if args.merge_run_frontiers:
+            parser.error(
+                "--portfolio-time-limit already merges each serial portfolio; "
+                "do not combine it with --merge-run-frontiers"
+            )
+        if args.task_population_bundles is not None:
+            parser.error(
+                "serial restart portfolios currently support one fixed method, "
+                "not --task-population-bundles"
+            )
+    elif (args.portfolio_restart_max_evals is not None
+          or args.portfolio_restart_timeout is not None
+          or args.portfolio_restart_count is not None
+          or args.no_portfolio_warmup):
+        parser.error("portfolio restart options require --portfolio-time-limit")
 
     print("Executing command: " + " ".join(sys.argv))
 
@@ -526,30 +694,114 @@ def main():
         cache_report(args)
         return
 
-    from utils import resolve_run_dir, load_dataset_names_from_split, copy_slurm_log
+    from utils import resolve_run_dir, copy_slurm_log
     from srbench_eval_source import load_evaluation_source
 
     output_dir = resolve_run_dir(args.results_dir, label="srbench_full_eval")
     os.makedirs(output_dir, exist_ok=True)
     print(f"Run directory: {output_dir}")
 
-    if args.datasets:
-        datasets = [d.strip() for d in args.datasets.split(",") if d.strip()]
-    elif args.srbench_2025:
-        datasets = load_ground_truth_datasets_2025()
-    else:
-        datasets = load_dataset_names_from_split(args.split_file)
+    datasets = load_evaluation_datasets(args)
     print(f"Datasets: {len(datasets)}  |  seeds: {args.n_trials_per_dataset}  |  "
           f"noise levels: {args.noise_levels}  |  total runs: "
           f"{len(datasets) * args.n_trials_per_dataset * len(args.noise_levels)}")
 
     source = load_evaluation_source(args)
+    if args.srbench2_exact_recovery:
+        if source.backend != "pysr":
+            parser.error("SRBench 2.0 exact recovery currently requires PySR")
+        from dataclasses import replace
+        from srbench_eval_source import apply_srbench2_exact_recovery_protocol
+
+        source = replace(
+            source,
+            config=apply_srbench2_exact_recovery_protocol(
+                source.config,
+                cpus_per_task=args.cpus_per_task,
+                baseline_l1_loss=args.baseline_l1_loss,
+                no_maxsize_warmup=args.no_maxsize_warmup,
+            ),
+        )
+    elif args.baseline_l1_loss:
+        parser.error("--baseline-l1-loss requires --srbench2-exact-recovery")
     config, mode_name, method_meta = source.config, source.mode, source.method_meta
+    if args.pysr_progress:
+        if source.backend != "pysr":
+            parser.error("--pysr-progress is only valid for the PySR backend")
+        from dataclasses import replace
+        pysr_kwargs = dict(config.pysr_kwargs)
+        pysr_kwargs["progress"] = True
+        config = replace(config, pysr_kwargs=pysr_kwargs)
+        source.config = config
+    configs = [config]
+    runs_per_config = args.n_trials_per_dataset
+    run_index_starts = None
+    bundle_names = {0: getattr(config, "name", mode_name)}
+    if args.task_population_bundles is not None:
+        if source.backend != "pysr":
+            parser.error("task-population portfolios currently require evolve_pysr")
+        from bundle_loader import load_task_population_bundles
+        bundles = load_task_population_bundles(
+            args.evolve_results, args.task_population_bundles
+        )
+        configs = [
+            bundle.to_pysr_config(dict(config.pysr_kwargs)) for bundle in bundles
+        ]
+        runs_per_config = 1
+        run_index_starts = list(range(len(configs)))
+        bundle_names = {
+            index: bundle.display_name for index, bundle in enumerate(bundles)
+        }
+        args.n_trials_per_dataset = len(configs)
+        method_meta["task_population_portfolio"] = {
+            "slots": len(configs),
+            "bundle_names": list(bundle_names.values()),
+        }
+    if args.frontier_snapshot_seconds is not None and source.backend != 'pysr':
+        parser.error('--frontier-snapshot-seconds requires the PySR backend')
+    if args.no_early_stop:
+        if source.backend != "pysr":
+            parser.error("--no-early-stop requires the PySR backend")
+        from dataclasses import replace
+        configs = [replace(item, pysr_kwargs={
+            key: value for key, value in item.pysr_kwargs.items()
+            if key != "early_stop_condition"
+        }) for item in configs]
+        config = configs[0]
+        source.config = config
+    args._portfolio_configs = configs
+    args._runs_per_config = runs_per_config
+    args._run_index_starts = run_index_starts
+    args._bundle_names = bundle_names
     print(f"Mode: {mode_name}  |  backend: {source.backend}")
+
+    if args.portfolio_time_limit is not None and source.backend != "pysr":
+        parser.error("serial restart portfolios currently require the PySR backend")
 
     gt_wall = (args.fullsr_wall_limit if source.backend == "fullsr"
                else args.pysr_wall_limit)
-    if source.soft_timeout is None:
+    if args.portfolio_time_limit is not None:
+        restart_desc = (
+            f"{args.portfolio_restart_max_evals:,} evals"
+            if args.portfolio_restart_max_evals is not None else
+            f"{args.portfolio_restart_timeout:g}s"
+        )
+        count_desc = (
+            str(args.portfolio_restart_count)
+            if args.portfolio_restart_count is not None else "until exhausted"
+        )
+        print(
+            f"Serial portfolio: {args.portfolio_time_limit:g}s shared search "
+            f"budget | restart budget={restart_desc} | restarts={count_desc} | "
+            f"hard wall/restart={gt_wall}s"
+        )
+        if (args.portfolio_restart_timeout is not None
+                and args.portfolio_restart_timeout >= gt_wall):
+            parser.error(
+                f"portfolio restart timeout ({args.portfolio_restart_timeout:g}s) "
+                f"must be below --pysr-wall-limit ({gt_wall}s)"
+            )
+    elif source.soft_timeout is None:
         print(f"Soft timeout: none ({source.soft_timeout_source})  |  hard wall: "
               f"{gt_wall}s. Fits that overrun the wall are discarded, not scored.")
     else:
@@ -609,6 +861,8 @@ def main():
             wall_limit=args.fullsr_wall_limit,
             max_retries=args.max_retries,
             eval_noise_levels=args.noise_levels,
+            retain_pareto_frontier=args.merge_run_frontiers,
+            fixed_data_split_across_runs=args.merge_run_frontiers,
         )
     else:
         from parallel_eval_pysr import PySRSlurmEvaluator
@@ -627,6 +881,18 @@ def main():
             max_concurrent_jobs=getattr(args, "max_concurrent_jobs", None),
             repo_root=source.repo_root,
             cache_namespace=source.cache_namespace,
+            # SRBench 2.0 ground-truth results are reviewed from the complete
+            # Pareto frontier, not only the equation selected by PySR.
+            retain_pareto_frontier=(args.srbench_2025 or args.merge_run_frontiers),
+            fixed_data_split_across_runs=args.merge_run_frontiers,
+            domain=("srbench2_exact" if args.srbench2_exact_recovery else "srbench"),
+            portfolio_time_limit_seconds=args.portfolio_time_limit,
+            portfolio_restart_max_evals=args.portfolio_restart_max_evals,
+            portfolio_restart_timeout_seconds=args.portfolio_restart_timeout,
+            portfolio_restart_count=args.portfolio_restart_count,
+            portfolio_warmup=not args.no_portfolio_warmup,
+            cpus_per_task=args.cpus_per_task,
+            frontier_snapshot_seconds=args.frontier_snapshot_seconds,
         )
 
     run = None
@@ -646,6 +912,16 @@ def main():
                 "n_datasets": len(datasets),
                 "split_file": args.split_file,
                 "method_meta": method_meta,
+                "serial_restart_portfolio": (
+                    None if args.portfolio_time_limit is None else {
+                        "total_search_budget_seconds": args.portfolio_time_limit,
+                        "restart_max_evals": args.portfolio_restart_max_evals,
+                        "restart_timeout_seconds": args.portfolio_restart_timeout,
+                        "restart_count": args.portfolio_restart_count,
+                        "warmup_excluded_from_budget": not args.no_portfolio_warmup,
+                        "frontier_loss_key": "loss",
+                    }
+                ),
             },
             script_name="srbench_full_eval.py",
             output_dir=output_dir,
@@ -659,10 +935,29 @@ def main():
         "method_meta": method_meta,
         "max_evals": args.max_evals,
         "timeout_in_seconds": source.soft_timeout,
+        "no_early_stop": args.no_early_stop,
+        "frontier_snapshot_seconds": args.frontier_snapshot_seconds,
+        "frontier_snapshot_clock": 'fit_wall_time' if args.frontier_snapshot_seconds else None,
         "timeout_source": source.soft_timeout_source,
         "max_samples": args.max_samples,
+        "cpus_per_task": args.cpus_per_task,
+        "baseline_l1_loss": args.baseline_l1_loss,
+        "maxsize_warmup": not args.no_maxsize_warmup,
         "seed": args.seed,
         "n_runs": args.n_trials_per_dataset,
+        "merge_run_frontiers": args.merge_run_frontiers,
+        "serial_restart_portfolio": (
+            None if args.portfolio_time_limit is None else {
+                "total_search_budget_seconds": args.portfolio_time_limit,
+                "restart_max_evals": args.portfolio_restart_max_evals,
+                "restart_timeout_seconds": args.portfolio_restart_timeout,
+                "restart_count": args.portfolio_restart_count,
+                "warmup_excluded_from_budget": not args.no_portfolio_warmup,
+                "frontier_loss_key": "loss",
+                "cpus_per_task": 1,
+            }
+        ),
+        "bundle_names": bundle_names,
         "seeds": [args.seed + i for i in range(args.n_trials_per_dataset)],
         "noise_levels": args.noise_levels,
         "split_file": args.split_file,
@@ -671,6 +966,9 @@ def main():
         "unsolvable_tasks": list(srio.UNSOLVABLE_TASKS),
         "batches": [],
         "evaluation_types": ["ground_truth"] + (["black_box"] if args.black_box else []),
+        "ground_truth_protocol": (
+            "srbench2_exact_recovery" if args.srbench2_exact_recovery else "srbench"
+        ),
     }
     with open(Path(output_dir) / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
@@ -679,13 +977,14 @@ def main():
         # FullSR natively expands all requested noise levels into one array.
         before = set(evaluator.slurm_dir.glob("eval_*"))
         evaluator.evaluate_configs(
-            configs=[config],
+            configs=configs,
             dataset_names=datasets,
             seed=args.seed,
-            n_runs=args.n_trials_per_dataset,
+            n_runs=runs_per_config,
             fitness_metric="gt",
             fullsr_wall_limit=args.fullsr_wall_limit,
             split_label=args.split_file,
+            run_index_start_per_config=run_index_starts,
         )
         created = sorted(set(evaluator.slurm_dir.glob("eval_*")) - before)
         if len(created) != 1:
@@ -706,10 +1005,11 @@ def main():
         for noise in args.noise_levels:
             noise_map = {ds: noise for ds in datasets}
             h = evaluator.submit_configs(
-                configs=[config],
+                configs=configs,
                 dataset_names=datasets,
                 seed=args.seed,
-                n_runs=args.n_trials_per_dataset,
+                n_runs=runs_per_config,
+                run_index_start_per_config=run_index_starts,
                 target_noise_map=noise_map,
                 fitness_metric="gt",
             )
@@ -737,12 +1037,25 @@ def main():
 
     # Build + persist the big keyed JSON from the on-disk batch artifacts.
     keyed = srio.build_keyed_results(output_dir, manifest)
+    if args.merge_run_frontiers:
+        srio.save_keyed_results(output_dir, keyed, meta={
+            "mode": mode_name, "kind": "constituent_searches",
+            "n_datasets": len(datasets), "n_runs": args.n_trials_per_dataset,
+            "noise_levels": args.noise_levels,
+        }, filename="srbench_full_constituent_results.json")
+        keyed = srio.merge_keyed_results(
+            keyed, base_seed=args.seed, bundle_names=bundle_names,
+        )
     srio.save_keyed_results(output_dir, keyed, meta={
         "mode": mode_name, "n_datasets": len(datasets),
         "n_runs": args.n_trials_per_dataset, "noise_levels": args.noise_levels,
+        "merge_run_frontiers": args.merge_run_frontiers,
     })
     n_present = sum(1 for e in keyed.values() if e["present"] and e["error"] is None)
     print(f"\nResults: {n_present}/{len(keyed)} runs present.")
+    if keyed and n_present == 0:
+        copy_slurm_log(output_dir)
+        raise RuntimeError("Ground-truth evaluation produced no valid runs; inspect worker logs.")
 
     metrics = srio.aggregate_metrics(keyed, args.noise_levels)
     print(srio.format_metrics_console(metrics, args.noise_levels))

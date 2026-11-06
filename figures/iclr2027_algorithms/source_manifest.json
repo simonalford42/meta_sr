@@ -1,0 +1,225 @@
+{
+  "run": "709715",
+  "selection_rule": "Minimum repository code_loc in the last logged generation's population",
+  "generation": 45,
+  "total_code_loc": 245,
+  "logged_training_score": 0.8166666666666667,
+  "seeds_evaluated_at_log": 3,
+  "final_population_code_locs": [
+    245,
+    290,
+    293,
+    294,
+    309,
+    393,
+    407,
+    415,
+    416,
+    466
+  ],
+  "operators": {
+    "mutation": {
+      "name": "motif_duplication_simple_rational_gen27_9",
+      "original": "runs/709715/operators/gen27_mutation9.jl",
+      "snapshot": "source/mutation.jl",
+      "code_loc": 63,
+      "sha256": "4738b853f7967c41e0e75e6eb6298257513c636b66bfa50a2b63574c59d3045a"
+    },
+    "survival": {
+      "name": "age_and_cost_regularized_survival_simple_gen28_8",
+      "original": "runs/709715/operators/gen28_survival8.jl",
+      "snapshot": "source/survival.jl",
+      "code_loc": 27,
+      "sha256": "c9cc1e4dd9e1376b4926d90f60cf7defbf411d4d20084fded6de22eaf40a2196"
+    },
+    "selection": {
+      "name": "clone_suppressed_quality_niche_tournament_gen45_9",
+      "original": "runs/709715/operators/gen45_selection9.jl",
+      "snapshot": "source/selection.jl",
+      "code_loc": 92,
+      "sha256": "1b597fd00d3acb59fb5bc4d210165bf81e626730e53f6859414e997fe7d94fe4"
+    },
+    "loss": {
+      "name": "affine_shape_calibration_loss_gen39_7",
+      "original": "runs/709715/operators/gen39_loss7.jl",
+      "snapshot": "source/loss.jl",
+      "code_loc": 63,
+      "sha256": "c9e10a5f65a81a4979df80eda9df7b105e8fdd4a6d4067eb5f6bca56c09cd501"
+    }
+  },
+  "run_configuration": {
+    "operator_types": [
+      "mutation",
+      "survival",
+      "selection",
+      "loss"
+    ],
+    "n_generations": 45,
+    "population_size": 10,
+    "n_offspring": 10,
+    "n_datasets": 20,
+    "dataset_names": [
+      "strogatz_barmag1",
+      "feynman_II_11_27",
+      "feynman_I_13_4",
+      "feynman_I_30_3",
+      "feynman_III_19_51",
+      "feynman_II_13_23",
+      "feynman_III_14_14",
+      "feynman_II_21_32",
+      "feynman_test_8",
+      "feynman_III_13_18",
+      "feynman_I_18_4",
+      "feynman_I_6_2a",
+      "feynman_I_44_4",
+      "feynman_II_34_29b",
+      "feynman_II_6_11",
+      "feynman_I_32_5",
+      "feynman_I_43_43",
+      "feynman_I_34_1",
+      "feynman_II_13_17",
+      "feynman_III_15_14"
+    ],
+    "model": "openai/gpt-5.4-mini",
+    "model_ensemble": [
+      {
+        "model": "anthropic/claude-opus-5",
+        "weight": 0.3
+      },
+      {
+        "model": "openai/gpt-5.6-sol",
+        "weight": 0.3
+      },
+      {
+        "model": "google/gemini-3.7-flash",
+        "weight": 0.2
+      },
+      {
+        "model": "anthropic/claude-sonnet-5",
+        "weight": 0.2
+      }
+    ],
+    "temperature": 0.0,
+    "seed": 42,
+    "pysr_kwargs": {
+      "early_stop_condition": 1e-08,
+      "niterations": 10000000,
+      "populations": 15,
+      "population_size": 33,
+      "maxsize": 40,
+      "maxdepth": 10,
+      "binary_operators": [
+        "+",
+        "-",
+        "*",
+        "/"
+      ],
+      "unary_operators": [
+        "sin",
+        "cos",
+        "exp",
+        "log",
+        "sqrt",
+        "square"
+      ],
+      "constraints": {
+        "sin": 9,
+        "cos": 9,
+        "exp": 9,
+        "log": 9,
+        "sqrt": 9,
+        "/": [
+          -1,
+          9
+        ]
+      },
+      "nested_constraints": {
+        "sin": {
+          "sin": 0,
+          "cos": 0,
+          "exp": 1,
+          "log": 1,
+          "sqrt": 1,
+          "square": 1
+        },
+        "cos": {
+          "sin": 0,
+          "cos": 0,
+          "exp": 1,
+          "log": 1,
+          "sqrt": 1,
+          "square": 1
+        },
+        "exp": {
+          "exp": 0,
+          "log": 0
+        },
+        "log": {
+          "exp": 0,
+          "log": 0
+        },
+        "sqrt": {
+          "sqrt": 0
+        }
+      },
+      "procs": 0,
+      "parallelism": "serial",
+      "deterministic": true,
+      "batching": false,
+      "verbosity": 1,
+      "progress": true,
+      "temp_equation_file": false,
+      "delete_tempfiles": true,
+      "output_directory": "pysr_outputs",
+      "max_evals": 1000000,
+      "timeout_in_seconds": 500
+    },
+    "max_samples": 1000,
+    "n_runs": 3,
+    "target_noise": 0.0,
+    "random_target_noise": false,
+    "eval_all_noise_levels": false,
+    "fitness_metric": "gt",
+    "domain": "srbench",
+    "uninformative_prompts": false,
+    "black_box": false,
+    "split_label": "barely_unsolvable",
+    "val_split": "splits/barely_unsolvable_val2.txt",
+    "test_split": null,
+    "population_type": "task",
+    "reeval": "population",
+    "n_extra_runs": 0,
+    "n_runs_max": 0,
+    "lambda_target": 1,
+    "reeval_budget": 20,
+    "n_reevals": 10,
+    "smart_sigma": 0.064689,
+    "identify_topk": 10,
+    "llm_max_workers": 16,
+    "execution_feedback_n": 3,
+    "execution_feedback_prob": 0.5,
+    "mutation_mode": "random",
+    "simplify_cooldown": 15
+  },
+  "engine_sources": {
+    "evolve_pysr.py": "6021aa53d325f6f41183eabe9bbcd4c46bd79637b49e150ebdda20340ac66e70",
+    "evolution_helpers.py": "34949f967948f82c5f47e90d51399caf01df8eb2164dfa251449b67677d8f021",
+    "bundle_loader.py": "1cb6aba1bc0ec0f8979aa60007e8339661d7025d2bb089b8e429ee82a00eb454",
+    "operator_types.py": "0faa674e13b00b100b2dd38d1d33f7ab5e3d440e10edf68cdb7c8b906b89b519",
+    "skeleton_operator_types.py": "9d3dd8535f2d3aae3ee8b961abcbdc2710ad9c57b5903db94ca4f17d457132c2",
+    "evolve_fullsr.py": "52bc8754815cdc1f9d887b317579556efcd09a92d2abf29f96f7548e85ea87a0",
+    "SymbolicRegression.jl/src/RegularizedEvolution.jl": "6aadd8f51557d84de495877fbb37050e6f4dedb934b5073fd95f63a9d7c965e5",
+    "SymbolicRegression.jl/src/Mutate.jl": "c19b1ef38ee1d6ddac369ead1e7540aba0e2702ea011f2c4f53db2def0a4f020",
+    "SymbolicRegression.jl/src/SingleIteration.jl": "c4013fa90138c411415607b2994462cc4ee5c597479d62a0cb5b0463fbff0288",
+    "SymbolicRegression.jl/src/Population.jl": "cd621d201804c35bc93de1c307359ca5a8e698ad20e939b71cf688d0f97b167c",
+    "SymbolicRegression.jl/src/LossFunctions.jl": "a34c17bcb07e3130f636004483a3a5c8b29c48f08877c3cdc7969b4c03a3c3c9",
+    "SymbolicRegression.jl/src/SymbolicRegression.jl": "39cbb595909285912e5fc0a50c6fc0b8bc65772d6e5d417c22946c2e85076409",
+    "SymbolicRegression.jl/src/SkeletonSR.jl": "27973320dba3b4eb714dbec9b6cd5f8744bb6605c56a0cd5faa11c41662a4283",
+    "SymbolicRegression.jl/src/BasicSRConfig.jl": "4149652bf10363dd1f5a932830c09fcc7ba974a522fd946bef280ec9e938e2b1",
+    "SymbolicRegression.jl/src/SRConfig.jl": "f7f2f99663067650b7128d9cd4f65258e5308106ec811237af9d71da562ef32a",
+    "SymbolicRegression.jl/src/CustomSelection.jl": "0d59e3947ee6591e509135b62d057ce405690430ae0a9d6ed4683a9ceb14906c",
+    "SymbolicRegression.jl/src/CustomSurvival.jl": "0a65b794bd43df75f9d07504e88a4e41e894f1a054760cb305994e1c77ae0163",
+    "SymbolicRegression.jl/src/CustomMutations.jl": "a1c19e8bf8c36cc742593f35433c1e767663bbc50f7dc545e4e48e01a08561fc",
+    "SymbolicRegression.jl/src/CustomLoss.jl": "07231d5067fcec2e92b1730bb729588cf6bcb7ff5a6d16038f8af21a586def27"
+  }
+}

@@ -1,0 +1,31 @@
+% DATA PROVENANCE (generated/checked 2026-09-08):
+% - PySR row: runs/190178/neuron_results.json, restricted to the five worlds
+%   evaluated by run 708907 (h_sag, na_fatigue, ca_rebound, d_type,
+%   textbook_M) and seeds 10000--10004: 25 fits total.
+% - Evolved PySR row: runs/708907/neuron_full_eval/neuron_results.json.
+%   runs/708907/run_data.json confirms uninformative_prompts=true,
+%   execution_feedback_n=0, and training on splits/neuron_first1.txt.
+% - Exact: held-out NRMSE <= 1e-6. Near exact: 1e-6 < NRMSE <= 1e-3.
+%   Failed: held-out NRMSE > 1e-3. A correct solution means exact or near exact.
+% - Runtime is the median [25th, 75th percentile] of runtime_seconds among
+%   correct fits. It is total fit wall time, not instrumented time-to-first-hit.
+% Required packages in the paper preamble: booktabs, tabularx.
+
+\begin{table}[t]
+  \caption{Numerical recovery on fully observable NeuronBench. Each row contains
+  25 fits: five held-out neuron worlds and five random seeds per world.}
+  \label{tab:neuronbench-recovery}
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabularx}{\linewidth}{@{}Xrrr@{}}
+    \toprule
+    Method & Exact & Near exact & Failed \\
+    \midrule
+    PySR & 0 & 8 & 17  \\
+    Evolved PySR & 23  & 2  & 0 \\
+    \bottomrule
+  \end{tabularx}
+  \vspace{2pt}
+
+\end{table}

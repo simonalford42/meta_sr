@@ -1,0 +1,52 @@
+% Preamble: \usepackage{amsmath,booktabs,graphicx,xcolor}
+\begin{table*}[t]
+\centering
+\begingroup
+\definecolor{parityBase}{HTML}{317DA5}
+\definecolor{paritySRBench}{HTML}{BB7A20}
+\definecolor{parityMIPS}{HTML}{C33D3D}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.6}
+\textbf{Parity-last 4}\par\smallskip
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccl}
+\toprule
+Scalar relation & Input-table size &
+\textcolor{parityBase}{Base} &
+\textcolor{paritySRBench}{Evolved} &
+\textcolor{parityMIPS}{MIPS-evolved} &
+Discovered equation (MIPS-evolved) \\
+\midrule
+$h_0'=f_0(h_0,h_1,h_2,x)$ & 32 state--input pairs &
+\textcolor{parityBase}{$0/10$} & \textcolor{paritySRBench}{$0/10$} & \textcolor{parityMIPS}{$1/10$} &
+$\begin{aligned}
+&\min\bigl(((\max(h_1,h_0)-x)h_1-x)h_1-x+2,\\
+&\qquad 4\,|\mathrm{xor}(h_1(0.227249-x),h_1)+x-\mathrm{zero}(h_1)|\bigr)
+\end{aligned}$ \\
+\midrule
+$h_1'=f_1(h_0,h_1,h_2,x)$ & 32 state--input pairs &
+\textcolor{parityBase}{$5/10$} & \textcolor{paritySRBench}{$3/10$} & \textcolor{parityMIPS}{$10/10$} &
+$\begin{aligned}
+&\bigl\lfloor\min\bigl(\min(2.98567x+0.660363h_1,\,2.32073)\\
+&\qquad +x\,\max(3.00001,h_1),\,9.32075\bigr)\bigr\rfloor
+\end{aligned}$ \\
+\midrule
+$h_2'=f_2(h_0,h_1,h_2,x)$ & 32 state--input pairs &
+\textcolor{parityBase}{$10/10$} & \textcolor{paritySRBench}{$10/10$} & \textcolor{parityMIPS}{$10/10$} &
+$4\,\mathrm{eq}(\mathrm{lt}(h_1,2h_0),x)$ \\
+\midrule
+$y=g(h_0,h_1,h_2)$ & 16 states &
+\textcolor{parityBase}{$10/10$} & \textcolor{paritySRBench}{$10/10$} & \textcolor{parityMIPS}{$10/10$} &
+$\min(1,h_2)$ \\
+\midrule
+\multicolumn{2}{l}{\textbf{Subproblems recovered across seeds}} &
+\textcolor{parityBase}{\textbf{3/4}} &
+\textcolor{paritySRBench}{\textbf{3/4}} &
+\textcolor{parityMIPS}{\textbf{4/4}} & \\
+\bottomrule
+\end{tabular}%
+}
+\endgroup
+\caption{Four scalar regression problems for Parity-last 4 after refining the integer encoding by a factor of four. The observed state set has 16 states, yielding 32 state--input pairs for each transition relation and 16 inputs for the output relation. Entries give exact-recovery counts out of ten search seeds. Baseline PySR and SRBench-evolved PySR each recover three of four subproblems across seeds; MIPS-evolved PySR recovers all four. The equations are recovered expressions from MIPS-evolved run indices 8, 2, 5, and 8, respectively. $h=(h_0,h_1,h_2)$ is the integer-encoded hidden state, with $h_0\in\{0,2,3,4,8\}$, $h_1\in\{0,1,2,5,7,9\}$, $h_2\in\{0,4\}$ (16 joint states), $x\in\{0,1\}$ is the scalar input bit, $y\in\{0,1\}$ is the output bit, primes denote the next state, and $y$ is read from the (new) hidden state. Here $\mathrm{lt}(a,b)=\mathbf{1}[a<b]$, $\mathrm{eq}(a,b)=\mathbf{1}[|a-b|<0.5]$, $\mathrm{zero}(a)=\mathbf{1}[|a|<0.5]$, and $\mathrm{xor}(a,b)=(\mathrm{round}(a)+\mathrm{round}(b))\bmod 2$. Expressions are algebraically regrouped and constants rounded to six significant digits; the displayed forms are verified on the complete recorded training and held-out relations within absolute tolerance $10^{-9}$. Recovery pools component successes across seeds; the MIPS-evolved method also recovers all four components in run index 8. Each fit uses at most $10^6$ evaluations and a 500-second timeout. Run 709714 was evolved directly on MIPS.}
+\label{tab:mips-parity-last4}
+\end{table*}

@@ -47,7 +47,7 @@ as unsolved.
 
 ## Full SRBench ground-truth evaluation through OpenRouter
 
-`scripts/evaluate_lasr_srbench.py` adapts the archived LaSR search to the
+`evaluate_lasr_srbench.py` adapts the archived LaSR search to the
 canonical `splits/srbench_all.txt` grid. It uses the shared SRBench protocol:
 
 - 133 ground-truth datasets, including the 3 inverse-trig unsolvable cases;
@@ -66,7 +66,7 @@ completion cap.
 Estimate the grid without creating files or submitting jobs:
 
 ```bash
-.venv-lasr/bin/python scripts/evaluate_lasr_srbench.py plan --noise-levels 0.001
+.venv-lasr/bin/python evaluate_lasr_srbench.py plan --noise-levels 0.001
 ```
 
 The prepared submission block is in `submit_jobs.sh`. Its `submit` subcommand
@@ -83,6 +83,12 @@ The estimated API cost for this 133-fit grid is `$55-$218`, with roughly
 number and length of LLM responses are stochastic. It extrapolates from the
 checked-in environment's one-equation OpenRouter smoke measurement and is
 recorded in each run's `manifest.json`.
+
+At submission and aggregation, the evaluator also snapshots the OpenRouter
+API key's cumulative billed usage. The difference is recorded as `cost_usd` in
+`openrouter_usage.json` and copied into `summary.json`. This is an exact
+key-level delta; unrelated requests made with the same key while the run is in
+progress would be included.
 
 A full run needs either this external endpoint or a GPU-hosted vLLM server.
 Starting either evaluation through SLURM still requires explicit approval.

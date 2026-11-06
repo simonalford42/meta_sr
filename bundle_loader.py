@@ -106,7 +106,10 @@ def load_resume_state(path: str) -> Dict[str, Any]:
     for gen_entry in gens:
         for key in ("population", "offspring"):
             for b_dict in gen_entry.get(key, []):
-                name = b_dict.get("display_name") or b_dict.get("name")
+                # OperatorBundle.to_dict stores component names, not a top-level
+                # name. Reconstruct the same identity used for archive dedup.
+                name = (b_dict.get("display_name") or b_dict.get("name")
+                        or OperatorBundle.from_dict(b_dict).display_name)
                 seeds = int(b_dict.get("seeds_evaluated", 0) or 0)
                 if name is not None:
                     prev = seeds_by_name.get(name, 0)
@@ -131,6 +134,67 @@ def load_resume_state(path: str) -> Dict[str, Any]:
         "prior_val_results": data.get("val_results", {}),
         "source_path": str(run_data_path),
     }
+
+
+def load_task_population_bundles(path: str, n_bundles: int) -> List[OperatorBundle]:
+    """Load a cyclic N-slot portfolio from the latest task-diverse generation.
+
+    Only unique candidates that actually win at least one evolution task are
+    eligible; task-population backfill members are excluded. Winners are ranked
+    by overall evolution score, then repeated cyclically when fewer than N are
+    available (ABCABC... for three winners).
+    """
+    if n_bundles <= 0:
+        raise ValueError("n_bundles must be positive")
+    p = _resolve_bundle_path(path)
+    run_data_path = p / "run_data.json" if p.is_dir() else p
+    if not run_data_path.exists():
+        raise FileNotFoundError(f"No run_data.json found at: {run_data_path}")
+    with open(run_data_path) as stream:
+        data = json.load(stream)
+    if (data.get("config") or {}).get("population_type") != "task":
+        raise ValueError(
+            "--task-population-bundles requires an evolve_pysr run created "
+            "with --population-type task"
+        )
+    generations = [
+        generation for generation in data.get("generations", [])
+        if generation.get("population_type") == "task"
+    ]
+    if not generations:
+        raise ValueError("run contains no completed task-population generation")
+    population = [
+        OperatorBundle.from_dict(entry)
+        for entry in generations[-1].get("population", [])
+    ]
+    dataset_names = list((data.get("config") or {}).get("dataset_names") or [])
+    winners: Dict[str, OperatorBundle] = {}
+    for task_index in range(len(dataset_names)):
+        best = None
+        best_key = None
+        for bundle in population:
+            details = bundle.result_details or []
+            if task_index >= len(details):
+                continue
+            scores = (details[task_index] or {}).get("run_gt_scores") or []
+            solved = sum(float(value) >= 1.0 for value in scores)
+            if not scores or solved == 0:
+                continue
+            key = (
+                solved / len(scores), len(scores),
+                float(bundle.score if bundle.score is not None else -1.0),
+            )
+            if best_key is None or key > best_key:
+                best, best_key = bundle, key
+        if best is not None:
+            winners[best.display_name] = best
+    ordered = sorted(
+        winners.values(),
+        key=lambda bundle: (-float(bundle.score or 0.0), bundle.display_name),
+    )
+    if not ordered:
+        raise ValueError("latest task population contains no task-winning bundles")
+    return [ordered[index % len(ordered)] for index in range(n_bundles)]
 
 def _select_best_by_val(data: Dict[str, Any]) -> Optional[OperatorBundle]:
     """Return the bundle with the highest persisted validation score, or None.
@@ -199,12 +263,31 @@ def _load_from_run_data(
         )
 
     # Detect HPO run_data.json (has 'trials' key, no 'generations'). HPO has no
-    # val concept, so select_by doesn't apply — always best trial by avg_r2.
+    # val concept, so select_by doesn't apply — always the run's own best trial.
     if "trials" in data and "generations" not in data:
         trials = data["trials"]
         if not trials:
             raise ValueError(f"No trials found in HPO run_data: {path}")
-        best_trial = max(trials, key=lambda t: t.get("avg_r2", -1))
+
+        def _trial_score(trial):
+            # Trial scores are "avg_score" (any fitness metric); "avg_r2" is
+            # the legacy key from when HPO only optimized R².
+            score = trial.get("avg_score", trial.get("avg_r2"))
+            return float("-inf") if score is None else score
+
+        # hpo_pysr.py records the winner in "best_trial" — it is chosen from a
+        # fresh-seed re-eval of the finalists, so it beats taking the argmax
+        # over the (single-seed, selection-biased) trial scores. Fall back to
+        # the argmax only for runs that predate that field.
+        best_trial = None
+        best_number = (data.get("best_trial") or {}).get("trial_number")
+        if best_number is not None:
+            best_trial = next(
+                (t for t in trials if t.get("trial_number") == best_number), None
+            )
+        if best_trial is None:
+            best_trial = max(trials, key=_trial_score)
+
         params = best_trial.get("params", {})
         if not params:
             raise ValueError(f"Best trial has no params in {path}")
@@ -215,7 +298,8 @@ def _load_from_run_data(
             else OperatorBundle()
         )
         bundle.best_hparams = params
-        bundle.score = best_trial.get("avg_r2")
+        score = _trial_score(best_trial)
+        bundle.score = None if score == float("-inf") else score
         return bundle
 
     if select_by == "val":
@@ -441,7 +525,8 @@ def _load_from_hpo(path: Path) -> OperatorBundle:
         else OperatorBundle()
     )
     bundle.best_hparams = params
-    bundle.score = data.get("avg_r2") if isinstance(data, dict) else None
+    bundle.score = (data.get("avg_score", data.get("avg_r2"))
+                    if isinstance(data, dict) else None)
     return bundle
 
 def _load_from_julia(path: Path, operator_type: str = "mutation") -> OperatorBundle:

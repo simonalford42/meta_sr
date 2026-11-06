@@ -1,0 +1,25 @@
+{
+  "01e2ad01ef2bdcdb29b407beb37ba9f58fc2b1b5fb57d5a736a2e403f3916192": {
+    "classification": "near",
+    "source": "audited_correction",
+    "explanation": "Selected expression equals C + 0.9980056256522262*log(x1*x2/x0^2). The fixed log coefficient must be exactly 1. Checked all 16 frontier candidates: none exact.",
+    "all_frontier_exact_checks": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  }
+}

@@ -1,0 +1,91 @@
+"""Plot original eval_axis_comparison N=1/N=3 runs (five seeds each).
+
+Source snapshot: winners_curse_data.json, from the original runs' cached
+val_eval/train_reeval_gen_submitted, train_avg_score, and train_score_at_submit.
+Use original wandb IDs, not later continuation runs referencing the same folder.
+Hold diagnostics between submissions on generations 0--15; bands are ±1
+population SD across seeds. Winner's curse = original minus reevaluated fitness.
+
+Writes winners_curse.pdf (stacked) and winners_curse2.pdf (side by side).
+
+Run: python figures/plot_winners_curse.py
+"""
+import json
+import sys
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "scripts"))
+from plot_eval_axis_comparison import forward_fill_by_gen
+from plot_reeval_frontier import LINE_ALPHA
+
+SCALE = 0.75
+
+def plot(data, side_by_side=False):
+    gens = data["generations"]
+    with plt.rc_context({"font.size": 11, "axes.labelsize": 12,
+                         "xtick.labelsize": 10, "ytick.labelsize": 10}):
+        if side_by_side:
+            fig, axes = plt.subplots(1, 2, figsize=(2 * 5.2 * SCALE, 3.6 * SCALE), sharex=True)
+        else:
+            fig, axes = plt.subplots(2, 1, figsize=(5.2 * SCALE, 6.8 * SCALE), sharex=True)
+        for n, color in [(1, "tab:purple"), (3, "tab:cyan")]:
+            runs = [r for r in data["runs"] if r["n_init"] == n]
+            assert len(runs) == 5
+            values = [[], []]
+            for run in runs:
+                points = run["points"]
+                for i, metric in enumerate([
+                    lambda p: p["reeval_train_score"],
+                    lambda p: p["train_score_at_submit"] - p["reeval_train_score"],
+                ]):
+                    held = forward_fill_by_gen([(p["generation"], metric(p)) for p in points], gens)
+                    values[i].append([held[g] for g in gens])
+            for ax, rows in zip(axes, values):
+                rows = np.asarray(rows)
+                assert np.isfinite(rows).all()
+                mean, std = rows.mean(axis=0), rows.std(axis=0, ddof=0)
+                ax.plot(gens, mean, color=color, lw=1.8, marker="o", ms=3,
+                        alpha=LINE_ALPHA, label=rf"$N = {n}$")
+                ax.fill_between(gens, mean - std, mean + std, color=color, alpha=.18, linewidth=0)
+            print(f"N={n}: final reevaluated fitness={np.mean(values[0], axis=0)[-1]:.3f}, "
+                  f"winner's curse={np.mean(values[1], axis=0)[-1]:.3f}")
+        axes[0].set_ylabel("Best offspring fitness (GT)")
+        axes[0].set_ylim(.30, .70)
+        axes[0].set_yticks([.3, .4, .5, .6, .7])
+        axes[0].legend(frameon=False, fontsize=9, loc="upper left", handlelength=1.8)
+        axes[1].set_ylabel("Winner’s curse")
+        axes[1].axhline(0, color="0.4", lw=.8, alpha=.5)
+        axes[1].set_ylim(-.06, .36)
+        axes[1].set_yticks([0, .1, .2, .3])
+        axes[1].set_xlim(-.35, 15.35)
+        axes[1].set_xticks(range(0, 16, 3))
+        for ax in axes if side_by_side else axes[1:]:
+            ax.set_xlabel("Generation")
+        for ax in axes:
+            ax.grid(alpha=.2)
+            for spine in ("top", "right"):
+                ax.spines[spine].set_visible(False)
+        if side_by_side:
+            fig.tight_layout(w_pad=2.0)
+        else:
+            fig.tight_layout(h_pad=1.2)
+        out = HERE / ("winners_curse2.pdf" if side_by_side else "winners_curse.pdf")
+        fig.savefig(out)
+        plt.close(fig)
+        print(f"saved {out}")
+
+
+def main():
+    data = json.loads((HERE / "winners_curse_data.json").read_text())
+    plot(data)
+    plot(data, side_by_side=True)
+
+
+if __name__ == "__main__":
+    main()

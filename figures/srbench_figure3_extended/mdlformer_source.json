@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/tsinghua-fib-lab/SR4MDL",
+  "commit": "a79f5260247a219e359b870ab3e91650208b87d2",
+  "raw_results_url": "https://raw.githubusercontent.com/tsinghua-fib-lab/SR4MDL/a79f5260247a219e359b870ab3e91650208b87d2/release/whitebox_results_full.csv.gz",
+  "raw_results_sha256": "93aa5b15a5e03bec0bbee44350c0dfd7c926394139c4e80d6796a60c560331d5",
+  "mapping_evidence": "https://raw.githubusercontent.com/tsinghua-fib-lab/SR4MDL/a79f5260247a219e359b870ab3e91650208b87d2/release/visualize.ipynb",
+  "mapping": "SSSR -> Ours in the authors notebook; plotted as MDLformer (SR4MDL)",
+  "released_trials": 5307,
+  "expected_trials": 5320,
+  "missing_trials": 13
+}

@@ -1,0 +1,817 @@
+[
+  {
+    "run": "373691",
+    "label": "1 run, no reevaluation",
+    "start_time": "2026-09-17T17:01:13.864296",
+    "config": {
+      "operator_types": [
+        "mutation",
+        "survival",
+        "selection",
+        "loss"
+      ],
+      "n_generations": 20,
+      "population_size": 10,
+      "n_offspring": 10,
+      "n_datasets": 20,
+      "dataset_names": [
+        "strogatz_barmag1",
+        "feynman_II_11_27",
+        "feynman_I_13_4",
+        "feynman_I_30_3",
+        "feynman_III_19_51",
+        "feynman_II_13_23",
+        "feynman_III_14_14",
+        "feynman_II_21_32",
+        "feynman_test_8",
+        "feynman_III_13_18",
+        "feynman_I_18_4",
+        "feynman_I_6_2a",
+        "feynman_I_44_4",
+        "feynman_II_34_29b",
+        "feynman_II_6_11",
+        "feynman_I_32_5",
+        "feynman_I_43_43",
+        "feynman_I_34_1",
+        "feynman_II_13_17",
+        "feynman_III_15_14"
+      ],
+      "model": "openai/gpt-5.4-mini",
+      "model_ensemble": [
+        {
+          "model": "anthropic/claude-opus-5",
+          "weight": 0.3
+        },
+        {
+          "model": "openai/gpt-5.6-sol",
+          "weight": 0.3
+        },
+        {
+          "model": "google/gemini-3.7-flash",
+          "weight": 0.2
+        },
+        {
+          "model": "anthropic/claude-sonnet-5",
+          "weight": 0.2
+        }
+      ],
+      "temperature": 0.0,
+      "seed": 42,
+      "pysr_kwargs": {
+        "early_stop_condition": 1e-08,
+        "niterations": 10000000,
+        "populations": 15,
+        "population_size": 33,
+        "maxsize": 40,
+        "maxdepth": 10,
+        "binary_operators": [
+          "+",
+          "-",
+          "*",
+          "/"
+        ],
+        "unary_operators": [
+          "sin",
+          "cos",
+          "exp",
+          "log",
+          "sqrt",
+          "square"
+        ],
+        "constraints": {
+          "sin": 9,
+          "cos": 9,
+          "exp": 9,
+          "log": 9,
+          "sqrt": 9,
+          "/": [
+            -1,
+            9
+          ]
+        },
+        "nested_constraints": {
+          "sin": {
+            "sin": 0,
+            "cos": 0,
+            "exp": 1,
+            "log": 1,
+            "sqrt": 1,
+            "square": 1
+          },
+          "cos": {
+            "sin": 0,
+            "cos": 0,
+            "exp": 1,
+            "log": 1,
+            "sqrt": 1,
+            "square": 1
+          },
+          "exp": {
+            "exp": 0,
+            "log": 0
+          },
+          "log": {
+            "exp": 0,
+            "log": 0
+          },
+          "sqrt": {
+            "sqrt": 0
+          }
+        },
+        "procs": 0,
+        "parallelism": "serial",
+        "deterministic": true,
+        "batching": false,
+        "verbosity": 1,
+        "progress": false,
+        "temp_equation_file": false,
+        "delete_tempfiles": true,
+        "output_directory": "pysr_outputs",
+        "max_evals": 1000000,
+        "timeout_in_seconds": 500
+      },
+      "max_samples": 1000,
+      "n_runs": 1,
+      "target_noise": 0.0,
+      "random_target_noise": false,
+      "eval_all_noise_levels": false,
+      "fitness_metric": "gt",
+      "domain": "srbench",
+      "uninformative_prompts": false,
+      "black_box": false,
+      "split_label": "barely_unsolvable",
+      "val_split": "splits/barely_unsolvable_val2.txt",
+      "test_split": null,
+      "repo_root": "/home/sca63/meta_sr",
+      "population_type": "task",
+      "reeval": "none",
+      "n_extra_runs": 0,
+      "n_runs_max": 0,
+      "lambda_target": 1,
+      "reeval_budget": 20,
+      "n_reevals": 0,
+      "reeval_topk": 2,
+      "smart_sigma": 0.064689,
+      "identify_topk": 10,
+      "llm_max_workers": 16,
+      "execution_feedback_n": 3,
+      "execution_feedback_prob": 0.5,
+      "mutation_mode": "random",
+      "excluded_mutation_modes": [],
+      "allow_data_aware_mutations": true,
+      "simplify_cooldown": 0
+    }
+  },
+  {
+    "run": "373692",
+    "label": "3 runs, no reevaluation",
+    "start_time": "2026-09-17T17:01:14.051285",
+    "config": {
+      "operator_types": [
+        "mutation",
+        "survival",
+        "selection",
+        "loss"
+      ],
+      "n_generations": 20,
+      "population_size": 10,
+      "n_offspring": 10,
+      "n_datasets": 20,
+      "dataset_names": [
+        "strogatz_barmag1",
+        "feynman_II_11_27",
+        "feynman_I_13_4",
+        "feynman_I_30_3",
+        "feynman_III_19_51",
+        "feynman_II_13_23",
+        "feynman_III_14_14",
+        "feynman_II_21_32",
+        "feynman_test_8",
+        "feynman_III_13_18",
+        "feynman_I_18_4",
+        "feynman_I_6_2a",
+        "feynman_I_44_4",
+        "feynman_II_34_29b",
+        "feynman_II_6_11",
+        "feynman_I_32_5",
+        "feynman_I_43_43",
+        "feynman_I_34_1",
+        "feynman_II_13_17",
+        "feynman_III_15_14"
+      ],
+      "model": "openai/gpt-5.4-mini",
+      "model_ensemble": [
+        {
+          "model": "anthropic/claude-opus-5",
+          "weight": 0.3
+        },
+        {
+          "model": "openai/gpt-5.6-sol",
+          "weight": 0.3
+        },
+        {
+          "model": "google/gemini-3.7-flash",
+          "weight": 0.2
+        },
+        {
+          "model": "anthropic/claude-sonnet-5",
+          "weight": 0.2
+        }
+      ],
+      "temperature": 0.0,
+      "seed": 42,
+      "pysr_kwargs": {
+        "early_stop_condition": 1e-08,
+        "niterations": 10000000,
+        "populations": 15,
+        "population_size": 33,
+        "maxsize": 40,
+        "maxdepth": 10,
+        "binary_operators": [
+          "+",
+          "-",
+          "*",
+          "/"
+        ],
+        "unary_operators": [
+          "sin",
+          "cos",
+          "exp",
+          "log",
+          "sqrt",
+          "square"
+        ],
+        "constraints": {
+          "sin": 9,
+          "cos": 9,
+          "exp": 9,
+          "log": 9,
+          "sqrt": 9,
+          "/": [
+            -1,
+            9
+          ]
+        },
+        "nested_constraints": {
+          "sin": {
+            "sin": 0,
+            "cos": 0,
+            "exp": 1,
+            "log": 1,
+            "sqrt": 1,
+            "square": 1
+          },
+          "cos": {
+            "sin": 0,
+            "cos": 0,
+            "exp": 1,
+            "log": 1,
+            "sqrt": 1,
+            "square": 1
+          },
+          "exp": {
+            "exp": 0,
+            "log": 0
+          },
+          "log": {
+            "exp": 0,
+            "log": 0
+          },
+          "sqrt": {
+            "sqrt": 0
+          }
+        },
+        "procs": 0,
+        "parallelism": "serial",
+        "deterministic": true,
+        "batching": false,
+        "verbosity": 1,
+        "progress": false,
+        "temp_equation_file": false,
+        "delete_tempfiles": true,
+        "output_directory": "pysr_outputs",
+        "max_evals": 1000000,
+        "timeout_in_seconds": 500
+      },
+      "max_samples": 1000,
+      "n_runs": 3,
+      "target_noise": 0.0,
+      "random_target_noise": false,
+      "eval_all_noise_levels": false,
+      "fitness_metric": "gt",
+      "domain": "srbench",
+      "uninformative_prompts": false,
+      "black_box": false,
+      "split_label": "barely_unsolvable",
+      "val_split": "splits/barely_unsolvable_val2.txt",
+      "test_split": null,
+      "repo_root": "/home/sca63/meta_sr",
+      "population_type": "task",
+      "reeval": "none",
+      "n_extra_runs": 0,
+      "n_runs_max": 0,
+      "lambda_target": 1,
+      "reeval_budget": 20,
+      "n_reevals": 0,
+      "reeval_topk": 2,
+      "smart_sigma": 0.064689,
+      "identify_topk": 10,
+      "llm_max_workers": 16,
+      "execution_feedback_n": 3,
+      "execution_feedback_prob": 0.5,
+      "mutation_mode": "random",
+      "excluded_mutation_modes": [],
+      "allow_data_aware_mutations": true,
+      "simplify_cooldown": 0
+    }
+  },
+  {
+    "run": "373693",
+    "label": "10 runs, no reevaluation",
+    "start_time": "2026-09-18T09:15:00.782727",
+    "config": {
+      "operator_types": [
+        "mutation",
+        "survival",
+        "selection",
+        "loss"
+      ],
+      "n_generations": 20,
+      "population_size": 10,
+      "n_offspring": 10,
+      "n_datasets": 20,
+      "dataset_names": [
+        "strogatz_barmag1",
+        "feynman_II_11_27",
+        "feynman_I_13_4",
+        "feynman_I_30_3",
+        "feynman_III_19_51",
+        "feynman_II_13_23",
+        "feynman_III_14_14",
+        "feynman_II_21_32",
+        "feynman_test_8",
+        "feynman_III_13_18",
+        "feynman_I_18_4",
+        "feynman_I_6_2a",
+        "feynman_I_44_4",
+        "feynman_II_34_29b",
+        "feynman_II_6_11",
+        "feynman_I_32_5",
+        "feynman_I_43_43",
+        "feynman_I_34_1",
+        "feynman_II_13_17",
+        "feynman_III_15_14"
+      ],
+      "model": "openai/gpt-5.4-mini",
+      "model_ensemble": [
+        {
+          "model": "anthropic/claude-opus-5",
+          "weight": 0.3
+        },
+        {
+          "model": "openai/gpt-5.6-sol",
+          "weight": 0.3
+        },
+        {
+          "model": "google/gemini-3.7-flash",
+          "weight": 0.2
+        },
+        {
+          "model": "anthropic/claude-sonnet-5",
+          "weight": 0.2
+        }
+      ],
+      "temperature": 0.0,
+      "seed": 42,
+      "pysr_kwargs": {
+        "early_stop_condition": 1e-08,
+        "niterations": 10000000,
+        "populations": 15,
+        "population_size": 33,
+        "maxsize": 40,
+        "maxdepth": 10,
+        "binary_operators": [
+          "+",
+          "-",
+          "*",
+          "/"
+        ],
+        "unary_operators": [
+          "sin",
+          "cos",
+          "exp",
+          "log",
+          "sqrt",
+          "square"
+        ],
+        "constraints": {
+          "sin": 9,
+          "cos": 9,
+          "exp": 9,
+          "log": 9,
+          "sqrt": 9,
+          "/": [
+            -1,
+            9
+          ]
+        },
+        "nested_constraints": {
+          "sin": {
+            "sin": 0,
+            "cos": 0,
+            "exp": 1,
+            "log": 1,
+            "sqrt": 1,
+            "square": 1
+          },
+          "cos": {
+            "sin": 0,
+            "cos": 0,
+            "exp": 1,
+            "log": 1,
+            "sqrt": 1,
+            "square": 1
+          },
+          "exp": {
+            "exp": 0,
+            "log": 0
+          },
+          "log": {
+            "exp": 0,
+            "log": 0
+          },
+          "sqrt": {
+            "sqrt": 0
+          }
+        },
+        "procs": 0,
+        "parallelism": "serial",
+        "deterministic": true,
+        "batching": false,
+        "verbosity": 1,
+        "progress": false,
+        "temp_equation_file": false,
+        "delete_tempfiles": true,
+        "output_directory": "pysr_outputs",
+        "max_evals": 1000000,
+        "timeout_in_seconds": 500
+      },
+      "max_samples": 1000,
+      "n_runs": 10,
+      "target_noise": 0.0,
+      "random_target_noise": false,
+      "eval_all_noise_levels": false,
+      "fitness_metric": "gt",
+      "domain": "srbench",
+      "uninformative_prompts": false,
+      "black_box": false,
+      "split_label": "barely_unsolvable",
+      "val_split": "splits/barely_unsolvable_val2.txt",
+      "test_split": null,
+      "repo_root": "/home/sca63/meta_sr",
+      "population_type": "task",
+      "reeval": "none",
+      "n_extra_runs": 0,
+      "n_runs_max": 0,
+      "lambda_target": 1,
+      "reeval_budget": 20,
+      "n_reevals": 0,
+      "reeval_topk": 2,
+      "smart_sigma": 0.064689,
+      "identify_topk": 10,
+      "llm_max_workers": 16,
+      "execution_feedback_n": 3,
+      "execution_feedback_prob": 0.5,
+      "mutation_mode": "random",
+      "excluded_mutation_modes": [],
+      "allow_data_aware_mutations": true,
+      "simplify_cooldown": 0
+    }
+  },
+  {
+    "run": "373694",
+    "label": "Population reevaluation: 1 \u2192 3",
+    "start_time": "2026-09-18T14:51:42.078693",
+    "config": {
+      "operator_types": [
+        "mutation",
+        "survival",
+        "selection",
+        "loss"
+      ],
+      "n_generations": 20,
+      "population_size": 10,
+      "n_offspring": 10,
+      "n_datasets": 20,
+      "dataset_names": [
+        "strogatz_barmag1",
+        "feynman_II_11_27",
+        "feynman_I_13_4",
+        "feynman_I_30_3",
+        "feynman_III_19_51",
+        "feynman_II_13_23",
+        "feynman_III_14_14",
+        "feynman_II_21_32",
+        "feynman_test_8",
+        "feynman_III_13_18",
+        "feynman_I_18_4",
+        "feynman_I_6_2a",
+        "feynman_I_44_4",
+        "feynman_II_34_29b",
+        "feynman_II_6_11",
+        "feynman_I_32_5",
+        "feynman_I_43_43",
+        "feynman_I_34_1",
+        "feynman_II_13_17",
+        "feynman_III_15_14"
+      ],
+      "model": "openai/gpt-5.4-mini",
+      "model_ensemble": [
+        {
+          "model": "anthropic/claude-opus-5",
+          "weight": 0.3
+        },
+        {
+          "model": "openai/gpt-5.6-sol",
+          "weight": 0.3
+        },
+        {
+          "model": "google/gemini-3.7-flash",
+          "weight": 0.2
+        },
+        {
+          "model": "anthropic/claude-sonnet-5",
+          "weight": 0.2
+        }
+      ],
+      "temperature": 0.0,
+      "seed": 42,
+      "pysr_kwargs": {
+        "early_stop_condition": 1e-08,
+        "niterations": 10000000,
+        "populations": 15,
+        "population_size": 33,
+        "maxsize": 40,
+        "maxdepth": 10,
+        "binary_operators": [
+          "+",
+          "-",
+          "*",
+          "/"
+        ],
+        "unary_operators": [
+          "sin",
+          "cos",
+          "exp",
+          "log",
+          "sqrt",
+          "square"
+        ],
+        "constraints": {
+          "sin": 9,
+          "cos": 9,
+          "exp": 9,
+          "log": 9,
+          "sqrt": 9,
+          "/": [
+            -1,
+            9
+          ]
+        },
+        "nested_constraints": {
+          "sin": {
+            "sin": 0,
+            "cos": 0,
+            "exp": 1,
+            "log": 1,
+            "sqrt": 1,
+            "square": 1
+          },
+          "cos": {
+            "sin": 0,
+            "cos": 0,
+            "exp": 1,
+            "log": 1,
+            "sqrt": 1,
+            "square": 1
+          },
+          "exp": {
+            "exp": 0,
+            "log": 0
+          },
+          "log": {
+            "exp": 0,
+            "log": 0
+          },
+          "sqrt": {
+            "sqrt": 0
+          }
+        },
+        "procs": 0,
+        "parallelism": "serial",
+        "deterministic": true,
+        "batching": false,
+        "verbosity": 1,
+        "progress": false,
+        "temp_equation_file": false,
+        "delete_tempfiles": true,
+        "output_directory": "pysr_outputs",
+        "max_evals": 1000000,
+        "timeout_in_seconds": 500
+      },
+      "max_samples": 1000,
+      "n_runs": 1,
+      "target_noise": 0.0,
+      "random_target_noise": false,
+      "eval_all_noise_levels": false,
+      "fitness_metric": "gt",
+      "domain": "srbench",
+      "uninformative_prompts": false,
+      "black_box": false,
+      "split_label": "barely_unsolvable",
+      "val_split": "splits/barely_unsolvable_val2.txt",
+      "test_split": null,
+      "repo_root": "/home/sca63/meta_sr",
+      "population_type": "task",
+      "reeval": "population",
+      "n_extra_runs": 0,
+      "n_runs_max": 0,
+      "lambda_target": 1,
+      "reeval_budget": 20,
+      "n_reevals": 3,
+      "reeval_topk": 2,
+      "smart_sigma": 0.064689,
+      "identify_topk": 10,
+      "llm_max_workers": 16,
+      "execution_feedback_n": 3,
+      "execution_feedback_prob": 0.5,
+      "mutation_mode": "random",
+      "excluded_mutation_modes": [],
+      "allow_data_aware_mutations": true,
+      "simplify_cooldown": 0
+    }
+  },
+  {
+    "run": "373695",
+    "label": "TTTS, budget 20 (top-k)",
+    "start_time": "2026-09-19T00:30:46.237878",
+    "config": {
+      "operator_types": [
+        "mutation",
+        "survival",
+        "selection",
+        "loss"
+      ],
+      "n_generations": 20,
+      "population_size": 10,
+      "n_offspring": 10,
+      "n_datasets": 20,
+      "dataset_names": [
+        "strogatz_barmag1",
+        "feynman_II_11_27",
+        "feynman_I_13_4",
+        "feynman_I_30_3",
+        "feynman_III_19_51",
+        "feynman_II_13_23",
+        "feynman_III_14_14",
+        "feynman_II_21_32",
+        "feynman_test_8",
+        "feynman_III_13_18",
+        "feynman_I_18_4",
+        "feynman_I_6_2a",
+        "feynman_I_44_4",
+        "feynman_II_34_29b",
+        "feynman_II_6_11",
+        "feynman_I_32_5",
+        "feynman_I_43_43",
+        "feynman_I_34_1",
+        "feynman_II_13_17",
+        "feynman_III_15_14"
+      ],
+      "model": "openai/gpt-5.4-mini",
+      "model_ensemble": [
+        {
+          "model": "anthropic/claude-opus-5",
+          "weight": 0.3
+        },
+        {
+          "model": "openai/gpt-5.6-sol",
+          "weight": 0.3
+        },
+        {
+          "model": "google/gemini-3.7-flash",
+          "weight": 0.2
+        },
+        {
+          "model": "anthropic/claude-sonnet-5",
+          "weight": 0.2
+        }
+      ],
+      "temperature": 0.0,
+      "seed": 42,
+      "pysr_kwargs": {
+        "early_stop_condition": 1e-08,
+        "niterations": 10000000,
+        "populations": 15,
+        "population_size": 33,
+        "maxsize": 40,
+        "maxdepth": 10,
+        "binary_operators": [
+          "+",
+          "-",
+          "*",
+          "/"
+        ],
+        "unary_operators": [
+          "sin",
+          "cos",
+          "exp",
+          "log",
+          "sqrt",
+          "square"
+        ],
+        "constraints": {
+          "sin": 9,
+          "cos": 9,
+          "exp": 9,
+          "log": 9,
+          "sqrt": 9,
+          "/": [
+            -1,
+            9
+          ]
+        },
+        "nested_constraints": {
+          "sin": {
+            "sin": 0,
+            "cos": 0,
+            "exp": 1,
+            "log": 1,
+            "sqrt": 1,
+            "square": 1
+          },
+          "cos": {
+            "sin": 0,
+            "cos": 0,
+            "exp": 1,
+            "log": 1,
+            "sqrt": 1,
+            "square": 1
+          },
+          "exp": {
+            "exp": 0,
+            "log": 0
+          },
+          "log": {
+            "exp": 0,
+            "log": 0
+          },
+          "sqrt": {
+            "sqrt": 0
+          }
+        },
+        "procs": 0,
+        "parallelism": "serial",
+        "deterministic": true,
+        "batching": false,
+        "verbosity": 1,
+        "progress": false,
+        "temp_equation_file": false,
+        "delete_tempfiles": true,
+        "output_directory": "pysr_outputs",
+        "max_evals": 1000000,
+        "timeout_in_seconds": 500
+      },
+      "max_samples": 1000,
+      "n_runs": 1,
+      "target_noise": 0.0,
+      "random_target_noise": false,
+      "eval_all_noise_levels": false,
+      "fitness_metric": "gt",
+      "domain": "srbench",
+      "uninformative_prompts": false,
+      "black_box": false,
+      "split_label": "barely_unsolvable",
+      "val_split": "splits/barely_unsolvable_val2.txt",
+      "test_split": null,
+      "repo_root": "/home/sca63/meta_sr",
+      "population_type": "topk",
+      "reeval": "TTTS",
+      "n_extra_runs": 0,
+      "n_runs_max": 0,
+      "lambda_target": 1,
+      "reeval_budget": 20,
+      "n_reevals": 0,
+      "reeval_topk": 2,
+      "smart_sigma": 0.064689,
+      "identify_topk": 10,
+      "llm_max_workers": 16,
+      "execution_feedback_n": 3,
+      "execution_feedback_prob": 0.5,
+      "mutation_mode": "random",
+      "excluded_mutation_modes": [],
+      "allow_data_aware_mutations": true,
+      "simplify_cooldown": 0
+    }
+  }
+]

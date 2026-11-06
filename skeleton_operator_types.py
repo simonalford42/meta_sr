@@ -553,6 +553,13 @@ def extract_function_name(code: str) -> str:
 
 
 _OBJECTIVE_TEXT = {
+    "gt-r2-v2": (
+        "Our objective is to maximize reward 3 * GT + R², where GT is 1 for a "
+        "symbolic match and 0 otherwise. R² is the held-out Pareto/archive R² "
+        "envelope averaged over the fixed complexity grid 1..maxsize, with "
+        "negative R² clipped to zero. The R² term contributes even when GT is 1. "
+        "These improvements should generalize across symbolic regression tasks.\n"
+    ),
     "gt": (
         "Our objective is to improve the algorithm's ability to discover the ground-truth expression "
         "across SRBench, other symbolic regression benchmarks, and real-world symbolic regression tasks.\n"

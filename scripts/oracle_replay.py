@@ -393,6 +393,17 @@ def run_policy(records, spec, rng):
             spent, sat = _allocate_capped(records, counts, arch_idx, revealed_N)
             total_saturated += sat
             bstar = B
+        elif reeval == "promote":
+            # n_base -> n_to: newborns get n_base seeds; anything currently in
+            # the observed top-k (the "population") is topped up to n_to
+            # seeds. Selection then orders the population by the richer mean.
+            n_to = int(spec["n_to"])
+            counts = np.zeros(mu.size, dtype=int)
+            for j in np.argsort(-mu)[:k_eff]:
+                counts[j] = max(0, n_to - revealed_N[j])
+            spent, sat = _allocate_capped(records, counts, arch_idx, revealed_N)
+            total_saturated += sat
+            bstar = int(spent)
         elif reeval == "kg" and B > 0:
             counts = _kg_counts_subsampled(mu, sigma, N, B)
             spent, sat = _allocate_capped(records, counts, arch_idx, revealed_N)

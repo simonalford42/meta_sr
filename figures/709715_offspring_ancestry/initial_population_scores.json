@@ -1,0 +1,122 @@
+[
+  {
+    "bundle": "add_constant_offset | age_regularized_survival | tournament_selection | mse_loss",
+    "fitness": 0.5166666666666667,
+    "seed_scores": [
+      0.6,
+      0.5,
+      0.45
+    ],
+    "source": "runs/709715/run.log",
+    "line": 166,
+    "text": "  Avg 0.5167 add_constant_offset | age_regularized_survival | tournament_selection | mse_loss: [0.6000, 0.5000, 0.4500] solved 13/20 [0,2,4,6,9,10,13,14,15,16,17,18,19]"
+  },
+  {
+    "bundle": "add_constant_offset | age_regularized_survival | pareto_dominance_niched_tournament_init_2 | mse_loss",
+    "fitness": 0.48333333333333334,
+    "seed_scores": [
+      0.5,
+      0.5,
+      0.45
+    ],
+    "source": "runs/709715/run.log",
+    "line": 167,
+    "text": "  Avg 0.4833 add_constant_offset | age_regularized_survival | pareto_dominance_niched_tournament_init_2 | mse_loss: [0.5000, 0.5000, 0.4500] solved 13/20 [0,1,6,9,10,11,13,14,15,16,17,18,19]"
+  },
+  {
+    "bundle": "add_constant_offset | pareto_niche_crowding_survival_init_3 | tournament_selection | mse_loss",
+    "fitness": 0.43333333333333335,
+    "seed_scores": [
+      0.45,
+      0.4,
+      0.45
+    ],
+    "source": "runs/709715/run.log",
+    "line": 168,
+    "text": "  Avg 0.4333 add_constant_offset | pareto_niche_crowding_survival_init_3 | tournament_selection | mse_loss: [0.4500, 0.4000, 0.4500] solved 13/20 [1,4,6,7,9,10,13,14,15,16,17,18,19]"
+  },
+  {
+    "bundle": "add_constant_offset | pareto_crowded_age_survival_init_4 | tournament_selection | mse_loss",
+    "fitness": 0.4833333333333334,
+    "seed_scores": [
+      0.55,
+      0.5,
+      0.4
+    ],
+    "source": "runs/709715/run.log",
+    "line": 169,
+    "text": "  Avg 0.4833 add_constant_offset | pareto_crowded_age_survival_init_4 | tournament_selection | mse_loss: [0.5500, 0.5000, 0.4000] solved 14/20 [0,3,4,6,9,10,12,13,14,15,16,17,18,19]"
+  },
+  {
+    "bundle": "add_constant_offset | pareto_niche_regularized_survival_init_5 | tournament_selection | mse_loss",
+    "fitness": 0.4166666666666667,
+    "seed_scores": [
+      0.3,
+      0.4,
+      0.55
+    ],
+    "source": "runs/709715/run.log",
+    "line": 170,
+    "text": "  Avg 0.4167 add_constant_offset | pareto_niche_regularized_survival_init_5 | tournament_selection | mse_loss: [0.3000, 0.4000, 0.5500] solved 12/20 [3,4,6,8,9,13,14,15,16,17,18,19]"
+  },
+  {
+    "bundle": "residual_correlation_insertion_mutation_init_6 | age_regularized_survival | tournament_selection | mse_loss",
+    "fitness": 0.3333333333333333,
+    "seed_scores": [
+      0.35,
+      0.3,
+      0.35
+    ],
+    "source": "runs/709715/run.log",
+    "line": 171,
+    "text": "  Avg 0.3333 residual_correlation_insertion_mutation_init_6 | age_regularized_survival | tournament_selection | mse_loss: [0.3500, 0.3000, 0.3500] solved 12/20 [0,3,4,6,9,12,13,15,16,17,18,19]"
+  },
+  {
+    "bundle": "residual_guided_linear_graft_init_7 | age_regularized_survival | tournament_selection | mse_loss",
+    "fitness": 0.45,
+    "seed_scores": [
+      0.4,
+      0.5,
+      0.45
+    ],
+    "source": "runs/709715/run.log",
+    "line": 172,
+    "text": "  Avg 0.4500 residual_guided_linear_graft_init_7 | age_regularized_survival | tournament_selection | mse_loss: [0.4000, 0.5000, 0.4500] solved 14/20 [1,3,4,6,7,9,10,12,13,15,16,17,18,19]"
+  },
+  {
+    "bundle": "add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8",
+    "fitness": 0.5499999999999999,
+    "seed_scores": [
+      0.6,
+      0.65,
+      0.4
+    ],
+    "source": "runs/709715/run.log",
+    "line": 173,
+    "text": "  Avg 0.5500 add_constant_offset | age_regularized_survival | tournament_selection | affine_continuation_loss_init_8: [0.6000, 0.6500, 0.4000] solved 15/20 [1,4,6,7,9,10,11,12,13,14,15,16,17,18,19]"
+  },
+  {
+    "bundle": "algebraic_refactor_mutation_init_0 | age_regularized_survival | tournament_selection | mse_loss",
+    "fitness": 0.5166666666666667,
+    "seed_scores": [
+      0.55,
+      0.45,
+      0.55
+    ],
+    "source": "runs/709715/run.log",
+    "line": 174,
+    "text": "  Avg 0.5167 algebraic_refactor_mutation_init_0 | age_regularized_survival | tournament_selection | mse_loss: [0.5500, 0.4500, 0.5500] solved 14/20 [0,2,3,4,6,9,10,13,14,15,16,17,18,19]"
+  },
+  {
+    "bundle": "symmetric_motif_graft_init_1 | age_regularized_survival | tournament_selection | mse_loss",
+    "fitness": 0.48333333333333334,
+    "seed_scores": [
+      0.5,
+      0.5,
+      0.45
+    ],
+    "source": "runs/709715/run.log",
+    "line": 175,
+    "text": "  Avg 0.4833 symmetric_motif_graft_init_1 | age_regularized_survival | tournament_selection | mse_loss: [0.5000, 0.5000, 0.4500] solved 13/20 [0,3,4,6,9,11,13,14,15,16,17,18,19]"
+  }
+]

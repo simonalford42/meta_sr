@@ -1,0 +1,67 @@
+{
+  "best_bundle": {
+    "operators": {
+      "mutation": {
+        "name": "leaf_square_mutation_simplified_gen24_4",
+        "code": "\"\"\"\n    leaf_square_mutation_simplified_gen24_4(tree::N, dataset, options, nfeatures::Int, rng::AbstractRNG) where {T,N<:AbstractExpressionNode{T}}\n\nDuplicates a randomly chosen *leaf* and multiplies the two copies, i.e. replaces a\nleaf `\u2113` with `\u2113 * \u2113`. This keeps the parent's core idea (building squared /\nrepeated factors, and inverse-square terms when the leaf sits in a denominator)\nwhile collapsing its special cases into a single uniform path.\n\nSteps:\n1. Look up the multiplication operator; bail out if the operator set lacks `*`.\n2. Bail out if adding the two extra nodes would exceed `options.maxsize`.\n3. Sample *any* leaf uniformly (variable or constant) and replace it by the\n   product of two copies of itself.\n\nSimplifications relative to the parent:\n- The `is_variable` filter and the accompanying `any(is_variable, tree)`\n  existence guard were removed; sampling is over all leaves. Every tree has at\n  least one leaf, so the guard is unnecessary, and squaring a constant leaf is\n  harmless (the constant optimizer simply re-absorbs the value), so no extra\n  branching is needed to exclude it.\n- This makes the operator a single-branch, filter-free mutation while still\n  producing `x\u1d62 * x\u1d62` whenever a variable leaf is drawn, which is the dominant\n  case in practice since variable leaves outnumber constants in most trees.\n\"\"\"\nfunction leaf_square_mutation_simplified_gen24_4(\n    tree::N,\n    dataset,\n    options,\n    nfeatures::Int,\n    rng::AbstractRNG,\n) where {T,N<:AbstractExpressionNode{T}}\n    # Squaring is expressed via multiplication; without `*` there is nothing to do.\n    mul_idx = findfirst(op -> op == (*), options.operators.binops)\n    mul_idx === nothing && return tree\n\n    # Replacing one leaf with `\u2113 * \u2113` adds exactly two nodes.\n    if hasproperty(options, :maxsize) && count_nodes(tree) + 2 > options.maxsize\n        return tree\n    end\n\n    # Uniformly pick any leaf (variable or constant); trees always have one.\n    leaf = rand(rng, NodeSampler(; tree, filter=t -> t.degree == 0))\n\n    # Build `leaf * leaf` from two independent copies and splice it in place.\n    squared = constructorof(N)(; op=mul_idx, children=(copy(leaf), copy(leaf)))\n    set_node!(leaf, squared)\n\n    return tree\nend",
+        "score": null,
+        "score_vector": null,
+        "generation": 24,
+        "parent_name": "local_variable_square_mutation_gen23_1",
+        "mode": "simplify",
+        "result_details": null,
+        "weight": 0.5,
+        "model": "anthropic/claude-opus-5",
+        "hp_specs": null,
+        "seeds_evaluated": 0
+      },
+      "survival": {
+        "name": "age_and_cost_regularized_survival_simple_gen28_9_gen28_1",
+        "code": "\"\"\"\nSimplified age-first survival with cost tie-break: instead of blending\nnormalized age and cost scores into a continuous weighted combination, this\nversion picks the oldest eligible member outright, and only consults cost\nwhen there is an exact tie in birth order.\n\nMotivation: the parent normalizes both age and cost via min-max scaling and\nmixes them with a 0.75/0.25 weight, but since age already dominates so\nheavily, the practical effect is almost always \"oldest wins\" with cost only\nmattering in the rare case of equal birth times. This version encodes that\ndirectly, removing the need for min-max normalization arrays and float\nscore blending, while preserving the qualitative behavior (age-regularized\neviction with a cost-based tie-break).\n\nRemoved/merged from parent:\n- Dropped min-max normalization of births and costs.\n- Dropped the weighted combination (0.75/0.25) of age and cost scores.\n- Replaced with a direct \"oldest wins, cost breaks exact ties\" rule, which\n  is sound because normalized age dominates so strongly in the parent that\n  cost essentially never overturns the oldest choice unless ages are tied.\n\nSteps:\n1. Collect eligible indices.\n2. Find the minimum birth value among eligible members.\n3. Among eligible members with that minimum birth (ties), pick the one with\n   the highest cost.\n4. Return that eligible index.\n\"\"\"\nfunction age_and_cost_regularized_survival_simple_gen28_9_gen28_1(\n    pop::Population{T,L,N},\n    options::AbstractOptions;\n    exclude_indices::Vector{Int}=Int[],\n)::Int where {T<:DATA_TYPE,L<:LOSS_TYPE,N}\n    n = pop.n\n    eligible = [i for i in 1:n if !(i in exclude_indices)]\n    @assert !isempty(eligible) \"No eligible members to replace\"\n\n    # Find the minimum birth (oldest) among eligible members\n    min_birth = minimum(pop.members[i].birth for i in eligible)\n\n    # Among those tied for oldest, pick the one with the highest cost\n    best_idx = eligible[1]\n    best_cost = typemin(Float64)\n    for i in eligible\n        if pop.members[i].birth == min_birth\n            c = Float64(pop.members[i].cost)\n            if c > best_cost\n                best_cost = c\n                best_idx = i\n            end\n        end\n    end\n\n    return best_idx\nend",
+        "score": null,
+        "score_vector": null,
+        "generation": 28,
+        "parent_name": "age_and_cost_regularized_survival_simple_gen28_8",
+        "mode": "simplify",
+        "result_details": null,
+        "weight": null,
+        "model": "anthropic/claude-sonnet-5",
+        "hp_specs": null,
+        "seeds_evaluated": 0
+      },
+      "selection": {
+        "name": "simplified_epsilon_pareto_tournament_gen22_2",
+        "code": "\"\"\"\n    simplified_epsilon_pareto_tournament_gen22_2(pop, running_search_statistics, options)\n\nA streamlined, simplified \u03b5-Pareto dominance tournament selection operator.\n\nCore Idea\n---------\nRanks tournament candidates by their local \u03b5-Pareto dominance count over (loss, complexity).\nLosses within a relative tolerance (`eps_rel = 1e-3`) are treated as equivalent, allowing\nsmaller expressions to dominate bloated near-clones with negligible loss improvements.\nThis protects compact, accurate building blocks and prunes bloated expressions from the\nmating pool.\n\nSteps\n-----\n1. Sample `tournament_selection_n` candidates without replacement.\n2. Extract candidate complexities and raw losses (handling non-finite losses as `Inf`).\n3. Compute the \u03b5-dominance count for each candidate: the number of tournament peers that\n   are no worse in loss (within relative \u03b5) and complexity, and strictly better in at least one.\n4. Sort candidates lexicographically by `(dominated_count, member.cost)`.\n5. Select a winner using geometric tournament probability `tournament_selection_p`.\n\nSimplifications from Parent\n---------------------------\n- Dropped the secondary calculation of frequency-adjusted exponential parsimony costs\n  (`member.cost * exp(scaling * freq)`). Pareto dominance already provides structural\n  parsimony pressure across complexity sizes, so tie-breaking directly on `member.cost`\n  avoids redundant frequency-table queries while preserving search diversity.\n- Streamlined feature extraction and dominance counting, removing intermediate vector\n  allocations and redundant probability-weight normalizations in geometric sampling.\n\"\"\"\nfunction simplified_epsilon_pareto_tournament_gen22_2(\n    pop::Population{T,L,N},\n    running_search_statistics::RunningSearchStatistics,\n    options::AbstractOptions,\n)::PopMember{T,L,N} where {T<:DATA_TYPE,L<:LOSS_TYPE,N}\n    # 1. Sample tournament members without replacement\n    n_sample = min(options.tournament_selection_n, pop.n)\n    sample = StatsBase.sample(pop.members, n_sample; replace=false)\n    n = length(sample)\n    n == 1 && return sample[1]\n\n    # 2. Extract complexities and raw losses\n    complexities = [compute_complexity(m, options) for m in sample]\n    losses = [isfinite(m.loss) ? Float64(m.loss) : Inf for m in sample]\n\n    # 3. Count how many members \u03b5-dominate candidate i\n    eps_rel = 1e-3\n    dominated_count = zeros(Int, n)\n    @inbounds for i in 1:n\n        li = losses[i]\n        ci = complexities[i]\n        for j in 1:n\n            i == j && continue\n            lj = losses[j]\n            cj = complexities[j]\n            # j dominates i if j is no worse in loss (within eps_rel) and complexity,\n            # and strictly better in at least one objective.\n            if (lj <= li + eps_rel * abs(li)) && (cj <= ci) && (cj < ci || lj < li)\n                dominated_count[i] += 1\n            end\n        end\n    end\n\n    # 4. Lexicographic ordering: dominance count first, member.cost as tie-breaker\n    order = sortperm(1:n; by=i -> (dominated_count[i], sample[i].cost))\n\n    # 5. Select winner using geometric tournament probability\n    p = Float64(options.tournament_selection_p)\n    chosen_rank = if p >= 1.0\n        1\n    else\n        weights = StatsBase.Weights([(1.0 - p)^k for k in 0:(n - 1)])\n        StatsBase.sample(weights)\n    end\n\n    return sample[order[chosen_rank]]\nend",
+        "score": null,
+        "score_vector": null,
+        "generation": 22,
+        "parent_name": "epsilon_pareto_dominance_tournament_gen1_8",
+        "mode": "simplify",
+        "result_details": null,
+        "weight": null,
+        "model": "google/gemini-3.7-flash",
+        "hp_specs": null,
+        "seeds_evaluated": 0
+      },
+      "loss": {
+        "name": "shift_invariant_mse_loss_gen30_7",
+        "code": "\"\"\"\n    shift_invariant_mse_loss_gen30_7(tree, dataset, options)\n\nMeasure prediction error after removing the single best additive offset. For\nresiduals `d_i = p_i - y_i`, the optimal offset is their mean, giving\n\n    loss = (sum(d_i^2) - sum(d_i)^2 / n) / n\n\nThus, candidates that differ from the target only by an additive constant score\nzero, while errors in shape or multiplicative scale remain penalized.\n\nSteps:\n1. Evaluate the tree and return `Inf` on failure or inconsistent lengths.\n2. Accumulate the residual sum and squared-residual sum in one pass.\n3. Remove the error explained by the optimal additive offset.\n4. Return the resulting mean squared residual, clamped against round-off.\n\nCompared with the parent, this removes target normalization, the `sum_y2`\naccumulator, its numerical floor, and the final square root. The removed\ndenominator is constant for every candidate on a fixed dataset, while replacing\nroot error by squared error is monotonic, so candidate ordering is preserved\nwithout carrying dataset-scale machinery in the hot path. Complexity remains\nhandled separately by PySR.\n\"\"\"\nfunction shift_invariant_mse_loss_gen30_7(\n    tree::Union{AbstractExpression{T},AbstractExpressionNode{T}},\n    dataset::Dataset{T,L},\n    options::AbstractOptions,\n)::L where {T<:DATA_TYPE,L<:LOSS_TYPE}\n    prediction, completed = eval_tree_array(tree, dataset.X, options)\n    if !completed || isnothing(prediction)\n        return L(Inf)\n    end\n\n    n = dataset.n\n    if n <= 0 || length(prediction) != n || length(dataset.y) != n\n        return L(Inf)\n    end\n\n    sum_d = zero(L)\n    sum_d2 = zero(L)\n\n    # One pass supplies the sufficient statistics for the best additive shift.\n    @inbounds for i in 1:n\n        d = L(prediction[i]) - L(dataset.y[i])\n        sum_d += d\n        sum_d2 += d * d\n    end\n\n    if !(isfinite(sum_d) && isfinite(sum_d2))\n        return L(Inf)\n    end\n\n    n_l = L(n)\n    # Subtract the residual component explained by its mean offset.\n    centered_sse = max(sum_d2 - sum_d * sum_d / n_l, zero(L))\n    loss = centered_sse / n_l\n\n    return isfinite(loss) ? L(loss) : L(Inf)\nend",
+        "score": null,
+        "score_vector": null,
+        "generation": 30,
+        "parent_name": "shift_invariant_relative_loss_gen27_gen29_2",
+        "mode": "simplify",
+        "result_details": null,
+        "weight": null,
+        "model": "openai/gpt-5.6-sol",
+        "hp_specs": null,
+        "seeds_evaluated": 0
+      }
+    },
+    "score": 0.0,
+    "seeds_evaluated": 1,
+    "best_hparams": null
+  },
+  "source": "runs/941340",
+  "generation": 30
+}

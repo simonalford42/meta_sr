@@ -124,6 +124,14 @@ class Domain:
             body = f"improve the algorithm's ability to {self.prompt_recovery_criterion}"
         elif fitness_metric in ("r2", "acc"):
             body = f"improve the algorithm's ability to {self.prompt_quality_criterion}"
+        elif fitness_metric == "gt-r2-v2":
+            body = (
+                "maximize reward 3 * GT + R², where GT is 1 when the algorithm "
+                f"can {self.prompt_recovery_criterion} and 0 otherwise. "
+                "R² is the held-out Pareto/archive R² envelope averaged over "
+                "the fixed complexity grid 1..maxsize, with negative R² clipped "
+                "to zero. The R² term contributes even when GT is 1"
+            )
         elif fitness_metric in ("gt-r2", "gt-acc"):
             body = (
                 f"improve the algorithm's ability to {self.prompt_recovery_criterion}; "
@@ -132,7 +140,7 @@ class Domain:
         else:
             raise ValueError(
                 f"Unknown fitness_metric={fitness_metric!r}; expected one of "
-                "('gt', 'r2', 'gt-r2', 'acc', 'gt-acc')"
+                "('gt', 'r2', 'gt-r2', 'gt-r2-v2', 'acc', 'gt-acc')"
             )
         if not self.prompt_task_summary:
             return f"Our objective is to {body}.\n"
@@ -140,6 +148,26 @@ class Domain:
             f"Our objective is to {body}. We want these improvements to hold "
             f"across {self.prompt_task_summary}.\n"
         )
+
+    def frontier_accuracy(self, *, equations_df, predict_fn, y_val) -> Optional[float]:
+        """Maximum validation accuracy attained by a single frontier expression.
+
+        Invalid expressions contribute zero; they must not hide other valid rows.
+        This is not an ensemble that chooses a different expression for each row.
+        """
+        if not self.supports_accuracy:
+            return None
+        best = 0.0
+        for idx in equations_df.index:
+            try:
+                score = self.accuracy_score(y_val, predict_fn(idx))
+            except Exception:
+                continue
+            if score is not None and np.isfinite(score):
+                best = max(best, float(score))
+            if best == 1.0:
+                break
+        return best
 
     def check_solved(
         self,
@@ -288,6 +316,22 @@ class EmpiricalBenchDomain(SRBenchDomain):
     name = "empiricalbench"
 
     def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
+        X, y, target = self.load_dataset(
+            dataset_name, max_samples=max_samples, data_seed=data_seed
+        )
+        return X, y, X, y, target
+
+
+class SRBench2ExactRecoveryDomain(SRBenchDomain):
+    """SRBench 2025 first-principles data under an all-row recovery protocol."""
+
+    name = "srbench2_exact"
+
+    def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
+        # Exact-recovery assessment asks whether the search can rediscover the
+        # accepted relationship from all observations.  Reuse the same rows for
+        # fitting and frontier scoring instead of applying SRBench's predictive
+        # train/test split.
         X, y, target = self.load_dataset(
             dataset_name, max_samples=max_samples, data_seed=data_seed
         )
@@ -984,10 +1028,10 @@ class UninformativePromptDomain(Domain):
     prompt_task_summary = ""
 
     def objective_text(self, fitness_metric: str) -> str:
-        if fitness_metric not in ("gt", "r2", "gt-r2", "acc", "gt-acc"):
+        if fitness_metric not in ("gt", "r2", "gt-r2", "gt-r2-v2", "acc", "gt-acc"):
             raise ValueError(
                 f"Unknown fitness_metric={fitness_metric!r}; expected one of "
-                "('gt', 'r2', 'gt-r2', 'acc', 'gt-acc')"
+                "('gt', 'r2', 'gt-r2', 'gt-r2-v2', 'acc', 'gt-acc')"
             )
         return (
             "Our objective is to improve the algorithm's ability to discover "
@@ -998,6 +1042,7 @@ class UninformativePromptDomain(Domain):
 DOMAINS: Dict[str, Domain] = {
     "srbench": SRBenchDomain(),
     "empiricalbench": EmpiricalBenchDomain(),
+    "srbench2_exact": SRBench2ExactRecoveryDomain(),
     "boolean": LogicBenchDomain(),
     "boolformer": BoolformerDomain(),
     "mips": MIPSTransitionDomain(),

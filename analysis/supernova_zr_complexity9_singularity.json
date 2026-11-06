@@ -1,0 +1,39 @@
+{
+  "seed": 10009,
+  "complexity_budget": 9,
+  "selected": {
+    "Baseline portfolio": {
+      "method": "Baseline portfolio",
+      "seed": 10009,
+      "frontier_index": 3,
+      "original_complexity": 6,
+      "post_calibration_complexity": 8,
+      "affine_scale": 0.9987399010187972,
+      "affine_offset": -0.0046093066471246,
+      "calibrated_r2": 0.7908874262915111,
+      "rewritten_raw_r2": 0.7908874262915111,
+      "original_equation": "325.3383508153753 / (square(x0) + 424.2173146807155)",
+      "calibrated_equation": "((324.92839229096666 / (square(x0) + 424.2173146807155)) + -0.004609306647124695)"
+    },
+    "Evolved portfolio": {
+      "method": "Evolved portfolio",
+      "seed": 10009,
+      "frontier_index": 4,
+      "original_complexity": 5,
+      "post_calibration_complexity": 9,
+      "affine_scale": -0.1249440060401147,
+      "affine_offset": 1.080004939803656,
+      "calibrated_r2": 0.902123361003844,
+      "rewritten_raw_r2": 0.902123361003844,
+      "original_equation": "log(square(4.234760003602217 - x0))",
+      "calibrated_equation": "((-0.12494400604011478 * log(square((4.234760003602217 - x0)))) + 1.080004939803656)"
+    }
+  },
+  "singularity_day": 4.234760003602217,
+  "measurement_gap": [
+    2.9818000000013853,
+    7.91924999999901
+  ],
+  "n_observations": 236,
+  "n_observations_after_day20": 186
+}

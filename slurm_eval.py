@@ -133,6 +133,100 @@ def _slurm_cli_env() -> Dict[str, str]:
     return env
 
 
+class _SlurmStatusCache:
+    """One batched controller refresh per minute for the whole driver process.
+
+    File polling may run much faster. New jobs join the next refresh instead
+    of bypassing the rate limit; CHECKING means no reliable observation yet.
+    UNKNOWN streaks count fresh queries, never repeated reads of cached data.
+    """
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.next_refresh = 0.0
+        self.monitored: Set[str] = set()
+        self.states: Dict[str, str] = {}
+        self.unknown_streaks: Dict[str, int] = {}
+
+    def discard(self, job_id: str) -> None:
+        with self.lock:
+            self.monitored.discard(job_id)
+
+    @staticmethod
+    def _query(command: List[str], env: Dict[str, str]) -> Dict[str, List[str]]:
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, env=env, timeout=60,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            return {}
+        # A failed query is not evidence that any job has finished.
+        if result.returncode != 0:
+            return {}
+        grouped: Dict[str, List[str]] = {}
+        for line in result.stdout.splitlines():
+            fields = line.strip().split('|')
+            if len(fields) < 2:
+                continue
+            # squeue emits array base IDs; sacct emits base_task IDs. Ignore
+            # step records defensively, even though sacct uses --allocations.
+            job_id = fields[0].strip()
+            if '.' in job_id:
+                continue
+            job_id = job_id.split('_', 1)[0]
+            grouped.setdefault(job_id, []).append(_normalize_slurm_state(fields[1]))
+        return grouped
+
+    @staticmethod
+    def _aggregate(states: List[str]) -> str:
+        # UNKNOWN must not be hidden by a terminal sibling's state.
+        active = [s for s in states if s not in TERMINAL_SLURM_STATES]
+        for state in active:
+            if state not in PENDING_SLURM_STATES:
+                return state
+        if active:
+            return active[0]
+        if not states or 'UNKNOWN' in states:
+            return 'UNKNOWN'
+        return states[0]
+
+    def get(self, job_ids: List[str], env: Dict[str, str]) -> Dict[str, Tuple[str, int]]:
+        with self.lock:
+            self.monitored.update(job_ids)
+            with _ACTIVE_JOB_IDS_LOCK:
+                self.monitored.update(_ACTIVE_JOB_IDS)
+            pending = sorted(
+                jid for jid in self.monitored
+                if self.states.get(jid, 'UNKNOWN') not in
+                (TERMINAL_SLURM_STATES - {'UNKNOWN'})
+            )
+            if pending and time.monotonic() >= self.next_refresh:
+                queue = self._query(
+                    ['squeue', '-j', ','.join(pending), '-h', '-o', '%F|%T'], env,
+                )
+                missing = [jid for jid in pending if jid not in queue]
+                accounting = self._query(
+                    ['sacct', '-j', ','.join(missing), '-X', '-n', '-P',
+                     '-o', 'JobID%100,State%40'], env,
+                ) if missing else {}
+                for jid in pending:
+                    state = self._aggregate(queue.get(jid, accounting.get(jid, [])))
+                    self.states[jid] = state
+                    self.unknown_streaks[jid] = (
+                        self.unknown_streaks.get(jid, 0) + 1 if state == 'UNKNOWN' else 0
+                    )
+                # Also rate-limit failures and slow queries. Holding the lock
+                # prevents background evaluators from issuing duplicate RPCs.
+                self.next_refresh = time.monotonic() + 60.0
+            return {
+                jid: (self.states.get(jid, 'CHECKING'), self.unknown_streaks.get(jid, 0))
+                for jid in job_ids
+            }
+
+
+_SLURM_STATUS_CACHE = _SlurmStatusCache()
+
+
 def _cancel_tracked_jobs(reason: str = "driver exiting") -> None:
     with _ACTIVE_JOB_IDS_LOCK:
         jobs = sorted(_ACTIVE_JOB_IDS)
@@ -195,6 +289,7 @@ def _track_job(job_id: str) -> None:
 def _untrack_job(job_id: str) -> None:
     with _ACTIVE_JOB_IDS_LOCK:
         _ACTIVE_JOB_IDS.discard(job_id)
+    _SLURM_STATUS_CACHE.discard(job_id)
 
 
 def init_worker(extra_env: Optional[Dict[str, str]] = None):
@@ -429,61 +524,13 @@ class BaseSlurmEvaluator(ABC):
             print(f"    WARNING: Error cancelling job {job_id}: {e}")
 
     def _get_job_status(self, job_id: str) -> str:
-        """Get SLURM job status.
-
-        `job_id` may be an array job (e.g. '409710'), which can report one
-        state line per array task. If any task is still non-terminal we
-        return that state so callers waiting on
-        `status in TERMINAL_SLURM_STATES` keep polling; only when every
-        task line is terminal do we return a (canonical) terminal state.
-        """
-        env = self._get_slurm_env()
-        try:
-            result = subprocess.run(
-                ['squeue', '-j', job_id, '-h', '-o', '%T'],
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=60,
-            )
-        except subprocess.TimeoutExpired:
-            return 'UNKNOWN'
-
-        if result.returncode == 0 and result.stdout.strip():
-            states = [_normalize_slurm_state(l) for l in result.stdout.strip().split('\n') if l.strip()]
-            nonterminal = [s for s in states if s not in TERMINAL_SLURM_STATES]
-            # An array may have RUNNING elements while concurrency-limited
-            # siblings remain PENDING. Report it as active so the pending
-            # siblings do not pause the batch watchdog.
-            for s in nonterminal:
-                if s not in PENDING_SLURM_STATES:
-                    return s
-            if nonterminal:
-                return nonterminal[0]
-            if states:
-                return states[0]
-
-        # Job not in queue (fully completed/cancelled/purged) -> check sacct.
-        try:
-            result = subprocess.run(
-                ['sacct', '-j', job_id, '-n', '-o', 'State', '-P'],
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=60,
-            )
-        except subprocess.TimeoutExpired:
-            return 'UNKNOWN'
-        states = [_normalize_slurm_state(l) for l in result.stdout.strip().split('\n') if l.strip()]
-        if not states:
-            return 'UNKNOWN'
-        nonterminal = [s for s in states if s not in TERMINAL_SLURM_STATES]
-        for s in nonterminal:
-            if s not in PENDING_SLURM_STATES:
-                return s
-        if nonterminal:
-            return nonterminal[0]
-        return states[0]
+        """Read the process-wide cache; transient uncertainty is nonterminal."""
+        state, unknown_count = _SLURM_STATUS_CACHE.get(
+            [job_id], self._get_slurm_env(),
+        )[job_id]
+        if state == 'UNKNOWN' and unknown_count < self.UNKNOWN_TERMINAL_POLLS:
+            return 'CHECKING'
+        return state
 
     def _get_slurm_env(self) -> Dict[str, str]:
         """Return subprocess env for SLURM commands (see _slurm_cli_env)."""
@@ -493,7 +540,7 @@ class BaseSlurmEvaluator(ABC):
     # hiccup (squeue/sacct timeout, empty output) rather than job completion.
     # Treating it as terminal ends the wait early and triggers a retry round
     # that deletes result files of still-running tasks. Require this many
-    # consecutive UNKNOWN polls per job before believing it.
+    # consecutive fresh UNKNOWN observations per job before believing it.
     UNKNOWN_TERMINAL_POLLS = 3
 
     def _poll_jobs_terminal(
@@ -504,23 +551,22 @@ class BaseSlurmEvaluator(ABC):
         """Poll job statuses; True when every job is genuinely terminal.
 
         UNKNOWN counts as terminal only after UNKNOWN_TERMINAL_POLLS
-        consecutive UNKNOWN polls for that job (any other status resets the
+        consecutive fresh UNKNOWN queries for that job (any other status resets the
         streak). Genuine terminal states are honored immediately.
         `unknown_streaks` is caller-owned state, one dict per wait loop.
         """
+        snapshot = _SLURM_STATUS_CACHE.get(job_ids, self._get_slurm_env())
         statuses = []
         all_terminal = True
         for jid in job_ids:
-            s = self._get_job_status(jid)
-            statuses.append(s)
-            if s == 'UNKNOWN':
-                unknown_streaks[jid] = unknown_streaks.get(jid, 0) + 1
-                if unknown_streaks[jid] < self.UNKNOWN_TERMINAL_POLLS:
+            state, unknown_count = snapshot[jid]
+            statuses.append(state)
+            unknown_streaks[jid] = unknown_count
+            if state == 'UNKNOWN':
+                if unknown_count < self.UNKNOWN_TERMINAL_POLLS:
                     all_terminal = False
-            else:
-                unknown_streaks[jid] = 0
-                if s not in TERMINAL_SLURM_STATES:
-                    all_terminal = False
+            elif state not in TERMINAL_SLURM_STATES:
+                all_terminal = False
         return all_terminal, statuses
 
     def _wait_for_job(
@@ -566,9 +612,12 @@ class BaseSlurmEvaluator(ABC):
             completed = len(list(results_dir.glob("task_*.json")))
 
             now = time.time()
-            terminal, statuses = self._poll_jobs_terminal(
-                [job_id], unknown_streaks
-            )
+            if completed >= n_tasks:
+                terminal, statuses = False, []
+            else:
+                terminal, statuses = self._poll_jobs_terminal(
+                    [job_id], unknown_streaks
+                )
             start_time, last_progress_time, previous_poll_time = (
                 _credit_pending_watchdog_time(
                     statuses, now, previous_poll_time,
@@ -664,7 +713,10 @@ class BaseSlurmEvaluator(ABC):
         while True:
             completed = len(list(results_dir.glob("task_*.json")))
             now = time.time()
-            terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
+            if completed >= n_tasks:
+                terminal, statuses = False, []
+            else:
+                terminal, statuses = self._poll_jobs_terminal(job_ids, unknown_streaks)
             start_time, last_progress_time, previous_poll_time = (
                 _credit_pending_watchdog_time(
                     statuses, now, previous_poll_time,
@@ -775,9 +827,12 @@ class BaseSlurmEvaluator(ABC):
             )
 
             now = time.time()
-            terminal, statuses = self._poll_jobs_terminal(
-                job_ids, unknown_streaks
-            )
+            if completed >= n_tasks:
+                terminal, statuses = False, []
+            else:
+                terminal, statuses = self._poll_jobs_terminal(
+                    job_ids, unknown_streaks
+                )
             start_time, last_progress_time, previous_poll_time = (
                 _credit_pending_watchdog_time(
                     statuses, now, previous_poll_time,

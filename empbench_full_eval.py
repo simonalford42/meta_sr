@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -151,10 +152,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--datasets", default=",".join(DATASETS))
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--n-runs", type=int, default=5)
+    parser.add_argument("--merge-run-frontiers", action="store_true")
+    parser.add_argument("--task-population-bundles", type=int, default=None, metavar="N")
+    parser.add_argument("--portfolio-time-limit", type=float, default=None, metavar="SECONDS")
+    parser.add_argument("--portfolio-restart-max-evals", type=int, default=None, metavar="N")
+    parser.add_argument("--portfolio-restart-timeout", type=float, default=None, metavar="SECONDS")
+    parser.add_argument("--no-maxsize-warmup", action="store_true",
+                        help="Disable PySR's gradual max-size warm-up.")
     parser.add_argument("--seed", type=int, default=10_000)
     parser.add_argument("--data-seed", type=int, default=42)
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--timeout", type=int, default=3600)
+    parser.add_argument("--frontier-snapshot-seconds", type=float, default=None,
+                        help="Save native frontiers at this interval; in portfolios, only during the first restart after warm-up.")
     parser.add_argument("--pysr-wall-limit", type=int, default=3900)
     parser.add_argument("--partition", default="default_partition")
     parser.add_argument("--time-limit", default="01:15:00")
@@ -175,6 +185,35 @@ def main() -> None:
         raise SystemExit("--timeout must be positive")
     if args.timeout >= args.pysr_wall_limit:
         raise SystemExit("--timeout must be smaller than --pysr-wall-limit")
+    if args.cpus_per_task <= 0:
+        raise SystemExit("--cpus-per-task must be positive")
+    if args.frontier_snapshot_seconds is not None:
+        if not math.isfinite(args.frontier_snapshot_seconds) or args.frontier_snapshot_seconds <= 0:
+            raise SystemExit("--frontier-snapshot-seconds must be positive and finite")
+        if args.task_population_bundles:
+            raise SystemExit("--frontier-snapshot-seconds requires a single search")
+    if args.portfolio_time_limit is not None:
+        if args.portfolio_time_limit <= 0:
+            raise SystemExit("--portfolio-time-limit must be positive")
+        if ((args.portfolio_restart_max_evals is None)
+                == (args.portfolio_restart_timeout is None)):
+            raise SystemExit(
+                "--portfolio-time-limit requires exactly one restart limit: max-evals or timeout"
+            )
+        if args.portfolio_restart_max_evals is not None and args.portfolio_restart_max_evals <= 0:
+            raise SystemExit("--portfolio-restart-max-evals must be positive")
+        if args.portfolio_restart_timeout is not None and (
+                not math.isfinite(args.portfolio_restart_timeout)
+                or not 0 < args.portfolio_restart_timeout < args.pysr_wall_limit):
+            raise SystemExit("--portfolio-restart-timeout must be positive, finite, and below --pysr-wall-limit")
+        if args.cpus_per_task != 1:
+            raise SystemExit("restart portfolios require --cpus-per-task 1")
+        if args.merge_run_frontiers or args.task_population_bundles:
+            raise SystemExit(
+                "restart portfolios cannot be combined with cross-run or task-population merging"
+            )
+    elif args.portfolio_restart_max_evals is not None or args.portfolio_restart_timeout is not None:
+        raise SystemExit("portfolio restart limits require --portfolio-time-limit")
 
     datasets = [name.strip() for name in args.datasets.split(",") if name.strip()]
     unknown = sorted(set(datasets) - set(DATASETS))
@@ -199,10 +238,39 @@ def main() -> None:
     ):
         pysr_kwargs.pop(key, None)
     pysr_kwargs.update(PAPER_PYSR_KWARGS)
+    if args.no_maxsize_warmup:
+        pysr_kwargs["warmup_maxsize_by"] = 0.0
     pysr_kwargs["timeout_in_seconds"] = args.timeout
+    if args.cpus_per_task == 1:
+        pysr_kwargs.update({
+            "procs": 0,
+            "parallelism": "serial",
+            "deterministic": True,
+        })
+    else:
+        pysr_kwargs.update({
+            "procs": args.cpus_per_task,
+            "parallelism": "multiprocessing",
+        })
+        pysr_kwargs.pop("deterministic", None)
     if source.config.custom_loss_code is None:
         pysr_kwargs["elementwise_loss"] = "L1DistLoss()"
     source.config = replace(source.config, pysr_kwargs=pysr_kwargs)
+    configs = [source.config]
+    runs_per_config = args.n_runs
+    run_index_starts = None
+    if args.task_population_bundles:
+        if not args.evolve_results:
+            raise SystemExit("--task-population-bundles requires --evolve-results")
+        from bundle_loader import load_task_population_bundles
+        bundles = load_task_population_bundles(args.evolve_results, args.task_population_bundles)
+        portfolio_kwargs = dict(pysr_kwargs)
+        portfolio_kwargs.setdefault("elementwise_loss", "L1DistLoss()")
+        configs = [item.to_pysr_config(portfolio_kwargs) for item in bundles]
+        runs_per_config = 1
+        run_index_starts = list(range(len(configs)))
+        args.n_runs = len(configs)
+        args.merge_run_frontiers = True
 
     label = "empbench_evolved" if args.evolve_results else "empbench_baseline"
     output_dir = Path(resolve_run_dir(args.output_dir, label=label))
@@ -228,8 +296,13 @@ def main() -> None:
         cache_namespace=source.cache_namespace,
         pysr_wall_limit=args.pysr_wall_limit,
         retain_pareto_frontier=True,
+        fixed_data_split_across_runs=args.merge_run_frontiers,
         domain="empiricalbench",
         cpus_per_task=args.cpus_per_task,
+        portfolio_time_limit_seconds=args.portfolio_time_limit,
+        portfolio_restart_max_evals=args.portfolio_restart_max_evals,
+        portfolio_restart_timeout_seconds=args.portfolio_restart_timeout,
+        frontier_snapshot_seconds=args.frontier_snapshot_seconds,
     )
     print(
         f"EmpiricalBench full evaluation: {source.mode}; "
@@ -237,10 +310,11 @@ def main() -> None:
         f"wall-clock-only timeout={args.timeout}s"
     )
     handle = evaluator.submit_configs(
-        configs=[source.config],
+        configs=configs,
         dataset_names=datasets,
         seed=args.seed,
-        n_runs=args.n_runs,
+        n_runs=runs_per_config,
+        run_index_start_per_config=run_index_starts,
         target_noise_map={name: 0.0 for name in datasets},
         fitness_metric="gt",
     )
@@ -248,12 +322,28 @@ def main() -> None:
     raw = load_raw_results(handle)
 
     records = []
-    for result in sorted(raw, key=lambda r: (datasets.index(r.dataset_name), r.run_index)):
-        frontier = result.pareto_frontier or []
+    if args.merge_run_frontiers:
+        from frontier_aggregation import group_and_merge_results
+        groups = group_and_merge_results(raw, base_seed=args.seed)
+        result_rows = [
+            (dataset, 0, group["frontier"], None, False,
+             group["runtime_seconds"], group["num_evaluations"], None)
+            for (dataset,), group in groups.items()
+        ]
+    else:
+        result_rows = [
+            (r.dataset_name, r.run_index, r.pareto_frontier or [], r.error,
+             r.timed_out, r.runtime_seconds, r.num_evaluations, r.portfolio)
+            for r in raw
+        ]
+    for (dataset, run_index, frontier, error, timed_out, runtime, num_evals,
+         portfolio) in sorted(
+        result_rows, key=lambda row: (datasets.index(row[0]), row[1])
+    ):
         robust_equation = None
         robust_dataset = (
-            result.dataset_name
-            if result.dataset_name in ("empirical_planck", "empirical_rydberg")
+            dataset
+            if dataset in ("empirical_planck", "empirical_rydberg")
             else None
         )
         for row in frontier:
@@ -263,21 +353,25 @@ def main() -> None:
                 robust_equation = equation
                 break
         records.append({
-            "dataset": result.dataset_name,
-            "run_index": int(result.run_index),
-            "seed": int(args.seed + result.run_index),
-            "status": "complete" if result.error is None else "error",
-            "error": result.error,
-            "timed_out": bool(result.timed_out),
-            "runtime_seconds": float(result.runtime_seconds),
-            "num_evaluations": result.num_evaluations,
-            "official_recovered": bool(result.gt_match_score),
-            "official_matched_equation": result.gt_matched_equation,
+            "dataset": dataset,
+            "run_index": int(run_index),
+            "seed": int(args.seed + run_index),
+            "status": "complete" if error is None else "error",
+            "error": error,
+            "timed_out": bool(timed_out),
+            "runtime_seconds": float(runtime),
+            "num_evaluations": num_evals,
+            "portfolio": portfolio,
+            "execution_trace": next((r.execution_trace for r in raw
+                                     if r.dataset_name == dataset and r.run_index == run_index), None)
+                               if not args.merge_run_frontiers else None,
+            "official_recovered": any(row.get("solved") for row in frontier),
+            "official_matched_equation": next((row.get("equation") for row in frontier if row.get("solved")), None),
             "robust_recovered": (
                 robust_equation is not None if robust_dataset else None
             ),
             "robust_matched_equation": robust_equation,
-            "best_equation": result.best_equation,
+            "best_equation": frontier[-1].get("equation") if frontier else None,
             "frontier": frontier,
         })
 
@@ -285,7 +379,7 @@ def main() -> None:
     for dataset in datasets:
         selected = [record for record in records if record["dataset"] == dataset]
         per_dataset[dataset] = {
-            "expected": args.n_runs,
+            "expected": 1 if args.merge_run_frontiers else args.n_runs,
             "completed": sum(record["status"] == "complete" for record in selected),
             "official_recovered": sum(record["official_recovered"] for record in selected),
             "robust_recovered": (
@@ -304,20 +398,36 @@ def main() -> None:
         "protocol": {
             "datasets": datasets,
             "n_runs": args.n_runs,
+            "merge_run_frontiers": args.merge_run_frontiers,
             "base_seed": args.seed,
             "seeds": [args.seed + index for index in range(args.n_runs)],
             "data_seed": args.data_seed,
             "max_evals": None,
             "timeout_seconds": args.timeout,
+            "frontier_snapshot_seconds": args.frontier_snapshot_seconds,
+            "frontier_snapshot_clock": "fit_wall_time" if args.frontier_snapshot_seconds else None,
             "pysr_wall_limit_seconds": args.pysr_wall_limit,
             "max_samples": args.max_samples,
             "cpus_per_task": args.cpus_per_task,
+            "portfolio_time_limit_seconds": args.portfolio_time_limit,
+            "portfolio_restart_max_evals": args.portfolio_restart_max_evals,
+            "portfolio_restart_timeout_seconds": args.portfolio_restart_timeout,
+            "portfolio_warmup_excluded_from_budget": args.portfolio_time_limit is not None,
+            "frontier_snapshot_scope": (
+                "first_restart_after_warmup" if args.portfolio_time_limit is not None
+                else "single_fit"
+            ) if args.frontier_snapshot_seconds else None,
+            "maxsize_warmup": not args.no_maxsize_warmup,
             "train_rows": "all",
             "pysr_kwargs": pysr_kwargs,
             "target_noise_added": 0.0,
-            "stopping_rule": "wall-clock-only timeout_seconds",
+            "stopping_rule": (
+                "serial restart portfolio under shared search-time budget"
+                if args.portfolio_time_limit is not None
+                else "wall-clock-only timeout_seconds"
+            ),
         },
-        "expected": len(datasets) * args.n_runs,
+        "expected": len(datasets) * (1 if args.merge_run_frontiers else args.n_runs),
         "completed": sum(record["status"] == "complete" for record in records),
         "official_recovered": sum(record["official_recovered"] for record in records),
         "robust_recovered": sum(
@@ -325,6 +435,10 @@ def main() -> None:
         ),
         "per_dataset": per_dataset,
         "runs": records,
+        "constituent_runs": (
+            [result.to_json_dict() for result in raw]
+            if args.merge_run_frontiers else None
+        ),
         "slurm_batch_dir": str(handle.batch_dir),
         "slurm_job_ids": list(handle.job_ids),
     }

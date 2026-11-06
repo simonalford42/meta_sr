@@ -1,0 +1,79 @@
+def compare(df_compare=None, x='r2_test',y='algorithm', row=None, col=None, scale=None, xlim=[], est=np.mean,
+            orient='h', hue=None, **kwargs):
+    df_compare = df_compare.copy()
+    if row==None and col == None:
+        aspect=1
+    else:
+        aspect=0.55
+#     plt.figure(figsize=(8,7))
+    tmp = df_compare.groupby(['target_noise',y])[x].apply(est).unstack().mean()
+    order = tmp.sort_values(ascending=False).index
+
+    for c in [x,y,row,col]:
+        if c:
+            df_compare = df_compare.rename(columns={c:c.replace('_',' ').title()})
+
+    x = x.replace('_',' ').title()
+    y = y.replace('_',' ').title()
+    if row:
+        row = row.replace('_',' ').title()
+    if col:
+        col = col.replace('_',' ').title()
+
+    if scale=='log' and len(xlim)>0 and xlim[0] == 0:
+        df_compare.loc[:,x] += 1
+        xlim[0] = 1
+        xnew = '1 + '+x
+        df_compare=df_compare.rename(columns={x:xnew})
+        x = xnew
+    if orient=='v':
+        tmp = x
+        x = y
+        y = tmp
+    if col and not row:
+        col_wrap = min(4, df_compare[col].nunique())
+    else:
+        col_wrap=None
+
+    cat_args = dict(
+                data=df_compare,
+                kind='point',
+                y=y,
+                x=x,
+                order=order,
+                row=row,
+                col=col,
+                col_wrap=col_wrap,
+                palette='flare_r',
+                margin_titles=True,
+                aspect=aspect,
+                hue=hue,
+                legend_out=False,
+    )
+    cat_args.update(kwargs)
+    g = sns.catplot( **cat_args )
+    if hue:
+        g._legend.remove() #(title=hue.replace('_',' ').title())
+        g.axes.flat[-1].legend(title=hue.replace('_',' ').title(),
+                               fontsize=10
+                              )
+    for ax in g.axes.flat:
+        ax.yaxis.grid(True)
+        ax.set_ylabel('')
+        ax.set_xlabel(ax.get_xlabel().replace('Symbolic ',''))
+        if col:
+            ttl = ax.get_title()
+            ax.set_title(ttl.replace(col,'').replace('=',''))
+
+
+    if len(xlim)>0:
+        plt.xlim(xlim[0],xlim[1])
+    if scale:
+        plt.gca().set_xscale(scale)
+
+    sns.despine(left=True, bottom=True)
+    savename = '-'.join(['cat-'+cat_args['kind']+'plot',x+ '-by-'+ y])
+    if row: savename += '_'+row
+    if col: savename += '_'+col
+
+    save(g, savename )

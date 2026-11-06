@@ -15,7 +15,8 @@ from typing import Dict, Iterable, Optional
 import srbench_results_io as srio
 
 
-GT_TOTAL = 5_320
+GT_TOTAL = 5_200
+GT_MERGED_TOTAL = 520
 BLACK_BOX_TOTAL = 1_220
 ONE_MILLION = 1_000_000
 TEN_MILLION = 10_000_000
@@ -237,6 +238,7 @@ def _ground_truth_stats(
     keyed = srio.load_keyed_results(run_dir)
     if keyed is None and manifest.get("batches"):
         keyed = srio.build_keyed_results(run_dir, manifest)
+    manifest, keyed = srio.standard_ground_truth_view(manifest, keyed or {})
     present = [
         entry for entry in (keyed or {}).values()
         if entry.get("present") and entry.get("error") is None
@@ -283,6 +285,7 @@ def _split_performance(
     keyed = srio.load_keyed_results(run_dir)
     if keyed is None and manifest.get("batches"):
         keyed = srio.build_keyed_results(run_dir, manifest)
+    manifest, keyed = srio.standard_ground_truth_view(manifest, keyed or {})
     train_names = _load_split_names(project_root, OFFICIAL_TRAIN_SPLIT)
     val_names = _load_split_names(project_root, OFFICIAL_VAL_SPLIT)
     if not train_names or not val_names:
@@ -309,18 +312,21 @@ def _split_performance(
 
 
 def _pick_evaluation(
-    records: Iterable[dict], budget: int, result_type: str
+    records: Iterable[dict], budget: int, result_type: str, *, merged: bool = False,
 ) -> Optional[dict]:
     if result_type == "gt":
         candidates = [
             record for record in records
             if record["manifest"].get("max_evals") == budget
+            and bool(record["manifest"].get("merge_run_frontiers")) == merged
+            and (not merged or record["manifest"].get("n_runs") == 10)
             and _has_ground_truth(record["run_dir"], record["manifest"])
         ]
     else:
         candidates = [
             record for record in records
             if record["manifest"].get("max_evals") == budget
+            and not record["manifest"].get("merge_run_frontiers")
             and _has_black_box(record["run_dir"], record["manifest"])
         ]
     return max(candidates, key=lambda record: record["mtime"], default=None)
@@ -335,11 +341,15 @@ def _source_recency(records: Iterable[dict]) -> float:
 
 
 def _column_from_records(
-    records: list[dict], training: dict, project_root: Path,
+    records: list[dict], merged_records: list[dict], training: dict,
+    project_root: Path,
 ) -> dict:
     gt = _pick_evaluation(records, ONE_MILLION, "gt")
     black_box = _pick_evaluation(records, ONE_MILLION, "black_box")
     gt_10m = _pick_evaluation(records, TEN_MILLION, "gt")
+    gt_10_restarts = _pick_evaluation(
+        merged_records, ONE_MILLION, "gt", merged=True,
+    )
 
     gt_completed, gt_rate, gt_any_seed_rate = (
         _ground_truth_stats(gt["run_dir"], gt["manifest"])
@@ -349,15 +359,19 @@ def _column_from_records(
         _black_box_stats(black_box["run_dir"], black_box["manifest"])
         if black_box else (0, None)
     )
-    _, gt_10m_rate, _ = (
+    gt_10m_completed, gt_10m_rate, _ = (
         _ground_truth_stats(gt_10m["run_dir"], gt_10m["manifest"])
         if gt_10m else (0, None, None)
     )
+    gt_10_restarts_completed, gt_10_restarts_rate, _ = (
+        _ground_truth_stats(gt_10_restarts["run_dir"], gt_10_restarts["manifest"])
+        if gt_10_restarts else (0, None, None)
+    )
 
     contributing = []
-    for record in (gt, black_box, gt_10m):
-        if record and record["run_dir"].name not in contributing:
-            contributing.append(record["run_dir"].name)
+    for record in (gt, black_box, gt_10m, gt_10_restarts):
+        if record and record["display_id"] not in contributing:
+            contributing.append(record["display_id"])
 
     train_gt, val_gt, test_gt = (
         _split_performance(gt["run_dir"], gt["manifest"], "gt", project_root)
@@ -383,32 +397,56 @@ def _column_from_records(
         "gt_rate": gt_rate,
         "gt_any_seed_rate": gt_any_seed_rate,
         "gt_10m_rate": gt_10m_rate,
+        "gt_10_restarts_rate": gt_10_restarts_rate,
         "gt_completed": gt_completed,
+        "gt_10m_completed": gt_10m_completed,
+        "gt_10_restarts_completed": gt_10_restarts_completed,
         "bb_completed": bb_completed,
+        "gt_path": str(gt["run_dir"]) if gt else None,
+        "bb_path": str(black_box["run_dir"]) if black_box else None,
     }
 
 
 def build_official_columns(
-    runs_root: "str | Path", project_root: "str | Path | None" = None
+    runs_root: "str | Path", project_root: "str | Path | None" = None,
+    *, single_search_only: bool = False,
 ) -> list[dict]:
     """Discover and summarize the official comparison columns."""
     runs_root = Path(runs_root)
     project_root = Path(project_root) if project_root else Path(__file__).resolve().parent
     grouped: Dict[tuple, list[dict]] = {}
+    merged_grouped: Dict[tuple, list[dict]] = {}
     training_cache: Dict[str, dict] = {}
 
-    for manifest_path in sorted(runs_root.glob("*/manifest.json")):
+    def add_manifest(manifest_path: Path, *, nested: bool = False) -> None:
         try:
             with open(manifest_path) as handle:
                 manifest = json.load(handle)
         except (OSError, json.JSONDecodeError):
-            continue
+            return
+        if single_search_only:
+            if (manifest.get("srbench_edition") == 2025
+                    or manifest.get("serial_restart_portfolio")
+                    or manifest.get("no_early_stop")):
+                return
+            if manifest.get("merge_run_frontiers"):
+                # A requested merge may still have an intact per-seed result grid.
+                # Those individual searches can be used, but merged portfolios cannot.
+                rows = srio.load_keyed_results(manifest_path.parent)
+                if rows is None and manifest.get("batches"):
+                    rows = srio.build_keyed_results(manifest_path.parent, manifest)
+                if not rows or any("n_searches" in entry for entry in rows.values()):
+                    return
+                manifest = {**manifest, "merge_run_frontiers": False}
         family = _method_family(manifest)
         if family is None:
-            continue
+            return
         run_dir = manifest_path.parent
+        is_merged = bool(manifest.get("merge_run_frontiers"))
+        if nested and not is_merged:
+            return
         if not (_has_ground_truth(run_dir, manifest) or _has_black_box(run_dir, manifest)):
-            continue
+            return
 
         method_meta = manifest.get("method_meta") or {}
         source = method_meta.get("source")
@@ -418,7 +456,7 @@ def build_official_columns(
         elif family == "autoresearch":
             commit = method_meta.get("commit")
             if not commit:
-                continue
+                return
             source_key = commit
             training = {
                 "training_id": commit[:8],
@@ -430,7 +468,7 @@ def build_official_columns(
             }
         else:
             if not source:
-                continue
+                return
             source_key = source
             if source not in training_cache:
                 training_cache[source] = _training_metadata(
@@ -439,12 +477,32 @@ def build_official_columns(
             training = training_cache[source]
         metric = training.get("metric")
         key = (family, metric, source_key)
-        grouped.setdefault(key, []).append({
+        destination = merged_grouped if is_merged else grouped
+        destination.setdefault(key, []).append({
             "run_dir": run_dir,
             "manifest": manifest,
             "mtime": manifest_path.stat().st_mtime,
             "training": training,
+            "display_id": str(run_dir.relative_to(runs_root)),
         })
+
+    # Standard evaluations and baseline restart portfolios live directly under
+    # runs/. Keep this bounded lookup fast on large NFS run trees.
+    for manifest_path in sorted(runs_root.glob("*/manifest.json")):
+        add_manifest(manifest_path)
+
+    # Evolved restart portfolios are normally stored one level below their
+    # exact source run (for example runs/709715/srbench_gt_10seed_merged).
+    source_dirs = set()
+    for _, _, source_key in grouped:
+        if not isinstance(source_key, str) or "runs" not in Path(source_key).parts:
+            continue
+        source_dir = _source_dir(source_key, runs_root, project_root)
+        if source_dir.is_relative_to(runs_root):
+            source_dirs.add(source_dir)
+    for source_dir in sorted(source_dirs):
+        for manifest_path in sorted(source_dir.glob("*/manifest.json")):
+            add_manifest(manifest_path, nested=True)
 
     blank = {
         "training_id": "-", "eval_ids": "-", "train_set": "-", "val_set": "-",
@@ -452,21 +510,46 @@ def build_official_columns(
         "val_gt": None, "val_r2": None,
         "test_gt": None, "test_r2": None, "bb_r2": None,
         "gt_rate": None, "gt_any_seed_rate": None, "gt_10m_rate": None,
-        "gt_completed": 0, "bb_completed": 0,
+        "gt_10_restarts_rate": None,
+        "gt_completed": 0, "gt_10m_completed": 0,
+        "gt_10_restarts_completed": 0, "bb_completed": 0,
     }
     columns = []
     for key, label, family, metric in OFFICIAL_COLUMNS:
+        available_keys = set(grouped) | set(merged_grouped)
         candidates = [
-            records for (candidate_family, candidate_metric, _), records in grouped.items()
-            if candidate_family == family and candidate_metric == metric
+            (
+                group_key,
+                grouped.get(group_key, []),
+                merged_grouped.get(group_key, []),
+            )
+            for group_key in available_keys
+            if group_key[0] == family and group_key[1] == metric
         ]
         if candidates:
-            records = max(candidates, key=_source_recency)
+            selected_group, records, merged_records = max(
+                candidates,
+                key=lambda item: _source_recency(item[1] or item[2]),
+            )
+            representative = (records or merged_records)[0]
             values = _column_from_records(
-                records, records[0]["training"], project_root
+                records, merged_records,
+                representative["training"], project_root,
             )
         else:
             values = dict(blank)
+        if key in {"pysr_baseline", "pysrpp_gt"}:
+            for budget in ("90s", "15m"):
+                suffix = "90s" if budget == "90s" else "15m_single"
+                path = (runs_root / f"srbench_gt_baseline_{suffix}"
+                        if key == "pysr_baseline" else
+                        runs_root / values["training_id"] / f"srbench_gt_{suffix}")
+                completed, rate, _ = (
+                    _ground_truth_stats(path, srio.load_manifest(path))
+                    if (path / "manifest.json").exists() else (0, None, None)
+                )
+                values[f"gt_{budget}_rate"] = rate
+                values[f"gt_{budget}_completed"] = completed
         columns.append({"key": key, "label": label, **values})
     return columns
 
@@ -499,11 +582,29 @@ def format_official_table(columns: list[dict]) -> str:
         ("val R2", lambda column: _fmt_score(column.get("val_r2"))),
         ("test R2", lambda column: _fmt_score(column.get("test_r2"))),
         ("SRBench GT solve (all)", lambda column: _fmt_rate(column["gt_rate"])),
+        ("SRBench GT solve (excluding train & val)",
+         lambda column: _fmt_rate(column.get("test_gt"))),
         ("SRBench GT solve (any seed)",
          lambda column: _fmt_rate(column["gt_any_seed_rate"])),
-        ("SRBench GT solve (all, 10M)", lambda column: _fmt_rate(column["gt_10m_rate"])),
+        ("SRBench GT solve (10 restarts)",
+         lambda column: _fmt_rate(column.get("gt_10_restarts_rate"))),
+        ("SRBench GT solve (all, 90s)", lambda column: (
+            _fmt_rate(column.get("gt_90s_rate"))
+            if column.get("key") in {"pysr_baseline", "pysrpp_gt"} else "--")),
+        ("SRBench GT solve (all, 15m)", lambda column: (
+            _fmt_rate(column.get("gt_15m_rate"))
+            if column.get("key") in {"pysr_baseline", "pysrpp_gt"} else "--")),
         ("SRBench BB R2", lambda column: _fmt_score(column["bb_r2"])),
         ("GT completed", lambda column: _fmt_completed(column["gt_completed"], GT_TOTAL)),
+        ("GT completed (90s)", lambda column: (
+            _fmt_completed(column.get("gt_90s_completed", 0), GT_TOTAL)
+            if column.get("key") in {"pysr_baseline", "pysrpp_gt"} else "--")),
+        ("GT completed (15m)", lambda column: (
+            _fmt_completed(column.get("gt_15m_completed", 0), GT_TOTAL)
+            if column.get("key") in {"pysr_baseline", "pysrpp_gt"} else "--")),
+        ("GT completed (10 restarts)", lambda column: _fmt_completed(
+            column.get("gt_10_restarts_completed", 0), GT_MERGED_TOTAL
+        )),
         ("BB completed", lambda column: _fmt_completed(
             column["bb_completed"], BLACK_BOX_TOTAL
         )),

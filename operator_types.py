@@ -421,7 +421,11 @@ class OperatorType(ABC):
         """
         return []
 
-    def _explore_extras(self, variation_seed: int) -> Tuple[str, List[str], str]:
+    def _explore_extras(
+        self,
+        variation_seed: int,
+        allow_data_aware_mutations: bool = True,
+    ) -> Tuple[str, List[str], str]:
         """Optional explore-only extras for per-type signature/note variants.
 
         Returns (intro_tail, extra_reqs, example_section):
@@ -460,8 +464,11 @@ class OperatorType(ABC):
 
     def build_explore_prompt(self, reference: str, variation_seed: int = 0,
                              fitness_metric: str = "gt",
-                             domain: str = "srbench") -> str:
-        intro_tail, explore_extra_reqs, example_section = self._explore_extras(variation_seed)
+                             domain: str = "srbench",
+                             allow_data_aware_mutations: bool = True) -> str:
+        intro_tail, explore_extra_reqs, example_section = self._explore_extras(
+            variation_seed, allow_data_aware_mutations
+        )
         return (
             f"Your task is to create a NEW custom {self.name} operator for PySR/SymbolicRegression.jl.\n"
             "Your proposal is being considered as part of a meta-evolutionary loop that samples\n"
@@ -640,8 +647,12 @@ class MutationOperatorType(OperatorType):
     # variation_seed parity) — the function signature itself differs (5-arg
     # with `dataset` vs 4-arg without), so the example template below changes
     # accordingly. Refine doesn't toggle: it inherits the parent's signature.
-    def _explore_extras(self, variation_seed: int) -> Tuple[str, List[str], str]:
-        data_aware = (variation_seed % 2 == 0)
+    def _explore_extras(
+        self,
+        variation_seed: int,
+        allow_data_aware_mutations: bool = True,
+    ) -> Tuple[str, List[str], str]:
+        data_aware = allow_data_aware_mutations and (variation_seed % 2 == 0)
         if data_aware:
             mode_note = (
                 "For this proposal, write a **data-aware mutation**: consult `dataset.X` and/or `dataset.y`\n"
@@ -1056,6 +1067,9 @@ class OperatorGenerationSpec:
     # Evaluation domain (see domains.py). Selects the task framing the prompt
     # gives the LLM; "srbench" reproduces the historical wording exactly.
     domain: str = "srbench"
+    # Ablation control. When false, mutation prompts require the structural
+    # four-argument interface even in refine/simplify/crossover modes.
+    allow_data_aware_mutations: bool = True
 
 
 def _build_operator_prompt(spec: OperatorGenerationSpec) -> str:
@@ -1063,7 +1077,7 @@ def _build_operator_prompt(spec: OperatorGenerationSpec) -> str:
     if spec.mode == "explore":
         prompt = spec.op_type.build_explore_prompt(
             spec.reference, spec.variation_seed, spec.fitness_metric,
-            spec.domain,
+            spec.domain, spec.allow_data_aware_mutations,
         )
     elif spec.mode == "refine":
         if spec.parent is None:
@@ -1086,6 +1100,13 @@ def _build_operator_prompt(spec: OperatorGenerationSpec) -> str:
         )
     else:
         raise ValueError(f"Unknown mode: {spec.mode}")
+
+    if spec.op_type.name == "mutation" and not spec.allow_data_aware_mutations:
+        prompt += (
+            "\n\n## Structural-mutation ablation constraint\n"
+            "Use the four-argument structural mutation signature without a `dataset` "
+            "parameter. Do not access training X or y.\n"
+        )
 
     # Optional generic appendix: execution trace from a recent search using this
     # bundle, plus a brainstorm instruction. Applied after the type-specific

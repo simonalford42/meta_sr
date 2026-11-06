@@ -19,11 +19,30 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # The 3 SRBench ground-truth tasks whose formulas need inverse trig
 # (arcsin / arccos), which is outside our operator set — a symbolic GT match is
-# impossible, so they can never be "solved". Kept in the 133-task grid for a
-# canonical denominator but flagged so stats can optionally exclude them.
+# impossible with this operator set. SRBench 2021 excludes them from its
+# canonical 130-task benchmark; historical local runs may still contain them.
 UNSOLVABLE_TASKS = ("feynman_test_10", "feynman_I_26_2", "feynman_I_30_5")
 
 FAMILIES = ("all", "feynman", "strogatz")
+
+
+def standard_ground_truth_view(manifest: dict, keyed: dict) -> tuple[dict, dict]:
+    """Exclude the three legacy inverse-trig tasks without changing stored data.
+
+    Filter both the result rows and expected manifest grid so legacy 133-task
+    runs and new 130-task runs use the same reporting denominator.
+    SRBench 2025 has a separate task universe and is left untouched.
+    """
+    if manifest.get("srbench_edition") == 2025:
+        return manifest, keyed
+    manifest = dict(manifest)
+    if "datasets" in manifest:
+        manifest["datasets"] = [name for name in manifest["datasets"]
+                                if name not in UNSOLVABLE_TASKS]
+        manifest["n_datasets"] = len(manifest["datasets"])
+    keyed = {key: entry for key, entry in keyed.items()
+             if entry.get("dataset") not in UNSOLVABLE_TASKS}
+    return manifest, keyed
 
 
 def family_of(dataset_name: str) -> str:
@@ -91,6 +110,11 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                 "solve_time": None,
                 "solve_time_source": None,
                 "best_equation": None,
+                "best_loss": None,
+                "pareto_frontier": None,
+                "execution_trace": None,
+                "portfolio": None,
+                "config_id": int(spec.get("config_id", 0)),
                 "error": None,
             }
             if res_path.exists():
@@ -108,6 +132,10 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
                         solve_time=solve_time,
                         solve_time_source=solve_time_source,
                         best_equation=res.get("best_equation"),
+                        best_loss=res.get("best_loss"),
+                        pareto_frontier=res.get("pareto_frontier"),
+                        execution_trace=res.get("execution_trace"),
+                        portfolio=res.get("portfolio"),
                         error=res.get("error"),
                     )
                 except Exception as e:  # corrupt/partial file
@@ -116,14 +144,74 @@ def build_keyed_results(run_dir: "str | Path", manifest: Optional[Dict[str, Any]
     return results
 
 
+def merge_keyed_results(
+    keyed: Dict[str, Dict[str, Any]],
+    *,
+    base_seed: int,
+    bundle_names: Optional[Dict[int, str]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Collapse constituent searches into one result per dataset/noise."""
+    from frontier_aggregation import merge_frontiers
+
+    grouped: Dict[Tuple[str, float], List[Dict[str, Any]]] = {}
+    for entry in keyed.values():
+        grouped.setdefault((entry["dataset"], float(entry["noise"])), []).append(entry)
+
+    merged: Dict[str, Dict[str, Any]] = {}
+    for (dataset, noise), entries in grouped.items():
+        entries.sort(key=lambda e: (e["run_index"], e.get("config_id", 0)))
+        successful = [e for e in entries if e["present"] and e["error"] is None]
+        sources = [{
+            "source_run_index": e["run_index"],
+            "source_seed": e["seed"],
+            "source_config_id": e.get("config_id", 0),
+            **({"source_bundle": bundle_names[e.get("config_id", 0)]}
+               if bundle_names and e.get("config_id", 0) in bundle_names else {}),
+        } for e in successful]
+        frontier = merge_frontiers(
+            [e.get("pareto_frontier") for e in successful], sources=sources,
+        )
+        best = frontier[-1] if frontier else None
+        solved_rows = [row for row in frontier if row.get("solved")]
+        solve_times = [_entry_solve_time(e) for e in successful]
+        solve_times = [value for value in solve_times if value is not None]
+        result = {
+            "dataset": dataset,
+            "family": family_of(dataset),
+            "seed": int(base_seed),
+            "run_index": 0,
+            "noise": noise,
+            "present": bool(successful),
+            "solved": bool(solved_rows),
+            "gt_match_score": 1.0 if solved_rows else 0.0,
+            "test_r2": best.get("r2", best.get("test_r2")) if best else None,
+            "runtime_seconds": sum(float(e.get("runtime_seconds") or 0.0) for e in entries),
+            "solve_time": sum(solve_times) if solve_times else None,
+            "solve_time_source": "sum_of_constituent_searches",
+            "best_equation": best.get("equation") if best else None,
+            "best_loss": best.get("loss") if best else None,
+            "pareto_frontier": frontier,
+            "error": None if successful else "No successful constituent searches",
+            "n_searches": len(entries),
+            "n_successful_searches": len(successful),
+            "constituent_seeds": [e["seed"] for e in entries],
+        }
+        merged[result_key(dataset, base_seed, noise)] = result
+    return merged
+
+
 def _solve_time_from_result(res: Dict[str, Any]) -> Tuple[Optional[float], Optional[str]]:
     """(solve_time, source) for one raw task result dict.
 
-    Prefers the execution-trace ``chunk_runtime`` sum (pure fit wall time,
-    the methodology of scripts/analyze_pysr_solve_time.py); ``runtime_seconds``
-    also includes worker startup / Julia compile overhead (~4.4x inflated on
-    average) and is only used as a fallback for trace-less runs.
+    Serial portfolios report their explicitly budgeted aggregate search time.
+    Otherwise this prefers the execution-trace ``chunk_runtime`` sum (pure fit
+    wall time, the methodology of scripts/analyze_pysr_solve_time.py).
+    ``runtime_seconds`` also includes worker startup / Julia compile overhead
+    (~4.4x inflated on average) and is only used as a fallback.
     """
+    portfolio = res.get("portfolio") or {}
+    if portfolio.get("search_runtime_seconds") is not None:
+        return float(portfolio["search_runtime_seconds"]), "portfolio_search_runtime"
     trace = res.get("execution_trace") or []
     chunks = [
         e.get("chunk_runtime") for e in trace
@@ -144,9 +232,21 @@ def _entry_solve_time(e: Dict[str, Any]) -> Optional[float]:
     return e.get("runtime_seconds")
 
 
-def expected_keys(manifest: Dict[str, Any]) -> List[str]:
-    """All (dataset, seed, noise) keys the run is supposed to produce."""
+def expected_keys(
+    manifest: Dict[str, Any],
+    keyed: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> List[str]:
+    """All keys expected for the supplied constituent or merged results."""
     seeds = manifest["seeds"]
+    # A merged-frontier evaluation persists one portfolio result per
+    # dataset/noise combination, keyed by the base (first) seed.  The remaining
+    # seeds describe the constituent searches and therefore must not be counted
+    # as missing merged results by inspection/reporting code. Checking the
+    # entries preserves the original multi-seed grid when inspecting unfinished
+    # constituent batch artifacts before the merged JSON has been written.
+    has_merged_entries = keyed and any("n_searches" in e for e in keyed.values())
+    if manifest.get("merge_run_frontiers") and has_merged_entries and seeds:
+        seeds = seeds[:1]
     keys = []
     for ds in manifest["datasets"]:
         for s in seeds:
@@ -159,8 +259,9 @@ def expected_keys(manifest: Dict[str, Any]) -> List[str]:
 # Persisting / loading the aggregated big JSON
 # ---------------------------------------------------------------------------
 
-def save_keyed_results(run_dir: "str | Path", keyed: Dict[str, Dict[str, Any]], meta: Dict[str, Any]) -> Path:
-    out = Path(run_dir) / "srbench_full_results.json"
+def save_keyed_results(run_dir: "str | Path", keyed: Dict[str, Dict[str, Any]], meta: Dict[str, Any],
+                       filename: str = "srbench_full_results.json") -> Path:
+    out = Path(run_dir) / filename
     with open(out, "w") as f:
         json.dump({"meta": meta, "results": keyed}, f, indent=2)
     return out

@@ -18,6 +18,7 @@ EVOLVE_ARGS=(
     --generations 15
     --population 10
     --offspring 10
+    --population-type task
 )
 
 BARELY_UNSOLVABLE_SPLITS=(

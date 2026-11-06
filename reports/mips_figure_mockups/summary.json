@@ -1,0 +1,68 @@
+{
+  "PySR": {
+    "scalar_exact_runs": 123,
+    "scalar_total_runs": 153,
+    "scalar_per_seed": [
+      41,
+      41,
+      41
+    ],
+    "overall_coverage_per_seed": [
+      41,
+      41,
+      41
+    ],
+    "evaluated_groups_per_seed": [
+      14,
+      14,
+      14
+    ],
+    "components_solved_any_seed": 41,
+    "groups_solved_same_seed_at_least_once": 14,
+    "command": "python evaluate_new_pysr.py --domain mips --fitness-metric gt --splits splits/mips_sr_targets_plus_refined.txt --n-runs 3 --seed 192 --max-samples 1000 --wall-clock-only --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 153 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir runs/709714/final_eval_baseline_3seed_1h"
+  },
+  "PySR++": {
+    "scalar_exact_runs": 121,
+    "scalar_total_runs": 153,
+    "scalar_per_seed": [
+      41,
+      39,
+      41
+    ],
+    "overall_coverage_per_seed": [
+      41,
+      41,
+      41
+    ],
+    "evaluated_groups_per_seed": [
+      14,
+      14,
+      14
+    ],
+    "components_solved_any_seed": 41,
+    "groups_solved_same_seed_at_least_once": 14,
+    "command": "python evaluate_new_pysr.py --evolve-results runs/709715 --domain mips --use-domain-defaults --fitness-metric gt --splits splits/mips_sr_targets_plus_refined.txt --n-runs 3 --seed 192 --max-samples 1000 --wall-clock-only --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 153 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir runs/709715/final_eval_mips_native_3seed_1h"
+  },
+  "MIPS evolved from scratch": {
+    "scalar_exact_runs": 118,
+    "scalar_total_runs": 153,
+    "scalar_per_seed": [
+      38,
+      40,
+      40
+    ],
+    "overall_coverage_per_seed": [
+      39,
+      40,
+      40
+    ],
+    "evaluated_groups_per_seed": [
+      12,
+      13,
+      13
+    ],
+    "components_solved_any_seed": 41,
+    "groups_solved_same_seed_at_least_once": 14,
+    "command": "python evaluate_new_pysr.py --evolve-results runs/709714 --domain mips --fitness-metric gt --splits splits/mips_sr_targets_plus_refined.txt --n-runs 3 --seed 192 --max-samples 1000 --wall-clock-only --timeout 3600 --pysr-wall-limit 3900 --partition default_partition --max-concurrent-jobs 153 --time-limit 01:20:00 --mem-per-cpu 8G --job-timeout 14400 --no-cache --output-dir runs/709714/final_eval_mips_3seed_1h"
+  }
+}
