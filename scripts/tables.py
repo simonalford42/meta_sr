@@ -115,7 +115,7 @@ def table1():
     del body[-2:]
 
     return rf"""\begin{{table}}[t]
-\caption{{Results on SRBench, averaged over 10 seeds. Ground-truth recoveries are averaged over four noise levels (0, 0.001, 0.01, 0.1) and {len(TEST)} held-out test tasks, excluding the {len(TRAIN)} training and {len(VAL)} validation tasks used during evolution. Black box $R^2$ is averaged over 122 tasks. Improved versions of PySR and BasicSR are evaluated with a 90 second timeout.}}
+\caption{{Results on SRBench, averaged over 10 seeds. Ground-truth recoveries are averaged over four noise levels (0, 0.001, 0.01, 0.1) and {len(TEST)} held-out test tasks, excluding the {len(TRAIN)} training and {len(VAL)} validation tasks used during evolution. Black box $R^2$ is averaged over 122 tasks. Algorithms are evaluated with a 90 second timeout.}}
 \label{{tab:srbench}}
 \centering
 % \small
@@ -156,7 +156,7 @@ def table2():
     noise_rows = [f"% Noise {noise:g} & {_pair(gt_rate(base, CANONICAL, noise), gt_rate(evo, CANONICAL, noise))} \\\\"
                   for noise in [0, .001, .01, .1]]
     return rf"""\caption{{SRBench ground-truth recovery rates (\%) over 10 random seeds. Rows above the line use
-the {len(TEST)} held-out test tasks; rows below use 1 million evaluations. $\Delta$ is Evolved PySR minus PySR.}}
+the {len(TEST)} held-out test tasks; rows below use 1 million evaluations.}}
 \label{{tab:srbench2}}
 
 % \scriptsize

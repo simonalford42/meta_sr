@@ -24,7 +24,7 @@ sys.path.insert(0, str(HERE.parent / "scripts"))
 from plot_eval_axis_comparison import forward_fill_by_gen
 from plot_reeval_frontier import LINE_ALPHA
 
-SCALE = 0.85
+SCALE = 0.75
 
 def plot(data, side_by_side=False):
     gens = data["generations"]
