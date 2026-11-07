@@ -944,6 +944,15 @@ def _ensure_symbolicregression_loaded(jl, submodule: Optional[str] = None) -> No
             jl.seval(f"using .SymbolicRegression{sub}")
 
 
+def _safe_error_message(e: BaseException) -> str:
+    """str(e), but never raises: a JuliaError whose showerror itself fails
+    (e.g. after a broken precompile cache) must not crash the evolution run."""
+    try:
+        return str(e)
+    except Exception as inner:
+        return f"{type(e).__name__} (unprintable; showerror raised {type(inner).__name__})"
+
+
 def validate_julia_code(name: str, code: str, op_type: OperatorType) -> Tuple[bool, str]:
     """Validate Julia operator code by attempting to load it and smoke-testing it."""
     try:
@@ -967,7 +976,7 @@ def validate_julia_code(name: str, code: str, op_type: OperatorType) -> Tuple[bo
         return True, ""
 
     except Exception as e:
-        error_msg = str(e)
+        error_msg = _safe_error_message(e)
         if len(error_msg) > 500:
             error_msg = error_msg[:500] + "..."
         return False, error_msg
@@ -992,7 +1001,7 @@ def smoke_test_operator(name: str, code: str, op_type: OperatorType) -> Tuple[bo
         jl.seval(smoke_code)
         return True, ""
     except Exception as e:
-        error_msg = str(e)
+        error_msg = _safe_error_message(e)
         if len(error_msg) > 500:
             error_msg = error_msg[:500] + "..."
         return False, error_msg
