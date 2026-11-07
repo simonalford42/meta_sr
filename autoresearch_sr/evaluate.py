@@ -134,12 +134,17 @@ def main() -> None:
     print("command: " + " ".join(command), flush=True)
     env = dict(os.environ)
     env.setdefault("WANDB_MODE", "disabled")
-    # Each candidate commit recompiles SymbolicRegression.jl. The warmup precompiles
-    # on this (Ice Lake) node; without multi-versioned pkgimages, every array task
-    # landing on a Skylake/Cascade Lake node recompiles under lock contention and
-    # times out. sbatch inherits this env, so workers load the same pkgimages.
-    env.setdefault("JULIA_CPU_TARGET",
-                   "generic;haswell,clone_all;skylake-avx512,base(1);icelake-server,base(1)")
+    # NOTE: a multi-target JULIA_CPU_TARGET was tried (11/6) and reverted: the
+    # multi-versioned SymbolicRegression compile runs on a worker and exceeds the
+    # 600 s PySR wall limit, so it is killed and retried forever.
+    # Compiled caches go to a run-private depot (first entry); packages and
+    # registries still resolve from ~/.julia via the trailing ':' (default depots).
+    # The shared ~/.julia/compiled/.../SymbolicRegression slots are also written
+    # by every other PySR job (different SR sources), and they evict each other,
+    # forcing the array tasks to recompile serially behind one lock.
+    depot = ROOT / "outputs" / "julia_depots" / (RUN_DIR.name if RUN_DIR else "default")
+    depot.mkdir(parents=True, exist_ok=True)
+    env.setdefault("JULIA_DEPOT_PATH", f"{depot}:")
 
     start = time.time()
     if log_path is not None:
