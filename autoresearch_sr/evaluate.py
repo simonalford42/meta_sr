@@ -124,6 +124,7 @@ def main() -> None:
         "--timeout", "500",
         "--pysr-wall-limit", "600",
         "--max-concurrent-jobs", "300",
+        "--time-limit", "01:00:00",
         "--fitness-metric", "gt",
         "--random-target-noise",
         "--output-dir", str(output_dir),
@@ -133,6 +134,12 @@ def main() -> None:
     print("command: " + " ".join(command), flush=True)
     env = dict(os.environ)
     env.setdefault("WANDB_MODE", "disabled")
+    # Each candidate commit recompiles SymbolicRegression.jl. The warmup precompiles
+    # on this (Ice Lake) node; without multi-versioned pkgimages, every array task
+    # landing on a Skylake/Cascade Lake node recompiles under lock contention and
+    # times out. sbatch inherits this env, so workers load the same pkgimages.
+    env.setdefault("JULIA_CPU_TARGET",
+                   "generic;haswell,clone_all;skylake-avx512,base(1);icelake-server,base(1)")
 
     start = time.time()
     if log_path is not None:
