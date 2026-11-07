@@ -4,6 +4,7 @@ and sort problems from easiest to hardest.
 """
 import pandas as pd
 import argparse
+import random
 import os
 import json
 from glob import glob
@@ -545,7 +546,7 @@ def print_split_summary(df, split_names=None):
         print(f"  n_high_acc: mean={split_df['n_high_acc'].mean():.1f}, median={split_df['n_high_acc'].median():.1f}, sum={split_df['n_high_acc'].sum()}")
 
 
-def generate_train_val_test_split(difficulty_df, train_size=20, val_size=20, test_size=None):
+def generate_train_val_test_split(difficulty_df, train_size=20, val_size=20, test_size=None, seed=None):
     """
     Generate a balanced train/val/test split of problems using stratified sampling.
 
@@ -566,6 +567,11 @@ def generate_train_val_test_split(difficulty_df, train_size=20, val_size=20, tes
         Number of problems for validation set
     test_size : int or None
         Number of problems for test set. If None, uses all remaining problems.
+    seed : int or None
+        If None (canonical splits/train.txt etc.), the hardest problems in each
+        stratum go to train, then val. Otherwise, each stratum's problems are
+        shuffled with random.Random(seed) before assignment, so the strata (and
+        thus the difficulty balance) are unchanged but membership differs.
 
     Returns:
     --------
@@ -598,6 +604,7 @@ def generate_train_val_test_split(difficulty_df, train_size=20, val_size=20, tes
     # Stratified sampling to ensure all splits have balanced difficulty
     # Use enough strata to get good coverage
     n_strata = max(train_size + val_size, 20)  # At least as many strata as train+val
+    rng = random.Random(seed) if seed is not None else None
 
     # Process each stratum
     stratum_size = n_includable / n_strata
@@ -606,6 +613,9 @@ def generate_train_val_test_split(difficulty_df, train_size=20, val_size=20, tes
         start = int(stratum_idx * stratum_size)
         end = int((stratum_idx + 1) * stratum_size) if stratum_idx < n_strata - 1 else n_includable
         stratum_indices = includable_indices[start:end]
+        if rng is not None:
+            stratum_indices = list(stratum_indices)
+            rng.shuffle(stratum_indices)
 
         if not stratum_indices:
             continue
@@ -1147,6 +1157,11 @@ def main():
     parser.add_argument('--top-n', type=int, default=None, help='Show only top N hardest problems')
     parser.add_argument('--write-train-val-test', action='store_true',
                         help='Write splits/train.txt, val.txt, test.txt (stratified difficulty split)')
+    parser.add_argument('--tvt-seed', type=int, default=None,
+                        help='Shuffle within each difficulty stratum before assigning train/val/test '
+                             '(default: deterministic hardest-first, as in splits/train.txt)')
+    parser.add_argument('--tvt-suffix', default='',
+                        help='Suffix for written train/val/test files, e.g. "2" -> train2.txt')
     parser.add_argument('--write-small', action='store_true',
                         help='Write splits/train_small.txt and val_small.txt (4-task subsets). '
                              'Implies --write-train-val-test for the underlying split.')
@@ -1279,7 +1294,7 @@ def main():
         print(f"\nComputing train/val/test split "
               f"(train={args.train_size}, val={args.val_size})...")
         tvt_df = generate_train_val_test_split(
-            difficulty, args.train_size, args.val_size
+            difficulty, args.train_size, args.val_size, seed=args.tvt_seed
         )
 
     if args.write_train_val_test or args.write_small:
@@ -1288,7 +1303,7 @@ def main():
     if args.write_train_val_test:
         for split_name in ['train', 'val', 'test']:
             problems = tvt_df[tvt_df['split'] == split_name]['dataset'].tolist()
-            path = SPLITS_DIR / f'{split_name}.txt'
+            path = SPLITS_DIR / f'{split_name}{args.tvt_suffix}.txt'
             path.write_text('\n'.join(problems) + '\n')
             print(f"  {path}: {len(problems)} datasets")
 
