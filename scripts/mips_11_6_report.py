@@ -82,7 +82,7 @@ def main():
                 continue
             e, n, p = score(fits, subset, runs)
             incomplete |= p < n
-            cells.append(f'{100 * e / n:.1f}% ({e}/{n})')
+            cells.append(f'{e}/{n} ({100 * e / n:.1f}%)')
         any_seed = {d for d in all51 if any(fits.get((d, r)) for r in runs)}
         groups = defaultdict(list)
         for d in all51:
@@ -99,7 +99,7 @@ def main():
                'Tasks solved (any seed per component)']
     lines = ['# MIPS training-set-size ablation (11/6/26)', '',
              'All rows: evaluated on all 51 MIPS scalar problems (17 tasks), 10 seeds, eval seed 192, '
-             '1e6 evals and 500 s per fit. Fit = exact ground-truth match (`gt_match_score == 1`). '
+             '1e6 evals and 500 s per fit. Cells count solved fits (problem x seed; 51 x 10 = 510 total) with an exact ground-truth match (`gt_match_score == 1`). '
              '"Held-out unsolved" = unsolved problems not in that run\'s train split. '
              '"Solved 12" = the 12 problems of the 5 paper-solved tasks (abs_value, abs_value_of_diff, '
              'add_mod_3, parity_last2, unique2). Unsolved subsets are a nested random sample (seed 42), '
@@ -109,6 +109,17 @@ def main():
     lines += ['| ' + ' | '.join(map(str, r)) + ' |' for r in rows]
     if notes:
         lines += ['', *[f'- {n}' for n in notes]]
+    # Matched held-out comparison: every method scored on the same held-out problems.
+    all_fits = {name: load_fits(ev) for name, _, _, ev in METHODS if (ROOT / ev).exists()}
+    for label, sp in [('+8', 'splits/mips_solved12_unsolved8.txt'), ('+20', 'splits/mips_solved12_unsolved20.txt')]:
+        tr = set(split(sp))
+        ho = [d for d in unsolved39 if d not in tr]
+        lines += ['', f'### Matched held-out: the {len(ho)} unsolved problems not in the {label} train split '
+                  f'({len(ho)} problems x 10 seeds = {len(ho) * 10} fits)', '',
+                  '| Method | Fits solved |', '|---|---|']
+        for name, fits in all_fits.items():
+            e, n, _ = score(fits, ho, runs)
+            lines.append(f'| {name} | {e}/{n} ({100 * e / n:.1f}%) |')
     lines += ['', '## Paths', '', '| Method | Train split | Evolution run | Final eval (all 51) |', '|---|---|---|---|']
     for name, train_split, run_dir, eval_root in METHODS:
         lines.append(f'| {name} | `{train_split or "-"}` | `{run_dir or "-"}` | `{eval_root}` |')
