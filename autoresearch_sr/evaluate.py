@@ -69,40 +69,6 @@ def _append(log_path: Path, record: dict) -> None:
         handle.write(json.dumps(record) + "\n")
 
 
-def precompile(commit: str, env: dict, output_dir: Path, depot: Path) -> None:
-    """Compile the candidate's SymbolicRegression.jl once, before any SLURM task starts.
-
-    Runs the same PySR import the workers run (juliacall, same opt level and
-    sandbox project), so the cache it writes is the one workers load. No wall
-    limit applies here, unlike on the workers.
-    """
-    from autoresearch_pysr import build_sandbox
-
-    sandbox = build_sandbox(commit, SUBMODULE, SANDBOXES)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    log = output_dir / "precompile.log"
-    pre_env = dict(env)
-    pre_env.update({
-        "META_SR_EVAL_REPO_ROOT": str(sandbox),
-        "PYTHON_JULIAPKG_PROJECT": str(sandbox / ".juliapkg_env"),
-        "PYTHONPATH": f"{sandbox}:{env.get('PYTHONPATH', '')}",
-    })
-    pre_env.pop("PYTHON_JULIAPKG_OFFLINE", None)
-    code = ("from pathlib import Path; from parallel_eval_pysr import _import_pysr_regressor; "
-            f"_import_pysr_regressor(Path({str(sandbox)!r}))")
-    t0 = time.time()
-    with log.open("w") as handle:
-        proc = subprocess.run([sys.executable, "-c", code], cwd=sandbox, env=pre_env,
-                              stdout=handle, stderr=subprocess.STDOUT)
-    sr_dir = depot / "compiled" / "v1.10" / "SymbolicRegression"
-    fresh = [p for p in sr_dir.glob("*.so") if p.stat().st_mtime >= t0] if sr_dir.exists() else []
-    print(f"precompile:    {time.time() - t0:.0f}s, returncode {proc.returncode}, "
-          f"new SymbolicRegression image: {'yes' if fresh else 'no (already cached)'} "
-          f"(log: {log})", flush=True)
-    if proc.returncode != 0:
-        sys.exit(f"ERROR: precompiling SymbolicRegression.jl failed for {commit}; see {log}")
-
-
 def main() -> None:
     args = parse_args()
     sys.path.insert(0, str(ROOT))
@@ -159,6 +125,7 @@ def main() -> None:
         "--pysr-wall-limit", "600",
         "--max-concurrent-jobs", "300",
         "--time-limit", "01:00:00",
+        "--constraint", "il|sr",
         "--fitness-metric", "gt",
         "--random-target-noise",
         "--output-dir", str(output_dir),
@@ -168,14 +135,17 @@ def main() -> None:
     print("command: " + " ".join(command), flush=True)
     env = dict(os.environ)
     env.setdefault("WANDB_MODE", "disabled")
-    # Every candidate commit is new SymbolicRegression.jl source, so it must be
-    # compiled once per experiment. Julia keeps one cache file per package/flags,
-    # built for one CPU; SLURM tasks land on many CPU families, each of which
-    # rejects the other's build, recompiles and overwrites it while every other
-    # task waits on the lock (30 min median load on 11/9). Instead we build one
-    # multi-versioned image here, before submission, so workers only load it.
-    env.setdefault("JULIA_CPU_TARGET",
-                   "generic;haswell,clone_all;skylake-avx512,base(1);icelake-server,base(1)")
+    # Every candidate commit is new SymbolicRegression.jl source, so it is compiled
+    # once per experiment by the driver's Julia warmup, for the driver's CPU (Ice
+    # Lake). Tasks on other CPU families reject that build, recompile it and
+    # overwrite the single cache file in turn while every other task waits on the
+    # lock (median task load 30 min, 11/9). So workers are pinned to CPU families
+    # that can load an Ice Lake build: Ice Lake and Sapphire Rapids (see --constraint).
+    # A multi-target JULIA_CPU_TARGET build was tried and abandoned (11/6, 11/9).
+    # This requires the driver itself to run on an Ice Lake / Sapphire Rapids node.
+    if "gfni" not in Path("/proc/cpuinfo").read_text():
+        sys.exit("ERROR: run evaluate.py on an Ice Lake or Sapphire Rapids node "
+                 "(e.g. ellis-compute-02); workers are pinned to those CPU families.")
     # Compiled caches go to a run-private depot (first entry); packages and
     # registries still resolve from ~/.julia via the trailing ':' (default depots).
     # The shared ~/.julia compiled slots are rewritten by every other PySR job.
@@ -187,7 +157,6 @@ def main() -> None:
     if log_path is not None:
         _append(log_path, {"event": "start", "exp": exp_index, "commit": commit,
                            "time": start, "output_dir": str(output_dir)})
-    precompile(commit, env, output_dir, depot)
     proc = subprocess.run(command, cwd=ROOT, env=env)
     end = time.time()
 
