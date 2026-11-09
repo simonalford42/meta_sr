@@ -763,6 +763,8 @@ def main() -> None:
                              "must exceed --timeout with a buffer")
     parser.add_argument("--partition", type=str, default="default_partition",
                         help="SLURM partition")
+    parser.add_argument("--constraint", type=str, default=None,
+                        help="SLURM --constraint for PySR worker nodes (e.g. 'il|sr')")
     parser.add_argument("--time-limit", type=str, default="00:30:00",
                         help="SLURM time limit per job")
     parser.add_argument("--mem-per-cpu", type=str, default="8G",
@@ -955,6 +957,7 @@ def main() -> None:
         results_dir=str(output_dir),
         partition=args.partition,
         time_limit=args.time_limit,
+        constraint=args.constraint,
         mem_per_cpu=args.mem_per_cpu,
         dataset_max_samples=args.max_samples,
         data_seed=args.seed,
