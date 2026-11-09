@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = Path(__file__).resolve().parent
 LEFT = ROOT/'figures/srbench_10seed_snapshot_solve_rate/data.json'
 RIGHT = ROOT/'figures/srbench2_1m_spliced_snap5/curve.csv'
+RECOVERY = ROOT/'runs/srbench2_9-17_1m_spliced_terra_recovery/first_recovery.json'
 METHODS = [('baseline', 'Baseline', 'PySR', '#3975b7'),
            ('evolved', '709715', 'Evolved PySR', '#db7825')]
 
@@ -37,6 +38,49 @@ def save(fig, name):
     fig.savefig(OUT/name)
     plt.close(fig)
     print(OUT/name)
+
+
+def plotted_seconds(record):
+    """Same rule as figures/plot_srbench2_spliced_portfolio.py."""
+    if not record['final_positive']:
+        return None
+    if record.get('first_solve_kind') == 'first_restart_snapshot':
+        return min(float(record['first_solve_scheduled_seconds']), 3600.)
+    return record['first_solve_budget_seconds']
+
+
+def empirical_with_seed_sd(right_rows, figsize):
+    """Empirical curve as mean over 10 seeds (each seed = % of 9 problems), with +/-1 SD band."""
+    records = json.loads(RECOVERY.read_text())
+    fig, ax = plt.subplots(figsize=figsize)
+    for key, method, label, color in METHODS:
+        rows = [r for r in right_rows if r['method'] == method]
+        xs = np.array([float(r['seconds']) for r in rows])
+        ref = np.array([float(r['solve_rate_percent']) for r in rows])
+        recs = [r for r in records if r['method'] == method]
+        seeds = sorted({r['seed'] for r in recs})
+        assert len(seeds) == 10
+        per_seed = []
+        for seed in seeds:
+            times = [t for r in recs if r['seed'] == seed and (t := plotted_seconds(r)) is not None]
+            n = sum(r['seed'] == seed for r in recs)
+            assert n == 9
+            per_seed.append([100*sum(t <= x for t in times)/n for x in xs])
+        per_seed = np.array(per_seed)
+        mean, sd = per_seed.mean(0), per_seed.std(0, ddof=1)
+        assert np.allclose(mean, ref)
+        total = round(mean[-1]*90/100)
+        ax.fill_between(xs/60, np.maximum(0, mean-sd), np.minimum(100, mean+sd), step='post',
+                        color=color, alpha=.18, linewidth=0)
+        ax.step(xs/60, mean, where='post', color=color, linewidth=2.2,
+                label=f'{label} ({total}/90)')
+        print(f'{label}: final {mean[-1]:.1f}% +/- {sd[-1]:.1f} (seed SD)')
+    ax.set(xscale='log', xlim=(1/60, 60), xlabel='Search time (min)')
+    ax.set_xticks([.02, .1, .5, 1, 5, 15, 60])
+    ax.xaxis.set_major_formatter(StrMethodFormatter('{x:g}'))
+    ax.xaxis.set_minor_formatter(NullFormatter())
+    style(ax)
+    return fig
 
 
 def main():
@@ -74,6 +118,7 @@ def main():
     style(right)
     save(left_fig, 'srbench_solve_over_time.pdf')
     save(right_fig, 'empirical_solve_over_time.pdf')
+    save(empirical_with_seed_sd(right_rows, figsize), 'empirical_solve_over_time_errorbars.pdf')
 
 
 if __name__ == '__main__':
