@@ -52,7 +52,11 @@ the harness evaluates a detached worktree at that commit.
 
 **Evaluation is noisy.** To guard against noise, `evaluate.py` already runs 10 seeds per task internally (see `n_runs` in the output) and reports the averaged score.
 
-**Experiment budget.** This run has a fixed budget of `max_experiments` experiments (see `run.json`; 300). An experiment is one evaluation of one new commit; the baseline evaluation is free. Every commit you evaluate counts against the budget, including crash fixes, so check that your code compiles and is correct before evaluating. `evaluate.py` enforces the budget: once it is used up it prints `BUDGET EXHAUSTED` and refuses to run. Run exactly one evaluation at a time.
+**Budget.** This run has two budgets (see `run.json`), and it ends when either is used up:
+- **Experiments:** at most `max_experiments` experiments (300). An experiment is one evaluation of one new commit; the baseline evaluation is free. Every commit you evaluate counts, including crash fixes, so check that your code compiles and is correct before evaluating.
+- **API cost:** at most `max_cost_usd` dollars of your own model usage, estimated from your token usage at list prices. Every turn you take costs money, so be economical with context: avoid dumping large files or logs into your context, and don't re-read things you already know.
+
+`evaluate.py` prints how much of the cost budget you have used each time it runs, and enforces both budgets: once either is used up it prints `BUDGET EXHAUSTED` and refuses to run. Run exactly one evaluation at a time.
 
 **Experiment with both ambitious algorithmic changes and smaller tweaks:** Think on a scale from 1 to 4: 1 = tweak a hyperparameter, 2 = tweak an approach, 3 = experiment with a new approach, 4 = large change to part of the algorithm. Your experiments should be roughly equally distributed across this scale.
 

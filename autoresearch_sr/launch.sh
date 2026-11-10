@@ -22,6 +22,9 @@ RUN_DIR="$AR_DIR/live/$TAG"
 PY=/home/sca63/.conda/envs/meta_sr/bin/python
 MODEL=$($PY -c "import json;print(json.load(open('$RUN_DIR/run.json'))['model'])")
 MAX_EXP=$($PY -c "import json;print(json.load(open('$RUN_DIR/run.json'))['max_experiments'])")
+MAX_COST=$($PY -c "import json;print(json.load(open('$RUN_DIR/run.json')).get('max_cost_usd') or 'inf')")
+# The agent is killed if its spend overshoots the budget by >10% between evaluations.
+HARD_COST=$($PY -c "print(float('$MAX_COST') * 1.1)")
 MAX_RESTARTS=50
 
 export AUTORESEARCH_RUN_DIR="$RUN_DIR"
@@ -30,6 +33,11 @@ export WANDB_MODE=disabled
 export BASH_DEFAULT_TIMEOUT_MS=10800000
 export BASH_MAX_TIMEOUT_MS=10800000
 cd "$RUN_DIR"
+
+cost_now() {
+    $PY -c "import sys; sys.path.insert(0, '$AR_DIR'); from cost_report import run_cost; print(run_cost('$RUN_DIR'))"
+}
+ge() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a >= b) }'; }
 
 n_done() {
     $PY - <<EOF
@@ -58,12 +66,28 @@ fi
 while true; do
     echo "[launch] $(date -Iseconds) starting agent (model $MODEL, restart $restarts)" | tee -a launch.log
     echo "{\"type\": \"_launch\", \"restart\": $restarts, \"_recv_time\": $(date +%s.%N)}" >> agent_stream.jsonl
-    claude --dangerously-skip-permissions --model "$MODEL" "${CONTINUE_FLAG[@]}" \
-        -p "$PROMPT" --output-format stream-json --verbose \
-        2>>agent_stderr.log | $PY "$AR_DIR/stream_logger.py" agent_stream.jsonl
+    # $! would be the logger's process-substitution PID, so record claude's own PID.
+    : > .agent.pid
+    ( echo $BASHPID > .agent.pid
+      exec claude --dangerously-skip-permissions --model "$MODEL" "${CONTINUE_FLAG[@]}" \
+          -p "$PROMPT" --output-format stream-json --verbose ) \
+        2>>agent_stderr.log > >($PY "$AR_DIR/stream_logger.py" agent_stream.jsonl) &
+    until [[ -s .agent.pid ]]; do sleep 0.2; done
+    CLAUDE_PID=$(cat .agent.pid)
+    while kill -0 "$CLAUDE_PID" 2>/dev/null; do
+        sleep 60
+        if ge "$(cost_now)" "$HARD_COST"; then
+            echo "[launch] $(date -Iseconds) cost over hard cap \$$HARD_COST; stopping agent" | tee -a launch.log
+            kill "$CLAUDE_PID" 2>/dev/null
+            break
+        fi
+    done
+    wait
+    sleep 2  # let the stream logger flush
     done_n=$(n_done)
-    echo "[launch] $(date -Iseconds) agent exited; $done_n/$MAX_EXP experiments done" | tee -a launch.log
-    if (( done_n >= MAX_EXP )); then
+    spent=$(cost_now)
+    echo "[launch] $(date -Iseconds) agent exited; $done_n/$MAX_EXP experiments, \$$spent of \$$MAX_COST" | tee -a launch.log
+    if (( done_n >= MAX_EXP )) || ge "$spent" "$MAX_COST"; then
         break
     fi
     restarts=$((restarts + 1))

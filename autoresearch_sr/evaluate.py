@@ -93,6 +93,19 @@ def main() -> None:
                     and rec["commit"] not in seen:
                 seen.append(rec["commit"])
         max_exp = int(run_cfg["max_experiments"])
+        max_cost = run_cfg.get("max_cost_usd")
+        spent = None
+        if max_cost is not None:
+            sys.path.insert(0, str(ROOT / "autoresearch_sr"))
+            from cost_report import run_cost
+            spent = run_cost(RUN_DIR)
+            print(f"api cost:      ${spent:.2f} of ${float(max_cost):.2f} budget", flush=True)
+        if (commit != run_cfg["base_commit"] and commit not in seen
+                and spent is not None and spent >= float(max_cost)):
+            print(f"BUDGET EXHAUSTED: API cost ${spent:.2f} has reached the "
+                  f"${float(max_cost):.2f} budget. No further evaluations are allowed. "
+                  "The run is over; stop now.")
+            sys.exit(3)
         if commit == run_cfg["base_commit"]:
             exp_index = 0
         elif commit in seen:
