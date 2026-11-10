@@ -41,7 +41,7 @@ export PYTHON_JULIAPKG_PROJECT="{repo}/.juliapkg_env"
 export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
 
 echo "array task $SLURM_ARRAY_TASK_ID on $(hostname)"
-python -u {repo}/scripts/empbench_slurm_worker.py --jobs "{jobs}" --index $SLURM_ARRAY_TASK_ID
+python -u {repo}/{worker} --jobs "{jobs}" --index $SLURM_ARRAY_TASK_ID
 """
 
 
@@ -57,6 +57,8 @@ def main():
     ap.add_argument("--partition", default="default_partition")
     ap.add_argument("--throttle", type=int, default=40, help="max concurrent array tasks")
     ap.add_argument("--logdir", default=None)
+    ap.add_argument("--worker", default="scripts/empbench_slurm_worker.py",
+                    help="repo-relative worker script taking --jobs J --index I")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
@@ -70,7 +72,7 @@ def main():
         jobname=a.jobname, logdir=logdir, array_spec=array_spec, time=a.time,
         mem=a.mem, partition=a.partition, conda_sh=CONDA_SH, conda_env=CONDA_ENV,
         repo=str(REPO), jobs=str(Path(a.jobs).resolve()),
-        cpus=a.cpus, julia_threads=a.julia_threads)
+        cpus=a.cpus, julia_threads=a.julia_threads, worker=a.worker)
     script_path = Path(a.jobs).parent / f"{a.jobname}_array.sh"
     script_path.write_text(script)
     print(f"Wrote {script_path}  ({n} tasks, array={array_spec}, mem={a.mem}, time={a.time})")
