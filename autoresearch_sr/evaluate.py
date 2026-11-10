@@ -99,24 +99,20 @@ def main() -> None:
             sys.path.insert(0, str(ROOT / "autoresearch_sr"))
             from cost_report import run_cost
             spent = run_cost(RUN_DIR)
-            print(f"api cost:      ${spent:.2f} of ${float(max_cost):.2f} budget", flush=True)
         if (commit != run_cfg["base_commit"] and commit not in seen
                 and spent is not None and spent >= float(max_cost)):
-            print(f"BUDGET EXHAUSTED: API cost ${spent:.2f} has reached the "
-                  f"${float(max_cost):.2f} budget. No further evaluations are allowed. "
-                  "The run is over; stop now.")
+            print("RUN OVER: no further evaluations are allowed. Stop now.")
             sys.exit(3)
         if commit == run_cfg["base_commit"]:
             exp_index = 0
         elif commit in seen:
             exp_index = seen.index(commit) + 1
         elif len(seen) >= max_exp:
-            print(f"BUDGET EXHAUSTED: {len(seen)}/{max_exp} experiments already evaluated. "
-                  "No further evaluations are allowed. The run is over; stop now.")
+            print("RUN OVER: no further evaluations are allowed. Stop now.")
             sys.exit(3)
         else:
             exp_index = len(seen) + 1
-        print(f"experiment:    {exp_index} of {max_exp} (baseline = 0)", flush=True)
+        print(f"experiment:    {exp_index} (baseline = 0)", flush=True)
 
     output_dir = Path(args.output_dir) if args.output_dir else (
         EVAL_ROOT / commit[:12] / f"eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
