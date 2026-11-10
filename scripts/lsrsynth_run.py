@@ -42,6 +42,17 @@ import numpy as np
 DATA_DIR = Path(os.environ.get("LSRSYNTH_DATA_DIR", REPO / "data" / "llm-srbench" / "lsr_synth"))
 DOMAINS = ("chem_react", "bio_pop_growth", "phys_osc", "matsci")
 TAUS = (0.1, 0.01, 0.001)
+# SR-Scientist (arXiv:2510.11661) App. A PySR baseline config; still capped by --timeout-seconds.
+SRSCI_KWARGS = {
+    "niterations": 125, "ncycles_per_iteration": 550, "populations": 15, "population_size": 33,
+    "maxsize": 30, "maxdepth": None, "weight_randomize": 0.1,
+    "binary_operators": ["+", "-", "*", "/", "^"],
+    "unary_operators": ["exp", "log", "sqrt", "sin", "cos"],
+    "constraints": {"sin": 10, "cos": 10, "exp": 20, "log": 20, "sqrt": 20, "^": (-1, 20)},
+    "nested_constraints": {"sin": {"sin": 0, "cos": 0}, "cos": {"sin": 0, "cos": 0},
+                           "exp": {"exp": 0, "log": 0}, "log": {"exp": 0, "log": 0},
+                           "sqrt": {"sqrt": 0}},
+}
 SPLITS = ("train", "id_test", "ood_test")
 
 
@@ -123,7 +134,7 @@ def cmd_run(args):
         X_fit, y_fit = X_tr, y_tr
 
     bargs = argparse.Namespace(
-        method=args.method, evolve_results=args.evolve_results,
+        method="baseline" if args.method == "srsci" else args.method, evolve_results=args.evolve_results,
         max_evals=args.max_evals or 10**12, binary_ops=args.binary_ops, unary_ops=args.unary_ops,
         maxsize=args.maxsize, populations=None, population_size=None,
         extra_kwargs=args.extra_kwargs, parallelism="serial", procs=0,
@@ -132,6 +143,11 @@ def cmd_run(args):
     pysr_kwargs, custom_code, method_meta = build_pysr_kwargs_and_code(bargs)
     if not args.max_evals:
         pysr_kwargs.pop("max_evals", None)  # wall-clock only
+    if args.method == "srsci":
+        pysr_kwargs.update(SRSCI_KWARGS)
+        if pysr_kwargs.get("maxdepth") is None:
+            pysr_kwargs.pop("maxdepth")
+        method_meta["config"] = "SR-Scientist App. A"
     # Early stop at ~exact fit is fine for accuracy metrics and saves compute.
 
     seed = args.seed_base + args.run_index
@@ -140,7 +156,7 @@ def cmd_run(args):
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp_out = out.parent / f"_pysrtmp_{out.stem}_{os.getpid()}"
+    tmp_out = out.parent.parent / "pysr_tmp" / f"{out.stem}_{os.getpid()}"
     model_kwargs = dict(pysr_kwargs)
     model_kwargs.update(random_state=seed, output_directory=str(tmp_out),
                         temp_equation_file=False, verbosity=0, progress=False)
@@ -209,9 +225,12 @@ def cmd_make_jobs(args):
     if args.limit:  # first N problems of each domain (smoke tests)
         probs = [m for d in DOMAINS for m in [p for p in probs if p["domain"] == d][: args.limit]]
     jobs = []
-    for r in range(args.n_runs):
+    for r in range(max(args.n_runs, args.srsci_n_runs or 0)):
         for m in probs:
             for method in args.methods:
+                n_m = (args.srsci_n_runs or args.n_runs) if method == "srsci" else args.n_runs
+                if r >= n_m:
+                    continue
                 job = {"method": method, "domain": m["domain"], "name": m["name"],
                        "run_index": r, "seed_base": args.seed_base,
                        "timeout_seconds": args.timeout_seconds,
@@ -254,7 +273,7 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("run")
-    r.add_argument("--method", choices=["baseline", "evolve"], required=True)
+    r.add_argument("--method", choices=["baseline", "evolve", "srsci"], required=True)
     r.add_argument("--evolve-results", default=None)
     r.add_argument("--domain", choices=DOMAINS, required=True)
     r.add_argument("--name", required=True)
@@ -271,7 +290,10 @@ def main(argv=None):
 
     j = sub.add_parser("make-jobs")
     j.add_argument("--output-dir", required=True)
-    j.add_argument("--methods", nargs="+", default=["baseline", "evolve"])
+    j.add_argument("--methods", nargs="+", default=["baseline", "evolve"],
+                   choices=["baseline", "evolve", "srsci"])
+    j.add_argument("--srsci-n-runs", type=int, default=None,
+                   help="seeds for the srsci method (default: --n-runs)")
     j.add_argument("--evolve-results", default="runs/709715")
     j.add_argument("--domains", nargs="*", default=None)
     j.add_argument("--n-runs", type=int, default=1)

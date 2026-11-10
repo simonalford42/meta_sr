@@ -1,19 +1,47 @@
 #!/usr/bin/env bash
 
-# 11/6/26
-m1=$(sbatch --parsable --partition=ellis --time=2-00:00:00 --cpus-per-task=1 --mem=8G --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-s12 run.sh evolve_pysr.py --domain mips --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval none --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best2 --val-split "" --test-split splits/mips_sr_targets_plus_refined.txt --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-random-target-noise --split splits/mips_solved12.txt --output-dir runs/mips-11-6-solved12) || exit 1
-m3=$(sbatch --parsable --partition=ellis --time=2-00:00:00 --cpus-per-task=1 --mem=8G --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-s12-u20 run.sh evolve_pysr.py --domain mips --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval none --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best2 --val-split "" --test-split splits/mips_sr_targets_plus_refined.txt --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-random-target-noise --split splits/mips_solved12_unsolved20.txt --output-dir runs/mips-11-6-solved12-unsolved20) || exit 1
-scancel 31559
-sbatch --dependency=afterany:31557:$m1:$m3 --partition=ellis --time=00:15:00 --mem=4G -J mips-11-6-report run.sh scripts/mips_11_6_report.py
+# 11/10/26
+# python scripts/empbench_slurm_submit.py --jobs runs/lsrsynth_11-10_3seed_30m/jobs.json --jobname lsrsynth-30m --worker scripts/lsrsynth_run.py --mem 10G --time 01:15:00 --throttle 60 --dependency afterany:318422 || exit 1
 exit 0
 
-# m1=$(sbatch --parsable --partition=ellis --time=2-00:00:00 --cpus-per-task=1 --mem=8G --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-s12 run.sh evolve_pysr.py --domain mips --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval none --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best2 --val-split "" --test-split splits/mips_sr_targets_plus_refined.txt --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-random-target-noise --split splits/mips_solved12.txt --output-dir runs/mips-11-6-solved12) || exit 1
-# m2=$(sbatch --parsable --partition=ellis --time=2-00:00:00 --cpus-per-task=1 --mem=8G --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-s12-u8 run.sh evolve_pysr.py --domain mips --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval none --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best2 --val-split "" --test-split splits/mips_sr_targets_plus_refined.txt --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-random-target-noise --split splits/mips_solved12_unsolved8.txt --output-dir runs/mips-11-6-solved12-unsolved8) || exit 1
-# m3=$(sbatch --parsable --partition=ellis --time=2-00:00:00 --cpus-per-task=1 --mem=8G --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-s12-u20 run.sh evolve_pysr.py --domain mips --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval none --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best2 --val-split "" --test-split splits/mips_sr_targets_plus_refined.txt --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-random-target-noise --split splits/mips_solved12_unsolved20.txt --output-dir runs/mips-11-6-solved12-unsolved20) || exit 1
-# sbatch --dependency=afterany:$m1:$m2:$m3 --partition=ellis --time=00:15:00 --mem=4G -J mips-11-6-report run.sh scripts/mips_11_6_report.py
+# python evaluate_modsr_srbench.py submit --output-dir runs/modsr_srbench_gt_11-10_1seed --n-shards 4 --time-limit 06:00:00 || exit 1
 
-# baseline=$(sbatch --parsable --partition=default_partition --job-name=baseline run.sh evolve_pysr.py --generations 45 --simplify-cooldown 15 --n-runs 3 --population-type task --reeval population --n-reeval 10)
-# random1=$(sbatch --parsable --partition=default_partition --job-name=baseline run.sh evolve_pysr.py --generations 45 --simplify-cooldown 15 --n-runs 3 --population-type task --reeval population --n-reeval 10)
+# llamea_flags=(
+#     --operator-type all --seed 1 --n-runs 3 --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270
+#     --val-pysr-timeout 90 --val-pysr-wall-limit 270 --strategy plus
+# )
+# sbatch --dependency=afterany:190930:190931:190932 --partition=default_partition --time=72:00:00 -J llamea-seq run.sh llamea_pysr.py "${llamea_flags[@]}" --iterations 150 --lambda 1 || exit 1
+# sbatch --dependency=afterany:190930:190931:190932 --partition=default_partition --time=48:00:00 -J llamea-par10 run.sh llamea_pysr.py "${llamea_flags[@]}" --iterations 15 --lambda 10 || exit 1
+# exit 0
+
+# sbatch --dependency=afterany:309983:309984:309985:309986 --partition=default_partition --time=48:00:00 --mem=20G -J srb90-keijzer-dup run.sh srbench_full_eval.py --evolve-results bundles/keijzer_affine_subtree_dup/bundle.json --select-by train --ground-truth --max-evals 1000000000 --timeout 90 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 300 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5 --no-early-stop --affine-scale-frontier --results-dir runs/keijzer-affine-subtree-dup-affscaled-srbench_gt_11-10_10seed-90s
+# exit 0
+
+# 11/9/26
+# srb_ablation_flags=(
+#     --select-by val --ground-truth --max-evals 1000000000 --timeout 90 --seed 10000 --n-runs 3
+#     --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 300 --cpus-per-task 1
+#     --partition default_partition --max-concurrent-jobs 25 --time-limit 02:00:00
+#     --mem-per-cpu 8G --max-retries 5 --no-early-stop
+# )
+# for spec in n3-s1:671964 n3-s2:980597 n3-s3:353972 n10-s1:64604 n10-s2:64605 n10-s3:192865 \
+#             n3-reeval-s1:750239 n3-reeval-s2:980598 n3-reeval-s3:203388 \
+#             n3-ttts-s1:750242 n3-ttts-s2:980599 n3-ttts-s3:203389; do
+#     name=${spec%%:*}; job=${spec##*:}
+#     sbatch --partition=default_partition --time=48:00:00 --mem=20G -J srb90-$name run.sh srbench_full_eval.py --evolve-results runs/$job "${srb_ablation_flags[@]}" --results-dir runs/$job-$name-srbench_gt_11-9_3seed-90s || exit 1
+# done
+# exit 0
+
+# 11/6/26
+# m1=$(sbatch --parsable --partition=ellis --time=2-00:00:00 --cpus-per-task=1 --mem=8G --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-s12 run.sh evolve_pysr.py --domain mips --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval none --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best2 --val-split "" --test-split splits/mips_sr_targets_plus_refined.txt --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-random-target-noise --split splits/mips_solved12.txt --output-dir runs/mips-11-6-solved12) || exit 1
+# m3=$(sbatch --parsable --partition=ellis --time=2-00:00:00 --cpus-per-task=1 --mem=8G --export=ALL,MIPS_TRANSITION_ROOT="$(pwd)/outputs/mips_evolution_51_artifacts" -J mips-s12-u20 run.sh evolve_pysr.py --domain mips --operator-type all --generations 20 --population 10 --offspring 10 --n-runs 3 --seed 42 --fitness-metric gt --population-type task --reeval none --identify-topk 0 --exec-feedback-n 3 --exec-feedback-prob 0.5 --models best2 --val-split "" --test-split splits/mips_sr_targets_plus_refined.txt --final-eval-runs 10 --max-samples 1000 --max-evals 1000000 --timeout 500 --pysr-wall-limit 600 --partition default_partition --max-concurrent-jobs 300 --time-limit 00:15:00 --mem-per-cpu 8G --job-timeout 1800 --no-random-target-noise --split splits/mips_solved12_unsolved20.txt --output-dir runs/mips-11-6-solved12-unsolved20) || exit 1
+# scancel 31559
+# sbatch --dependency=afterany:31557:$m1:$m3 --partition=ellis --time=00:15:00 --mem=4G -J mips-11-6-report run.sh scripts/mips_11_6_report.py
+# exit 0
+
+# baseline=$(sbatch --parsable --job-name=baseline run.sh evolve_pysr.py --generations 45 --simplify-cooldown 15 --n-runs 3 --population-type task --reeval population --n-reeval 10 --offspring 10 --random-target-noise --models best2)
+# random1=$(sbatch --parsable --job-name=random1 run.sh evolve_pysr.py --generations 45 --simplify-cooldown 15 --n-runs 3 --population-type task --reeval population --n-reeval 10 --split splits/train.txt --val-split splits/val.txt --offspring 10 --random-target-noise --models best2)
+# random2=$(sbatch --parsable --job-name=random2 run.sh evolve_pysr.py --generations 45 --simplify-cooldown 15 --n-runs 3 --population-type task --reeval population --n-reeval 10 --split splits/train2.txt --val-split splits/val2.txt --offspring 10 --random-target-noise --models best2)
 
 # 9/25/26
 # if [[ "${1:-}" == "neuron-708907-generations" ]]; then

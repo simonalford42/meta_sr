@@ -116,7 +116,8 @@ def main():
     args = ap.parse_args()
 
     per = load(args.run_dir, args.raw_evolve)
-    label = {"baseline": "PySR (ours)", "evolve": "PySR evolved (ours)"}
+    label = {"baseline": "PySR (ours)", "evolve": "PySR evolved (ours)",
+             "srsci": "PySR SR-Scientist cfg (ours)"}
     counts = {m: {SHORT[d]: sum(1 for (dd, _) in v if dd == d) for d in DOMAINS} for m, v in per.items()}
     seeds = {m: sorted({len(s) for s in v.values()}) for m, v in per.items()}
     parts = [f"Problems with >=1 completed run: {counts}; seeds per problem: {seeds}"]
@@ -124,7 +125,7 @@ def main():
     hdr = ["Method"] + [f"{SHORT[d]} {k}" for d in DOMAINS for k in ("Acc0.1", "NMSE")]
     rows = [[n] + [f(t[d][0]) if k == 0 else f(t[d][1], False) for d in DOMAINS for k in (0, 1)]
             for n, t in PAPER_A.items()]
-    for m in ("baseline", "evolve"):
+    for m in ("srsci", "baseline", "evolve"):
         if m in per:
             rows.append([f"**{label[m]}**"] + [x for d in DOMAINS for x in
                         (f(acc(per[m], d, "id", "acc_0.1")), f(nmse_med(per[m], d, "id"), False))])
@@ -133,7 +134,7 @@ def main():
     cols = ["overall"] + list(DOMAINS)
     hdr = ["Method"] + [f"{SHORT.get(c, 'Overall')} {k}" for c in cols for k in ("0.01", "0.001")]
     rows = [[n] + [f(t[c][i]) for c in cols for i in (0, 1)] for n, t in PAPER_B.items()]
-    for m in ("baseline", "evolve"):
+    for m in ("srsci", "baseline", "evolve"):
         if m in per:
             rows.append([f"**{label[m]}**"] + [f(acc(per[m], c, "id", f"acc95_{t}"))
                                                for c in cols for t in (0.01, 0.001)])
@@ -142,7 +143,7 @@ def main():
     hdr = ["Method", "split"] + [f"{SHORT.get(c, 'Overall')} {k}" for c in cols
                                  for k in ("Acc0.1", "Acc95_0.01", "NMSE")]
     rows = []
-    for m in ("baseline", "evolve"):
+    for m in ("srsci", "baseline", "evolve"):
         for split in ("id", "ood"):
             if m in per:
                 rows.append([label[m], split] + [x for c in cols for x in (

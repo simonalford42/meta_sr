@@ -23,7 +23,7 @@ SBATCH_TMPL = """#!/bin/bash
 #SBATCH --mem={mem}
 #SBATCH --partition={partition}
 #SBATCH --requeue
-
+{dependency_line}
 source {conda_sh}
 conda activate {conda_env}
 
@@ -59,6 +59,7 @@ def main():
     ap.add_argument("--logdir", default=None)
     ap.add_argument("--worker", default="scripts/empbench_slurm_worker.py",
                     help="repo-relative worker script taking --jobs J --index I")
+    ap.add_argument("--dependency", default=None, help="sbatch --dependency spec, e.g. afterany:318422")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
@@ -72,7 +73,8 @@ def main():
         jobname=a.jobname, logdir=logdir, array_spec=array_spec, time=a.time,
         mem=a.mem, partition=a.partition, conda_sh=CONDA_SH, conda_env=CONDA_ENV,
         repo=str(REPO), jobs=str(Path(a.jobs).resolve()),
-        cpus=a.cpus, julia_threads=a.julia_threads, worker=a.worker)
+        cpus=a.cpus, julia_threads=a.julia_threads, worker=a.worker,
+        dependency_line=f"#SBATCH --dependency={a.dependency}\n" if a.dependency else "")
     script_path = Path(a.jobs).parent / f"{a.jobname}_array.sh"
     script_path.write_text(script)
     print(f"Wrote {script_path}  ({n} tasks, array={array_spec}, mem={a.mem}, time={a.time})")
