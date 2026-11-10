@@ -76,3 +76,7 @@ while true; do
     sleep 30
 done
 $PY "$AR_DIR/cost_report.py" "$RUN_DIR" | tee -a launch.log
+$PY "$AR_DIR/audit_isolation.py" "$RUN_DIR" | tee -a launch.log
+# Preserve the run's branch in the shared SymbolicRegression.jl repo.
+git -C "$(dirname "$AR_DIR")/SymbolicRegression.jl" fetch -q "$RUN_DIR/SymbolicRegression.jl" \
+    "autoresearch_sr/$TAG:autoresearch_sr/$TAG" && echo "[launch] branch autoresearch_sr/$TAG copied to main SR repo" | tee -a launch.log

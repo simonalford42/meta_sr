@@ -29,8 +29,14 @@ fi
 
 git -C "$SR" fetch -q origin
 mkdir -p "$RUN_DIR"
-git -C "$SR" worktree add -b "autoresearch_sr/$TAG" "$RUN_DIR/SymbolicRegression.jl" origin/master
-BASE=$(git -C "$RUN_DIR/SymbolicRegression.jl" rev-parse HEAD)
+# Standalone clone holding only origin/master's history: no other autoresearch
+# branches, no remote, so `git log --all` cannot reveal other runs' experiments.
+# launch.sh copies the run's branch back into $SR when the run ends.
+WT="$RUN_DIR/SymbolicRegression.jl"
+git init -q "$WT"
+git -C "$WT" fetch -q --no-tags "$SR" "refs/remotes/origin/master:refs/heads/autoresearch_sr/$TAG"
+git -C "$WT" checkout -q "autoresearch_sr/$TAG"
+BASE=$(git -C "$WT" rev-parse HEAD)
 
 printf 'exp\tcommit\tscore\tstatus\tdescription\n' > "$RUN_DIR/results.tsv"
 cat > "$RUN_DIR/run.json" <<EOF
