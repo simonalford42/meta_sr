@@ -65,7 +65,10 @@ def load_messages(stream_path: Path):
     for line in stream_path.read_text().splitlines():
         if not line.strip():
             continue
-        event = json.loads(line)
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:  # partial last line while the run is live
+            continue
         t = event.get("_recv_time")
         if first_time is None and t is not None:
             first_time = t
@@ -87,6 +90,15 @@ def load_messages(stream_path: Path):
                 for kk, vv in v.items():
                     cc[kk] = max(cc.get(kk, 0), vv or 0)
     return list(msgs.values()), result_cost, first_time
+
+
+def run_cost(run_dir: Path) -> float:
+    """Estimated API cost (USD) of the agent so far, at list prices."""
+    stream = Path(run_dir) / "agent_stream.jsonl"
+    if not stream.exists():
+        return 0.0
+    messages, _, _ = load_messages(stream)
+    return sum(message_cost(m["model"], m["usage"]) for m in messages)
 
 
 def main() -> None:
@@ -151,6 +163,8 @@ def main() -> None:
     total = sum(costs)
     print(f"run: {run_cfg['tag']}  model: {run_cfg['model']}")
     print(f"experiments evaluated: {n_candidates}/{run_cfg['max_experiments']} (+ baseline)")
+    if run_cfg.get("max_cost_usd") is not None:
+        print(f"cost budget: ${total:.2f} of ${float(run_cfg['max_cost_usd']):.2f}")
     print(f"estimated API cost: ${total:.2f} (tail after last eval launch: ${costs[-1]:.2f})")
     print(f"Claude Code reported cost (sum of result events): ${result_cost:.2f}")
     if n_candidates:

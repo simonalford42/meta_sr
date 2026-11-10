@@ -6,7 +6,7 @@ This is an experiment to have the LLM autonomously improve symbolic regression.
 
 Setup has already been done for you by `setup_run.sh`. Your **current working directory is the run directory** for this run, and it contains:
 
-- `run.json` — run tag, branch, base commit, and experiment budget (`max_experiments`).
+- `run.json` — run tag, branch, and base commit.
 - `SymbolicRegression.jl/` — a git worktree of SymbolicRegression.jl, already checked out on this run's branch `autoresearch_sr/<tag>` at the unmodified baseline commit. This is the only copy of SymbolicRegression.jl you should edit.
 - `results.tsv` — results log, containing just the header row.
 
@@ -52,7 +52,7 @@ the harness evaluates a detached worktree at that commit.
 
 **Evaluation is noisy.** To guard against noise, `evaluate.py` already runs 10 seeds per task internally (see `n_runs` in the output) and reports the averaged score.
 
-**Experiment budget.** This run has a fixed budget of `max_experiments` experiments (see `run.json`; 300). An experiment is one evaluation of one new commit; the baseline evaluation is free. Every commit you evaluate counts against the budget, including crash fixes, so check that your code compiles and is correct before evaluating. `evaluate.py` enforces the budget: once it is used up it prints `BUDGET EXHAUSTED` and refuses to run. Run exactly one evaluation at a time.
+Run exactly one evaluation at a time.
 
 **Experiment with both ambitious algorithmic changes and smaller tweaks:** Think on a scale from 1 to 4: 1 = tweak a hyperparameter, 2 = tweak an approach, 3 = experiment with a new approach, 4 = large change to part of the algorithm. Your experiments should be roughly equally distributed across this scale.
 
@@ -94,7 +94,7 @@ The TSV has a header row and 5 columns:
 exp	commit	score	status	description
 ```
 
-1. experiment number as printed by `evaluate.py` (`experiment: N of 300`; the baseline is 0)
+1. experiment number as printed by `evaluate.py` (`experiment: N`; the baseline is 0)
 2. git commit hash (short, 7 chars)
 3. score achieved (e.g. 0.423000) — use 0.000000 for crashes
 4. status: `keep`, `discard`, or `crash`
@@ -114,14 +114,14 @@ exp	commit	score	status	description
 
 The experiment runs on this run's dedicated branch in `SymbolicRegression.jl/` (`autoresearch_sr/<tag>`, see `run.json`).
 
-LOOP UNTIL THE BUDGET IS EXHAUSTED:
+LOOP FOREVER:
 
 1. Look at the git state: the current branch/commit we're on
 2. Edit the SymbolicRegression.jl source files with an experimental idea.
 3. git commit (in `SymbolicRegression.jl/`)
 4. Run the experiment from the run directory: `/home/sca63/.conda/envs/meta_sr/bin/python /home/sca63/meta_sr_agent_loop/autoresearch_sr/evaluate.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context). Run it in the foreground (not in the background) with a Bash tool timeout of 10800000 ms; an evaluation can take well over 10 minutes.
 5. Read out the result: `grep "^score:\|^experiment:\|^datasets_fail:" run.log`
-6. If the score line is missing, the run crashed. Run `tail -n 50 run.log` or similar to read the error. If it is an infrastructure failure (SLURM, node failure) rather than your code, re-running the same commit does not use extra budget. If it is something dumb and easy to fix in your code, fix it, commit, and re-run (this counts as a new experiment). If the log shows `datasets_fail > 0`, treat it as a partial crash — debug or discard (see "Dataset health check" above).
+6. If the score line is missing, the run crashed. Run `tail -n 50 run.log` or similar to read the error. If it is an infrastructure failure (SLURM, node failure) rather than your code, re-run the same commit. If it is something dumb and easy to fix in your code, fix it, commit, and re-run. If the log shows `datasets_fail > 0`, treat it as a partial crash — debug or discard (see "Dataset health check" above).
 7. Record the results in the TSV (NOTE: do not commit the results.tsv file, leave it untracked by git)
 8. If the score improved (strictly higher than the best so far), you "advance" the branch, keeping the git commit
 9. If the score is equal or worse than the best so far, git reset back to where you started
@@ -130,4 +130,4 @@ The idea is that you are a completely autonomous researcher trying things out. I
 
 **Crashes**: If a run crashes (Julia error, SLURM failure, syntax error), use your judgment: If it's something dumb and easy to fix (e.g. a typo, wrong function signature), fix it and re-run (a fixed commit counts as a new experiment). If the idea itself is fundamentally broken, just skip it, log "crash" as the status in the TSV, and move on.
 
-**NEVER STOP UNTIL THE BUDGET IS USED**: Once the experiment loop has begun, do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working until the experiment budget is exhausted. You are autonomous. If you run out of ideas, think harder — re-read the reference docs, re-read the in-scope files for new angles, try combining previous near-misses, try more radical changes. The loop runs until `evaluate.py` reports `BUDGET EXHAUSTED`; at that point, make sure `results.tsv` is complete and the branch is at the best commit, then stop.
+**NEVER STOP**: Once the experiment loop has begun, do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder — re-read the reference docs, re-read the in-scope files for new angles, try combining previous near-misses, try more radical changes. The loop runs until `evaluate.py` reports `RUN OVER`; at that point, make sure `results.tsv` is complete and the branch is at the best commit, then stop.
