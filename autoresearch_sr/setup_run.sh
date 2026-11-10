@@ -12,6 +12,11 @@
 # results.tsv, and run.json. Launch the agent afterwards with launch.sh.
 set -euo pipefail
 
+if [[ $# -lt 2 ]]; then
+    echo "Usage: bash autoresearch_sr/setup_run.sh <tag> <model> [max_experiments] [max_cost_usd]" >&2
+    echo "  e.g. bash autoresearch_sr/setup_run.sh nov10-opus5 claude-opus-5" >&2
+    exit 2
+fi
 TAG="$1"
 MODEL="$2"
 MAX_EXP="${3:-300}"
