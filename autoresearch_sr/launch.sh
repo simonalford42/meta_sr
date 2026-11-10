@@ -27,13 +27,9 @@ if [[ ! -f "$RUN_DIR/run.json" ]]; then
     echo "Create one first: bash autoresearch_sr/setup_run.sh <tag> <model>" >&2
     exit 1
 fi
-# Workers are pinned to Ice Lake / Sapphire Rapids (see evaluate.py), so the
-# driver must compile SymbolicRegression.jl on one of those CPU families too.
-if ! grep -q gfni /proc/cpuinfo; then
-    echo "This node ($(hostname -s)) is not Ice Lake / Sapphire Rapids. Launch from" >&2
-    echo "one that is, e.g. ellis-compute-02 (ellis-compute-01 is Cascade Lake)." >&2
-    exit 1
-fi
+# Workers are pinned to this node's CPU family and newer (see cpu_constraint.py).
+CONSTRAINT=$($PY "$AR_DIR/cpu_constraint.py") || exit 1
+echo "[launch] driver $(hostname -s): SLURM workers pinned to --constraint=$CONSTRAINT"
 MODEL=$($PY -c "import json;print(json.load(open('$RUN_DIR/run.json'))['model'])")
 MAX_EXP=$($PY -c "import json;print(json.load(open('$RUN_DIR/run.json'))['max_experiments'])")
 MAX_COST=$($PY -c "import json;print(json.load(open('$RUN_DIR/run.json')).get('max_cost_usd') or 'inf')")

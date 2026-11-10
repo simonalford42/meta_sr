@@ -118,6 +118,17 @@ def main() -> None:
         EVAL_ROOT / commit[:12] / f"eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
 
+    # Every candidate commit is new SymbolicRegression.jl source, so it is compiled
+    # once per experiment by the driver's Julia warmup, for the driver's CPU family.
+    # Tasks on older CPU families reject that build, recompile it and overwrite the
+    # single cache file in turn while every other task waits on the lock (median
+    # task load 30 min, 11/9). So workers are pinned to the driver's CPU family and
+    # newer ones, which load it directly (see cpu_constraint.py). A multi-target
+    # JULIA_CPU_TARGET build was tried and abandoned (11/6, 11/9).
+    sys.path.insert(0, str(ROOT / "autoresearch_sr"))
+    from cpu_constraint import worker_constraint
+    constraint = worker_constraint()
+
     command = [
         sys.executable,
         str(ROOT / "evaluate_new_pysr.py"),
@@ -134,7 +145,7 @@ def main() -> None:
         "--pysr-wall-limit", "600",
         "--max-concurrent-jobs", "300",
         "--time-limit", "01:00:00",
-        "--constraint", "il|sr",
+        "--constraint", constraint,
         "--fitness-metric", "gt",
         "--random-target-noise",
         "--output-dir", str(output_dir),
@@ -144,17 +155,6 @@ def main() -> None:
     print("command: " + " ".join(command), flush=True)
     env = dict(os.environ)
     env.setdefault("WANDB_MODE", "disabled")
-    # Every candidate commit is new SymbolicRegression.jl source, so it is compiled
-    # once per experiment by the driver's Julia warmup, for the driver's CPU (Ice
-    # Lake). Tasks on other CPU families reject that build, recompile it and
-    # overwrite the single cache file in turn while every other task waits on the
-    # lock (median task load 30 min, 11/9). So workers are pinned to CPU families
-    # that can load an Ice Lake build: Ice Lake and Sapphire Rapids (see --constraint).
-    # A multi-target JULIA_CPU_TARGET build was tried and abandoned (11/6, 11/9).
-    # This requires the driver itself to run on an Ice Lake / Sapphire Rapids node.
-    if "gfni" not in Path("/proc/cpuinfo").read_text():
-        sys.exit("ERROR: run evaluate.py on an Ice Lake or Sapphire Rapids node "
-                 "(e.g. ellis-compute-02); workers are pinned to those CPU families.")
     # Compiled caches go to a run-private depot (first entry); packages and
     # registries still resolve from ~/.julia via the trailing ':' (default depots).
     # The shared ~/.julia compiled slots are rewritten by every other PySR job.
