@@ -193,7 +193,7 @@ These are the answers I would give to "what structural understanding was gained"
 - **The tie-break loss has not been compared with plain Keijzer scaling.** Until it is, the honest description of mechanism 1 is "linear scaling, rediscovered and tuned".
 - **Train and validation share formula families** (`II_11_27` and `II_11_28`; the two `barmag` systems are split across train and test). Test is the cleaner number.
 - **Prior-art checks were mostly at abstract level.** "No precedent found" means not found by web search across three review passes (about 200 search and fetch calls), not a systematic sweep of the GP bibliography. The mechanics of Hoai et al.'s operator could not be read (paywalled).
-- **`inspect_srbench_results.py --official` shows the wrong PySR baseline.** The column picks `runs/srbench_gt_baseline_15m_portfolio_1e6` (a 15-minute portfolio run that records `max_evals = 1e6`) because it is the newest match. It reports 60.6% overall; the real million-evaluation baseline `runs/290227` is 47.3%. With the wrong column, PySR++ GT looks worse than the baseline.
+- **`inspect_srbench_results.py --official` showed the wrong PySR baseline until 2026-11-10 (now fixed).** The column picked `runs/srbench_gt_baseline_15m_portfolio_1e6` (a 15-minute portfolio run that records `max_evals = 1e6`) because it was the newest match. It reported 60.6% overall; the real million-evaluation baseline `runs/290227` is 47.3%. With the wrong column, PySR++ GT looked worse than the baseline. Restart portfolios are now excluded from the single-search rows.
 
 ## Suggested reply to the reviewer
 
@@ -231,7 +231,7 @@ Loss and priors
 
 Variation operators
 
-- Hoai, McKay, Essam, Hao (2005). Genetic transposition in tree-adjoining grammar guided genetic programming: the duplication operator. EuroGP, LNCS 3447.
+- Hoai, McKay, Essam, Hao (2005). Genetic transposition in tree-adjoining grammar guided genetic programming: the duplication operator. EuroGP, LNCS 3447, pp. 108–119. https://doi.org/10.1007/978-3-540-31989-4_10
 - Koza (1994). Genetic Programming II: Automatic Discovery of Reusable Programs. MIT Press.
 - Koza (1995). Gene duplication to enable genetic programming to concurrently evolve both the architecture and work-performing steps of a computer program. IJCAI.
 - Haynes (1996). Duplication of coding segments in genetic programming. AAAI.

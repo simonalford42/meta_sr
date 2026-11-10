@@ -93,7 +93,7 @@ def test_table1_does_not_replace_1m_with_newer_portfolio(tmp_path):
     os.utime(portfolio / "manifest.json", (2000, 2000))
     ordinary = build_official_columns(runs, tmp_path)
     fixed = build_official_columns(runs, tmp_path, single_search_only=True)
-    assert next(c for c in ordinary if c["key"] == "pysr_baseline")["gt_path"] == str(portfolio)
+    assert next(c for c in ordinary if c["key"] == "pysr_baseline")["gt_path"] == str(base)
     assert next(c for c in fixed if c["key"] == "pysr_baseline")["gt_path"] == str(base)
 
 

@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -114,3 +115,26 @@ def test_merged_only_autoresearch_portfolio_is_reported(tmp_path: Path) -> None:
     assert column["gt_10_restarts_completed"] == 1
     assert column["gt_10_restarts_rate"] == 1.0
     assert column["eval_ids"] == "autoresearch_merged"
+
+
+def test_standard_baseline_excludes_newer_serial_restart_portfolio(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    _write_eval(
+        runs / "standard", mode="baseline", source=None,
+        entries=[True, False],
+    )
+    _write_eval(
+        runs / "portfolio", mode="baseline", source=None,
+        entries=[True, True],
+    )
+    manifest_path = runs / "portfolio" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["serial_restart_portfolio"] = {"total_search_budget_seconds": 900.0}
+    manifest_path.write_text(json.dumps(manifest))
+    os.utime(runs / "standard" / "manifest.json", (1000, 1000))
+    os.utime(manifest_path, (2000, 2000))
+
+    column = _column(build_official_columns(runs, tmp_path), "PySR baseline")
+
+    assert column["gt_path"] == str(runs / "standard")
+    assert column["gt_rate"] == 0.5

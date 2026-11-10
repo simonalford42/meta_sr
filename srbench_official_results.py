@@ -314,6 +314,12 @@ def _split_performance(
 def _pick_evaluation(
     records: Iterable[dict], budget: int, result_type: str, *, merged: bool = False,
 ) -> Optional[dict]:
+    # A serial restart portfolio records the per-restart max_evals, so it would
+    # otherwise pass for a single search at that budget.
+    records = [
+        record for record in records
+        if not record["manifest"].get("serial_restart_portfolio")
+    ]
     if result_type == "gt":
         candidates = [
             record for record in records
