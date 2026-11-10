@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run one short local PySR fit with a bundle to check its Julia operators compile and run.
 
-Usage: python scripts/smoke_test_bundle_local.py BUNDLE [--dataset feynman_I_6_2a] [--timeout 30]
+Usage: python scripts/smoke_test_bundle_local.py BUNDLE [--dataset feynman_I_6_2a] [--timeout 30] [--affine-scale-frontier]
 """
 import argparse
 import sys
@@ -17,11 +17,14 @@ p.add_argument("bundle")
 p.add_argument("--dataset", default="feynman_I_6_2a")
 p.add_argument("--timeout", type=int, default=30)
 p.add_argument("--max-evals", type=int, default=200_000)
+p.add_argument("--affine-scale-frontier", action="store_true")
 args = p.parse_args()
 
 bundle = load_bundle(args.bundle, select_by="train")
 kwargs = get_default_pysr_kwargs()
 kwargs.update(max_evals=args.max_evals, timeout_in_seconds=args.timeout)
+if args.affine_scale_frontier:
+    kwargs["_affine_scale_frontier"] = True
 cfg = bundle.to_pysr_config(kwargs)
 spec = PySRTaskSpec(
     config_id=0, dataset_name=args.dataset, pysr_kwargs=cfg.pysr_kwargs,

@@ -644,6 +644,10 @@ def main(argv=None, *, force_srbench_2025=False):
                         help="Use L1DistLoss for a baseline SRBench 2.0 exact-recovery run.")
     parser.add_argument("--no-maxsize-warmup", action="store_true",
                         help="Disable PySR's gradual max-size warm-up.")
+    parser.add_argument("--affine-scale-frontier", action="store_true",
+                        help="Score each frontier equation f as a + b*f with (a, b) "
+                             "least-squares fit on the training data (Keijzer 2003 "
+                             "linear scaling); use with an affine-scaled loss.")
     args = parser.parse_args(argv)
     if args.only_operator and (not args.evolve_results or args.task_population_bundles):
         parser.error("--only-operator requires --evolve-results and cannot use --task-population-bundles")
@@ -733,6 +737,15 @@ def main(argv=None, *, force_srbench_2025=False):
         pysr_kwargs["progress"] = True
         config = replace(config, pysr_kwargs=pysr_kwargs)
         source.config = config
+    if args.affine_scale_frontier:
+        if source.backend != "pysr":
+            parser.error("--affine-scale-frontier is only valid for the PySR backend")
+        from dataclasses import replace
+        config = replace(config, pysr_kwargs={
+            **config.pysr_kwargs, "_affine_scale_frontier": True,
+        })
+        source.config = config
+        method_meta["affine_scale_frontier"] = True
     configs = [config]
     runs_per_config = args.n_trials_per_dataset
     run_index_starts = None
