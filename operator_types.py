@@ -1079,10 +1079,15 @@ class OperatorGenerationSpec:
     # Ablation control. When false, mutation prompts require the structural
     # four-argument interface even in refine/simplify/crossover modes.
     allow_data_aware_mutations: bool = True
+    # Fully pre-built prompt (e.g. llamea_pysr.py's LLaMEA feedback prompt).
+    # When set, mode-based prompt construction is skipped entirely.
+    prompt_override: Optional[str] = None
 
 
 def _build_operator_prompt(spec: OperatorGenerationSpec) -> str:
     """Build the type-specific prompt for an operator generation request."""
+    if spec.prompt_override is not None:
+        return spec.prompt_override
     if spec.mode == "explore":
         prompt = spec.op_type.build_explore_prompt(
             spec.reference, spec.variation_seed, spec.fitness_metric,

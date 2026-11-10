@@ -403,6 +403,64 @@ def _compute_frontier_avg_r2(model, X_val, y_val, maxsize: int) -> float:
     )
 
 
+def _affine_fit(f: np.ndarray, y: np.ndarray) -> Tuple[float, float]:
+    """Least-squares (a, b) minimizing ||y - (a + b f)||² (Keijzer 2003)."""
+    f_mean, y_mean = float(np.mean(f)), float(np.mean(y))
+    df = f - f_mean
+    sxx = float(np.dot(df, df))
+    b = float(np.dot(df, y - y_mean)) / sxx if sxx > 0 else 0.0
+    if not np.isfinite(b):
+        b = 0.0
+    return y_mean - b * f_mean, b
+
+
+class AffineScaledPySRModel:
+    """View of a fitted PySRRegressor where every frontier equation f becomes
+    a + b*f, with (a, b) fit by least squares on the training data.
+
+    This is the final model of Keijzer's linear scaling (doi:10.1007/3-540-36599-0_7):
+    the search optimizes the affinely scaled error but stores only f, so the
+    scaling must be reapplied before f is scored or checked against ground truth.
+    Equations that can't be evaluated on the training data are left unscaled.
+    """
+
+    def __init__(self, model, X_train, y_train):
+        self._model = model
+        y_train = np.asarray(y_train, dtype=float).reshape(-1)
+        df = model.equations_.copy()
+        self._coef: Dict[int, Tuple[float, float]] = {}
+        equations = []
+        for idx, row in df.iterrows():
+            a, b = 0.0, 1.0
+            try:
+                f = np.asarray(model.predict(X_train, index=int(idx)), dtype=float).reshape(-1)
+                if f.shape == y_train.shape and np.all(np.isfinite(f)):
+                    a, b = _affine_fit(f, y_train)
+            except Exception:
+                pass
+            self._coef[int(idx)] = (a, b)
+            equations.append(
+                str(row["equation"]) if (a, b) == (0.0, 1.0)
+                else f"{a!r} + {b!r}*({row['equation']})"
+            )
+        df["equation"] = equations
+        self.equations_ = df
+
+    def get_best(self):
+        best = self._model.get_best()
+        return None if best is None else self.equations_.loc[best.name]
+
+    def predict(self, X, index=None):
+        if index is None:
+            best = self._model.get_best()
+            index = best.name
+        a, b = self._coef[int(index)]
+        return a + b * np.asarray(self._model.predict(X, index=int(index)), dtype=float)
+
+    def __getattr__(self, name):
+        return getattr(self._model, name)
+
+
 def _write_json_atomic(path: Path, payload: Any) -> None:
     """Atomically write JSON payloads so readers never see partial files."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1297,6 +1355,9 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
     model_kwargs.pop("_data_split_seed", None)  # cache marker, not a PySR kwarg
     model_kwargs.pop("_portfolio_protocol", None)  # cache marker, not a PySR kwarg
     model_kwargs.pop("_frontier_snapshot_seconds", None)  # observer/cache setting, not a PySR kwarg
+    # Score each frontier equation f as its train-fit affine rescaling a + b*f
+    # (Keijzer 2003 linear scaling). Kept in pysr_kwargs so it enters the cache key.
+    affine_scale_frontier = bool(model_kwargs.pop("_affine_scale_frontier", False))
 
     # Resolve the evaluation domain (dataset loading, sympy mappings, "solved"
     # check — see domains.py). Pre-domain-field boolean task JSONs carried a
@@ -1604,6 +1665,8 @@ def _evaluate_pysr_task(spec: PySRTaskSpec, use_cache: bool = True) -> PySRTaskR
 
                 t_search = _time.time() - t3
                 num_evals_used = _get_pysr_num_evaluations(model)
+                if affine_scale_frontier and getattr(model, "equations_", None) is not None:
+                    model = AffineScaledPySRModel(model, X_train, y_train)
                 print(f"[{spec.dataset_name}] PySR search complete (noise={noise_level}) in "
                       f"{t_search:.1f}s, num_evals={num_evals_used}", flush=True)
 
