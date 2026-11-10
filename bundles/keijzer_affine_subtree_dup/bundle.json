@@ -1,0 +1,65 @@
+{
+  "best_bundle": {
+    "operators": {
+      "loss": {
+        "name": "affine_scaled_mse_loss",
+        "code": "\"\"\"\n    affine_scaled_mse_loss(tree, dataset, options)\n\nLinear-scaling (affine-scaled) MSE from Keijzer, \"Improving Symbolic Regression\nwith Interval Arithmetic and Linear Scaling\", EuroGP 2003, LNCS 2610, pp. 70-82.\ndoi:10.1007/3-540-36599-0_7.\n\nFor an expression output f, the optimal affine map a + b*f is solved in closed\nform by least squares:\n    b = sum((y - \u0233)(f - f\u0304)) / sum((f - f\u0304)^2),   a = \u0233 - b*f\u0304\nand the fitness is MSE(y, a + b*f). If f is (numerically) constant, b = 0 and\na = \u0233, so the loss is the variance of y. Only the raw tree is kept in the\npopulation: a and b are not inserted into the expression.\n\"\"\"\nfunction affine_scaled_mse_loss(\n    tree::Union{AbstractExpression{T},AbstractExpressionNode{T}},\n    dataset::Dataset{T,L},\n    options::AbstractOptions,\n)::L where {T<:DATA_TYPE,L<:LOSS_TYPE}\n    f, completed = eval_tree_array(tree, dataset.X, options)\n    if !completed || isnothing(f)\n        return L(Inf)\n    end\n    y = dataset.y\n    n = length(y)\n    \u0233 = sum(y) / n\n    f\u0304 = sum(f) / n\n    sxy = zero(T)\n    sxx = zero(T)\n    @inbounds for i in 1:n\n        df = f[i] - f\u0304\n        sxy += (y[i] - \u0233) * df\n        sxx += df * df\n    end\n    b = (isfinite(sxx) && sxx > eps(T) * max(one(T), abs2(f\u0304)) * n) ? sxy / sxx : zero(T)\n    isfinite(b) || return L(Inf)\n    a = \u0233 - b * f\u0304\n    sse = zero(T)\n    @inbounds for i in 1:n\n        r = y[i] - (a + b * f[i])\n        sse += r * r\n    end\n    mse = sse / n\n    return isfinite(mse) ? L(mse) : L(Inf)\nend\n",
+        "score": null,
+        "score_vector": null,
+        "generation": 0,
+        "parent_name": null,
+        "mode": "explore",
+        "result_details": null,
+        "weight": null,
+        "model": null,
+        "hp_specs": null,
+        "seeds_evaluated": 0
+      },
+      "mutation": {
+        "name": "subtree_duplication",
+        "code": "\"\"\"\n    subtree_duplication(tree, dataset, options, nfeatures, rng)\n\nSubtree duplication mutation: pick a random source subtree, copy it, and\noverwrite a different randomly chosen non-root node with the copy. The copy is\ntaken before the overwrite, so a target that is an ancestor of the source is\nfine. Size limits are enforced afterwards by `check_constraints` in Mutate.jl\n(oversized results are rejected and retried). `dataset` is unused.\n\"\"\"\nfunction subtree_duplication(\n    tree::N,\n    dataset,\n    options,\n    nfeatures::Int,\n    rng::AbstractRNG,\n) where {T,N<:AbstractExpressionNode{T}}\n    count_nodes(tree) < 3 && return tree  # need a target other than root and source\n    source = rand(rng, NodeSampler(; tree))\n    target = rand(rng, NodeSampler(; tree, filter=t -> t !== tree && t !== source))\n    set_node!(target, copy(source))\n    return tree\nend\n",
+        "score": null,
+        "score_vector": null,
+        "generation": 0,
+        "parent_name": null,
+        "mode": "explore",
+        "result_details": null,
+        "weight": 0.5,
+        "model": null,
+        "hp_specs": null,
+        "seeds_evaluated": 0
+      }
+    },
+    "score": null,
+    "score_vector": null,
+    "result_details": null,
+    "best_hparams": null,
+    "seeds_evaluated": 0,
+    "meta_mutation_counts": {
+      "mutation": {
+        "explore": 0,
+        "refine": 0,
+        "crossover": 0,
+        "simplify": 0
+      },
+      "survival": {
+        "explore": 0,
+        "refine": 0,
+        "crossover": 0,
+        "simplify": 0
+      },
+      "selection": {
+        "explore": 0,
+        "refine": 0,
+        "crossover": 0,
+        "simplify": 0
+      },
+      "loss": {
+        "explore": 0,
+        "refine": 0,
+        "crossover": 0,
+        "simplify": 0
+      }
+    }
+  }
+}
