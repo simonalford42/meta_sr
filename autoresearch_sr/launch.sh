@@ -10,8 +10,8 @@
 # experiment budget is used up, it is resumed with --continue.
 set -uo pipefail
 
-TAG="$1"
-if [[ "${2:-}" != "--allow-slurm" ]]; then
+TAG="${1:-}"
+if [[ -z "$TAG" || "${2:-}" != "--allow-slurm" ]]; then
     echo "Usage: bash autoresearch_sr/launch.sh <tag> --allow-slurm" >&2
     echo "The flag explicitly authorizes the agent to submit evaluation SLURM arrays." >&2
     exit 2
@@ -20,6 +20,20 @@ fi
 AR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$AR_DIR/live/$TAG"
 PY=/home/sca63/.conda/envs/meta_sr/bin/python
+
+if [[ ! -f "$RUN_DIR/run.json" ]]; then
+    echo "No run '$TAG' (missing $RUN_DIR/run.json). Existing runs:" >&2
+    ls "$AR_DIR/live" >&2 2>/dev/null
+    echo "Create one first: bash autoresearch_sr/setup_run.sh <tag> <model>" >&2
+    exit 1
+fi
+# Workers are pinned to Ice Lake / Sapphire Rapids (see evaluate.py), so the
+# driver must compile SymbolicRegression.jl on one of those CPU families too.
+if ! grep -q gfni /proc/cpuinfo; then
+    echo "This node ($(hostname -s)) is not Ice Lake / Sapphire Rapids. Launch from" >&2
+    echo "one that is, e.g. ellis-compute-02 (ellis-compute-01 is Cascade Lake)." >&2
+    exit 1
+fi
 MODEL=$($PY -c "import json;print(json.load(open('$RUN_DIR/run.json'))['model'])")
 MAX_EXP=$($PY -c "import json;print(json.load(open('$RUN_DIR/run.json'))['max_experiments'])")
 MAX_COST=$($PY -c "import json;print(json.load(open('$RUN_DIR/run.json')).get('max_cost_usd') or 'inf')")
