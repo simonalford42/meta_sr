@@ -27,3 +27,4 @@ planet_eval_data.pkl
 runs_local
 data/
 plots/.cache
+baselines/mod-sr/
