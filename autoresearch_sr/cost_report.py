@@ -61,7 +61,8 @@ def message_cost(model: str, usage: dict) -> float:
 def load_messages(stream_path: Path):
     """Return [(time, model, usage)] deduplicated by message id, plus result totals."""
     msgs: dict[str, dict] = {}
-    result_cost, first_time = 0.0, None
+    session_cost: dict[str, float] = {}  # result.total_cost_usd is cumulative per session
+    first_time = None
     for line in stream_path.read_text().splitlines():
         if not line.strip():
             continue
@@ -73,7 +74,8 @@ def load_messages(stream_path: Path):
         if first_time is None and t is not None:
             first_time = t
         if event.get("type") == "result":
-            result_cost += event.get("total_cost_usd") or 0.0
+            sid = event.get("session_id", "")
+            session_cost[sid] = max(session_cost.get(sid, 0.0), event.get("total_cost_usd") or 0.0)
         if event.get("type") != "assistant":
             continue
         message = event.get("message") or {}
@@ -89,7 +91,7 @@ def load_messages(stream_path: Path):
                 cc = entry["usage"].setdefault(k, {})
                 for kk, vv in v.items():
                     cc[kk] = max(cc.get(kk, 0), vv or 0)
-    return list(msgs.values()), result_cost, first_time
+    return list(msgs.values()), sum(session_cost.values()), first_time
 
 
 def run_cost(run_dir: Path) -> float:
@@ -166,7 +168,7 @@ def main() -> None:
     if run_cfg.get("max_cost_usd") is not None:
         print(f"cost budget: ${total:.2f} of ${float(run_cfg['max_cost_usd']):.2f}")
     print(f"estimated API cost: ${total:.2f} (tail after last eval launch: ${costs[-1]:.2f})")
-    print(f"Claude Code reported cost (sum of result events): ${result_cost:.2f}")
+    print(f"Claude Code reported cost (latest per session; misses turns after the last result): ${result_cost:.2f}")
     if n_candidates:
         print(f"mean cost per experiment: ${total / n_candidates:.3f}")
     if out_rows:
