@@ -39,9 +39,17 @@ MAX_RESTARTS=50
 
 export AUTORESEARCH_RUN_DIR="$RUN_DIR"
 export WANDB_MODE=disabled
-# Evaluations run in the foreground and can exceed Claude Code's default 10 min cap.
-export BASH_DEFAULT_TIMEOUT_MS=10800000
-export BASH_MAX_TIMEOUT_MS=10800000
+# Evaluations run in the foreground and can sit in the SLURM queue for hours. A
+# 3 h cap pushed one into the background and the agent then improvised nohup +
+# polling loops (11/10), so allow 48 h and disable background tasks.
+export BASH_DEFAULT_TIMEOUT_MS=172800000
+export BASH_MAX_TIMEOUT_MS=172800000
+export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
+# Isolation: auto-memory is keyed to the git repo root, so all agents in this
+# repo shared one memory dir (an Opus agent's notes were loaded by the Sonnet
+# agent, 11/11). Also keep the repo's/user's CLAUDE.md out of the agent context.
+export CLAUDE_CODE_DISABLE_AUTO_MEMORY=1
+export CLAUDE_CODE_DISABLE_CLAUDE_MDS=1
 cd "$RUN_DIR"
 
 cost_now() {

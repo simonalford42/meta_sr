@@ -25,6 +25,7 @@ PATTERNS = [
     (re.compile(r"git\b[^|;&]*\s--all\b|git\b[^|;&]*\s--branches\b|git\s+branch\s+(-a|-r|--all)"), "cross-branch git query"),
     (re.compile(r"meta_sr/SymbolicRegression\.jl|meta_sr_agent_loop/SymbolicRegression\.jl"), "shared SR repo (holds other runs' branches)"),
     (re.compile(r"\.\./"), "parent-directory access (check target)"),
+    (re.compile(r"\.claude/projects|\.claude/CLAUDE|/memory/"), "Claude Code memory (shared across runs)"),
 ]
 
 flagged = 0
