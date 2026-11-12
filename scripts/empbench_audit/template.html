@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EmpiricalBench judge audit</title>
+<style>
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --ink:#1b1f24; --muted:#667085; --line:#dde1e7; --soft:#eef0f4;
+  --accent:#2c66d8; --accent-ink:#ffffff; --num:#0b6e7d;
+  --pos:#18794a; --pos-bg:#e2f4e9; --near:#935f00; --near-bg:#fcefd2; --neg:#b3261e; --neg-bg:#fbe5e3;
+  --sel:#fff5cc; --pick:#e4edff;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#13161a; --panel:#1b1f25; --ink:#e7eaef; --muted:#98a2b3; --line:#2d333c; --soft:#242a32;
+    --accent:#77a4ff; --accent-ink:#0d1117; --num:#6fd3e0;
+    --pos:#62d39b; --pos-bg:#16311f; --near:#f0bb5e; --near-bg:#38290d; --neg:#ff8d84; --neg-bg:#3b1b19;
+    --sel:#3b3413; --pick:#1c2a47;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;display:flex;flex-direction:column}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+select,input[type=text],textarea{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;background:var(--soft);color:var(--muted)}
+.muted{color:var(--muted)}
+header{display:flex;align-items:center;gap:14px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
+header .title{font-weight:650;font-size:15px}
+header .title small{font-weight:400;color:var(--muted);margin-left:6px}
+.prog{display:flex;align-items:center;gap:8px;flex:1;min-width:180px}
+.bar{flex:1;height:8px;background:var(--soft);border-radius:4px;overflow:hidden;max-width:260px}
+.bar>div{height:100%;background:var(--accent)}
+header nav{display:flex;gap:6px;align-items:center}
+#reviewer{width:120px}
+#app{flex:1;display:flex;min-height:0}
+aside{width:270px;flex:none;border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.filters{padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;border-bottom:1px solid var(--line)}
+.filters select{width:100%}
+.filters .wide{grid-column:1/3}
+#queue{overflow:auto;flex:1}
+.qi{display:flex;align-items:center;gap:6px;padding:5px 10px;border-bottom:1px solid var(--soft);cursor:pointer;white-space:nowrap}
+.qi:hover{background:var(--soft)}
+.qi.cur{background:var(--pick)}
+.qi .pos{width:28px;color:var(--muted);font:12px var(--mono);text-align:right}
+.qi .nm{flex:1;overflow:hidden;text-overflow:ellipsis}
+.qi .st{width:16px;text-align:center;font-weight:700}
+.st.ok{color:var(--pos)} .st.bad{color:var(--neg)} .st.todo{color:var(--line)}
+.chip{display:inline-block;border-radius:10px;padding:0 7px;font-size:12px;background:var(--soft);color:var(--muted);vertical-align:middle}
+.chip.tp-early{background:var(--near-bg);color:var(--near)}
+.chip.tp-1h{background:var(--pick);color:var(--accent)}
+main{flex:1;min-width:0;display:flex;min-height:0}
+#scroll{flex:1;overflow:auto;padding:14px 18px 20px}
+h1{font-size:19px;margin:0 0 2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+h2{font-size:15px;margin:22px 0 8px}
+.snap{color:var(--muted);margin:0 0 10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:12px}
+.target{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.target .lab{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.target math{font-size:1.3em}
+.vars{margin:6px 0 0;color:var(--muted)}
+.vars b{color:var(--ink);font-weight:500}
+details{margin-top:6px}
+details summary{cursor:pointer;color:var(--accent)}
+pre{white-space:pre-wrap;font:12px/1.5 var(--mono);background:var(--soft);padding:8px 10px;border-radius:6px;margin:6px 0 0}
+.tools{display:flex;gap:8px;align-items:center;margin:0 0 6px;flex-wrap:wrap}
+.tools .sp{flex:1}
+table.fr{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;table-layout:fixed}
+table.fr th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)}
+table.fr td{padding:7px 8px;border-bottom:1px solid var(--soft);vertical-align:top}
+table.fr tr:last-child td{border-bottom:0}
+table.fr tbody tr{cursor:pointer}
+table.fr tbody tr:hover{background:var(--soft)}
+table.fr tr.sel{background:var(--sel)}
+table.fr tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+td.ix,td.cx,td.loss{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+col.ix{width:44px} col.cx{width:44px} col.loss{width:84px}
+.eq{overflow-x:auto;padding:2px 0}
+.simp{margin-top:5px;padding:3px 0 2px 8px;border-left:2px solid var(--line);overflow-x:auto;opacity:.92}
+.tag{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-right:8px}
+.raw{margin-top:5px;font:11.5px/1.4 var(--mono);color:var(--muted);word-break:break-all;user-select:all}
+.badge{display:inline-block;border-radius:5px;padding:1px 7px;font-size:12px;font-weight:600}
+.badge.pos{background:var(--pos-bg);color:var(--pos)} .badge.neg{background:var(--neg-bg);color:var(--neg)}
+.badge.near{background:var(--near-bg);color:var(--near)} .badge.pick{background:var(--pick);color:var(--accent);margin-left:8px}
+.badge.mine{background:var(--sel);color:var(--ink);margin-left:8px;border:1px solid var(--line)}
+math{font-family:"STIX Two Math","Cambria Math","Latin Modern Math",math;font-size:1.12em}
+mn.rnd{color:var(--num)}
+/* Keep nested fractions readable: no script-size shrink inside a fraction. */
+mfrac>*{font-size:inherit;math-depth:0}
+#decide{flex:none;width:372px;border-left:1px solid var(--line);background:var(--panel);padding:14px 16px;overflow:auto}
+#decide .q{font-weight:600;margin:12px 0 6px}
+.btns{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.btns button{padding:7px 8px;font-weight:600;flex:1;white-space:nowrap}
+.navs button{font-weight:400}
+.opts{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
+button.lab-exact.on{background:var(--pos);border-color:var(--pos);color:var(--panel)}
+button.lab-near.on{background:var(--near);border-color:var(--near);color:var(--panel)}
+button.lab-miss.on{background:var(--neg);border-color:var(--neg);color:var(--panel)}
+.btns .sp{flex:1}
+#notes{width:100%;margin-top:8px;height:64px;resize:vertical}
+.verdict{margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--bg)}
+.verdict.hid{color:var(--muted)}
+.verdict.hid button{margin-top:6px}
+.verdict .eq{margin:4px 0}
+.verdict .line{margin:3px 0}
+.verdict blockquote{margin:4px 0;padding-left:10px;border-left:3px solid var(--line);color:var(--muted)}
+.agree{color:var(--pos);font-weight:600} .disagree{color:var(--neg);font-weight:600}
+.adj{margin-top:6px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:6px}
+.stat .v{font-size:22px;font-weight:650} .stat .l{color:var(--muted);font-size:12px}
+table.sum{border-collapse:collapse;background:var(--panel);border:1px solid var(--line);width:100%}
+table.sum th,table.sum td{padding:5px 9px;border-bottom:1px solid var(--soft);text-align:right;white-space:nowrap}
+table.sum th:first-child,table.sum td:first-child{text-align:left}
+table.sum th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-bottom:1px solid var(--line)}
+table.sum td.note{white-space:normal;text-align:left;color:var(--muted)}
+a.go{color:var(--accent);cursor:pointer;text-decoration:underline}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);max-width:720px;padding:18px 22px}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+dialog h2{margin-top:0}
+dialog li{margin:4px 0}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:7px 14px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+#toast.show{opacity:.95}
+@media (max-width:1180px){ main{flex-direction:column} #decide{width:auto;border-left:0;border-top:1px solid var(--line);max-height:48vh} }
+@media (max-width:820px){ aside{display:none} }
+</style>
+</head>
+<body>
+<header>
+  <div class="title">EmpiricalBench judge audit<small id="buildinfo"></small></div>
+  <div class="prog"><div class="bar"><div id="progbar"></div></div><span id="progtext" class="muted"></span></div>
+  <nav>
+    <input type="text" id="reviewer" placeholder="Reviewer name" title="Stored with your exported decisions">
+    <button data-act="view" data-view="audit" id="tabAudit">Audit</button>
+    <button data-act="view" data-view="summary" id="tabSummary">Summary</button>
+    <button data-act="export-json" title="Download your decisions as JSON">Export</button>
+    <button data-act="import" title="Load a previously exported JSON file">Import</button>
+    <button data-act="help">Help <kbd>?</kbd></button>
+  </nav>
+</header>
+<div id="app">
+  <aside>
+    <div class="filters">
+      <select id="fTp" title="Checkpoint"></select>
+      <select id="fStatus" title="Review status">
+        <option value="">Any status</option><option value="todo">Unreviewed</option><option value="done">Reviewed</option>
+        <option value="disagree">Disagreements</option><option value="unsure">Unsure</option>
+      </select>
+      <select id="fDs" class="wide" title="Problem"></select>
+    </div>
+    <div id="queue"></div>
+  </aside>
+  <main>
+    <div id="scroll"></div>
+    <div id="decide"></div>
+  </main>
+</div>
+<dialog id="help">
+  <h2>How this audit works</h2>
+  <p>Each item is one Pareto frontier from one search of <b id="hMethod"></b> on one problem, at one of two checkpoints:
+  <b id="hEarly"></b> into the search, or the end of the one-hour search. The LLM judge (<span id="hModel"></span>) decided whether the frontier
+  contains an <i>exact recovery</i> of the target relationship. You decide the same thing, without seeing its answer first.</p>
+  <ul>
+    <li><b>Recovered</b>: some equation has exactly the accepted variable dependence (fitted constants are free only where the target has a free constant).
+        <b>Near</b>: the essential structure with a genuine extra/missing term, or an approximation. <b>Miss</b>: neither. Only Recovered counts in the paper's metric, so agreement is scored on Recovered vs. not.</li>
+    <li>Click a frontier row to mark the equation your decision rests on (optional).</li>
+    <li>The judge's verdict appears once you label. Your first label is kept as the blind label even if you change your mind afterwards; on a disagreement you can record who was right.</li>
+    <li>The queue order is a fixed stratified shuffle: every 18 consecutive items cover each problem at each checkpoint once, so any prefix you finish is a balanced random sample.</li>
+    <li>Numbers are rounded for display. An exact value prints short (<code>2</code>, <code>1.5</code>); a rounded one keeps all its digits (<code>1.000</code>, <code>1.500</code>) and is tinted. Toggle <i>Raw</i> for the saved strings, which are authoritative.</li>
+    <li>The <i>simplified</i> line is a sympy rewrite (simplify + expanded logs) meant only as a reading aid. Except for Bode it assumes positive inputs, which holds on these datasets.</li>
+    <li>Early-checkpoint verdicts are what the solve-over-time figure plots: recovered iff the binary-searched first recovery is at or before the checkpoint. Many of those frontiers were never shown to the judge; the verdict panel says whether it is direct or implied.</li>
+    <li>Decisions autosave in this browser (localStorage). Use <b>Export</b> to get a JSON file to send back; <b>Import</b> restores it.</li>
+  </ul>
+  <p><kbd>1</kbd> Recovered · <kbd>2</kbd> Near · <kbd>3</kbd> Miss · <kbd>U</kbd> unsure · <kbd>J</kbd>/<kbd>→</kbd> next · <kbd>K</kbd>/<kbd>←</kbd> previous · <kbd>N</kbd> next unreviewed ·
+     <kbd>R</kbd> raw strings · <kbd>S</kbd> simplified · <kbd>V</kbd> variable names · <kbd>?</kbd> help</p>
+  <p class="muted" id="hBuild"></p>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
+<input type="file" id="file" accept="application/json,.json" hidden>
+<div id="toast"></div>
+<script>
+'use strict';
+const DATA = /*__AUDIT_DATA__*/null;
+const ITEMS = Object.fromEntries(DATA.items.map(it => [it.id, it]));
+const ORDER = DATA.order;
+const POS = Object.fromEntries(ORDER.map((id, i) => [id, i + 1]));
+const EARLY = DATA.build.early_label;
+const KEY = 'empbench-audit:' + DATA.build.id;
+const LABELS = {exact: 'Recovered', near: 'Near', miss: 'Miss'};
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+
+/* ---------- state ---------- */
+const DEFAULTS = {names: 'phys', sig: 4, raw: false, simp: true, blind: true, basis: 'first'};
+let S = {reviewer: '', settings: {...DEFAULTS}, decisions: {}, current: ORDER[0], view: 'audit'};
+let storageOK = true;
+try {
+  const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+  if (saved) S = {...S, ...saved, settings: {...DEFAULTS, ...(saved.settings || {})}};
+} catch (e) { storageOK = false; }
+if (!ITEMS[S.current]) S.current = ORDER[0];
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { storageOK = false; }
+}
+const cur = () => ITEMS[S.current];
+const dec = id => S.decisions[id];
+const reviewed = id => !!(dec(id) && dec(id).label);
+const revealed = id => !S.settings.blind || !!(dec(id) && (dec(id).label || dec(id).peeked));
+const humanPos = (d, first) => (first ? d.first_label : d.label) === 'exact';
+
+/* ---------- expression parsing and MathML ---------- */
+function tokenize(s) {
+  const re = /\s*(?:(\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?)|([A-Za-z_][A-Za-z_0-9]*)|(\*\*|[-+*/^(),]))/y;
+  const out = [];
+  let i = 0;
+  while (i < s.length) {
+    re.lastIndex = i;
+    const m = re.exec(s);
+    if (!m) { if (/^\s*$/.test(s.slice(i))) break; throw new Error('Unexpected input at ' + i); }
+    if (m[1] !== undefined) out.push({t: 'num', v: m[1]});
+    else if (m[2] !== undefined) out.push({t: 'id', v: m[2]});
+    else out.push({t: 'op', v: m[3] === '**' ? '^' : m[3]});
+    i = re.lastIndex;
+  }
+  return out;
+}
+function parse(s) {
+  const t = tokenize(s);
+  let p = 0;
+  const eat = v => (t[p] && t[p].t === 'op' && t[p].v === v) ? (p++, true) : false;
+  function expr() {
+    let a = term();
+    for (;;) {
+      if (eat('+')) a = {t: 'bin', op: '+', a, b: term()};
+      else if (eat('-')) a = {t: 'bin', op: '-', a, b: term()};
+      else return a;
+    }
+  }
+  function term() {
+    let a = unary();
+    for (;;) {
+      if (eat('*')) a = {t: 'bin', op: '*', a, b: unary()};
+      else if (eat('/')) a = {t: 'bin', op: '/', a, b: unary()};
+      else return a;
+    }
+  }
+  function unary() {
+    if (eat('-')) { const a = unary(); return a.t === 'num' ? {t: 'num', v: -a.v} : {t: 'neg', a}; }
+    if (eat('+')) return unary();
+    return power();
+  }
+  function power() {
+    const b = atom();
+    return eat('^') ? {t: 'bin', op: '^', a: b, b: unary()} : b;
+  }
+  function atom() {
+    const k = t[p];
+    if (!k) throw new Error('Unexpected end');
+    if (k.t === 'num') { p++; return {t: 'num', v: Number(k.v)}; }
+    if (k.t === 'id') {
+      p++;
+      if (!eat('(')) return {t: 'var', n: k.v};
+      const args = [];
+      if (!eat(')')) { do args.push(expr()); while (eat(',')); if (!eat(')')) throw new Error('Expected )'); }
+      return {t: 'call', f: k.v, args};
+    }
+    if (eat('(')) { const e = expr(); if (!eat(')')) throw new Error('Expected )'); return e; }
+    throw new Error('Unexpected token ' + k.v);
+  }
+  const e = expr();
+  if (p !== t.length) throw new Error('Trailing input');
+  return e;
+}
+
+/* Exact values print short; rounded values keep every digit and get class "rnd". */
+function fmtNum(a, sig) {
+  if (!isFinite(a)) return {s: String(a), r: false};
+  if (Number.isInteger(a) && a < 1e9) return {s: String(a), r: false};
+  let s;
+  if (a >= 1e6 || a < 1e-4) {
+    s = a.toExponential(sig - 1);
+    const exact = Number(s) === a;
+    let [m, e] = s.split('e');
+    if (exact) m = m.replace(/\.?0+$/, '');
+    return {s: m + 'e' + e.replace('+', '').replace('-', '−'), r: !exact};
+  }
+  s = a >= Math.pow(10, sig) ? a.toFixed(1) : a.toPrecision(sig);
+  const exact = Number(s) === a;
+  if (exact && s.includes('.')) s = s.replace(/\.?0+$/, '');
+  return {s, r: !exact};
+}
+const GREEK = {alpha: 'α', beta: 'β', gamma: 'γ', lambda: 'λ', mu: 'μ', nu: 'ν', phi: 'φ', pi: 'π', sigma: 'σ', theta: 'θ'};
+function symML(name) {
+  if (name === 'log10P') return '<mrow><msub><mi>log</mi><mn>10</mn></msub><mo>&#x2061;</mo><mi>P</mi></mrow>';
+  if (name === 'E') return '<mi>e</mi>';
+  if (name === 'oo' || name === 'inf' || name === 'Inf') return '<mi>∞</mi>';
+  const m = /^([A-Za-z]+?)_?(\d+)$/.exec(name);
+  const base = '<mi>' + (GREEK[m ? m[1] : name] || esc(m ? m[1] : name)) + '</mi>';
+  return m ? '<msub>' + base + '<mn>' + m[2] + '</mn></msub>' : base;
+}
+const FRAC_MAX = 2;  // deeper divisions print inline as a / b
+const row = m => '<mrow>' + m + '</mrow>';
+const W = (r, min) => r.p < min ? '<mrow><mo>(</mo>' + r.m + '<mo>)</mo></mrow>' : r.m;
+/* Strip a leading minus so a + -c prints as a − c. Value-preserving. */
+function stripNeg(n) {
+  if (n.t === 'num' && n.v < 0) return {t: 'num', v: -n.v};
+  if (n.t === 'neg') return n.a;
+  if (n.t === 'bin' && (n.op === '*' || n.op === '/')) { const a = stripNeg(n.a); if (a) return {...n, a}; }
+  return null;
+}
+/* Returns {m: MathML, p: binding strength}. 1 sum, 1.4 inline quotient, 1.5 negation or a product led by one,
+   2 product, 3 fraction, 4 power, 5 atom. */
+function ML(n, c) {
+  switch (n.t) {
+    case 'num': {
+      const f = fmtNum(Math.abs(n.v), c.sig);
+      const mn = '<mn' + (f.r ? ' class="rnd"' : '') + '>' + f.s + '</mn>';
+      return n.v < 0 ? {m: '<mrow><mo>−</mo>' + mn + '</mrow>', p: 1.5} : {m: mn, p: 5};
+    }
+    case 'var': {
+      const x = /^x(\d+)$/.exec(n.n);
+      const name = x && c.vars && c.vars[+x[1]] ? c.vars[+x[1]] : n.n;
+      return {m: symML(name), p: name === 'log10P' ? 3 : 5};
+    }
+    case 'neg': return {m: '<mrow><mo>−</mo>' + W(ML(n.a, c), 2) + '</mrow>', p: 1.5};
+    case 'call': {
+      const f = n.f, a = n.args;
+      if (a.length === 1) {
+        if (f === 'sqrt') return {m: '<msqrt>' + ML(a[0], c).m + '</msqrt>', p: 5};
+        if (f === 'cbrt') return {m: '<mroot>' + row(ML(a[0], c).m) + '<mn>3</mn></mroot>', p: 5};
+        if (f === 'square' || f === 'cube')
+          return {m: '<msup>' + row(W(ML(a[0], c), 5)) + '<mn>' + (f === 'square' ? 2 : 3) + '</mn></msup>', p: 4};
+        if (f === 'abs' || f === 'Abs') return {m: '<mrow><mo>|</mo>' + ML(a[0], c).m + '<mo>|</mo></mrow>', p: 5};
+        if (f === 'neg') return ML({t: 'neg', a: a[0]}, c);
+        if (f === 'inv') return ML({t: 'bin', op: '/', a: {t: 'num', v: 1}, b: a[0]}, c);
+      }
+      return {m: '<mrow><mi>' + esc(f) + '</mi><mo>&#x2061;</mo><mrow><mo>(</mo>' +
+                 a.map(x => ML(x, c).m).join('<mo>,</mo>') + '<mo>)</mo></mrow></mrow>', p: 5};
+    }
+    case 'bin': {
+      if (n.op === '+' || n.op === '-') {
+        let op = n.op, b = n.b;
+        const sb = stripNeg(b);
+        if (sb) { b = sb; op = op === '+' ? '-' : '+'; }
+        return {m: row(W(ML(n.a, c), 1) + '<mo>' + (op === '+' ? '+' : '−') + '</mo>' + W(ML(b, c), op === '+' ? 1 : 2)), p: 1};
+      }
+      if (n.op === '*') { const a = ML(n.a, c); return {m: row(W(a, 1.5) + '<mo>·</mo>' + W(ML(n.b, c), 2)), p: Math.min(a.p, 2) < 1.5 ? 2 : Math.min(a.p, 2)}; }
+      if (n.op === '/') {
+        if (c.fd < FRAC_MAX) {
+          const d = {...c, fd: c.fd + 1};
+          return {m: '<mfrac>' + row(ML(n.a, d).m) + row(ML(n.b, d).m) + '</mfrac>', p: 3};
+        }
+        return {m: row(W(ML(n.a, c), 1.5) + '<mo>/</mo>' + W(ML(n.b, c), 3)), p: 1.4};
+      }
+      return {m: '<msup>' + row(W(ML(n.a, c), 5)) + row(ML(n.b, {...c, fd: FRAC_MAX}).m) + '</msup>', p: 4};
+    }
+  }
+  throw new Error('Unknown node');
+}
+/* sympy prints sums in its own order; lead with the positive terms. Top level only. */
+function positiveFirst(n) {
+  const terms = [];
+  (function walk(m, sign) {
+    if (m.t === 'bin' && (m.op === '+' || m.op === '-')) { walk(m.a, sign); walk(m.b, m.op === '+' ? sign : -sign); return; }
+    const s = stripNeg(m);
+    terms.push(s ? {n: s, sign: -sign} : {n: m, sign});
+  })(n, 1);
+  if (terms.length < 2 || terms[0].sign > 0 || terms.every(t => t.sign < 0)) return n;
+  const sorted = terms.filter(t => t.sign > 0).concat(terms.filter(t => t.sign < 0));
+  return sorted.slice(1).reduce((acc, t) => ({t: 'bin', op: t.sign > 0 ? '+' : '-', a: acc, b: t.n}), sorted[0].n);
+}
+function ctxFor(dataset) {
+  return {fd: 0, sig: S.settings.sig, vars: S.settings.names === 'phys' ? DATA.datasets[dataset].vars.map(v => v.sym) : null};
+}
+function inner(s, c) { return ML(parse(s), c).m; }
+function math(s, c, reorder) {
+  try { return '<math displaystyle="true">' + (reorder ? ML(positiveFirst(parse(s)), c).m : inner(s, c)) + '</math>'; }
+  catch (e) { return '<code>' + esc(s) + '</code>'; }
+}
+
+/* ---------- helpers ---------- */
+const shortName = ds => DATA.datasets[ds].name.replace(/'s.*| (law|formula|function).*/, '');
+const tpText = tp => tp === '1h' ? 'end of 1 h search' : tp.replace(/s$/, ' s') + ' into search';
+const tpChip = tp => '<span class="chip ' + (tp === '1h' ? 'tp-1h' : 'tp-early') + '">' + (tp === '1h' ? '1 h' : tp.replace(/s$/, ' s')) + '</span>';
+const fmtT = s => s == null ? '–' : s < 120 ? (+s.toFixed(1)) + ' s' : (+(s / 60).toFixed(1)) + ' min';
+const fmtLoss = v => v == null ? '' : (v === 0 ? '0' : Math.abs(v) >= 1e-3 && Math.abs(v) < 1e4 ? v.toPrecision(3) : v.toExponential(2));
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 2200);
+}
+function filtered() {
+  const tp = $('fTp').value, ds = $('fDs').value, st = $('fStatus').value;
+  return ORDER.filter(id => {
+    const it = ITEMS[id], d = dec(id);
+    if (tp && it.tp !== tp) return false;
+    if (ds && it.dataset !== ds) return false;
+    if (st === 'todo' && reviewed(id)) return false;
+    if (st === 'done' && !reviewed(id)) return false;
+    if (st === 'disagree' && !(reviewed(id) && humanPos(d) !== it.llm.positive)) return false;
+    if (st === 'unsure' && !(d && d.unsure)) return false;
+    return true;
+  });
+}
+function snapText(it) {
+  const s = it.snap;
+  if (it.tp === '1h')
+    return 'Final cumulative Pareto frontier after ' + s.n_restarts + ' restart' + (s.n_restarts === 1 ? '' : 's') + ' (' + fmtT(s.seconds) + ' of search).';
+  if (s.kind === 'first_restart_snapshot') {
+    let t = 'Pareto frontier of the first restart, from the scheduled ' + s.scheduled + ' s capture (read at ' + s.seconds.toFixed(1) + ' s).';
+    if (s.missing && s.missing.length)
+      t += ' The ' + s.missing.join(' s and ') + ' s capture failed, so this is the latest frontier available at ' + tpText(it.tp) + '.';
+    return t;
+  }
+  return 'Cumulative Pareto frontier when restart ' + (s.restart_index + 1) + ' ended at ' + s.seconds.toFixed(1) +
+    ' s. Later restarts are only recorded when they finish, so this is the latest frontier at or before ' + EARLY.replace(/s$/, ' s') + '.';
+}
+
+/* ---------- rendering ---------- */
+function renderHeader() {
+  const done = ORDER.filter(reviewed).length;
+  $('progbar').style.width = (100 * done / ORDER.length) + '%';
+  $('progtext').textContent = done + ' / ' + ORDER.length + ' reviewed' + (storageOK ? '' : ' · autosave unavailable, export often');
+  $('tabAudit').classList.toggle('on', S.view === 'audit');
+  $('tabSummary').classList.toggle('on', S.view === 'summary');
+}
+function renderQueue() {
+  const list = filtered();
+  $('queue').innerHTML = list.map(id => {
+    const it = ITEMS[id], d = dec(id);
+    let st = '<span class="st todo">○</span>';
+    if (reviewed(id)) {
+      st = humanPos(d) === it.llm.positive ? '<span class="st ok" title="Agrees with the judge">✓</span>'
+                                           : '<span class="st bad" title="Disagrees with the judge">✗</span>';
+    }
+    return '<div class="qi' + (id === S.current ? ' cur' : '') + '" data-act="go" data-id="' + esc(id) + '">' +
+      '<span class="pos">' + POS[id] + '</span><span class="nm">' + esc(shortName(it.dataset)) +
+      ' <span class="muted">' + it.seed + '</span>' + (d && d.unsure ? ' <span class="muted" title="Marked unsure">?</span>' : '') +
+      '</span>' + tpChip(it.tp) + st + '</div>';
+  }).join('') || '<div class="qi muted">Nothing matches these filters.</div>';
+  const el = $('queue').querySelector('.cur');
+  if (el) el.scrollIntoView({block: 'nearest'});
+}
+function renderItem() {
+  const it = cur(), ds = DATA.datasets[it.dataset], d = dec(it.id) || {}, c = ctxFor(it.dataset), show = revealed(it.id);
+  const L = it.llm;
+  const picks = new Set(show ? (L.provenance === 'direct' ? L.indices : (L.witness_index != null ? [L.witness_index] : [])) : []);
+  const st = S.settings;
+  let h = '<div class="muted">Queue position ' + POS[it.id] + ' of ' + ORDER.length + ' · ' + esc(DATA.build.method_name) + '</div>';
+  h += '<h1>' + esc(ds.name) + ' <span class="chip">seed ' + it.seed + '</span> ' +
+       '<span class="chip ' + (it.tp === '1h' ? 'tp-1h' : 'tp-early') + '">' + tpText(it.tp) + '</span></h1>';
+  h += '<p class="snap">' + esc(snapText(it)) + '</p>';
+  let target;
+  try { target = '<math displaystyle="true"><mrow>' + inner(ds.lhs, {...c, vars: null}) + '<mo>=</mo>' + inner(ds.target, c) + '</mrow></math>'; }
+  catch (e) { target = '<code>' + esc(ds.lhs + ' = ' + ds.target) + '</code>'; }
+  h += '<div class="card"><div class="target"><div><div class="lab">Target</div>' + target + '</div></div>';
+  h += '<div class="vars">' + ds.vars.map((v, i) =>
+      '<math>' + symML('x' + i) + '<mo>=</mo>' + symML(v.sym) + '</math> <b>' + esc(v.desc) + '</b>').join(' &nbsp;·&nbsp; ') +
+      ' &nbsp;·&nbsp; constants <i>c</i>, <i>α</i> are free fitted values; log is natural</div>';
+  h += '<details><summary>What the judge was told</summary><div class="muted" style="margin-top:6px">Accepted relationship (verbatim): ' +
+       '<b style="color:var(--ink)">' + esc(ds.accepted) + '</b></div><pre>' + esc(DATA.extra) + '</pre>' +
+       '<details><summary>Full system prompt</summary><pre>' + esc(ds.prompt) + '</pre></details></details></div>';
+
+  h += '<div class="tools"><b>Frontier</b><span class="muted">' + it.rows.length + ' equations</span><span class="sp"></span>' +
+       '<button data-act="set" data-k="names" data-v="' + (st.names === 'phys' ? 'x' : 'phys') + '" class="' + (st.names === 'phys' ? 'on' : '') +
+       '" title="Show physical variable names instead of x0, x1, …">Variable names <kbd>V</kbd></button>' +
+       '<button data-act="toggle" data-k="simp" class="' + (st.simp ? 'on' : '') + '">Simplified <kbd>S</kbd></button>' +
+       '<button data-act="toggle" data-k="raw" class="' + (st.raw ? 'on' : '') + '">Raw <kbd>R</kbd></button>' +
+       '<select data-change="sig" title="Significant figures shown">' + [3, 4, 6, 9].map(n =>
+         '<option value="' + n + '"' + (n === st.sig ? ' selected' : '') + '>' + n + ' sig. figs</option>').join('') + '</select></div>';
+  h += '<table class="fr"><colgroup><col class="ix"><col class="cx"><col class="loss"><col></colgroup>' +
+       '<thead><tr><th title="Frontier index, as the judge saw it">#</th><th title="Complexity">cx</th>' +
+       '<th title="Native search loss; the judge did not see this">loss</th><th>Equation</th></tr></thead><tbody>';
+  it.rows.forEach((r, i) => {
+    const main = math(r[1], c);
+    let cell = '<div class="eq">' + main +
+      (picks.has(i) ? '<span class="badge pick">' + (L.provenance === 'direct' ? "judge's pick" : "judge's earlier witness") + '</span>' : '') +
+      (d.match === i ? '<span class="badge mine">your match</span>' : '') + '</div>';
+    if (st.simp && r[3]) {
+      const s = math(r[3], c, true);
+      if (s !== main) cell += '<div class="simp"><span class="tag">simplified</span>' + s + '</div>';
+    }
+    if (st.raw) cell += '<div class="raw">' + esc(r[1]) + '</div>';
+    h += '<tr data-act="match" data-i="' + i + '" class="' + (d.match === i ? 'sel ' : '') + (picks.has(i) ? 'pick' : '') + '">' +
+         '<td class="ix">' + i + '</td><td class="cx">' + r[0] + '</td><td class="loss">' + fmtLoss(r[2]) + '</td><td>' + cell + '</td></tr>';
+  });
+  h += '</tbody></table>';
+  const keepScroll = renderItem.last === it.id ? $('scroll').scrollTop : 0;
+  $('scroll').innerHTML = h;
+  $('scroll').scrollTop = keepScroll;
+  renderItem.last = it.id;
+  renderDecide();
+}
+function verdictHTML(it, d) {
+  const L = it.llm, c = ctxFor(it.dataset);
+  let h = '<div class="line"><b>LLM judge:</b> <span class="badge ' + (L.positive ? 'pos' : 'neg') + '">' +
+          (L.positive ? 'Recovered' : 'Not recovered') + '</span>';
+  if (L.classification)
+    h += ' <span class="muted">label “' + esc(L.classification) + '”' +
+         (L.original_classification ? ', raw label “' + esc(L.original_classification) + '” (counted as recovered under the Bode rule)' : '') + '</span>';
+  if (d.label) {
+    h += humanPos(d) === L.positive ? '<div class="agree">✓ agrees with your label</div>'
+                                    : '<div class="disagree">✗ disagrees with your label</div>';
+    if (d.first_label !== d.label) h += ' <span class="muted">(your first label was ' + LABELS[d.first_label] + ')</span>';
+  }
+  h += '</div><div class="line">';
+  if (L.provenance === 'direct') {
+    h += L.source === 'known_exact_equation'
+      ? 'Not sent to the judge: this frontier contains an equation the judge had already accepted for this problem.'
+      : 'The judge reviewed exactly this frontier.';
+    if (L.matching_equation) h += ' Its pick is row #' + L.indices.join(', #') + ':<div class="eq">' + math(L.matching_equation, c) + '</div>';
+    h += '<blockquote>' + esc(L.evidence_explanation || L.explanation || '') + '</blockquote>';
+    if (L.correction_note) h += '<div class="muted">Recorded correction: ' + esc(L.correction_note) + '</div>';
+  } else if (L.positive) {
+    h += 'Implied, not judged directly: the binary search put the first recovery at ' + fmtT(L.first_solve_seconds) +
+         ' and assumes recovery persists. ';
+    h += L.witness_index != null
+      ? 'The equation accepted there is still here as row #' + L.witness_index + '.'
+      : 'The equation accepted there is no longer in this frontier verbatim:<div class="eq">' + math(L.witness_equation, c) + '</div>';
+    h += '<blockquote>' + esc(L.witness_explanation || '') + '</blockquote>';
+  } else if (L.first_solve_seconds == null) {
+    h += 'Implied, not judged directly: the final 1 h frontier was judged “' + esc(L.final_classification) +
+         '”, and runs that end unrecovered are not searched for earlier, transient recoveries.';
+  } else {
+    h += 'Implied, not judged directly: the binary search put the first recovery at ' + fmtT(L.first_solve_seconds) +
+         (L.last_negative_seconds ? ' (last frontier judged negative: ' + fmtT(L.last_negative_seconds) + ')' : '') + '.';
+  }
+  h += '</div>';
+  if (d.label && humanPos(d) !== L.positive) {
+    h += '<div class="adj"><b>Who is right?</b>' + [['human', 'My label stands'], ['llm', 'The judge was right'], ['unclear', 'Unclear']].map(([v, t]) =>
+      '<label><input type="radio" name="adj" data-change="adj" value="' + v + '"' + (d.adjudication === v ? ' checked' : '') + '> ' + t + '</label>').join('') + '</div>';
+  }
+  return h;
+}
+function renderDecide() {
+  const it = cur(), d = dec(it.id) || {};
+  const list = filtered(), at = list.indexOf(it.id);
+  let h = '<div class="btns navs"><button data-act="prev"' + (at <= 0 ? ' disabled' : '') + '>← Prev <kbd>K</kbd></button>' +
+          '<button data-act="next"' + (at < 0 || at >= list.length - 1 ? ' disabled' : '') + '>Next <kbd>J</kbd> →</button>' +
+          '<button data-act="next-todo">Next unreviewed <kbd>N</kbd></button></div>';
+  h += '<div class="q">Does this frontier contain an exact recovery of the target?</div><div class="btns">';
+  [['exact', '1'], ['near', '2'], ['miss', '3']].forEach(([k, key]) => {
+    h += '<button class="lab-' + k + (d.label === k ? ' on' : '') + '" data-act="label" data-v="' + k + '">' + LABELS[k] + ' <kbd>' + key + '</kbd></button>';
+  });
+  h += '</div><div class="opts"><label><input type="checkbox" data-change="unsure"' + (d.unsure ? ' checked' : '') + '> Unsure <kbd>U</kbd></label>';
+  h += '<span class="muted">' + (d.match != null ? 'Your match: row #' + d.match + ' <a class="go" data-act="unmatch">clear</a>' : 'Click a frontier row to mark your match') + '</span></div>';
+  h += '<textarea id="notes" placeholder="Notes (optional)">' + esc(d.notes || '') + '</textarea>';
+  if (revealed(it.id)) h += '<div class="verdict">' + verdictHTML(it, d) + '</div>';
+  else h += '<div class="verdict hid">The judge\'s verdict is hidden until you label. ' +
+            '<button data-act="peek" title="The item will be excluded from the blind agreement rate">Reveal without labeling</button></div>';
+  if (d.label || d.peeked) h += '<div style="margin-top:6px"><a class="go muted" data-act="clear">Clear my decision for this item</a></div>';
+  $('decide').innerHTML = h;
+}
+
+/* ---------- summary ---------- */
+function wilson(k, n) {
+  const z = 1.96, p = k / n, den = 1 + z * z / n, mid = (p + z * z / (2 * n)) / den;
+  const half = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den;
+  return [Math.max(0, mid - half), Math.min(1, mid + half)];
+}
+function tally(ids, first) {
+  const t = {n: 0, pp: 0, pn: 0, np: 0, nn: 0};  // human × judge
+  ids.forEach(id => {
+    const d = dec(id);
+    if (!d || !d.label || (first && !d.blind)) return;
+    t.n++;
+    t[(humanPos(d, first) ? 'p' : 'n') + (ITEMS[id].llm.positive ? 'p' : 'n')]++;
+  });
+  t.agree = t.pp + t.nn;
+  if (t.n) {
+    t.rate = t.agree / t.n;
+    t.ci = wilson(t.agree, t.n);
+    const pe = ((t.pp + t.pn) * (t.pp + t.np) + (t.np + t.nn) * (t.pn + t.nn)) / (t.n * t.n);
+    t.kappa = pe < 1 ? (t.rate - pe) / (1 - pe) : null;
+  }
+  return t;
+}
+const pct = x => x == null ? '–' : (100 * x).toFixed(1) + '%';
+function tallyRow(name, ids, first) {
+  const t = tally(ids, first);
+  return '<tr><td>' + name + '</td><td>' + t.n + ' / ' + ids.length + '</td><td>' + (t.pp + t.np) + '</td><td>' + (t.pp + t.pn) + '</td><td>' +
+    t.pp + '</td><td>' + t.pn + '</td><td>' + t.np + '</td><td>' + t.nn + '</td><td>' + pct(t.rate) +
+    (t.ci ? ' <span class="muted">[' + (100 * t.ci[0]).toFixed(0) + '–' + (100 * t.ci[1]).toFixed(0) + ']</span>' : '') +
+    '</td><td>' + (t.kappa == null ? '–' : t.kappa.toFixed(2)) + '</td></tr>';
+}
+const SUM_HEAD = '<thead><tr><th></th><th>Reviewed</th><th title="Judge says recovered, among reviewed">Judge rec.</th>' +
+  '<th title="You say recovered">Human rec.</th><th>Both</th><th title="You: recovered. Judge: not. Possible judge false negative">Human only</th>' +
+  '<th title="Judge: recovered. You: not. Possible judge false positive">Judge only</th><th>Neither</th><th>Agreement [95% CI]</th><th>Cohen κ</th></tr></thead>';
+function renderSummary() {
+  const first = S.settings.basis === 'first';
+  const all = tally(ORDER, first);
+  const done = ORDER.filter(reviewed);
+  const excluded = done.filter(id => !dec(id).blind).length;
+  const dis = done.filter(id => humanPos(dec(id), first && dec(id).blind) !== ITEMS[id].llm.positive);
+  const adj = {human: 0, llm: 0, unclear: 0, open: 0};
+  dis.forEach(id => adj[dec(id).adjudication || 'open']++);
+  let h = '<h1>Summary</h1><p class="snap">Agreement is scored on Recovered vs. not (Near and Miss both count as not recovered), over the items reviewed so far.</p>';
+  h += '<div class="tools"><span>Score with</span><select data-change="basis"><option value="first"' + (first ? ' selected' : '') +
+       '>first blind label</option><option value="final"' + (first ? '' : ' selected') + '>current label</option></select>' +
+       (first && excluded ? '<span class="muted">' + excluded + ' item(s) labelled after seeing the verdict are excluded</span>' : '') +
+       '<span class="sp"></span><button data-act="export-json">Export JSON</button><button data-act="export-csv">Export CSV</button>' +
+       '<button data-act="reset">Reset all decisions</button></div>';
+  h += '<div class="cards">' + [
+    [done.length + ' / ' + ORDER.length, 'items reviewed'],
+    [pct(all.rate), 'agreement with the judge' + (all.ci ? ' (95% CI ' + (100 * all.ci[0]).toFixed(0) + '–' + (100 * all.ci[1]).toFixed(0) + '%)' : '')],
+    [all.pn + ' / ' + all.np, 'human-only / judge-only recoveries'],
+    [done.filter(id => dec(id).unsure).length, 'marked unsure'],
+  ].map(([v, l]) => '<div class="card stat"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join('') + '</div>';
+  const tps = [EARLY, '1h'];
+  h += '<h2>By checkpoint</h2><table class="sum">' + SUM_HEAD + '<tbody>' +
+       tps.map(tp => tallyRow(tpText(tp), ORDER.filter(id => ITEMS[id].tp === tp), first)).join('') + tallyRow('<b>All</b>', ORDER, first) + '</tbody></table>';
+  h += '<h2>By problem</h2><table class="sum">' + SUM_HEAD + '<tbody>' + Object.keys(DATA.datasets).map(ds =>
+       tallyRow(esc(DATA.datasets[ds].name), ORDER.filter(id => ITEMS[id].dataset === ds), first)).join('') + '</tbody></table>';
+  h += '<h2>Disagreements (' + dis.length + ')</h2>';
+  if (dis.length) {
+    h += '<p class="snap">Adjudicated: ' + adj.human + ' human label stands · ' + adj.llm + ' judge was right · ' + adj.unclear + ' unclear · ' + adj.open + ' open</p>';
+    h += '<table class="sum"><thead><tr><th>Item</th><th>You</th><th>Judge</th><th>Judge basis</th><th>Adjudication</th><th style="text-align:left">Notes</th></tr></thead><tbody>' +
+      dis.map(id => {
+        const it = ITEMS[id], d = dec(id);
+        return '<tr><td><a class="go" data-act="go" data-id="' + esc(id) + '">#' + POS[id] + ' ' + esc(shortName(it.dataset)) + ' ' + it.seed + '</a> ' + tpChip(it.tp) +
+          '</td><td>' + LABELS[first && d.blind ? d.first_label : d.label] + '</td><td>' + (it.llm.positive ? 'Recovered' : 'Not recovered') + '</td><td>' + it.llm.provenance +
+          '</td><td>' + ({human: 'human stands', llm: 'judge right', unclear: 'unclear'}[d.adjudication] || '–') + '</td><td class="note">' + esc(d.notes || '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  } else h += '<p class="muted">None so far.</p>';
+  const noted = done.filter(id => (dec(id).notes || dec(id).unsure) && !dis.includes(id));
+  if (noted.length) {
+    h += '<h2>Other notes and unsure items</h2><table class="sum"><thead><tr><th>Item</th><th>You</th><th>Unsure</th><th style="text-align:left">Notes</th></tr></thead><tbody>' +
+      noted.map(id => {
+        const it = ITEMS[id], d = dec(id);
+        return '<tr><td><a class="go" data-act="go" data-id="' + esc(id) + '">#' + POS[id] + ' ' + esc(shortName(it.dataset)) + ' ' + it.seed + '</a> ' + tpChip(it.tp) +
+          '</td><td>' + LABELS[d.label] + '</td><td>' + (d.unsure ? 'yes' : '') + '</td><td class="note">' + esc(d.notes || '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+  $('scroll').innerHTML = h;
+  $('decide').innerHTML = '';
+  renderItem.last = null;
+}
+function render() {
+  renderHeader();
+  renderQueue();
+  $('decide').style.display = S.view === 'audit' ? '' : 'none';
+  if (S.view === 'audit') renderItem(); else renderSummary();
+}
+
+/* ---------- actions ---------- */
+function go(id) {
+  if (!ITEMS[id]) return;
+  S.current = id; S.view = 'audit'; save(); render();
+  history.replaceState(null, '', '#' + encodeURIComponent(id));
+}
+function step(delta) {
+  const list = filtered(), at = list.indexOf(S.current);
+  if (at < 0) { if (list.length) go(list[0]); return; }
+  const next = list[at + delta];
+  if (next) go(next);
+}
+function nextTodo() {
+  const list = filtered(), at = Math.max(0, list.indexOf(S.current));
+  const next = list.slice(at + 1).concat(list.slice(0, at + 1)).find(id => !reviewed(id));
+  if (next && next !== S.current) go(next); else toast('No unreviewed items in this list');
+}
+function edit(fn) {
+  const id = S.current;
+  const d = S.decisions[id] || (S.decisions[id] = {});
+  fn(d);
+  d.at = new Date().toISOString();
+  save();
+}
+function setLabel(label) {
+  const visible = revealed(S.current);
+  edit(d => {
+    if (!d.label) { d.first_label = label; d.first_at = new Date().toISOString(); d.blind = !visible; }
+    d.label = label;
+    if (humanPos(d) === cur().llm.positive) delete d.adjudication;
+  });
+  render();
+}
+function exportRows() {
+  return ORDER.filter(id => dec(id) && (dec(id).label || dec(id).peeked)).map(id => {
+    const it = ITEMS[id], d = dec(id), L = it.llm;
+    return {
+      id, queue_position: POS[id], dataset: it.dataset, seed: it.seed, checkpoint: it.tp,
+      human_label: d.label || null, human_first_label: d.first_label || null, blind: !!d.blind, unsure: !!d.unsure,
+      human_match_index: d.match == null ? null : d.match,
+      human_match_equation: d.match == null ? null : it.rows[d.match][1],
+      notes: d.notes || '', adjudication: d.adjudication || null, first_labeled_at: d.first_at || null, updated_at: d.at || null,
+      judge_recovered: L.positive, judge_classification: L.classification || null, judge_provenance: L.provenance,
+      judge_matching_equation: L.matching_equation || L.witness_equation || null,
+      agree_first_label: d.label ? humanPos(d, true) === L.positive : null,
+      agree_current_label: d.label ? humanPos(d) === L.positive : null,
+    };
+  });
+}
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type}));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function fileStem() {
+  const who = (S.reviewer || 'anon').replace(/[^A-Za-z0-9_-]+/g, '_');
+  return 'empbench_audit_' + DATA.build.id + '_' + who + '_' + new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
+}
+function exportJSON() {
+  const rows = exportRows();
+  const out = {format: 'empbench-audit-decisions/v1', build: DATA.build, reviewer: S.reviewer, exported_at: new Date().toISOString(),
+    n_items: ORDER.length, summary: {first_blind_label: tally(ORDER, true), current_label: tally(ORDER, false)}, decisions: rows};
+  download(fileStem() + '.json', JSON.stringify(out, null, 1), 'application/json');
+  toast('Exported ' + rows.length + ' decisions');
+}
+function exportCSV() {
+  const rows = exportRows();
+  if (!rows.length) return toast('Nothing to export yet');
+  const cols = Object.keys(rows[0]);
+  const cell = v => v == null ? '' : /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+  download(fileStem() + '.csv', [cols.join(',')].concat(rows.map(r => cols.map(k => cell(r[k])).join(','))).join('\n') + '\n', 'text/csv');
+}
+function importJSON(text) {
+  let data;
+  try { data = JSON.parse(text); } catch (e) { return toast('Not a JSON file'); }
+  if (!data || data.format !== 'empbench-audit-decisions/v1' || !Array.isArray(data.decisions)) return toast('Not an audit export');
+  if (data.build && data.build.id !== DATA.build.id &&
+      !confirm('This export is from a different build of the audit page (' + data.build.id + ' vs ' + DATA.build.id + '). Import matching items anyway?')) return;
+  let n = 0;
+  data.decisions.forEach(r => {
+    if (!ITEMS[r.id]) return;
+    const old = dec(r.id);
+    if (old && old.at && r.updated_at && old.at > r.updated_at) return;
+    S.decisions[r.id] = {label: r.human_label || undefined, first_label: r.human_first_label || undefined, blind: !!r.blind, unsure: !!r.unsure,
+      match: r.human_match_index == null ? undefined : r.human_match_index, notes: r.notes || undefined, adjudication: r.adjudication || undefined,
+      first_at: r.first_labeled_at || undefined, at: r.updated_at || undefined, peeked: !r.human_label || undefined};
+    n++;
+  });
+  if (data.reviewer && !S.reviewer) { S.reviewer = data.reviewer; $('reviewer').value = S.reviewer; }
+  save(); render(); toast('Imported ' + n + ' decisions');
+}
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  const act = el.dataset.act;
+  if (act === 'go') go(el.dataset.id);
+  else if (act === 'view') { S.view = el.dataset.view; save(); render(); }
+  else if (act === 'label') setLabel(el.dataset.v);
+  else if (act === 'match') {
+    if (window.getSelection && String(window.getSelection())) return;  // let text selection in a row through
+    const i = +el.dataset.i;
+    edit(d => { if (d.match === i) delete d.match; else d.match = i; });
+    render();
+  }
+  else if (act === 'unmatch') { edit(d => { delete d.match; }); render(); }
+  else if (act === 'prev') step(-1);
+  else if (act === 'next') step(1);
+  else if (act === 'next-todo') nextTodo();
+  else if (act === 'peek') { edit(d => { d.peeked = true; }); render(); }
+  else if (act === 'clear') { if (confirm('Clear your decision for this item?')) { delete S.decisions[S.current]; save(); render(); } }
+  else if (act === 'toggle') { S.settings[el.dataset.k] = !S.settings[el.dataset.k]; save(); render(); }
+  else if (act === 'set') { S.settings[el.dataset.k] = el.dataset.v; save(); render(); }
+  else if (act === 'export-json') exportJSON();
+  else if (act === 'export-csv') exportCSV();
+  else if (act === 'import') $('file').click();
+  else if (act === 'help') $('help').showModal();
+  else if (act === 'reset') {
+    if (confirm('Delete all ' + ORDER.filter(reviewed).length + ' decisions stored in this browser? Export first if unsure.')) { S.decisions = {}; save(); render(); }
+  }
+});
+document.addEventListener('change', e => {
+  const k = e.target.dataset.change;
+  if (k === 'sig') { S.settings.sig = +e.target.value; save(); render(); }
+  else if (k === 'basis') { S.settings.basis = e.target.value; save(); render(); }
+  else if (k === 'unsure') { edit(d => { d.unsure = e.target.checked; }); renderQueue(); }
+  else if (k === 'adj') { edit(d => { d.adjudication = e.target.value; }); }
+  else if (e.target.id === 'file') {
+    const f = e.target.files[0];
+    if (f) f.text().then(importJSON);
+    e.target.value = '';
+  }
+  else if (['fTp', 'fDs', 'fStatus'].includes(e.target.id)) render();
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'notes') edit(d => { d.notes = e.target.value; });
+  else if (e.target.id === 'reviewer') { S.reviewer = e.target.value; save(); }
+});
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if ($('help').open) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.type !== 'checkbox' && e.target.type !== 'radio') {
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+  const k = e.key.toLowerCase();
+  if (k === '?') { $('help').showModal(); return; }
+  if (S.view !== 'audit') return;
+  const toggle = key => { S.settings[key] = !S.settings[key]; save(); render(); };
+  if (k === '1') setLabel('exact');
+  else if (k === '2') setLabel('near');
+  else if (k === '3') setLabel('miss');
+  else if (k === 'u') { edit(d => { d.unsure = !d.unsure; }); render(); }
+  else if (k === 'j' || k === 'arrowright') step(1);
+  else if (k === 'k' || k === 'arrowleft') step(-1);
+  else if (k === 'n') nextTodo();
+  else if (k === 'r') toggle('raw');
+  else if (k === 's') toggle('simp');
+  else if (k === 'v') { S.settings.names = S.settings.names === 'phys' ? 'x' : 'phys'; save(); render(); }
+  else return;
+  e.preventDefault();
+});
+
+/* ---------- boot ---------- */
+(function init() {
+  const b = DATA.build;
+  $('buildinfo').textContent = b.method_name + ' · ' + ORDER.length + ' items';
+  $('hMethod').textContent = b.method_name;
+  $('hEarly').textContent = EARLY.replace(/s$/, ' s');
+  $('hModel').textContent = b.judge_model;
+  $('hBuild').textContent = 'Build ' + b.id + ', ' + b.created + '. Judge decisions from ' + b.recovery_dir + '; frontiers from ' + b.source_run + '. Queue order seed ' + b.order_seed + '.';
+  $('fTp').innerHTML = '<option value="">Both times</option><option value="' + EARLY + '">' + EARLY.replace(/s$/, ' s') + '</option><option value="1h">1 h</option>';
+  $('fDs').innerHTML = '<option value="">All problems</option>' + Object.keys(DATA.datasets).map(k =>
+    '<option value="' + k + '">' + esc(DATA.datasets[k].name) + '</option>').join('');
+  $('reviewer').value = S.reviewer || '';
+  const hash = decodeURIComponent(location.hash.slice(1));
+  if (ITEMS[hash]) { S.current = hash; S.view = 'audit'; }
+  render();
+  let seenHelp = false;
+  try { seenHelp = !!localStorage.getItem(KEY + ':seen-help'); localStorage.setItem(KEY + ':seen-help', '1'); } catch (e) {}
+  if (!ORDER.some(reviewed) && !seenHelp) $('help').showModal();
+})();
+</script>
+</body>
+</html>
