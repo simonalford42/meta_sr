@@ -42,7 +42,9 @@ export WANDB_MODE=disabled
 # Evaluations run in the foreground and can sit in the SLURM queue for hours. A
 # 3 h cap pushed one into the background and the agent then improvised nohup +
 # polling loops (11/10), so allow 48 h and disable background tasks.
-export BASH_DEFAULT_TIMEOUT_MS=172800000
+# Default 30 min for ordinary commands (a 48 h default let a filesystem-wide
+# find hang for 17 h, 11/11); program.md has evaluate.py request 48 h explicitly.
+export BASH_DEFAULT_TIMEOUT_MS=1800000
 export BASH_MAX_TIMEOUT_MS=172800000
 export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
 # Isolation: auto-memory is keyed to the git repo root, so all agents in this

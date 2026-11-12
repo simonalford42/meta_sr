@@ -46,7 +46,7 @@ the harness evaluates a detached worktree at that commit.
 - Do not edit any files outside the allowed list above.
 - Do not modify files in `src/` that are not listed (e.g., `SymbolicRegression.jl`, `Options.jl`).
 - Do not inspect, evaluate, or optimize against any validation, test, or remaining official SRBench tasks.
-- Work only from your own experiments. Do not read anything from other autoresearch runs, past or concurrent: other run directories (siblings of your run directory under `autoresearch_sr/live/`), archived runs (`autoresearch_sr/runs/`), other `autoresearch_sr/*` branches or commits in any SymbolicRegression.jl repository, or their eval outputs, logs, and sandboxes. Outside your run directory, the only files you may read are `evaluate.py`, these instructions, and SymbolicRegression.jl source. Your commands are audited for this.
+- Work only from your own experiments. Do not read anything from other autoresearch runs, past or concurrent: other run directories (siblings of your run directory under `autoresearch_sr/live/`), archived runs (`autoresearch_sr/runs/`), other `autoresearch_sr/*` branches or commits in any SymbolicRegression.jl repository, or their eval outputs, logs, and sandboxes. Outside your run directory, the only files you may read are `evaluate.py`, these instructions, and SymbolicRegression.jl source. Everything you need is in your run directory; never search the whole filesystem or your home directory (e.g. `find /`, `grep -r ~`). Your commands are audited for this.
 
 **The goal is simple: get the highest score.** The metric is `gt` (ground-truth match rate — fraction of datasets where the discovered equation matches the true formula). Higher is better.
 
