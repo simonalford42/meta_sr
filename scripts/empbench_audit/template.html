@@ -45,7 +45,10 @@ aside{width:270px;flex:none;border-right:1px solid var(--line);background:var(--
 .filters .wide{grid-column:1/3}
 #queue{overflow:auto;flex:1}
 .qi{display:flex;align-items:center;gap:6px;padding:5px 10px;border-bottom:1px solid var(--soft);cursor:pointer;white-space:nowrap}
+.qi{scroll-margin-top:30px}
 .qi:hover{background:var(--soft)}
+.qh{position:sticky;top:0;z-index:1;display:flex;justify-content:space-between;padding:4px 10px;background:var(--soft);border-bottom:1px solid var(--line);font-size:12px;font-weight:600}
+.qh span{font-weight:400;color:var(--muted)}
 .qi.cur{background:var(--pick)}
 .qi .pos{width:28px;color:var(--muted);font:12px var(--mono);text-align:right}
 .qi .nm{flex:1;overflow:hidden;text-overflow:ellipsis}
@@ -169,7 +172,7 @@ dialog li{margin:4px 0}
         <b>Near</b>: the essential structure with a genuine extra/missing term, or an approximation. <b>Miss</b>: neither. Only Recovered counts in the paper's metric, so agreement is scored on Recovered vs. not.</li>
     <li>Click a frontier row to mark the equation your decision rests on (optional).</li>
     <li>The judge's verdict appears once you label. Your first label is kept as the blind label even if you change your mind afterwards; on a disagreement you can record who was right.</li>
-    <li>The queue order is a fixed stratified shuffle: every 18 consecutive items cover each problem at each checkpoint once, so any prefix you finish is a balanced random sample.</li>
+    <li>The queue goes one problem at a time (20 items each). Within a problem the order is a fixed shuffle that alternates checkpoints in pairs, so the first 2<i>k</i> items of a problem are <i>k</i> random seeds at each checkpoint.</li>
     <li>Numbers are rounded for display. An exact value prints short (<code>2</code>, <code>1.5</code>); a rounded one keeps all its digits (<code>1.000</code>, <code>1.500</code>) and is tinted. Toggle <i>Raw</i> for the saved strings, which are authoritative.</li>
     <li>The <i>simplified</i> line is a sympy rewrite (simplify + expanded logs) meant only as a reading aid. Except for Bode it assumes positive inputs, which holds on these datasets.</li>
     <li>Early-checkpoint verdicts are what the solve-over-time figure plots: recovered iff the binary-searched first recovery is at or before the checkpoint. Many of those frontiers were never shown to the judge; the verdict panel says whether it is direct or implied.</li>
@@ -429,16 +432,22 @@ function renderHeader() {
 }
 function renderQueue() {
   const list = filtered();
+  let group = null;
   $('queue').innerHTML = list.map(id => {
     const it = ITEMS[id], d = dec(id);
+    let head = '';
+    if (it.dataset !== group) {
+      group = it.dataset;
+      const ids = ORDER.filter(x => ITEMS[x].dataset === group);
+      head = '<div class="qh">' + esc(DATA.datasets[group].name) + '<span>' + ids.filter(reviewed).length + ' / ' + ids.length + '</span></div>';
+    }
     let st = '<span class="st todo">○</span>';
     if (reviewed(id)) {
       st = humanPos(d) === it.llm.positive ? '<span class="st ok" title="Agrees with the judge">✓</span>'
                                            : '<span class="st bad" title="Disagrees with the judge">✗</span>';
     }
-    return '<div class="qi' + (id === S.current ? ' cur' : '') + '" data-act="go" data-id="' + esc(id) + '">' +
-      '<span class="pos">' + POS[id] + '</span><span class="nm">' + esc(shortName(it.dataset)) +
-      ' <span class="muted">' + it.seed + '</span>' + (d && d.unsure ? ' <span class="muted" title="Marked unsure">?</span>' : '') +
+    return head + '<div class="qi' + (id === S.current ? ' cur' : '') + '" data-act="go" data-id="' + esc(id) + '">' +
+      '<span class="pos">' + POS[id] + '</span><span class="nm">seed ' + it.seed + (d && d.unsure ? ' <span class="muted" title="Marked unsure">?</span>' : '') +
       '</span>' + tpChip(it.tp) + st + '</div>';
   }).join('') || '<div class="qi muted">Nothing matches these filters.</div>';
   const el = $('queue').querySelector('.cur');

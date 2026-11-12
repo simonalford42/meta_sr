@@ -150,6 +150,15 @@ def audit_order(items, seed):
     return order
 
 
+def by_problem(order):
+    """Queue order: one problem at a time, keeping the shuffle within each problem.
+
+    The first 2k items of a problem are then k random seeds at each checkpoint.
+    """
+    rank = {key: i for i, key in enumerate(DATASETS)}
+    return sorted(order, key=lambda item_id: rank[item_id.split('|')[0]])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--recovery-dir', type=Path, default=ROOT / 'runs/srbench2_9-17_1m_spliced_terra_recovery')
@@ -239,8 +248,10 @@ def main():
         for row in item['rows']:
             row.append(simplified[row[1], positive_inputs])
 
+    shuffle = audit_order(items, args.order_seed)
+    present = {item['dataset'] for item in items}
     datasets = {}
-    for key in sorted({item['dataset'] for item in items}):
+    for key in (k for k in DATASETS if k in present):
         meta = DATASETS[key]
         datasets[key] = dict(name=meta['name'], lhs=meta['lhs'], target=meta['target'],
                              vars=[dict(sym=s, desc=d) for s, d in meta['vars']],
@@ -253,11 +264,11 @@ def main():
                    method=args.method, method_name=args.method_name, judge_model=engine.MODEL,
                    early_seconds=early, early_label=early_label, order_seed=args.order_seed,
                    config_hash=state['config_hash']),
-        extra=engine.EXTRA.strip(), datasets=datasets, items=items,
-        order=audit_order(items, args.order_seed))
-    # The id keys saved decisions: it changes only when the audited content does.
+        extra=engine.EXTRA.strip(), datasets=datasets, items=items, order=by_problem(shuffle))
+    # The id keys saved decisions: it changes only when the audited content or the shuffle does,
+    # not when the queue is regrouped.
     data['build']['id'] = hashlib.sha256(json.dumps(
-        [data['build']['config_hash'], data['order'], [[i['id'], i['rows'], i['llm']] for i in items]],
+        [data['build']['config_hash'], shuffle, [[i['id'], i['rows'], i['llm']] for i in items]],
         sort_keys=True).encode()).hexdigest()[:12]
 
     template = (HERE / 'template.html').read_text()
