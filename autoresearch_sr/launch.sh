@@ -77,6 +77,10 @@ EOF
 PROMPT="Read $AR_DIR/program.md, then commence autonomous PySR autoresearch for run '$TAG'. Setup is already done. You have permission to submit the SLURM evaluation jobs required by program.md for this run. Do not stop until the experiment budget is exhausted."
 RESUME_PROMPT="Continue the autonomous PySR autoresearch run from where you left off (re-read $AR_DIR/program.md and results.tsv if needed). Do not stop until the experiment budget is exhausted."
 
+if (( $(n_done) >= MAX_EXP )) || ge "$(cost_now)" "$MAX_COST"; then
+    echo "[launch] $(date -Iseconds) run $TAG already finished its budget; nothing to do" | tee -a launch.log
+    exit 0
+fi
 restarts=0
 CONTINUE_FLAG=()
 if [[ -s "$RUN_DIR/agent_stream.jsonl" ]]; then

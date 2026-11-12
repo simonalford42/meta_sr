@@ -29,3 +29,4 @@ out/
 # Budgeted runs (worktrees, logs, eval outputs)
 live/
 runs/*/eval_results/
+logs/
