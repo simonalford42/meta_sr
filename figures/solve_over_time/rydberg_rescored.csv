@@ -1,0 +1,21 @@
+method,seed,judge_final,judge_first_solve_seconds,rule_final,rule_first_solve_seconds,rule_earliest_seconds,rule_recovery_transient,final_frontier_q_minus_1
+Baseline,10000,miss,,not recovered,,,False,
+Baseline,10001,near,,not recovered,,,False,
+Baseline,10002,near,,not recovered,,,False,
+Baseline,10003,near,,not recovered,,,False,
+Baseline,10004,near,,not recovered,,,False,
+Baseline,10005,exact,328.53231835365295,exact,328.53231835365295,328.53231835365295,False,+6.66e-16
+Baseline,10006,near,,not recovered,,,False,
+Baseline,10007,near,,not recovered,,,False,
+Baseline,10008,near,,not recovered,,,False,
+Baseline,10009,exact,1992.9554040431976,exact,1992.9554040431976,1992.9554040431976,False,+2.22e-16
+709715,10000,near,,exact,25.0,25.0,False,-4.36e-04 -4.36e-04 -4.49e-04
+709715,10001,exact,297.7125573158264,exact,297.7125573158264,297.7125573158264,False,+6.66e-16 -4.36e-04 +8.52e-03
+709715,10002,near,,exact,495.9497332572937,495.9497332572937,False,-4.36e-04
+709715,10003,near,,exact,519.1588220596313,519.1588220596313,False,-4.28e-04 -4.36e-04 -4.36e-04
+709715,10004,near,,exact,106.86512541770935,106.86512541770935,False,-1.02e-04 -1.31e-04
+709715,10005,exact,366.2979736328125,exact,366.2979736328125,366.2979736328125,False,-9.99e-16 -4.36e-04
+709715,10006,near,,exact,67.46242046356201,67.46242046356201,False,-4.36e-04 -4.43e-04
+709715,10007,near,,exact,640.9011380672455,640.9011380672455,True,-4.36e-04 -4.36e-04
+709715,10008,exact,819.3386464118958,exact,819.3386464118958,819.3386464118958,False,+4.44e-16
+709715,10009,exact,3255.8463282585144,exact,3255.8463282585144,3255.8463282585144,False,-8.88e-16
