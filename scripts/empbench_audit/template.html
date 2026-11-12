@@ -172,7 +172,8 @@ dialog li{margin:4px 0}
         <b>Near</b>: the essential structure with a genuine extra/missing term, or an approximation. <b>Miss</b>: neither. Only Recovered counts in the paper's metric, so agreement is scored on Recovered vs. not.</li>
     <li>Click a frontier row to mark the equation your decision rests on (optional).</li>
     <li>The judge's verdict appears once you label. Your first label is kept as the blind label even if you change your mind afterwards; on a disagreement you can record who was right.</li>
-    <li>The queue goes one problem at a time (20 items each). Within a problem the order is a fixed shuffle that alternates checkpoints in pairs, so the first 2<i>k</i> items of a problem are <i>k</i> random seeds at each checkpoint.</li>
+    <li>The queue goes one problem at a time. Within a problem the order is a fixed shuffle, so stopping partway through a problem leaves a random subset of it.</li>
+    <li id="hOmitted" hidden></li>
     <li>Numbers are rounded for display. An exact value prints short (<code>2</code>, <code>1.5</code>); a rounded one keeps all its digits (<code>1.000</code>, <code>1.500</code>) and is tinted. Toggle <i>Raw</i> for the saved strings, which are authoritative.</li>
     <li>The <i>simplified</i> line is a sympy rewrite (simplify + expanded logs) meant only as a reading aid. Except for Bode it assumes positive inputs, which holds on these datasets.</li>
     <li>Early-checkpoint verdicts are what the solve-over-time figure plots: recovered iff the binary-searched first recovery is at or before the checkpoint. Many of those frontiers were never shown to the judge; the verdict panel says whether it is direct or implied.</li>
@@ -200,10 +201,27 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', 
 /* ---------- state ---------- */
 const DEFAULTS = {names: 'phys', sig: 4, raw: false, simp: true, blind: true, basis: 'first'};
 let S = {reviewer: '', settings: {...DEFAULTS}, decisions: {}, current: ORDER[0], view: 'audit'};
-let storageOK = true;
+let storageOK = true, carriedOver = 0;
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
   if (saved) S = {...S, ...saved, settings: {...DEFAULTS, ...(saved.settings || {})}};
+  else {
+    // First run of this build: keep decisions made in an earlier build for the items that still exist.
+    let best = null;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k.startsWith('empbench-audit:') || k === KEY || k.endsWith(':seen-help')) continue;
+      let old = null;
+      try { old = JSON.parse(localStorage.getItem(k)); } catch (e) {}
+      if (old && old.decisions && (!best || Object.keys(old.decisions).length > Object.keys(best.decisions).length)) best = old;
+    }
+    if (best) {
+      Object.keys(best.decisions).forEach(id => { if (ITEMS[id]) { S.decisions[id] = best.decisions[id]; carriedOver++; } });
+      S.reviewer = best.reviewer || '';
+      S.settings = {...DEFAULTS, ...(best.settings || {})};
+      if (ITEMS[best.current]) S.current = best.current;
+    }
+  }
 } catch (e) { storageOK = false; }
 if (!ITEMS[S.current]) S.current = ORDER[0];
 function save() {
@@ -422,6 +440,13 @@ function snapText(it) {
     ' s. Later restarts are only recorded when they finish, so this is the latest frontier at or before ' + EARLY.replace(/s$/, ' s') + '.';
 }
 
+function omittedText() {
+  const o = DATA.build.omitted;
+  return 'Not in the queue: ' + o.count + ' verdicts at ' + o.checkpoint.replace(/s$/, ' s') + ' that only copy an earlier acceptance. ' +
+    'In each, the frontier still contains, verbatim, an equation the judge had already accepted for that problem, so nothing new was judged. ' +
+    'For ' + o.equation_is_final_pick + ' of them that equation is also the judge\'s pick in the same run\'s 1 h item, where you do review it.';
+}
+
 /* ---------- rendering ---------- */
 function renderHeader() {
   const done = ORDER.filter(reviewed).length;
@@ -621,6 +646,7 @@ function renderSummary() {
   const tps = [EARLY, '1h'];
   h += '<h2>By checkpoint</h2><table class="sum">' + SUM_HEAD + '<tbody>' +
        tps.map(tp => tallyRow(tpText(tp), ORDER.filter(id => ITEMS[id].tp === tp), first)).join('') + tallyRow('<b>All</b>', ORDER, first) + '</tbody></table>';
+  if (DATA.build.omitted) h += '<p class="snap" style="margin-top:8px">' + esc(omittedText()) + '</p>';
   h += '<h2>By problem</h2><table class="sum">' + SUM_HEAD + '<tbody>' + Object.keys(DATA.datasets).map(ds =>
        tallyRow(esc(DATA.datasets[ds].name), ORDER.filter(id => ITEMS[id].dataset === ds), first)).join('') + '</tbody></table>';
   h += '<h2>Disagreements (' + dis.length + ')</h2>';
@@ -831,6 +857,8 @@ document.addEventListener('keydown', e => {
   $('fDs').innerHTML = '<option value="">All problems</option>' + Object.keys(DATA.datasets).map(k =>
     '<option value="' + k + '">' + esc(DATA.datasets[k].name) + '</option>').join('');
   $('reviewer').value = S.reviewer || '';
+  if (b.omitted) { $('hOmitted').hidden = false; $('hOmitted').textContent = omittedText(); }
+  if (carriedOver) { save(); toast('Kept ' + carriedOver + ' decisions from the previous version of this page'); }
   const hash = decodeURIComponent(location.hash.slice(1));
   if (ITEMS[hash]) { S.current = hash; S.view = 'audit'; }
   render();

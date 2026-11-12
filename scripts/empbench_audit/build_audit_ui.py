@@ -150,6 +150,21 @@ def audit_order(items, seed):
     return order
 
 
+def carried_equation(item):
+    """The accepted equation, if this early verdict merely copies an earlier acceptance of it.
+
+    True when the frontier still holds, verbatim, an equation the judge already accepted for this
+    problem: either the binary search carried the first recovery forward, or the engine reused a
+    known exact equation. If that acceptance was right, so is this verdict; nothing new was judged.
+    """
+    llm = item['llm']
+    if item['tp'] == '1h':
+        return None
+    if llm['provenance'] == 'direct':
+        return llm['matching_equation'] if llm.get('source') == 'known_exact_equation' else None
+    return llm['witness_equation'] if llm['positive'] and llm['witness_index'] is not None else None
+
+
 def by_problem(order):
     """Queue order: one problem at a time, keeping the shuffle within each problem.
 
@@ -168,6 +183,8 @@ def main():
     parser.add_argument('--method-name', default='Evolved PySR (709715)')
     parser.add_argument('--early-seconds', type=float, default=30)
     parser.add_argument('--order-seed', type=int, default=0)
+    parser.add_argument('--keep-carried', action='store_true',
+                        help='Also queue early verdicts that only copy an earlier acceptance of an equation still in the frontier')
     parser.add_argument('--out', type=Path, default=ROOT / 'reports/empbench_human_audit/empbench_audit.html')
     args = parser.parse_args()
 
@@ -239,6 +256,17 @@ def main():
         items.append(dict(id=f'{dataset}|{seed}|{early_label}', dataset=dataset, seed=seed, tp=early_label,
                           snap=snap, rows=rows(index), llm=llm))
 
+    # Shuffle before dropping anything, so the remaining items keep their relative order.
+    shuffle = audit_order(items, args.order_seed)
+    omitted = None
+    if not args.keep_carried:
+        final_pick = {i['id'].rsplit('|', 1)[0]: i['llm'].get('matching_equation') for i in items if i['tp'] == '1h'}
+        skip = {i['id']: carried_equation(i) for i in items if carried_equation(i) is not None}
+        omitted = dict(count=len(skip), checkpoint=early_label,
+                       equation_is_final_pick=sum(eq == final_pick[i.rsplit('|', 1)[0]] for i, eq in skip.items()))
+        items = [i for i in items if i['id'] not in skip]
+        shuffle = [i for i in shuffle if i not in skip]
+
     jobs = sorted({(row[1], DATASETS[item['dataset']]['positive']) for item in items for row in item['rows']})
     workers = min(8, len(os.sched_getaffinity(0)))
     with multiprocessing.Pool(workers) as pool:
@@ -248,7 +276,6 @@ def main():
         for row in item['rows']:
             row.append(simplified[row[1], positive_inputs])
 
-    shuffle = audit_order(items, args.order_seed)
     present = {item['dataset'] for item in items}
     datasets = {}
     for key in (k for k in DATASETS if k in present):
@@ -262,7 +289,7 @@ def main():
         build=dict(created=datetime.datetime.now().isoformat(timespec='seconds'),
                    recovery_dir=str(recovery.relative_to(ROOT)), source_run=str(args.source_run.relative_to(ROOT)),
                    method=args.method, method_name=args.method_name, judge_model=engine.MODEL,
-                   early_seconds=early, early_label=early_label, order_seed=args.order_seed,
+                   early_seconds=early, early_label=early_label, order_seed=args.order_seed, omitted=omitted,
                    config_hash=state['config_hash']),
         extra=engine.EXTRA.strip(), datasets=datasets, items=items, order=by_problem(shuffle))
     # The id keys saved decisions: it changes only when the audited content or the shuffle does,
@@ -282,8 +309,11 @@ def main():
     for tp in ('1h', early_label):
         group = [i for i in items if i['tp'] == tp]
         implied = sum(i['llm']['provenance'] == 'implied' for i in group)
-        print(f"{tp}: {sum(i['llm']['positive'] for i in group)}/{len(group)} recovered per the judge; "
+        print(f"{tp}: {sum(i['llm']['positive'] for i in group)}/{len(group)} queued items recovered per the judge; "
               f"{implied} verdicts implied by binary search")
+    if omitted:
+        print(f"omitted {omitted['count']} {early_label} items whose verdict copies an earlier acceptance of an equation still "
+              f"in the frontier; for {omitted['equation_is_final_pick']} of them that equation is also the judge's 1h pick")
     aided = sum(row[3] is not None for i in items for row in i['rows'])
     print(f"{aided}/{sum(len(i['rows']) for i in items)} rows have a simplified form")
     print(f"build {data['build']['id']} -> {args.out} ({args.out.stat().st_size / 1e6:.2f} MB)")
