@@ -114,6 +114,15 @@ button.lab-miss.on{background:var(--neg);border-color:var(--neg);color:var(--pan
 .verdict blockquote{margin:4px 0;padding-left:10px;border-left:3px solid var(--line);color:var(--muted)}
 .agree{color:var(--pos);font-weight:600} .disagree{color:var(--neg);font-weight:600}
 .adj{margin-top:6px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.cheat{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.cheat summary{font-weight:600;color:var(--ink)}
+.cheat .lab{font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin:10px 0 2px}
+.cheat .lab.ok{color:var(--pos)} .cheat .lab.no{color:var(--neg)}
+.cheat .cf{padding:5px 0;border-bottom:1px solid var(--soft)}
+.cheat .cf .eq{overflow-x:auto}
+.cheat .cf math{font-size:1em}
+.cheat .why{color:var(--muted);font-size:12.5px}
+.cheat .note{color:var(--muted);font-size:12.5px;margin-top:8px}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:6px}
 .stat .v{font-size:22px;font-weight:650} .stat .l{color:var(--muted);font-size:12px}
 table.sum{border-collapse:collapse;background:var(--panel);border:1px solid var(--line);width:100%}
@@ -199,7 +208,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 
 /* ---------- state ---------- */
-const DEFAULTS = {names: 'phys', sig: 4, raw: false, simp: true, blind: true, basis: 'first'};
+const DEFAULTS = {names: 'phys', sig: 4, raw: false, simp: true, blind: true, basis: 'first', cheat: true};
 let S = {reviewer: '', settings: {...DEFAULTS}, decisions: {}, current: ORDER[0], view: 'audit'};
 let storageOK = true, carriedOver = 0;
 try {
@@ -591,6 +600,15 @@ function renderDecide() {
   else h += '<div class="verdict hid">The judge\'s verdict is hidden until you label. ' +
             '<button data-act="peek" title="The item will be excluded from the blind agreement rate">Reveal without labeling</button></div>';
   if (d.label || d.peeked) h += '<div style="margin-top:6px"><a class="go muted" data-act="clear">Clear my decision for this item</a></div>';
+  const cheats = DATA.datasets[it.dataset].cheats;
+  if (cheats) {
+    const c = ctxFor(it.dataset);
+    const list = rows => rows.map(([e, why]) => '<div class="cf"><div class="eq">' + math(e, c) + '</div><div class="why">' + esc(why) + '</div></div>').join('');
+    h += '<details class="cheat" data-keep="cheat"' + (S.settings.cheat ? ' open' : '') + '><summary>Cheat sheet: forms of the target</summary>' +
+         '<div class="lab ok">Same as the target</div>' + list(cheats.same) +
+         '<div class="lab no">Looks similar, is not</div>' + list(cheats.differ) +
+         '<div class="note">' + esc(cheats.note) + '</div></details>';
+  }
   $('decide').innerHTML = h;
 }
 
@@ -825,6 +843,10 @@ document.addEventListener('change', e => {
   }
   else if (['fTp', 'fDs', 'fStatus'].includes(e.target.id)) render();
 });
+document.addEventListener('toggle', e => {  // remember whether the cheat sheet is open
+  const k = e.target.dataset && e.target.dataset.keep;
+  if (k && S.settings[k] !== e.target.open) { S.settings[k] = e.target.open; save(); }
+}, true);
 document.addEventListener('input', e => {
   if (e.target.id === 'notes') edit(d => { d.notes = e.target.value; });
   else if (e.target.id === 'reviewer') { S.reviewer = e.target.value; save(); }

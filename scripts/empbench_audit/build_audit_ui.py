@@ -71,6 +71,44 @@ DATASETS = {
         vars=[('n', 'planet index (Mercury is -1000)')], positive=False),
 }
 
+# Cheat sheets: rewrites of the target a frontier row may use (`same`), and look-alikes that are
+# different functions (`differ`). check_cheats() verifies both lists numerically at build time.
+DATASETS['first_principles_planck']['cheats'] = dict(
+    same=[
+        ('c + 3*log(x0) - log(exp(c1*x0/x1) - 1)', 'the log of the quotient, split up'),
+        ('c + 3*log(x0) - c1*x0/x1 - log(1 - exp(-c1*x0/x1))',
+         'exp factored out of the denominator: the Wien terms plus a correction term that must be there'),
+        ('log(c0*x0^3*exp(-c1*x0/x1)/(1 - exp(-c1*x0/x1)))', 'the same thing inside one log'),
+        ('c - log((exp(c1*x0/x1) - 1)/x0^3)', 'quotient inverted inside the log'),
+    ],
+    differ=[
+        ('c + 3*log(x0) - c1*x0/x1', 'Wien approximation: the term −log(1 − exp(−c1·ν/T)) is missing. Near, not recovered.'),
+        ('c + 2*log(x0) + log(x1)', 'Rayleigh-Jeans limit. Near, not recovered.'),
+        ('c + 3*log(x0) - log(k*exp(c1*x0/x1) - 1)',
+         'the exp and the 1 must have equal weight; k other than 1 (or a constant added inside the exp) is a different function'),
+        ('c + q*log(x0) - log(exp(c1*x0/x1) - 1)', 'the power of ν must be exactly 3'),
+    ],
+    note='Spellings that change nothing: cube(x), x*square(x) or x*x*x for the cube; 3*log(x) as log(x) + log(square(x)); '
+         'c1·ν/T as ν/(T·k) or (ν/T)/k; −log(u) as log(1/u); any constant factor inside a log is the same as an added constant outside.')
+DATASETS['first_principles_rydberg']['cheats'] = dict(
+    same=[
+        ('c - log(1/x0^2 - 1/x1^2)', 'the constant pulled out of the log'),
+        ('c + 2*log(x0) - log(1 - (x0/x1)^2)', '1/n₁² factored out'),
+        ('c + 2*log(x1) - log((x1/x0)^2 - 1)', '1/n₂² factored out'),
+        ('c + 2*log(x0) + 2*log(x1) - log(x1^2 - x0^2)', 'common denominator'),
+        ('c + 2*log(x0) + 2*log(x1) - log(x1 - x0) - log(x1 + x0)', 'difference of squares factored'),
+        ('log(c*x0^2*x1^2/(x1^2 - x0^2))', 'common denominator, inside one log'),
+        ('-log((k/x0)^2 - (k/x1)^2)', 'the constant inside both squares, with the same k in both'),
+    ],
+    differ=[
+        ('c - log(1/x0^2 - q/x1^2)', 'the two terms must have equal weight: q = 1.0004 is not a recovery'),
+        ('c + 2*log(x0) - log(q - (x0/x1)^2)', 'the same failure in factored form: the constant must be exactly 1'),
+        ('c + log(1/x0^2 - 1/x1^2)', 'wrong sign on the log: this is log(1/λ)'),
+        ('c - log(1/x0^p - 1/x1^p)', 'both powers must be exactly 2'),
+    ],
+    note='Spellings that change nothing: square(1/n) or 1/square(n) or 1/(n*n) for 1/n²; −log(u) as log(1/u); '
+         'any constant factor inside a log is the same as an added constant outside. n₂ > n₁, so 1/n₁² − 1/n₂² is positive.')
+
 SIMPLIFY_TIMEOUT = 10
 LOCALS = {'square': lambda x: x**2, 'cube': lambda x: x**3, 'neg': lambda x: -x, 'inv': lambda x: 1/x}
 
@@ -109,6 +147,30 @@ def simplify_one(job):
         return equation, positive, None
     finally:
         signal.alarm(0)
+
+
+def check_cheats(key):
+    """Each `same` form must differ from the target by a constant; each `differ` form must not."""
+    import math
+    meta, rng = DATASETS[key], random.Random(0)
+    constants = dict(c=0.7, c0=1.3, c1=0.9, k=1.6, q=1.07, p=2.3)
+    points = []
+    for _ in range(40):  # x1 > x0 > 0 keeps every log argument above positive
+        x0 = rng.uniform(1, 3)
+        points.append(dict(x0=x0, x1=x0 + rng.uniform(0.5, 3)))
+
+    def spread(form):
+        scope = dict(log=math.log, exp=math.exp, sqrt=math.sqrt, __builtins__={})
+        gaps = [eval(form.replace('^', '**'), scope, {**constants, **p}) -
+                eval(meta['target'].replace('^', '**'), scope, {**constants, **p}) for p in points]
+        return max(gaps) - min(gaps)
+
+    for form, _ in meta['cheats']['same']:
+        if spread(form) > 1e-9:
+            raise SystemExit(f'{key}: not equivalent to the target: {form}')
+    for form, _ in meta['cheats']['differ']:
+        if spread(form) < 1e-3:
+            raise SystemExit(f'{key}: listed as different but equals the target up to a constant: {form}')
 
 
 def plot_time(snapshot):
@@ -285,6 +347,9 @@ def main():
                              positive=meta['positive'], kind=engine.TARGETS[key]['kind'],
                              accepted=engine.TARGETS[key]['target'],
                              prompt=developer_prompt(key) + engine.EXTRA)
+        if 'cheats' in meta:
+            check_cheats(key)
+            datasets[key]['cheats'] = meta['cheats']
     data = dict(
         build=dict(created=datetime.datetime.now().isoformat(timespec='seconds'),
                    recovery_dir=str(recovery.relative_to(ROOT)), source_run=str(args.source_run.relative_to(ROOT)),
