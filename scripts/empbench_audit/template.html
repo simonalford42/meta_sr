@@ -53,7 +53,7 @@ aside{width:270px;flex:none;border-right:1px solid var(--line);background:var(--
 .qi .pos{width:28px;color:var(--muted);font:12px var(--mono);text-align:right}
 .qi .nm{flex:1;overflow:hidden;text-overflow:ellipsis}
 .qi .st{width:16px;text-align:center;font-weight:700}
-.st.ok{color:var(--pos)} .st.bad{color:var(--neg)} .st.todo{color:var(--line)}
+.st.ok{color:var(--pos)} .st.bad{color:var(--neg)} .st.todo{color:var(--line)} .st.fine{color:var(--near)}
 .chip{display:inline-block;border-radius:10px;padding:0 7px;font-size:12px;background:var(--soft);color:var(--muted);vertical-align:middle}
 .chip.tp-early{background:var(--near-bg);color:var(--near)}
 .chip.tp-1h{background:var(--pick);color:var(--accent)}
@@ -232,6 +232,8 @@ const dec = id => S.decisions[id];
 const reviewed = id => !!(dec(id) && dec(id).label);
 const revealed = id => !S.settings.blind || !!(dec(id) && (dec(id).label || dec(id).peeked));
 const humanPos = (d, first) => (first ? d.first_label : d.label) === 'exact';
+/* Both say "not recovered" but split on Near vs. Miss. Not scored; only shown. Needs a judge label for this very frontier. */
+const fineDiff = (d, L) => !!(d && d.label && d.label !== 'exact' && !L.positive && L.provenance === 'direct' && L.classification && L.classification !== d.label);
 
 /* ---------- expression parsing and MathML ---------- */
 function tokenize(s) {
@@ -468,7 +470,8 @@ function renderQueue() {
     }
     let st = '<span class="st todo">○</span>';
     if (reviewed(id)) {
-      st = humanPos(d) === it.llm.positive ? '<span class="st ok" title="Agrees with the judge">✓</span>'
+      st = fineDiff(d, it.llm) ? '<span class="st fine" title="Agrees on not recovered; Near vs. Miss differs">≈</span>'
+         : humanPos(d) === it.llm.positive ? '<span class="st ok" title="Agrees with the judge">✓</span>'
                                            : '<span class="st bad" title="Disagrees with the judge">✗</span>';
     }
     return head + '<div class="qi' + (id === S.current ? ' cur' : '') + '" data-act="go" data-id="' + esc(id) + '">' +
@@ -536,8 +539,10 @@ function verdictHTML(it, d) {
     h += ' <span class="muted">label “' + esc(L.classification) + '”' +
          (L.original_classification ? ', raw label “' + esc(L.original_classification) + '” (counted as recovered under the Bode rule)' : '') + '</span>';
   if (d.label) {
-    h += humanPos(d) === L.positive ? '<div class="agree">✓ agrees with your label</div>'
-                                    : '<div class="disagree">✗ disagrees with your label</div>';
+    h += humanPos(d) === L.positive ? '<div class="agree">✓ agrees: ' + (L.positive ? 'recovered' : 'not recovered') + '</div>' +
+        (fineDiff(d, L) ? '<div class="muted">You said ' + LABELS[d.label] + ', the judge said ' + esc(L.classification) +
+                          '. Only Recovered vs. not is scored, so this counts as agreement.</div>' : '')
+                                    : '<div class="disagree">✗ disagrees: you said ' + LABELS[d.label] + '</div>';
     if (d.first_label !== d.label) h += ' <span class="muted">(your first label was ' + LABELS[d.first_label] + ')</span>';
   }
   h += '</div><div class="line">';
@@ -643,6 +648,9 @@ function renderSummary() {
     [all.pn + ' / ' + all.np, 'human-only / judge-only recoveries'],
     [done.filter(id => dec(id).unsure).length, 'marked unsure'],
   ].map(([v, l]) => '<div class="card stat"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join('') + '</div>';
+  const fine = done.filter(id => fineDiff(dec(id), ITEMS[id].llm));
+  if (fine.length) h += '<p class="snap">Counted as agreement but split on Near vs. Miss: ' + fine.map(id =>
+    '<a class="go" data-act="go" data-id="' + esc(id) + '">#' + POS[id] + ' ' + esc(shortName(ITEMS[id].dataset)) + ' ' + ITEMS[id].seed + '</a>').join(', ') + '</p>';
   const tps = [EARLY, '1h'];
   h += '<h2>By checkpoint</h2><table class="sum">' + SUM_HEAD + '<tbody>' +
        tps.map(tp => tallyRow(tpText(tp), ORDER.filter(id => ITEMS[id].tp === tp), first)).join('') + tallyRow('<b>All</b>', ORDER, first) + '</tbody></table>';
@@ -726,6 +734,7 @@ function exportRows() {
       judge_matching_equation: L.matching_equation || L.witness_equation || null,
       agree_first_label: d.label ? humanPos(d, true) === L.positive : null,
       agree_current_label: d.label ? humanPos(d) === L.positive : null,
+      near_miss_differs: fineDiff(d, L),
     };
   });
 }
