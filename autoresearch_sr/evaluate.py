@@ -80,7 +80,9 @@ def main() -> None:
     if RUN_DIR is not None:
         run_cfg = json.loads((RUN_DIR / "run.json").read_text())
         log_path = RUN_DIR / "experiment_log.jsonl"
-        lock_handle = (RUN_DIR / ".eval.lock").open("w")
+        # Lock the run directory itself (an agent once deleted a lock *file* to
+        # run evaluations concurrently; a directory can't be removed with rm -f).
+        lock_handle = os.open(RUN_DIR, os.O_RDONLY)
         try:
             fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:

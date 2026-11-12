@@ -25,6 +25,8 @@ PATTERNS = [
     (re.compile(r"git\b[^|;&]*\s--all\b|git\b[^|;&]*\s--branches\b|git\s+branch\s+(-a|-r|--all)"), "cross-branch git query"),
     (re.compile(r"meta_sr/SymbolicRegression\.jl|meta_sr_agent_loop/SymbolicRegression\.jl"), "shared SR repo (holds other runs' branches)"),
     (re.compile(r"\.\./"), "parent-directory access (check target)"),
+    (re.compile(r"\.claude/projects|\.claude/CLAUDE|/memory/"), "Claude Code memory (shared across runs)"),
+    (re.compile(r"\b(find|bfs|fd|locate)\s+(/|~|\$HOME|/home/sca63)(\s|/?\s|$)|grep\s+-\w*r\w*\s+[^|]*\s(/|~|/home/sca63)(\s|$)"), "filesystem-wide search"),
 ]
 
 flagged = 0
@@ -32,7 +34,10 @@ n_calls = 0
 for line in (run_dir / "agent_stream.jsonl").read_text().splitlines():
     if not line.strip():
         continue
-    event = json.loads(line)
+    try:
+        event = json.loads(line)
+    except json.JSONDecodeError:  # partial line (live run or disk-full write)
+        continue
     if event.get("type") != "assistant":
         continue
     for block in (event.get("message") or {}).get("content") or []:

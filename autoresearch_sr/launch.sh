@@ -39,9 +39,19 @@ MAX_RESTARTS=50
 
 export AUTORESEARCH_RUN_DIR="$RUN_DIR"
 export WANDB_MODE=disabled
-# Evaluations run in the foreground and can exceed Claude Code's default 10 min cap.
-export BASH_DEFAULT_TIMEOUT_MS=10800000
-export BASH_MAX_TIMEOUT_MS=10800000
+# Evaluations run in the foreground and can sit in the SLURM queue for hours. A
+# 3 h cap pushed one into the background and the agent then improvised nohup +
+# polling loops (11/10), so allow 48 h and disable background tasks.
+# Default 30 min for ordinary commands (a 48 h default let a filesystem-wide
+# find hang for 17 h, 11/11); program.md has evaluate.py request 48 h explicitly.
+export BASH_DEFAULT_TIMEOUT_MS=1800000
+export BASH_MAX_TIMEOUT_MS=172800000
+export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
+# Isolation: auto-memory is keyed to the git repo root, so all agents in this
+# repo shared one memory dir (an Opus agent's notes were loaded by the Sonnet
+# agent, 11/11). Also keep the repo's/user's CLAUDE.md out of the agent context.
+export CLAUDE_CODE_DISABLE_AUTO_MEMORY=1
+export CLAUDE_CODE_DISABLE_CLAUDE_MDS=1
 cd "$RUN_DIR"
 
 cost_now() {
@@ -67,6 +77,10 @@ EOF
 PROMPT="Read $AR_DIR/program.md, then commence autonomous PySR autoresearch for run '$TAG'. Setup is already done. You have permission to submit the SLURM evaluation jobs required by program.md for this run. Do not stop until the experiment budget is exhausted."
 RESUME_PROMPT="Continue the autonomous PySR autoresearch run from where you left off (re-read $AR_DIR/program.md and results.tsv if needed). Do not stop until the experiment budget is exhausted."
 
+if (( $(n_done) >= MAX_EXP )) || ge "$(cost_now)" "$MAX_COST"; then
+    echo "[launch] $(date -Iseconds) run $TAG already finished its budget; nothing to do" | tee -a launch.log
+    exit 0
+fi
 restarts=0
 CONTINUE_FLAG=()
 if [[ -s "$RUN_DIR/agent_stream.jsonl" ]]; then

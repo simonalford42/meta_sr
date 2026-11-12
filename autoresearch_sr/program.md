@@ -46,7 +46,7 @@ the harness evaluates a detached worktree at that commit.
 - Do not edit any files outside the allowed list above.
 - Do not modify files in `src/` that are not listed (e.g., `SymbolicRegression.jl`, `Options.jl`).
 - Do not inspect, evaluate, or optimize against any validation, test, or remaining official SRBench tasks.
-- Work only from your own experiments. Do not read anything from other autoresearch runs, past or concurrent: other run directories (siblings of your run directory under `autoresearch_sr/live/`), archived runs (`autoresearch_sr/runs/`), other `autoresearch_sr/*` branches or commits in any SymbolicRegression.jl repository, or their eval outputs, logs, and sandboxes. Outside your run directory, the only files you may read are `evaluate.py`, these instructions, and SymbolicRegression.jl source. Your commands are audited for this.
+- Work only from your own experiments. Do not read anything from other autoresearch runs, past or concurrent: other run directories (siblings of your run directory under `autoresearch_sr/live/`), archived runs (`autoresearch_sr/runs/`), other `autoresearch_sr/*` branches or commits in any SymbolicRegression.jl repository, or their eval outputs, logs, and sandboxes. Outside your run directory, the only files you may read are `evaluate.py`, these instructions, and SymbolicRegression.jl source. Everything you need is in your run directory; never search the whole filesystem or your home directory (e.g. `find /`, `grep -r ~`). Your commands are audited for this.
 
 **The goal is simple: get the highest score.** The metric is `gt` (ground-truth match rate — fraction of datasets where the discovered equation matches the true formula). Higher is better.
 
@@ -119,7 +119,7 @@ LOOP FOREVER:
 1. Look at the git state: the current branch/commit we're on
 2. Edit the SymbolicRegression.jl source files with an experimental idea.
 3. git commit (in `SymbolicRegression.jl/`)
-4. Run the experiment from the run directory: `/home/sca63/.conda/envs/meta_sr/bin/python /home/sca63/meta_sr_agent_loop/autoresearch_sr/evaluate.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context). Run it in the foreground (not in the background) with a Bash tool timeout of 10800000 ms; an evaluation can take well over 10 minutes.
+4. Run the experiment from the run directory: `/home/sca63/.conda/envs/meta_sr/bin/python /home/sca63/meta_sr_agent_loop/autoresearch_sr/evaluate.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context). Run it in the foreground with a Bash tool timeout of 172800000 ms (48 hours). An evaluation usually takes 10-30 minutes, but it can wait in the SLURM queue for many hours when the cluster is busy; that is expected, just keep waiting. Never run evaluations in the background, with `nohup`/`setsid`/`&`, or with a polling loop, and never delete or work around the evaluation lock.
 5. Read out the result: `grep "^score:\|^experiment:\|^datasets_fail:" run.log`
 6. If the score line is missing, the run crashed. Run `tail -n 50 run.log` or similar to read the error. If it is an infrastructure failure (SLURM, node failure) rather than your code, re-run the same commit. If it is something dumb and easy to fix in your code, fix it, commit, and re-run. If the log shows `datasets_fail > 0`, treat it as a partial crash — debug or discard (see "Dataset health check" above).
 7. Record the results in the TSV (NOTE: do not commit the results.tsv file, leave it untracked by git)

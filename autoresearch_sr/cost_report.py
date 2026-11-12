@@ -61,7 +61,8 @@ def message_cost(model: str, usage: dict) -> float:
 def load_messages(stream_path: Path):
     """Return [(time, model, usage)] deduplicated by message id, plus result totals."""
     msgs: dict[str, dict] = {}
-    result_cost, first_time = 0.0, None
+    session_cost: dict[str, float] = {}  # result.total_cost_usd is cumulative per session
+    first_time = None
     for line in stream_path.read_text().splitlines():
         if not line.strip():
             continue
@@ -73,7 +74,8 @@ def load_messages(stream_path: Path):
         if first_time is None and t is not None:
             first_time = t
         if event.get("type") == "result":
-            result_cost += event.get("total_cost_usd") or 0.0
+            sid = event.get("session_id", "")
+            session_cost[sid] = max(session_cost.get(sid, 0.0), event.get("total_cost_usd") or 0.0)
         if event.get("type") != "assistant":
             continue
         message = event.get("message") or {}
@@ -89,7 +91,27 @@ def load_messages(stream_path: Path):
                 cc = entry["usage"].setdefault(k, {})
                 for kk, vv in v.items():
                     cc[kk] = max(cc.get(kk, 0), vv or 0)
-    return list(msgs.values()), result_cost, first_time
+    return list(msgs.values()), sum(session_cost.values()), first_time
+
+
+def downtime_gaps(stream_path: Path) -> list[tuple[float, float]]:
+    """Outages to exclude from wall clock: from the last logged event before a
+    relaunch (allocation ended, agent killed, ...) to that relaunch."""
+    gaps, last = [], None
+    if not stream_path.exists():
+        return gaps
+    for line in stream_path.read_text().splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        t = event.get("_recv_time")
+        if t is None:
+            continue
+        if event.get("type") == "_launch" and last is not None and t - last > 600:
+            gaps.append((last, t))
+        last = t
+    return gaps
 
 
 def run_cost(run_dir: Path) -> float:
@@ -109,6 +131,7 @@ def main() -> None:
     run_dir = Path(args.run_dir)
     run_cfg = json.loads((run_dir / "run.json").read_text())
     messages, result_cost, t0 = load_messages(run_dir / "agent_stream.jsonl")
+    gaps = downtime_gaps(run_dir / "agent_stream.jsonl")
     records = [json.loads(l) for l in (run_dir / "experiment_log.jsonl").read_text().splitlines()
                if l.strip()] if (run_dir / "experiment_log.jsonl").exists() else []
 
@@ -149,6 +172,7 @@ def main() -> None:
             "n_evals": row["n_evals"],
             "eval_minutes": f"{row['eval_seconds'] / 60:.1f}",
             "cum_wall_hours": f"{(row.get('end', row['launch']) - t0) / 3600:.3f}",
+            "active_wall_hours": f"{(row.get('end', row['launch']) - t0 - sum(b - a for a, b in gaps if b <= row.get('end', row['launch']))) / 3600:.3f}",
             "cost_usd": f"{cost:.4f}", "cum_cost_usd": f"{cum_cost:.4f}",
         })
 
@@ -166,11 +190,12 @@ def main() -> None:
     if run_cfg.get("max_cost_usd") is not None:
         print(f"cost budget: ${total:.2f} of ${float(run_cfg['max_cost_usd']):.2f}")
     print(f"estimated API cost: ${total:.2f} (tail after last eval launch: ${costs[-1]:.2f})")
-    print(f"Claude Code reported cost (sum of result events): ${result_cost:.2f}")
+    print(f"Claude Code reported cost (latest per session; misses turns after the last result): ${result_cost:.2f}")
     if n_candidates:
         print(f"mean cost per experiment: ${total / n_candidates:.3f}")
     if out_rows:
-        print(f"wall clock: {out_rows[-1]['cum_wall_hours']} h; best score: {out_rows[-1]['best_so_far']}")
+        print(f"wall clock: {out_rows[-1]['cum_wall_hours']} h total, {out_rows[-1]['active_wall_hours']} h "
+              f"excluding {len(gaps)} outage(s) before relaunches; best score: {out_rows[-1]['best_so_far']}")
         print(f"per-experiment table: {csv_path}")
 
 
