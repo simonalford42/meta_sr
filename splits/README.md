@@ -226,6 +226,26 @@ The corresponding `*_smoke_*.txt` manifests contain two tasks per split and
 exercise noisy synthesis, one-hot PMLB preprocessing, validation, and both
 final-test paths without launching the full benchmark.
 
+## LSR-Synth evolution splits
+
+`lsr_synth_train.txt` / `lsr_synth_val.txt` (20 / 20, `--domain lsr_synth`;
+names are `lsr:<domain>/<problem>`) come from a 90 s, 3-seed run of the
+baseline and the evolved bundle `runs/709715` with the full LSR-Synth operator
+set (`runs/lsrsynth_fullops_11-13_3seed_90s`). "Solved" is the benchmark
+metric, acc95_0.01 on the ID test (`lsr_synth.SOLVED_KEY`).
+
+* train: "barely unsolvable" for 709715. Tiers are filled in order: solved 1/3,
+  then 2/3, then 0/3 with the baseline at least 1/3, then closest by NMSE.
+  Tier 1 had exactly 20 problems (chem 6, bio 2, phys 4, matsci 8), so train is
+  all of tier 1. It is not balanced across domains.
+* val: 5 random problems per domain from those not in train (seed 0).
+
+`lsr_synth_smoke_*.txt` holds 2 / 1 problems for plumbing tests.
+
+```
+python scripts/lsrsynth_make_splits.py runs/lsrsynth_fullops_11-13_3seed_90s
+```
+
 ## Regenerating
 
 All writes go to `splits/` and each split family is opt-in, so running the

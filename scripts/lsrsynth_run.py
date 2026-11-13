@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -180,8 +181,8 @@ def cmd_make_jobs(args):
                 if args.max_evals:
                     job["max_evals"] = args.max_evals
                 jobs.append(job)
-    # method-major order, so --group-size groups never mix methods (custom Julia
-    # code is process-global)
+    # method-major order, so few --group-size groups mix methods (the worker
+    # splits those into one subprocess per method)
     order = {m: i for i, m in enumerate(args.methods)}
     jobs.sort(key=lambda j: order[j["method"]])
     (out_dir / "jobs.json").write_text(json.dumps(jobs, indent=1))
@@ -197,8 +198,16 @@ def cmd_worker(args):
             sys.exit("--group-size takes a single --index (the array task id)")
         g = indices[0]
         indices = list(range(g * args.group_size, min((g + 1) * args.group_size, len(jobs))))
-    if len({jobs[i]["method"] for i in indices if i < len(jobs)}) > 1:
-        sys.exit("one worker process must run a single method (custom Julia code is process-global)")
+    methods = {jobs[i]["method"] for i in indices if i < len(jobs)}
+    if len(methods) > 1:
+        # custom Julia code is process-global: a group straddling a method
+        # boundary runs each method's jobs in its own subprocess
+        rc = 0
+        for m in sorted(methods):
+            idx = [str(i) for i in indices if i < len(jobs) and jobs[i]["method"] == m]
+            rc |= subprocess.call([sys.executable, "-u", __file__, "worker",
+                                   "--jobs", args.jobs, "--index", *idx])
+        sys.exit(rc)
     for index in indices:
         run_one(jobs, index)
 
