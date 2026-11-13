@@ -1173,7 +1173,8 @@ def _hof_csv_path(dataset_name: str, hof_results_dir: str = "results_pysr") -> s
     Convention: {hof_results_dir}/{dataset_name}_hof.csv
     e.g. results_pysr/feynman_I_15_10_hof.csv
     """
-    return os.path.join(hof_results_dir, f"{dataset_name}_hof.csv")
+    # "/" in names like lsr:matsci/MATSCI9 must not create a subdirectory
+    return os.path.join(hof_results_dir, f"{dataset_name.replace('/', '__')}_hof.csv")
 
 
 @dataclass
@@ -2828,7 +2829,7 @@ class PySRSlurmEvaluator(BaseSlurmEvaluator):
                     # concurrent bundles/runs on the same dataset don't share
                     # (and pollute) a single {dataset}_hof.csv file.
                     per_spec_dir = traces_batch_dir / f"config{config_id:03d}_run{run_idx:02d}"
-                    per_spec_hof_path = str(per_spec_dir / f"{dataset_name}_hof.csv")
+                    per_spec_hof_path = str(per_spec_dir / f"{dataset_name.replace('/', '__')}_hof.csv")
                     # Resolve HOF CSV paths. Prefer the explicit map, indexed by
                     # the GLOBAL run_idx so different reeval rounds (nonzero
                     # run_index_start) map to distinct HOF files. When the map is

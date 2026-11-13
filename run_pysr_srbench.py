@@ -200,7 +200,7 @@ def run_pysr_with_hof_checkpoints(
     or the cumulative time budget in seconds (time mode).
     """
     os.makedirs(results_dir, exist_ok=True)
-    hof_path = hof_path or os.path.join(results_dir, f"{dataset_name}_hof.csv")
+    hof_path = hof_path or os.path.join(results_dir, f"{dataset_name.replace('/', '__')}_hof.csv")
 
     if frontier_snapshot_seconds is not None:
         if milestones:
@@ -216,7 +216,7 @@ def run_pysr_with_hof_checkpoints(
     if milestones:
         # Noise levels/retries for the same dataset can run concurrently and
         # share results_dir. Each invocation must own its entire scratch tree.
-        pysr_output_dir = tempfile.mkdtemp(prefix=f"pysr_tmp_{dataset_name}_", dir=results_dir)
+        pysr_output_dir = tempfile.mkdtemp(prefix=f"pysr_tmp_{dataset_name.replace('/', '__')}_", dir=results_dir)
         model.output_directory = pysr_output_dir
         model.warm_start = True
         if os.path.exists(hof_path):
@@ -510,7 +510,7 @@ def run_pysr_on_dataset(
     # model.fit(X_train, y_train, variable_names=feature_names)
 
     # Fit the model (with optional HOF milestone checkpointing)
-    hof_csv_path = os.path.join(results_dir, f"{dataset_name}_hof.csv")
+    hof_csv_path = os.path.join(results_dir, f"{dataset_name.replace('/', '__')}_hof.csv")
     model = run_pysr_with_hof_checkpoints(
         X_train, y_train,
         feature_names=feature_names,
