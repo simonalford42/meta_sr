@@ -39,9 +39,9 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 import numpy as np
 
-DATA_DIR = Path(os.environ.get("LSRSYNTH_DATA_DIR", REPO / "data" / "llm-srbench" / "lsr_synth"))
-DOMAINS = ("chem_react", "bio_pop_growth", "phys_osc", "matsci")
-TAUS = (0.1, 0.01, 0.001)
+from lsr_synth import (DATA_DIR, DOMAINS, SPLITS, TAUS, affine_fit,  # noqa: E402,F401
+                       load_manifest, load_problem, metrics, pysr_opset)
+
 # SR-Scientist (arXiv:2510.11661) App. A PySR baseline config; still capped by --timeout-seconds.
 SRSCI_KWARGS = {
     "niterations": 125, "ncycles_per_iteration": 550, "populations": 15, "population_size": 33,
@@ -53,71 +53,6 @@ SRSCI_KWARGS = {
                            "exp": {"exp": 0, "log": 0}, "log": {"exp": 0, "log": 0},
                            "sqrt": {"sqrt": 0}},
 }
-SPLITS = ("train", "id_test", "ood_test")
-
-
-def load_manifest():
-    path = DATA_DIR / "manifest.json"
-    if not path.exists():
-        sys.exit(f"{path} missing: run scripts/lsrsynth_prepare_data.py first")
-    return json.loads(path.read_text())
-
-
-def load_problem(domain, name):
-    d = np.load(DATA_DIR / domain / f"{name}.npz")
-    # column 0 is the target, the rest are inputs (official convention)
-    return {k: (d[k][:, 1:], d[k][:, 0]) for k in SPLITS if k in d}
-
-
-def metrics(yp, y):
-    """Official LLM-SRBench NMSE (NaN preds dropped) + Acc_tau + R2 + validity."""
-    yp = np.asarray(yp, float).reshape(-1)
-    if yp.shape != y.shape:
-        return {"nmse": float("inf"), "r2": float("-inf"), "n_valid": 0,
-                **{f"acc{v}_{t}": False for t in TAUS for v in ("", "95")}}
-    ok = ~np.isnan(yp)
-    out = {"n_valid": int(ok.sum()), "frac_valid": float(ok.mean())}
-    if ok.sum() == 0:
-        out.update(nmse=float("inf"), r2=float("-inf"),
-                   **{f"acc{v}_{t}": False for t in TAUS for v in ("", "95")})
-        return out
-    err = yp[ok] - y[ok]
-    with np.errstate(all="ignore"):
-        mse = float(np.mean(err ** 2))
-        out["nmse"] = mse / float(np.var(y[ok]))
-        out["r2"] = 1.0 - mse / float(np.var(y[ok]))
-        # Acc_tau uses all points: any NaN/inf prediction -> not accurate.
-        rel = np.abs(yp - y) / np.abs(y)
-        maxrel = float(np.max(rel)) if np.all(np.isfinite(yp)) else float("inf")
-    out["max_rel_err"] = maxrel if np.isfinite(maxrel) else float("inf")
-    for t in TAUS:
-        out[f"acc_{t}"] = bool(maxrel <= t)
-    # SR-Scientist (arXiv:2510.11661, inference/infer/get_results.py): "discard the
-    # 5% worst" = more than 95% of points have rel. err < tau; y~0 points count
-    # only if yhat~0 too. Non-finite predictions count as misses.
-    with np.errstate(all="ignore"):
-        yz = np.isclose(y, 0)
-        good_rel = np.abs(yp - y) / np.where(yz, 1.0, np.abs(y))
-        fin = np.isfinite(yp)
-        for t in TAUS:
-            hit = np.where(yz, np.isclose(yp, 0, atol=1e-9), good_rel < t) & fin
-            out[f"acc95_{t}"] = bool(hit.mean() > 0.95)
-    for k in ("nmse", "r2"):
-        if not np.isfinite(out[k]):
-            out[k] = float("inf") if k == "nmse" else float("-inf")
-    return out
-
-
-def affine_fit(f, y):
-    fm, ym = float(np.mean(f)), float(np.mean(y))
-    df = f - fm
-    sxx = float(np.dot(df, df))
-    b = float(np.dot(df, y - ym)) / sxx if sxx > 0 else 0.0
-    if not np.isfinite(b):
-        b = 0.0
-    return ym - b * fm, b
-
-
 def cmd_run(args):
     from empbench_run import build_pysr_kwargs_and_code, load_dynamic
     from parallel_eval_pysr import _import_pysr_regressor, _get_pysr_num_evaluations
@@ -148,6 +83,10 @@ def cmd_run(args):
         if pysr_kwargs.get("maxdepth") is None:
             pysr_kwargs.pop("maxdepth")
         method_meta["config"] = "SR-Scientist App. A"
+    if args.opset == "full":
+        # every LSR-Synth ground-truth term expressible (lsr_synth.pysr_opset)
+        pysr_kwargs.update(pysr_opset())
+    method_meta["opset"] = args.opset
     # Early stop at ~exact fit is fine for accuracy metrics and saves compute.
 
     seed = args.seed_base + args.run_index
@@ -234,13 +173,17 @@ def cmd_make_jobs(args):
                 job = {"method": method, "domain": m["domain"], "name": m["name"],
                        "run_index": r, "seed_base": args.seed_base,
                        "timeout_seconds": args.timeout_seconds,
-                       "max_train_samples": args.max_train_samples,
+                       "max_train_samples": args.max_train_samples, "opset": args.opset,
                        "out": str(out_dir / "results" / f"{m['domain']}__{m['name']}__{method}__r{r}.json")}
                 if method == "evolve":
                     job["evolve_results"] = args.evolve_results
                 if args.max_evals:
                     job["max_evals"] = args.max_evals
                 jobs.append(job)
+    # method-major order, so --group-size groups never mix methods (custom Julia
+    # code is process-global)
+    order = {m: i for i, m in enumerate(args.methods)}
+    jobs.sort(key=lambda j: order[j["method"]])
     (out_dir / "jobs.json").write_text(json.dumps(jobs, indent=1))
     (out_dir / "config.json").write_text(json.dumps(vars(args), indent=1, default=str))
     print(f"wrote {len(jobs)} jobs -> {out_dir/'jobs.json'}")
@@ -248,7 +191,19 @@ def cmd_make_jobs(args):
 
 def cmd_worker(args):
     jobs = json.loads(Path(args.jobs).read_text())
-    index = args.index if args.index is not None else int(os.environ["SLURM_ARRAY_TASK_ID"])
+    indices = args.index if args.index else [int(os.environ["SLURM_ARRAY_TASK_ID"])]
+    if args.group_size > 1:  # array task i runs jobs [i*G, (i+1)*G)
+        if len(indices) != 1:
+            sys.exit("--group-size takes a single --index (the array task id)")
+        g = indices[0]
+        indices = list(range(g * args.group_size, min((g + 1) * args.group_size, len(jobs))))
+    if len({jobs[i]["method"] for i in indices if i < len(jobs)}) > 1:
+        sys.exit("one worker process must run a single method (custom Julia code is process-global)")
+    for index in indices:
+        run_one(jobs, index)
+
+
+def run_one(jobs, index):
     if index >= len(jobs):
         print(f"index {index} >= n_jobs {len(jobs)}; nothing to do")
         return
@@ -286,6 +241,8 @@ def main(argv=None):
     r.add_argument("--unary-ops", default=None)
     r.add_argument("--maxsize", type=int, default=None)
     r.add_argument("--extra-kwargs", default=None)
+    r.add_argument("--opset", choices=["default", "full"], default="default",
+                   help="'full' = lsr_synth.pysr_opset(): adds ^, abs, cbrt, cube")
     r.add_argument("--out", required=True)
 
     j = sub.add_parser("make-jobs")
@@ -301,11 +258,15 @@ def main(argv=None):
     j.add_argument("--timeout-seconds", type=float, required=True)
     j.add_argument("--max-evals", type=int, default=None)
     j.add_argument("--max-train-samples", type=int, default=None)
+    j.add_argument("--opset", choices=["default", "full"], default="default")
     j.add_argument("--limit", type=int, default=None, help="first N problems per domain (smoke tests)")
 
     w = sub.add_parser("worker")
     w.add_argument("--jobs", required=True)
-    w.add_argument("--index", type=int, default=None)
+    w.add_argument("--index", type=int, nargs="*", default=None,
+                   help="one or more job indices, run sequentially in this process (reuses the compiled Julia)")
+    w.add_argument("--group-size", type=int, default=1,
+                   help="treat --index (or $SLURM_ARRAY_TASK_ID) as a group id over G consecutive jobs")
 
     args = ap.parse_args(argv)
     if args.cmd == "make-jobs" and "evolve" in args.methods and not args.evolve_results:

@@ -41,7 +41,7 @@ export PYTHON_JULIAPKG_PROJECT="{repo}/.juliapkg_env"
 export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
 
 echo "array task $SLURM_ARRAY_TASK_ID on $(hostname)"
-python -u {repo}/{worker} --jobs "{jobs}" --index $SLURM_ARRAY_TASK_ID
+python -u {repo}/{worker} --jobs "{jobs}" --index $SLURM_ARRAY_TASK_ID {worker_args}
 """
 
 
@@ -59,12 +59,15 @@ def main():
     ap.add_argument("--logdir", default=None)
     ap.add_argument("--worker", default="scripts/empbench_slurm_worker.py",
                     help="repo-relative worker script taking --jobs J --index I")
+    ap.add_argument("--worker-args", default="", help="extra args appended to the worker command")
+    ap.add_argument("--n-tasks", type=int, default=None,
+                    help="array size (default: number of jobs); use ceil(n/G) with --worker-args '--group-size G'")
     ap.add_argument("--dependency", default=None, help="sbatch --dependency spec, e.g. afterany:318422")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
     jobs = json.loads(Path(a.jobs).read_text())
-    n = len(jobs)
+    n = a.n_tasks or len(jobs)
     logdir = a.logdir or str(Path(a.jobs).parent / "slurm_logs")
     Path(logdir).mkdir(parents=True, exist_ok=True)
     array_spec = f"0-{n-1}%{a.throttle}" if n > 1 else "0"
@@ -73,7 +76,7 @@ def main():
         jobname=a.jobname, logdir=logdir, array_spec=array_spec, time=a.time,
         mem=a.mem, partition=a.partition, conda_sh=CONDA_SH, conda_env=CONDA_ENV,
         repo=str(REPO), jobs=str(Path(a.jobs).resolve()),
-        cpus=a.cpus, julia_threads=a.julia_threads, worker=a.worker,
+        cpus=a.cpus, julia_threads=a.julia_threads, worker=a.worker, worker_args=a.worker_args,
         dependency_line=f"#SBATCH --dependency={a.dependency}\n" if a.dependency else "")
     script_path = Path(a.jobs).parent / f"{a.jobname}_array.sh"
     script_path.write_text(script)

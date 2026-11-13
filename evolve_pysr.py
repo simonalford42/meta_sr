@@ -2845,7 +2845,7 @@ def main():
                              "black-box splits, otherwise gt.")
 
     parser.add_argument("--domain", type=str, default="srbench",
-                        choices=["srbench", "boolean", "boolformer", "mips", "neuron"],
+                        choices=["srbench", "boolean", "boolformer", "mips", "neuron", "lsr_synth"],
                         help="Evaluation domain (see domains.py). 'srbench' (default) = "
                              "symbolic regression on PMLB/Feynman datasets. 'boolean' = "
                              "Boolean-function synthesis over band/bor/bxor/bnot with L2 "
@@ -2854,7 +2854,9 @@ def main():
                              "fully-observable NeuronBench vector fields "
                              "with numerical ground-truth recovery at NRMSE <= 1e-6. "
                              "'mips' = exact discrete hidden-state transition synthesis "
-                             "from cached MIPS artifacts. "
+                             "from cached MIPS artifacts. 'lsr_synth' = LLM-SRBench "
+                             "LSR-Synth with the benchmark's 5%-trimmed Acc_0.01 as "
+                             "the solved check (lsr_synth.py). "
                              "All domains run through SLURM.")
     parser.add_argument(
         "--uninformative-prompts",
@@ -2936,7 +2938,7 @@ def main():
     preset_help = "; ".join(
         f"{name}={spec!r}" for name, spec in MODEL_ENSEMBLE_PRESETS.items()
     )
-    parser.add_argument("--models", type=str, default="best",
+    parser.add_argument("--models", type=str, default="best2",
                         help="Ensemble of models with weights, or a preset name. "
                              "Overrides --model when set. "
                              f"Presets: {preset_help}")
@@ -3134,6 +3136,11 @@ def main():
             args.split = "splits/neuron_loocv1.txt"
         if args.val_split == "splits/barely_unsolvable_val2.txt":
             args.val_split = None
+    elif args.domain == "lsr_synth":
+        if args.split == "splits/barely_unsolvable.txt":
+            args.split = "splits/lsr_synth_train.txt"
+        if args.val_split == "splits/barely_unsolvable_val2.txt":
+            args.val_split = "splits/lsr_synth_val.txt"
     elif args.domain == "mips":
         if args.split == "splits/barely_unsolvable.txt":
             args.split = "splits/mips_pilot_train.txt"

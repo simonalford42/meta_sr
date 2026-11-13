@@ -1039,6 +1039,89 @@ class UninformativePromptDomain(Domain):
         )
 
 
+class LSRSynthDomain(Domain):
+    """LLM-SRBench LSR-Synth (arXiv:2504.10415): 129 noiseless synthetic problems
+    in chemistry, biology, physics and materials science.
+
+    Dataset names are ``lsr:<domain>/<name>`` (e.g. ``lsr:phys_osc/PO12``).
+    Train = up to ``max_samples`` rows of the benchmark train split (seeded by
+    ``data_seed``); validation = the benchmark's 500-point ID test split.
+
+    "Solved" is the benchmark metric (lsr_synth.select_and_score): the frontier
+    member with the lowest NMSE on all 4000 train rows after a train-fit affine
+    rescale, scored with SR-Scientist's 5%-trimmed Acc_0.01 on the ID test.
+    Symbolic matching is not possible: physics ground truths keep unnamed
+    constants and some chemistry constants are missing from the released strings.
+    """
+
+    name = "lsr_synth"
+    prompt_task_summary = (
+        "scientific equation discovery tasks (reaction kinetics, population "
+        "growth, nonlinear oscillators, and stress-strain laws)"
+    )
+    prompt_recovery_criterion = (
+        "discover equations that reproduce the governing law to within 1% "
+        "relative error on held-out data"
+    )
+    prompt_quality_criterion = (
+        "discover accurate expressions with a strong held-out "
+        "R²–complexity tradeoff"
+    )
+
+    def load_train_validation(self, dataset_name, max_samples=None, data_seed=None):
+        from lsr_synth import load_problem, parse_dataset_name, subsample
+
+        dom, name = parse_dataset_name(dataset_name)
+        data = load_problem(dom, name)
+        X_tr, y_tr = data["train"]
+        X_tr, y_tr = subsample(X_tr, y_tr, max_samples,
+                               0 if data_seed is None else int(data_seed))
+        X_val, y_val = data["id_test"]
+        return X_tr, y_tr, X_val, y_val, f"lsr_synth:{dom}/{name}"
+
+    def load_dataset(self, dataset_name, max_samples=None, data_seed=None):
+        X_tr, y_tr, _, _, target = self.load_train_validation(
+            dataset_name, max_samples=max_samples, data_seed=data_seed)
+        return X_tr, y_tr, target
+
+    def base_pysr_kwargs(self):
+        from lsr_synth import pysr_opset
+        from parallel_eval_pysr import get_default_pysr_kwargs
+
+        kwargs = get_default_pysr_kwargs()
+        kwargs.update(pysr_opset())
+        return kwargs
+
+    def base_engine_kwargs(self):
+        raise NotImplementedError("LSR-Synth is currently a PySR-only domain")
+
+    def check_solved(self, *, equations_df, best_df_index, target, var_names,
+                     predict_fn, y_val, predict_on=None, dataset_name=None):
+        from lsr_synth import SOLVED_KEY, load_problem, parse_dataset_name, select_and_score
+
+        dom, name = parse_dataset_name(dataset_name)
+        X_tr, y_tr = load_problem(dom, name)["train"]
+        y_val = np.asarray(y_val, dtype=float).reshape(-1)
+        pred_train, pred_val = {}, {}
+        for idx in equations_df.index:
+            try:
+                pred_train[idx] = np.asarray(predict_on(idx, X_tr), dtype=float).reshape(-1)
+                pred_val[idx] = np.asarray(predict_fn(idx), dtype=float).reshape(-1)
+            except Exception:
+                pred_train.pop(idx, None)
+        idx, m = select_and_score(pred_train, pred_val, y_tr, y_val, affine=True)
+        matched = bool(m is not None and m[SOLVED_KEY])
+        return {
+            "match": matched,
+            "matched_df_index": int(idx) if matched else None,
+            "selected_df_index": None if idx is None else int(idx),
+            "checked_count": len(pred_train),
+            **({} if m is None else {k: m[k] for k in
+                                    ("nmse", "acc_0.1", "acc95_0.01", "acc95_0.001",
+                                     "train_nmse")}),
+        }
+
+
 DOMAINS: Dict[str, Domain] = {
     "srbench": SRBenchDomain(),
     "empiricalbench": EmpiricalBenchDomain(),
@@ -1047,6 +1130,7 @@ DOMAINS: Dict[str, Domain] = {
     "boolformer": BoolformerDomain(),
     "mips": MIPSTransitionDomain(),
     "neuron": NeuronBenchDomain(),
+    "lsr_synth": LSRSynthDomain(),
     # Prompt-only pseudo-domain; evaluation CLI choices intentionally exclude it.
     "uninformative": UninformativePromptDomain(),
 }

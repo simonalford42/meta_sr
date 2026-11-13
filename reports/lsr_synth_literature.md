@@ -381,3 +381,65 @@ These other 2026 arXiv papers report on LSR-Synth. I did not extract numbers fro
 - A-SR ([2608.04872](https://arxiv.org/abs/2608.04872)).
 - Deliberate Evolution ([2606.04360](https://arxiv.org/abs/2606.04360)).
 - Programmatic Context Augmentation ([2605.03101](https://arxiv.org/abs/2605.03101)).
+
+## 10. Compute / wall-clock per problem
+
+**Bottom line:** no paper reports a measured wall-clock time per LSR-Synth problem for any baseline. The only LSR-Synth compute figures are SR-Scientist's cost (≈$0.25 per problem) and a batch time (≤5 h for all 129 problems). PiT-PO gives a fixed 25,000 s per-problem budget, but only on the LLM-SR Suite. Its public logs contain real per-run timings for oscillator1.
+
+### 10a. Reported figures (quoted)
+
+| Source | Where | Quote / figure |
+|---|---|---|
+| LLM-SRBench (2504.10415) | Sec. 3.1 | "we standardize each of the methods to use 1k LLM calls per problem while maintaining their core algorithmic designs and hyperparameter settings." |
+| LLM-SRBench | App. D Table 2 (PDF) | LLM-SR: "Time limit T = 30s per program hypothesis, Memory limit M = 2GB", "Batch size b = 4 equation programs per prompt", "e = 4 parallel evaluators", "m = 10 islands". Direct: "Time limit T = 30s per program hypothesis execution". LaSR: "Iterations = 25, Cycles per iteration = 550, Populations = 10, Population size = 33". |
+| LLM-SRBench | App. F (PDF) | PySR: "We used PySR's default configuration with the same computational budget (equivalent number of evaluations) as the LLM-based methods". **No wall-clock, GPU-hour or $ figure appears anywhere in the paper, appendix included.** |
+| SR-Scientist (2510.11661) | Sec. 4.1 | "For methods without LLMs, we constrain the number of equation candidates for each problem to 100,000. For methods with LLMs, we constrain the LLM calls to 1,000, with at most 1,000 equation candidates from each problem. For SR-Scientist, we set the maximum number of turns per iteration to 25, with a total of 40 iterations." |
+| SR-Scientist | App. D.2, Table 8 | "SR-Scientist (GPT-OSS-120B) — Input: $0.05/1M; Output: $0.25/1M — **$0.25** [API cost per problem]"; "SR-Scientist (GPT-OSS-20B) — Input: $0.03/1M; Output: $0.15/1M — **$0.1**". Caption: "This calculation does not consider cached tokens". |
+| SR-Scientist | App. D.2 | "we deployed GPT-OSS-120B on a local server with 2 NVIDIA H100s for batch-level inference on 129 problems and recorded the wall-clock times. **The maximum time was no more than 5 hours**". This is batch-parallel over all 129 problems, not a per-problem serial time. |
+| SR-Scientist | App. B / C.3 | Temperature 0.7, "maximum completion length per call to 8,192". RL training: "We conduct RL training on 32 NVIDIA H200 GPUs"; elsewhere "4 nodes, each with 8 H200 GPUs" (README); reward "saturates at around 60 steps". No GPU-hours are given. No baseline timings are given. |
+| PiT-PO (2602.10576) | Sec. 4.2 | "All experiments were run for 2,500 search iterations." "experiments were conducted on a single NVIDIA RTX 3090 using 4-bit quantized Llama-3.2-1B-Instruct, Llama-3.2-3B-Instruct, and Llama-3.1-8B-Instruct" |
+| PiT-PO | App. C.2, Fig. 9 | "We fix the total runtime of each method to **25,000 seconds (≈ 6.9 hours)** and track the best-so-far NMSE as a function of elapsed time". This applies to LLM-SR vs PiT-PO on the 4 LLM-SR Suite problems. Main text: "While the in-search fine-tuning introduces a computational overhead…" **No per-problem time is given for LLM-SRBench.** |
+| LLM-SR (2404.18400) | Sec. 4 / App. | "We run LLM-SR variants for around 2.5K iterations in all experiments." "each iteration samples b=4 equation skeletons per prompt with temperature τ=0.8, optimizes parameters via numpy+BFGS or torch+Adam (with 30 seconds timeout)". Backbone: "Mixtral-8x7B (using 4 NVIDIA RTX 8000 GPUs with 48GB memory each) or GPT-3.5-turbo (via OpenAI API)". Island reset: "Every T_reset iterations (every 4 hrs)". The 4 h reset period implies runs longer than 4 h, but **no total runtime is reported**. Baselines (PySR, DSR, etc.): "over 2 million iterations", "5 replications". |
+| RESTART | code `configs/RESTART_qwen3_8b.yaml` | `global_max_sample_num: 1000`, `samples_per_prompt: 4`, `num_islands: 10`, `num_evaluators: 4`, E2E init/residual `e2e_timeout: 60`, Qwen3-8B via vLLM. Paper: not accessible. Secondary summary (papernotes): RESTART "surpass[es] LLMSR with only 25% of the iteration budget". No time figures found. |
+
+### 10b. Measured logs in public repos (primary data, but not the paper setup)
+
+The PiT-PO repo ships two run logs:
+- Run directories: `PiT-PO_for_Paddle/train_log/oscillator1_gpu{0,1}_seed{3408,3409}_retry1/`, with files `time_summary.json`, `config.json` and `run_summary.json`.
+- Config: **Llama-3.2-3B, bf16, Paddle port**, oscillator1 (LLM-SR Suite), 2,500 samples, 4 per prompt, `evaluate_timeout_seconds: 30`, GRPO every 64 samples.
+- Logged times:
+
+| run | total_sample_time (s) | total_evaluate_time (s) | total_grpo_time (s) | avg_sample (s) | avg_evaluate (s) |
+|---|---|---|---|---|---|
+| seed3408 | 8473.4 | 8706.7 | 459.8 | 4.57 | 4.69 |
+| seed3409 | 9951.8 | 8624.5 | 556.8 | 4.80 | 4.16 |
+
+Summing the three components gives ≈17.6k–19.1k s (≈4.9–5.3 h) per problem, if the phases don't overlap. That sum is my arithmetic, not a reported number.
+
+### 10c. Code-config facts (llm-srbench, local `baselines/llm-srbench-src`)
+
+LLM-SR:
+- `configs/llmsr_*.yaml` sets `global_max_sample_num: 1000`, `samples_per_prompt: 4`, `num_islands: 10`.
+- `methods/llmsr/config.py` defaults to `evaluate_timeout_seconds: 30` and `num_evaluators: 1`; the yaml does not override it, while the paper says e=4.
+- In `methods/llmsr/sampler.py`, each sample is a separate `async_draw_single_sample` call, with up to 20 concurrent requests. The 1000 budget therefore equals 1000 LLM completions, i.e. 1000 candidate programs, each BFGS-fitted under the 30 s cap.
+- The search also stops early if the best score is exactly 0.
+
+LaSR:
+- `configs/lasr_*.yaml` sets `num_iterations: 25`, `num_populations: 10`, `llm_weight: 0.001`, `max_num_samples: 2000`.
+- `methods/lasr/searcher.py` sets `ncyclesperiteration=550`, `population_size=33`, `maxsize=30`, and an LLM `readtimeout=360`.
+- Note: the yaml `llm_weight` of 0.001 differs from the paper's 0.005.
+
+Direct prompting: `global_max_sample_num: 5`. SGA has no iteration or timeout field in its yaml.
+
+### 10d. My estimates (not reported anywhere)
+
+- **LLM-SR / RESTART at 1k samples:**
+  - The evaluation worst case is 1000 × 30 s ≈ 8.3 h serial, or ≈2.1 h with 4 evaluators.
+  - The PiT-PO logs show a mean of ≈4–5 s per evaluation and ≈4.6–4.8 s per LLM sample for a local 3B model on one GPU.
+  - Applied to 1k samples, that gives ≈2.5 h per problem serial, or less with overlap and API concurrency.
+  - Rough range: **≈0.5–3 h per problem**, dominated by BFGS evaluation and LLM latency.
+- **PiT-PO / LLM-SR at 2,500 samples:** ≈5 h per problem on one RTX 3090, consistent with the logs above and with the 25,000 s budget used in C.2.
+- **SR-Scientist:** about 1k LLM calls with up to 8,192 completion tokens and multi-turn contexts. The reported ≤5 h for all 129 problems on 2 H100s, run in parallel, plus ≈$0.1–0.25 per problem in API cost, are the only anchors. A per-problem serial time cannot be derived from them.
+- **PySR baselines:**
+  - SR-Scientist's 100k-candidate cap and LLM-SRBench's "equivalent evaluations" are evaluation budgets, not time budgets.
+  - A 1k-evaluation-matched PySR run would take seconds to minutes. SR-Scientist's config (125 × 550 × 15 × 33 ≈ 34M mutations, capped at 100k candidates) is unclear in its interpretation; no times are reported.
