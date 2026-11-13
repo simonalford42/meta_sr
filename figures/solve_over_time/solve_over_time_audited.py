@@ -146,7 +146,9 @@ def curves(records):
             times = [t for r in trial if (t := plotted_seconds(r)) is not None]
             per_seed.append([100*sum(t <= x for t in times)/len(trial) for x in xs])
         per_seed = np.array(per_seed)
-        out[method] = dict(mean=per_seed.mean(0), sd=per_seed.std(0, ddof=1), solved=sum(r['final_positive'] for r in rows), n=len(rows))
+        sd = per_seed.std(0, ddof=1)
+        out[method] = dict(mean=per_seed.mean(0), sd=sd, sem=sd/np.sqrt(len(seeds)),  # sem: standard error of the mean over seeds
+                           solved=sum(r['final_positive'] for r in rows), n=len(rows))
     return xs, out
 
 
@@ -155,7 +157,7 @@ def figure(xs, data, band):
     for _, method, label, color in METHODS:
         d = data[method]
         if band:
-            ax.fill_between(xs/60, np.maximum(0, d['mean'] - d['sd']), np.minimum(100, d['mean'] + d['sd']),
+            ax.fill_between(xs/60, np.maximum(0, d['mean'] - d['sem']), np.minimum(100, d['mean'] + d['sem']),
                             step='post', color=color, alpha=.18, linewidth=0)
         ax.step(xs/60, d['mean'], where='post', color=color, linewidth=2.2, label=f"{label} ({d['solved']}/{d['n']})")
     ax.set(xscale='log', xlim=(1/60, 60), xlabel='Search time (min)')
@@ -198,9 +200,10 @@ def main():
     xs_before, before = curves(original)
     with (OUT/'empirical_solve_over_time_audited.csv').open('w') as f:
         writer = csv.writer(f, lineterminator='\n')
-        writer.writerow(['method', 'seconds', 'solve_rate_percent', 'seed_sd_percent'])
+        writer.writerow(['method', 'seconds', 'solve_rate_percent', 'seed_sd_percent', 'standard_error_percent'])
         for _, method, _, _ in METHODS:
-            writer.writerows([method, x, m, s] for x, m, s in zip(xs, data[method]['mean'], data[method]['sd']))
+            d = data[method]
+            writer.writerows([method, x, m, s, e] for x, m, s, e in zip(xs, d['mean'], d['sd'], d['sem']))
     early = audit['build']['early_seconds']
 
     def solved_by(grid, d, t):
