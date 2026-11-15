@@ -41,7 +41,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import numpy as np
 
 from lsr_synth import (DATA_DIR, DOMAINS, SPLITS, TAUS, affine_fit,  # noqa: E402,F401
-                       load_manifest, load_problem, metrics, pysr_opset)
+                       dataset_name, load_manifest, load_problem, metrics, pysr_opset)
 
 # SR-Scientist (arXiv:2510.11661) App. A PySR baseline config; still capped by --timeout-seconds.
 SRSCI_KWARGS = {
@@ -162,6 +162,9 @@ def cmd_make_jobs(args):
     out_dir = Path(args.output_dir)
     (out_dir / "results").mkdir(parents=True, exist_ok=True)
     probs = [m for m in load_manifest() if not args.domains or m["domain"] in args.domains]
+    if args.exclude_split:  # held-out evaluation: drop problems used in evolution
+        used = {line.strip() for f in args.exclude_split for line in open(f) if line.strip()}
+        probs = [m for m in probs if dataset_name(m["domain"], m["name"]) not in used]
     if args.limit:  # first N problems of each domain (smoke tests)
         probs = [m for d in DOMAINS for m in [p for p in probs if p["domain"] == d][: args.limit]]
     jobs = []
@@ -268,6 +271,8 @@ def main(argv=None):
     j.add_argument("--max-evals", type=int, default=None)
     j.add_argument("--max-train-samples", type=int, default=None)
     j.add_argument("--opset", choices=["default", "full"], default="default")
+    j.add_argument("--exclude-split", nargs="*", default=None,
+                   help="split files (lsr:<domain>/<name> per line) whose problems are skipped")
     j.add_argument("--limit", type=int, default=None, help="first N problems per domain (smoke tests)")
 
     w = sub.add_parser("worker")
