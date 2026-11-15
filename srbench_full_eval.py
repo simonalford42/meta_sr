@@ -330,6 +330,7 @@ def run_black_box(args, output_dir, source, manifest, run):
         evaluator = PySRSlurmEvaluator(
             results_dir=output_dir,
             partition=args.partition,
+            constraint=args.constraint,
             time_limit=args.time_limit,
             mem_per_cpu=args.mem_per_cpu,
             dataset_max_samples=args.black_box_max_samples,
@@ -590,6 +591,10 @@ def main(argv=None, *, force_srbench_2025=False):
     parser.add_argument("--noise-levels", type=float, nargs="+", default=DEFAULT_NOISE_LEVELS)
 
     parser.add_argument("--partition", type=str, default="default_partition")
+    parser.add_argument("--constraint", type=str, default=None,
+                        help="SLURM --constraint for PySR worker nodes (e.g. 'cl|il|sr'); "
+                             "needed for autoresearch commits, whose SR.jl build only loads on "
+                             "the driver's CPU family and newer")
     parser.add_argument("--max-concurrent-jobs", type=int, default=None,
                         help="Maximum simultaneously running tasks in each array.")
     parser.add_argument("--time-limit", type=str, default="02:00:00")
@@ -883,6 +888,7 @@ def main(argv=None, *, force_srbench_2025=False):
         evaluator = PySRSlurmEvaluator(
             results_dir=output_dir,
             partition=args.partition,
+            constraint=args.constraint,
             time_limit=args.time_limit,
             mem_per_cpu=args.mem_per_cpu,
             dataset_max_samples=args.max_samples,
