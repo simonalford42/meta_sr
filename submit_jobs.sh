@@ -1,8 +1,67 @@
 #!/usr/bin/env bash
 
+# 11/16/26
+# srb_flags=(
+#     --select-by val --ground-truth --max-evals 1000000000 --timeout 90 --seed 10000 --n-runs 10
+#     --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 300 --cpus-per-task 1
+#     --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00
+#     --mem-per-cpu 8G --max-retries 5 --no-early-stop
+# )
+# dep=""
+# for spec in trainval:190931 trainval2:190932 default:190930; do
+#     name=${spec%%:*}; job=${spec##*:}
+#     id=$(sbatch --parsable ${dep:+--dependency=afterany:$dep} --partition=default_partition --time=48:00:00 --mem=20G -J srb90-$name run.sh srbench_full_eval.py --evolve-results runs/$job "${srb_flags[@]}" --results-dir runs/$job-$name-srbench_gt_11-16_10seed-90s) || exit 1
+#     echo "$name=$id"; dep=$id
+# done
+exit 0
+# Submitted: trainval=711701, trainval2=711702, default=711703.
+
+# 11/15/26
+# python scripts/empbench_slurm_submit.py --jobs runs/lsrsynth-evolve-11-13-heldout89_3seed_30m/jobs.json --jobname lsr-heldout89-30m --worker scripts/lsrsynth_run.py --mem 10G --time 01:15:00 --throttle 60 || exit 1
+sbatch --partition=default_partition --constraint=cl --time=48:00:00 --mem=20G --export=ALL,JULIA_DEPOT_PATH=/home/sca63/meta_sr/outputs/julia_depots/srbench-nov11b-opus5: -J srb90-ar-nov11b-opus5 run.sh srbench_full_eval.py --autoresearch 96317502b62f1173584564d7d45eab96c3adc628 --autoresearch-results /home/sca63/meta_sr_agent_loop/autoresearch_sr/live/nov11b-opus5/results.tsv --autoresearch-sandboxes outputs/autoresearch_pysr_sandboxes/srbench-nov11b-opus5 --autoresearch-submodule /home/sca63/meta_sr_agent_loop/SymbolicRegression.jl --constraint 'cl|il|sr' --ground-truth --black-box --max-evals 1000000000 --timeout 90 --black-box-timeout 90 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --black-box-max-samples 10000 --pysr-wall-limit 300 --black-box-wall-limit 1800 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 200 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5 --no-early-stop --results-dir runs/autoresearch-nov11b-opus5-96317502-srbench_full_11-15_10seed-90s
+sbatch --partition=default_partition --constraint=cl --time=48:00:00 --mem=20G --export=ALL,JULIA_DEPOT_PATH=/home/sca63/meta_sr/outputs/julia_depots/srbench-nov11b-sonnet5: -J srb90-ar-nov11b-sonnet5 run.sh srbench_full_eval.py --autoresearch 07b05bee7c271af34c8c924c7e323454af8909d2 --autoresearch-results /home/sca63/meta_sr_agent_loop/autoresearch_sr/live/nov11b-sonnet5/results.tsv --autoresearch-sandboxes outputs/autoresearch_pysr_sandboxes/srbench-nov11b-sonnet5 --autoresearch-submodule /home/sca63/meta_sr_agent_loop/SymbolicRegression.jl --constraint 'cl|il|sr' --ground-truth --black-box --max-evals 1000000000 --timeout 90 --black-box-timeout 90 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --black-box-max-samples 10000 --pysr-wall-limit 300 --black-box-wall-limit 1800 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 200 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5 --no-early-stop --results-dir runs/autoresearch-nov11b-sonnet5-07b05bee-srbench_full_11-15_10seed-90s
+exit 0
+
+# 11/13/26
+# srb_ablation_flags=(
+#     --select-by val --ground-truth --max-evals 1000000000 --timeout 90 --seed 10000 --n-runs 10
+#     --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 300 --cpus-per-task 1
+#     --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00
+#     --mem-per-cpu 8G --max-retries 5 --no-early-stop
+# )
+# dep=""
+# for spec in n3-s1:671964 n3-s2:980597 n3-s3:353972 n10-s1:64604 n10-s2:64605 n10-s3:192865 \
+#             n3-reeval-s1:750239 n3-reeval-s2:980598 n3-reeval-s3:203388 \
+#             n3-ttts-s1:750242 n3-ttts-s2:980599 n3-ttts-s3:203389; do
+#     name=${spec%%:*}; job=${spec##*:}
+#     id=$(sbatch --parsable ${dep:+--dependency=afterany:$dep} --partition=default_partition --time=48:00:00 --mem=20G -J srb90-$name run.sh srbench_full_eval.py --evolve-results runs/$job "${srb_ablation_flags[@]}" --results-dir runs/$job-$name-srbench_gt_11-13_10seed-90s) || exit 1
+#     echo "$name=$id"; dep=$id
+# done
+# exit 0
+
+# python scripts/empbench_slurm_submit.py --jobs runs/lsrsynth_fullops_11-13_3seed_30m/jobs.json --jobname lsr-fullops-30m --worker scripts/lsrsynth_run.py --mem 10G --time 01:15:00 --throttle 60 || exit 1
+# python scripts/empbench_slurm_submit.py --jobs runs/lsrsynth_fullops_11-13_3seed_90s/jobs.json --jobname lsr-fullops-90s --worker scripts/lsrsynth_run.py --worker-args "--group-size 12" --n-tasks 65 --mem 10G --time 02:30:00 --throttle 65 || exit 1
+# sbatch --partition=default_partition --time=03:00:00 --mem=20G -J lsr-evolve-smoke run.sh evolve_pysr.py --domain lsr_synth --baseline runs/709715 --split splits/lsr_synth_smoke_train.txt --val-split splits/lsr_synth_smoke_val.txt --operator-type all --population-type topk --population 2 --offspring 2 --generations 1 --n-runs 1 --reeval TTTS --reeval-budget 2 --max-time-in-seconds 30 --pysr-wall-limit 150 --val-pysr-timeout 30 --val-pysr-wall-limit 150 --val-n-runs 1 --final-eval-runs 1 --identify-topk 0 --population-reeval-runs 0 --max-samples 2000 --models best2 --output-dir runs/lsrsynth-evolve-smoke-11-13 || exit 1
+# sbatch --partition=default_partition --time=72:00:00 --mem=20G -J lsr-evolve run.sh evolve_pysr.py --domain lsr_synth --baseline runs/709715 --split splits/lsr_synth_train.txt --val-split splits/lsr_synth_val.txt --operator-type all --population-type topk --population 10 --offspring 10 --generations 30 --n-runs 3 --reeval TTTS --reeval-budget 40 --max-time-in-seconds 90 --pysr-wall-limit 270 --val-pysr-timeout 90 --val-pysr-wall-limit 270 --max-samples 2000 --models best2 --output-dir runs/lsrsynth-evolve-11-13 || exit 1
+exit 0
+
+sbatch --partition=default_partition --time=48:00:00 --mem=20G -J srb90-llamea-par10 run.sh srbench_full_eval.py --evolve-results runs/454657_2 --select-by val --ground-truth --max-evals 1000000000 --timeout 90 --seed 10000 --n-runs 10 --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 300 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 100 --time-limit 02:00:00 --mem-per-cpu 8G --max-retries 5 --no-early-stop --results-dir runs/454657-llamea-par10-srbench_gt_11-13_10seed-90s || exit 1
+
+# 11/12/26
+(cd ~/meta_sr_agent_loop && sbatch -J ar-nov11b-opus5 --export=ALL,TAG=nov11b-opus5 autoresearch_sr/launch.sbatch)
+(cd ~/meta_sr_agent_loop && sbatch -J ar-nov11b-sonnet5 --export=ALL,TAG=nov11b-sonnet5 autoresearch_sr/launch.sbatch)
+
+# # rerun of 317821/317822 (disk full); same seed -> replays LLM + eval caches
+# llamea_flags=(
+#     --operator-type all --seed 1 --n-runs 3 --models best2 --max-time-in-seconds 90 --pysr-wall-limit 270
+#     --val-pysr-timeout 90 --val-pysr-wall-limit 270 --strategy plus
+# )
+# sbatch --partition=default_partition --time=72:00:00 -J llamea-seq run.sh llamea_pysr.py "${llamea_flags[@]}" --iterations 150 --lambda 1 || exit 1
+# sbatch --partition=default_partition --time=48:00:00 -J llamea-par10 run.sh llamea_pysr.py "${llamea_flags[@]}" --iterations 15 --lambda 10 || exit 1
+
 # 11/10/26
 # python scripts/empbench_slurm_submit.py --jobs runs/lsrsynth_11-10_3seed_30m/jobs.json --jobname lsrsynth-30m --worker scripts/lsrsynth_run.py --mem 10G --time 01:15:00 --throttle 60 --dependency afterany:318422 || exit 1
-exit 0
+# exit 0
 
 # python evaluate_modsr_srbench.py submit --output-dir runs/modsr_srbench_gt_11-10_1seed --n-shards 4 --time-limit 06:00:00 || exit 1
 
