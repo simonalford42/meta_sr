@@ -287,7 +287,16 @@ The PiT-PO values are clean k/N fractions (5/36, 28/36, 7/24, 17/24, 5/44, 18/44
 - `global_max_sample_num: 1000` (1k samples), 4 samples per prompt, 10 islands.
 - E2E (Kamienny et al.) initialization and residual analysis, plus a concept library.
 
-### From the secondary summary only (papernotes.org, NOT verified against the paper)
+### Verified against the PDF (2026-11-17, `scripts/11291_Robust_Equation_Structur.pdf`)
+
+- **Metric (Sec. 5.1.1):** Acc_τ with **τ = 0.1** "unless stated otherwise", computed over the best 95% of predictions (worst 5% by relative error discarded). NMSE is clipped at 100 and reported as mean ± std.
+- **Problems:** LSR-Transform (111) and LSR-Synth with **93 problems: biology, physics, materials science. Chemistry is omitted with no explanation.**
+- **Tables 1 (ID) and 2 (OOD)** match the secondary-source numbers below exactly. Entries are mean ± std (std ≈ 35–50, i.e. the spread of a 0/100 outcome); the number of runs is not stated (77.08 = 18.5/24 suggests 2).
+- **Their PySR baseline** (App. D.3: niterations 40, maxsize 30, 15 populations × 33, ops + * - / ^ cos exp sin sqrt log, batching 5000): ID ACC Bio 54.17, MatSci 72.00, Phys 73.86; OOD ACC Bio 37.50, MatSci 96.00, Phys 62.50.
+- **Budget:** LLM-SR and RESTART use 1,000 LLM samples, Qwen3-8B; hardware 2×RTX 4090 or 8×L40S. No wall-clock per problem.
+- **Sub-solver table (Table 4, BPG18):** RESTART's residual sub-solver is E2E by default; PySR as the sub-solver gives ~18× lower NMSE at ~2× the time per iteration.
+
+### From the secondary summary (papernotes.org; now confirmed by the PDF)
 
 Source: <https://en.papernotes.org/ICLR2026/others/robust_equation_structure_learning_with_adaptive_refinement/>. Treat these as unverified until the PDF is read.
 
