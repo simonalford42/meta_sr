@@ -32,6 +32,8 @@ LOCAL = {
     "Evolved PySR (GT)": "pysr-gt-709715-srbench_full_9-22_10seed-90s",
 }
 STEM = "srbench_gt"
+# Held-out tasks: the 90-task test split (excludes the 20 train + 20 val tasks used in evolution).
+HELD_OUT = ROOT / "splits/test.txt"
 MDL = "MDLformer"
 NOISE = [0, .001, .01, .1]
 MARKERS = ["o", "s", "x", "+"]
@@ -178,7 +180,11 @@ def main():
     provenance["scale"] = args.scale
     rates.to_csv(OUT / "dataset_rates.csv", index=False)
     (OUT / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
-    render(rates[rates.dataset.isin(shared)], STEM, args.scale)
+    held_out = {line.strip() for line in HELD_OUT.read_text().splitlines() if line.strip()}
+    assert len(held_out) == 90 and held_out <= shared
+    provenance["task_subset"] = f"{HELD_OUT.relative_to(ROOT)} ({len(held_out)} held-out tasks)"
+    (OUT / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
+    render(rates[rates.dataset.isin(held_out)], STEM, args.scale)
     print(PDF_OUT / f"{STEM}.pdf")
 
 

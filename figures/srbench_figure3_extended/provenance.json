@@ -1122,5 +1122,6 @@
     "feynman_I_30_5",
     "feynman_test_10"
   ],
-  "scale": 1.2
+  "scale": 1.0,
+  "task_subset": "splits/test.txt (90 held-out tasks)"
 }

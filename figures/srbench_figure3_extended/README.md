@@ -23,6 +23,10 @@ The main figure restricts every method to the original 130-task universe:
 release also contain `feynman_I_26_2`, `feynman_I_30_5`, and `feynman_test_10`.
 These three additional datasets are excluded from the figure.
 
+`../srbench_gt.pdf` further restricts every method to the 90 held-out tasks in
+`splits/test.txt` (78 Feynman, 12 Strogatz), excluding the 20 train and 20 val
+tasks used during evolution. `srbench_gt_summary.csv` reports this subset.
+
 ## Inputs
 
 | Display name | Source |
