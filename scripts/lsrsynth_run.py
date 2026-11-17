@@ -183,6 +183,8 @@ def cmd_make_jobs(args):
                     job["evolve_results"] = args.evolve_results
                 if args.max_evals:
                     job["max_evals"] = args.max_evals
+                if args.extra_kwargs:
+                    job["extra_kwargs"] = args.extra_kwargs
                 jobs.append(job)
     # method-major order, so few --group-size groups mix methods (the worker
     # splits those into one subprocess per method)
@@ -271,6 +273,8 @@ def main(argv=None):
     j.add_argument("--max-evals", type=int, default=None)
     j.add_argument("--max-train-samples", type=int, default=None)
     j.add_argument("--opset", choices=["default", "full"], default="default")
+    j.add_argument("--extra-kwargs", default=None,
+                   help='JSON PySR kwargs for every job, e.g. \'{"early_stop_condition": null}\'')
     j.add_argument("--exclude-split", nargs="*", default=None,
                    help="split files (lsr:<domain>/<name> per line) whose problems are skipped")
     j.add_argument("--limit", type=int, default=None, help="first N problems per domain (smoke tests)")
