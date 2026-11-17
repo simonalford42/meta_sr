@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 
+# 11/17/26
+sbatch --partition=default_partition --time=48:00:00 --mem=20G -J srb2700-bb55-709715 run.sh srbench_full_eval.py --evolve-results runs/709715 --select-by val --black-box --datasets "$(paste -sd, data/srbench_blackbox_e2e55.txt)" --max-evals 1000000000 --black-box-timeout 2700 --black-box-wall-limit 3300 --seed 10000 --n-runs 3 --black-box-max-samples 10000 --cpus-per-task 1 --partition default_partition --max-concurrent-jobs 165 --time-limit 01:15:00 --mem-per-cpu 8G --max-retries 5 --no-early-stop --no-maxsize-warmup --affine-scale-frontier --results-dir runs/pysr-gt-709715-srbench_bb_e2e55_11-17_3seed-2700s || exit 1
+exit 0
+
 # 11/16/26
+# python scripts/empbench_slurm_submit.py --jobs runs/lsrsynth_fullops_noearlystop_11-16_3seed_30m/jobs.json --jobname lsr-noes-30m --worker scripts/lsrsynth_run.py --mem 10G --time 01:15:00 --throttle 60 || exit 1
+exit 0
 # srb_flags=(
 #     --select-by val --ground-truth --max-evals 1000000000 --timeout 90 --seed 10000 --n-runs 10
 #     --noise-levels 0 0.001 0.01 0.1 --max-samples 1000 --pysr-wall-limit 300 --cpus-per-task 1
