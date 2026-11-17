@@ -73,7 +73,7 @@ def cmd_run(args):
         method="baseline" if args.method == "srsci" else args.method, evolve_results=args.evolve_results,
         max_evals=args.max_evals or 10**12, binary_ops=args.binary_ops, unary_ops=args.unary_ops,
         maxsize=args.maxsize, populations=None, population_size=None,
-        extra_kwargs=args.extra_kwargs, parallelism="serial", procs=0,
+        extra_kwargs=args.extra_kwargs, parallelism=args.parallelism, procs=0,
         timeout_seconds=args.timeout_seconds,
     )
     pysr_kwargs, custom_code, method_meta = build_pysr_kwargs_and_code(bargs)
@@ -141,7 +141,9 @@ def cmd_run(args):
         "pysr_kwargs": {k: v for k, v in pysr_kwargs.items()
                         if k in ("binary_operators", "unary_operators", "maxsize", "maxdepth",
                                  "populations", "population_size", "elementwise_loss",
-                                 "early_stop_condition", "timeout_in_seconds", "max_evals")},
+                                 "early_stop_condition", "timeout_in_seconds", "max_evals",
+                                 "parallelism", "deterministic", "procs")},
+        "julia_num_threads": os.environ.get("JULIA_NUM_THREADS"),
         "frontier": frontier, "completed": True,
     }
     tmp = str(out) + ".tmp"
@@ -185,6 +187,8 @@ def cmd_make_jobs(args):
                     job["max_evals"] = args.max_evals
                 if args.extra_kwargs:
                     job["extra_kwargs"] = args.extra_kwargs
+                if args.parallelism != "serial":
+                    job["parallelism"] = args.parallelism
                 jobs.append(job)
     # method-major order, so few --group-size groups mix methods (the worker
     # splits those into one subprocess per method)
@@ -257,6 +261,8 @@ def main(argv=None):
     r.add_argument("--extra-kwargs", default=None)
     r.add_argument("--opset", choices=["default", "full"], default="default",
                    help="'full' = lsr_synth.pysr_opset(): adds ^, abs, cbrt, cube")
+    r.add_argument("--parallelism", choices=["serial", "multithreading"], default="serial",
+                   help="'multithreading' uses JULIA_NUM_THREADS cores (non-deterministic)")
     r.add_argument("--out", required=True)
 
     j = sub.add_parser("make-jobs")
@@ -273,6 +279,7 @@ def main(argv=None):
     j.add_argument("--max-evals", type=int, default=None)
     j.add_argument("--max-train-samples", type=int, default=None)
     j.add_argument("--opset", choices=["default", "full"], default="default")
+    j.add_argument("--parallelism", choices=["serial", "multithreading"], default="serial")
     j.add_argument("--extra-kwargs", default=None,
                    help='JSON PySR kwargs for every job, e.g. \'{"early_stop_condition": null}\'')
     j.add_argument("--exclude-split", nargs="*", default=None,
